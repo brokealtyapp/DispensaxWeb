@@ -1,16 +1,22 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { format, startOfWeek, addDays, isToday, parseISO } from "date-fns";
+import { format, startOfWeek, addDays, isToday } from "date-fns";
 import { es } from "date-fns/locale";
-import { Plus, MoreHorizontal, Check, Box, AlertTriangle, TrendingUp, Users, Loader2 } from "lucide-react";
+import { 
+  Plus, MoreHorizontal, Check, Box, AlertTriangle, TrendingUp, Users, Loader2,
+  Route, Warehouse, DollarSign, Wallet, ShoppingCart, Fuel, UserCheck, FileText,
+  Package, Clock, ArrowUpRight, ArrowDownRight, Truck, CircleDollarSign, MapPin,
+  CheckCircle2, XCircle, BarChart3, Calendar
+} from "lucide-react";
 import { Link } from "wouter";
 import type { Task, Machine } from "@shared/schema";
 
@@ -22,6 +28,81 @@ const zoneColors = [
   "bg-[#4ECB71]",
   "bg-[#E84545]",
 ];
+
+interface SummaryRoutes {
+  activeRoutes: number;
+  totalRoutes: number;
+  todayStops: number;
+  completedStops: number;
+  pendingStops: number;
+  avgServiceTimeMinutes: number;
+  recentRoutes: { id: string; name: string; date: string; status: string; stopsCount: number }[];
+}
+
+interface SummaryWarehouse {
+  totalProducts: number;
+  totalStock: number;
+  lowStockCount: number;
+  lowStockProducts: { id: string; name: string; code: string; currentStock: number; category: string }[];
+  weekMovements: number;
+  entriesThisWeek: number;
+  exitsThisWeek: number;
+}
+
+interface SummaryAccounting {
+  salesToday: number;
+  salesWeek: number;
+  salesMonth: number;
+  cashInflow: number;
+  cashOutflow: number;
+  netCashFlow: number;
+  weekDeposits: number;
+  pendingDeposits: number;
+}
+
+interface SummaryPettyCash {
+  currentBalance: string;
+  initialAmount: string;
+  weekExpenses: number;
+  pendingCount: number;
+  approvedCount: number;
+  recentExpenses: { id: string; description: string; amount: string; category: string; status: string }[];
+}
+
+interface SummaryPurchases {
+  openOrders: number;
+  totalOrders: number;
+  weekSpending: number;
+  pendingReceptions: number;
+  recentOrders: { id: string; orderNumber: string; total: string; status: string }[];
+}
+
+interface SummaryFuel {
+  totalVehicles: number;
+  activeVehicles: number;
+  monthCost: number;
+  monthLiters: number;
+  avgEfficiency: string;
+  lowEfficiencyAlerts: number;
+}
+
+interface SummaryHR {
+  totalEmployees: number;
+  activeEmployees: number;
+  weekVisits: number;
+  weekTasksCompleted: number;
+  topPerformers: { id: string; name: string; role: string; visitsThisWeek: number; tasksCompleted: number }[];
+  byRole: { technicians: number; admins: number; supervisors: number };
+}
+
+interface SummaryReconciliation {
+  weekTransfers: number;
+  pendingTransfers: number;
+  weekShrinkage: number;
+  shrinkageRecords: number;
+  weekCollections: number;
+  collectionsCount: number;
+}
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -43,16 +124,44 @@ export function DashboardPage() {
     queryKey: ["/api/machines"],
   });
 
-  const { data: allTasks = [] } = useQuery<Task[]>({
-    queryKey: ["/api/tasks"],
-  });
-
   const { data: alerts = [] } = useQuery<any[]>({
     queryKey: ["/api/alerts"],
   });
 
   const { data: calendarEvents = [] } = useQuery<any[]>({
     queryKey: ["/api/calendar/events"],
+  });
+
+  const { data: routesSummary } = useQuery<SummaryRoutes>({
+    queryKey: ["/api/summary/routes"],
+  });
+
+  const { data: warehouseSummary } = useQuery<SummaryWarehouse>({
+    queryKey: ["/api/summary/warehouse"],
+  });
+
+  const { data: accountingSummary } = useQuery<SummaryAccounting>({
+    queryKey: ["/api/summary/accounting"],
+  });
+
+  const { data: pettyCashSummary } = useQuery<SummaryPettyCash>({
+    queryKey: ["/api/summary/petty-cash"],
+  });
+
+  const { data: purchasesSummary } = useQuery<SummaryPurchases>({
+    queryKey: ["/api/summary/purchases"],
+  });
+
+  const { data: fuelSummary } = useQuery<SummaryFuel>({
+    queryKey: ["/api/summary/fuel"],
+  });
+
+  const { data: hrSummary } = useQuery<SummaryHR>({
+    queryKey: ["/api/summary/hr"],
+  });
+
+  const { data: reconciliationSummary } = useQuery<SummaryReconciliation>({
+    queryKey: ["/api/summary/reconciliation"],
   });
 
   const toggleTaskMutation = useMutation({
@@ -129,6 +238,11 @@ export function DashboardPage() {
     return "Sin hora";
   };
 
+  const formatCurrency = (value: number | string) => {
+    const num = typeof value === "string" ? parseFloat(value) : value;
+    return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(num || 0);
+  };
+
   return (
     <div className="flex h-full">
       <div className="flex-1 p-6 overflow-auto">
@@ -138,7 +252,9 @@ export function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-white/70">Máquinas Activas</p>
-                  <p className="text-2xl font-bold">{machines.filter((m: any) => m.status === "operando").length}</p>
+                  <p className="text-2xl font-bold" data-testid="stat-active-machines">
+                    {machines.filter((m: any) => m.status === "operando").length}
+                  </p>
                 </div>
                 <Box className="h-8 w-8 text-white/70" />
               </div>
@@ -149,7 +265,7 @@ export function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-white/70">Alertas Activas</p>
-                  <p className="text-2xl font-bold">{activeAlerts}</p>
+                  <p className="text-2xl font-bold" data-testid="stat-active-alerts">{activeAlerts}</p>
                 </div>
                 <AlertTriangle className="h-8 w-8 text-white/70" />
               </div>
@@ -159,10 +275,12 @@ export function DashboardPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-white/70">Tareas Hoy</p>
-                  <p className="text-2xl font-bold">{todayTasks.length}</p>
+                  <p className="text-sm text-white/70">Ventas Hoy</p>
+                  <p className="text-2xl font-bold" data-testid="stat-sales-today">
+                    {formatCurrency(accountingSummary?.salesToday || 0)}
+                  </p>
                 </div>
-                <TrendingUp className="h-8 w-8 text-white/70" />
+                <DollarSign className="h-8 w-8 text-white/70" />
               </div>
             </CardContent>
           </Card>
@@ -170,32 +288,385 @@ export function DashboardPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-white/70">Zonas</p>
-                  <p className="text-2xl font-bold">{zoneStats.length}</p>
+                  <p className="text-sm text-white/70">Tareas Hoy</p>
+                  <p className="text-2xl font-bold" data-testid="stat-today-tasks">{todayTasks.length}</p>
                 </div>
-                <Users className="h-8 w-8 text-white/70" />
+                <CheckCircle2 className="h-8 w-8 text-white/70" />
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold">Operaciones</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Link href="/maquinas">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-machines">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                      <Box className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Máquinas</h3>
+                      <p className="text-xs text-muted-foreground">{machines.length} total</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Operando</span>
+                      <span className="font-medium text-green-600">{machines.filter((m: any) => m.status === "operando").length}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Con alertas</span>
+                      <span className="font-medium text-orange-600">{activeAlerts}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Zonas</span>
+                      <span className="font-medium">{zoneStats.length}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/abastecedor">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-routes">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                      <Route className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Rutas</h3>
+                      <p className="text-xs text-muted-foreground">{routesSummary?.totalRoutes || 0} rutas</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Activas</span>
+                      <span className="font-medium text-green-600">{routesSummary?.activeRoutes || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Paradas hoy</span>
+                      <span className="font-medium">{routesSummary?.todayStops || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Tiempo prom.</span>
+                      <span className="font-medium">{routesSummary?.avgServiceTimeMinutes || 0} min</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/almacen">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-warehouse">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                      <Warehouse className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Almacén</h3>
+                      <p className="text-xs text-muted-foreground">{warehouseSummary?.totalProducts || 0} productos</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Stock total</span>
+                      <span className="font-medium">{warehouseSummary?.totalStock || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Stock bajo</span>
+                      <span className="font-medium text-red-600">{warehouseSummary?.lowStockCount || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Movimientos sem.</span>
+                      <span className="font-medium">{warehouseSummary?.weekMovements || 0}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/compras">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-purchases">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-cyan-100 dark:bg-cyan-900/30 flex items-center justify-center">
+                      <ShoppingCart className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Compras</h3>
+                      <p className="text-xs text-muted-foreground">{purchasesSummary?.totalOrders || 0} órdenes</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Abiertas</span>
+                      <span className="font-medium text-blue-600">{purchasesSummary?.openOrders || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Por recibir</span>
+                      <span className="font-medium text-orange-600">{purchasesSummary?.pendingReceptions || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Gasto sem.</span>
+                      <span className="font-medium">{formatCurrency(purchasesSummary?.weekSpending || 0)}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold">Finanzas</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Link href="/contabilidad">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-accounting">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                      <CircleDollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Contabilidad</h3>
+                      <p className="text-xs text-muted-foreground">Resumen de ventas</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Ventas semana</span>
+                      <span className="font-medium text-green-600">{formatCurrency(accountingSummary?.salesWeek || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Ventas mes</span>
+                      <span className="font-medium">{formatCurrency(accountingSummary?.salesMonth || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Flujo neto</span>
+                      <span className={`font-medium ${(accountingSummary?.netCashFlow || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(accountingSummary?.netCashFlow || 0)}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/caja-chica">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-petty-cash">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
+                      <Wallet className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Caja Chica</h3>
+                      <p className="text-xs text-muted-foreground">Fondo disponible</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Balance</span>
+                      <span className="font-medium text-green-600">{formatCurrency(pettyCashSummary?.currentBalance || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Gastos sem.</span>
+                      <span className="font-medium text-red-600">{formatCurrency(pettyCashSummary?.weekExpenses || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Pendientes</span>
+                      <span className="font-medium text-orange-600">{pettyCashSummary?.pendingCount || 0}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/combustible">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-fuel">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+                      <Fuel className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Combustible</h3>
+                      <p className="text-xs text-muted-foreground">{fuelSummary?.activeVehicles || 0} vehículos activos</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Costo mes</span>
+                      <span className="font-medium text-red-600">{formatCurrency(fuelSummary?.monthCost || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Litros mes</span>
+                      <span className="font-medium">{fuelSummary?.monthLiters?.toFixed(1) || 0} L</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Rend. prom.</span>
+                      <span className="font-medium">{fuelSummary?.avgEfficiency || 0} km/L</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/dinero-productos">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-reconciliation">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+                      <BarChart3 className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Conciliación</h3>
+                      <p className="text-xs text-muted-foreground">Dinero y productos</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Transferencias</span>
+                      <span className="font-medium">{reconciliationSummary?.weekTransfers || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Mermas sem.</span>
+                      <span className="font-medium text-red-600">{reconciliationSummary?.weekShrinkage || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Recolecciones</span>
+                      <span className="font-medium text-green-600">{formatCurrency(reconciliationSummary?.weekCollections || 0)}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold">Administración</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Link href="/rh">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-hr">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center">
+                      <Users className="h-5 w-5 text-pink-600 dark:text-pink-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Recursos Humanos</h3>
+                      <p className="text-xs text-muted-foreground">{hrSummary?.activeEmployees || 0} empleados activos</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Visitas sem.</span>
+                      <span className="font-medium">{hrSummary?.weekVisits || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Tareas comp.</span>
+                      <span className="font-medium text-green-600">{hrSummary?.weekTasksCompleted || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Técnicos</span>
+                      <span className="font-medium">{hrSummary?.byRole?.technicians || 0}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Card className="h-full" data-testid="widget-reports">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-900/30 flex items-center justify-center">
+                    <FileText className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Reportes</h3>
+                    <p className="text-xs text-muted-foreground">Accesos rápidos</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Link href="/contabilidad">
+                    <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" data-testid="link-report-sales">
+                      <TrendingUp className="h-4 w-4 mr-2" />
+                      Ventas por período
+                    </Button>
+                  </Link>
+                  <Link href="/almacen">
+                    <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" data-testid="link-report-inventory">
+                      <Package className="h-4 w-4 mr-2" />
+                      Rotación de inventario
+                    </Button>
+                  </Link>
+                  <Link href="/combustible">
+                    <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" data-testid="link-report-fuel">
+                      <Fuel className="h-4 w-4 mr-2" />
+                      Eficiencia combustible
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="h-full">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Calendario Semanal
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-7 gap-1">
+                  {weekDays.map((day, idx) => (
+                    <div
+                      key={idx}
+                      className={`text-center p-2 rounded-lg ${
+                        day.isToday
+                          ? "bg-primary text-primary-foreground"
+                          : "hover:bg-muted"
+                      }`}
+                    >
+                      <p className="text-lg font-bold">{day.day}</p>
+                      <p className="text-[10px] capitalize">{day.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-xl font-bold">Zonas</h1>
+            <h2 className="text-xl font-bold">Zonas</h2>
             <p className="text-sm text-muted-foreground">
-              Tienes {zoneStats.length} zonas activas
+              {zoneStats.length} zonas activas
             </p>
           </div>
           <Link href="/maquinas">
-            <Button className="gap-2" data-testid="button-add-project">
-              <Plus className="h-4 w-4" />
+            <Button className="gap-2" data-testid="button-view-machines">
+              <MapPin className="h-4 w-4" />
               Ver Máquinas
             </Button>
           </Link>
         </div>
 
         {machinesLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (
               <Card key={i} className="border-0 overflow-hidden">
                 <CardContent className="p-5">
@@ -211,7 +682,7 @@ export function DashboardPage() {
             ))}
           </div>
         ) : zoneStats.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {zoneStats.map((zone) => (
               <Card
                 key={zone.id}
@@ -259,7 +730,7 @@ export function DashboardPage() {
             ))}
           </div>
         ) : (
-          <Card className="mb-8">
+          <Card>
             <CardContent className="p-8 text-center">
               <Box className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="font-semibold mb-2">No hay máquinas registradas</h3>
@@ -275,88 +746,19 @@ export function DashboardPage() {
             </CardContent>
           </Card>
         )}
-
-        <Card>
-          <CardHeader className="pb-4">
-            <Tabs defaultValue="calendar" className="w-full">
-              <TabsList className="bg-muted/50">
-                <TabsTrigger value="calendar">Calendario</TabsTrigger>
-                <TabsTrigger value="teams">Equipos</TabsTrigger>
-                <TabsTrigger value="favorite">Favoritos</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-7 gap-2 mb-4">
-              {weekDays.map((day, idx) => (
-                <div
-                  key={idx}
-                  className={`text-center p-2 rounded-xl ${
-                    day.isToday
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted"
-                  }`}
-                >
-                  <p className="text-2xl font-bold">{day.day}</p>
-                  <p className="text-xs capitalize">{day.label}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="relative mt-6">
-              {calendarEvents.length > 0 ? (
-                <div className="space-y-2">
-                  {calendarEvents.slice(0, 5).map((event: any) => (
-                    <div
-                      key={event.id}
-                      className="flex items-center gap-3 p-3 rounded-xl bg-muted/30"
-                    >
-                      <div 
-                        className="w-2 h-10 rounded-full"
-                        style={{ backgroundColor: event.color || "#2F6FED" }}
-                      />
-                      <div className="flex-1">
-                        <p className="font-medium text-sm">{event.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {event.startDate && format(new Date(event.startDate), "d MMM, HH:mm", { locale: es })}
-                        </p>
-                      </div>
-                      {event.user && (
-                        <Avatar className="h-6 w-6">
-                          <AvatarFallback className="text-[10px]">
-                            {getInitials(event.user.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground">No hay eventos próximos</p>
-                  <Link href="/calendario">
-                    <Button variant="ghost" className="mt-2 text-primary">
-                      Ver calendario completo
-                    </Button>
-                  </Link>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
-      <div className="w-80 border-l bg-background p-4 overflow-auto hidden md:block" data-testid="panel-today-tasks">
+      <div className="w-80 border-l bg-background p-4 overflow-auto hidden lg:block" data-testid="panel-today-tasks">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="w-full bg-muted/50">
             <TabsTrigger value="messages" className="flex-1 text-xs">
               Mensajes
             </TabsTrigger>
             <TabsTrigger value="today" className="flex-1 text-xs">
-              Tareas Hoy
+              Tareas
             </TabsTrigger>
             <TabsTrigger value="activity" className="flex-1 text-xs">
-              Actividad
+              Alertas
             </TabsTrigger>
           </TabsList>
 
@@ -474,22 +876,68 @@ export function DashboardPage() {
           <TabsContent value="activity" className="mt-4">
             {activeAlerts > 0 ? (
               <div className="space-y-3">
-                <h3 className="font-semibold text-sm">Alertas Recientes</h3>
+                <h3 className="font-semibold text-sm">Alertas Activas ({activeAlerts})</h3>
                 {alerts.filter((a: any) => !a.isResolved).slice(0, 5).map((alert: any) => (
-                  <div key={alert.id} className="p-3 rounded-xl bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
-                    <p className="text-sm font-medium text-orange-800 dark:text-orange-300">
+                  <div 
+                    key={alert.id} 
+                    className={`p-3 rounded-xl border ${
+                      alert.priority === "critica" 
+                        ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                        : alert.priority === "alta"
+                        ? "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800"
+                        : "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
+                    }`}
+                  >
+                    <p className={`text-sm font-medium ${
+                      alert.priority === "critica" 
+                        ? "text-red-800 dark:text-red-300"
+                        : alert.priority === "alta"
+                        ? "text-orange-800 dark:text-orange-300"
+                        : "text-yellow-800 dark:text-yellow-300"
+                    }`}>
                       {alert.message}
                     </p>
-                    <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
-                      {alert.type} - {alert.priority}
-                    </p>
+                    <div className="flex items-center justify-between mt-2">
+                      <Badge 
+                        variant="secondary" 
+                        className={`text-[10px] ${
+                          alert.priority === "critica" 
+                            ? "bg-red-200 text-red-800 dark:bg-red-800 dark:text-red-200"
+                            : alert.priority === "alta"
+                            ? "bg-orange-200 text-orange-800 dark:bg-orange-800 dark:text-orange-200"
+                            : "bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200"
+                        }`}
+                      >
+                        {alert.priority}
+                      </Badge>
+                      <span className={`text-xs ${
+                        alert.priority === "critica" 
+                          ? "text-red-600 dark:text-red-400"
+                          : alert.priority === "alta"
+                          ? "text-orange-600 dark:text-orange-400"
+                          : "text-yellow-600 dark:text-yellow-400"
+                      }`}>
+                        {alert.type}
+                      </span>
+                    </div>
                   </div>
                 ))}
+                <Link href="/maquinas">
+                  <Button variant="outline" size="sm" className="w-full mt-2" data-testid="button-view-all-alerts">
+                    Ver todas las alertas
+                  </Button>
+                </Link>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No hay actividad reciente
-              </p>
+              <div className="text-center py-8">
+                <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-4" />
+                <p className="text-sm text-muted-foreground">
+                  No hay alertas activas
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Todas las máquinas operan con normalidad
+                </p>
+              </div>
             )}
           </TabsContent>
         </Tabs>
