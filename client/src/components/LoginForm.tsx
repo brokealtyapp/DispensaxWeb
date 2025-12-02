@@ -17,11 +17,11 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 interface LoginFormProps {
-  onSwitchToRegister?: () => void;
   onSuccess?: () => void;
+  onForgotPassword?: () => void;
 }
 
-export function LoginForm({ onSwitchToRegister, onSuccess }: LoginFormProps) {
+export function LoginForm({ onSuccess, onForgotPassword }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const { login, isLoading } = useAuth();
   const [error, setError] = useState<string | null>(null);
@@ -129,14 +129,13 @@ export function LoginForm({ onSwitchToRegister, onSuccess }: LoginFormProps) {
             </Button>
 
             <p className="text-center text-sm text-muted-foreground">
-              ¿No tienes una cuenta?{" "}
               <button
                 type="button"
-                onClick={onSwitchToRegister}
+                onClick={onForgotPassword}
                 className="text-primary hover:underline font-medium"
-                data-testid="link-register"
+                data-testid="link-forgot-password"
               >
-                Regístrate
+                ¿Olvidaste tu contraseña?
               </button>
             </p>
           </form>

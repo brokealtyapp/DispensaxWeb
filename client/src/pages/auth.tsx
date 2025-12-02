@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { LoginForm } from "@/components/LoginForm";
-import { RegisterForm } from "@/components/RegisterForm";
+import { ForgotPasswordForm } from "@/components/ForgotPasswordForm";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
 
@@ -9,7 +9,7 @@ interface AuthPageProps {
 }
 
 export function AuthPage({ onSuccess }: AuthPageProps) {
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "forgot-password">("login");
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -25,13 +25,12 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
         </div>
         {mode === "login" ? (
           <LoginForm
-            onSwitchToRegister={() => setMode("register")}
             onSuccess={onSuccess}
+            onForgotPassword={() => setMode("forgot-password")}
           />
         ) : (
-          <RegisterForm
-            onSwitchToLogin={() => setMode("login")}
-            onSuccess={onSuccess}
+          <ForgotPasswordForm
+            onBackToLogin={() => setMode("login")}
           />
         )}
       </main>
