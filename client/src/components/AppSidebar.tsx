@@ -28,6 +28,15 @@ import {
   Sun,
   Plus,
   LogOut,
+  Truck,
+  Package,
+  Fuel,
+  Calculator,
+  CircleDollarSign,
+  Wallet,
+  ShoppingCart,
+  Users,
+  FileText,
 } from "lucide-react";
 
 const menuItems = [
@@ -38,11 +47,24 @@ const menuItems = [
   { icon: Calendar, label: "Calendario", href: "/calendario" },
 ];
 
-// todo: remove mock functionality - replace with actual API data
-const mockTeams = [
-  { id: "1", name: "Zona Norte", members: ["CR", "MG", "JP", "AL"] },
-  { id: "2", name: "Zona Sur", members: ["PS", "LH", "RG"] },
+const operacionItems = [
+  { icon: Package, label: "Almacén", href: "/almacen" },
+  { icon: Truck, label: "Abastecedor", href: "/abastecedor" },
+  { icon: ShoppingCart, label: "Compras", href: "/compras" },
+  { icon: Fuel, label: "Combustible", href: "/combustible" },
 ];
+
+const finanzasItems = [
+  { icon: Calculator, label: "Contabilidad", href: "/contabilidad" },
+  { icon: CircleDollarSign, label: "Finanzas", href: "/finanzas" },
+  { icon: Wallet, label: "Caja Chica", href: "/caja-chica" },
+];
+
+const adminItems = [
+  { icon: Users, label: "Recursos Humanos", href: "/rh" },
+  { icon: FileText, label: "Reportes", href: "/reportes" },
+];
+
 
 export function AppSidebar() {
   const [location] = useLocation();
@@ -126,49 +148,91 @@ export function AppSidebar() {
           </SidebarMenu>
         </SidebarGroup>
 
-        <SidebarGroup className="mt-6">
-          <div className="flex items-center justify-between px-3 mb-3">
-            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground p-0">
-              EQUIPOS
-            </SidebarGroupLabel>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-              data-testid="button-add-team"
-            >
-              <Plus className="h-3 w-3" />
-            </Button>
-          </div>
-          <div className="space-y-3 px-3">
-            {mockTeams.map((team) => (
-              <div
-                key={team.id}
-                className="flex items-center gap-3 p-2 rounded-xl hover:bg-muted transition-colors cursor-pointer"
-              >
-                <span className="text-sm font-medium flex-1">{team.name}</span>
-                <div className="flex -space-x-2">
-                  {team.members.slice(0, 3).map((member, idx) => (
-                    <Avatar
-                      key={idx}
-                      className="h-7 w-7 border-2 border-background"
-                    >
-                      <AvatarFallback className="text-[10px] bg-muted">
-                        {member}
-                      </AvatarFallback>
-                    </Avatar>
-                  ))}
-                  {team.members.length > 3 && (
-                    <Avatar className="h-7 w-7 border-2 border-background">
-                      <AvatarFallback className="text-[10px] bg-muted">
-                        +{team.members.length - 3}
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+        <SidebarGroup className="mt-4">
+          <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+            OPERACIONES
+          </SidebarGroupLabel>
+          <SidebarMenu>
+            {operacionItems.map((item) => {
+              const isActive = location === item.href;
+              return (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton
+                    asChild
+                    className={cn(
+                      "h-10 px-4 rounded-xl transition-all duration-200",
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow-md"
+                        : "hover:bg-muted"
+                    )}
+                  >
+                    <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                      <item.icon className="h-4 w-4" />
+                      <span className="text-sm font-medium">{item.label}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
+          </SidebarMenu>
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-4">
+          <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+            FINANZAS
+          </SidebarGroupLabel>
+          <SidebarMenu>
+            {finanzasItems.map((item) => {
+              const isActive = location === item.href;
+              return (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton
+                    asChild
+                    className={cn(
+                      "h-10 px-4 rounded-xl transition-all duration-200",
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow-md"
+                        : "hover:bg-muted"
+                    )}
+                  >
+                    <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                      <item.icon className="h-4 w-4" />
+                      <span className="text-sm font-medium">{item.label}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
+          </SidebarMenu>
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-4">
+          <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+            ADMINISTRACIÓN
+          </SidebarGroupLabel>
+          <SidebarMenu>
+            {adminItems.map((item) => {
+              const isActive = location === item.href;
+              return (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton
+                    asChild
+                    className={cn(
+                      "h-10 px-4 rounded-xl transition-all duration-200",
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow-md"
+                        : "hover:bg-muted"
+                    )}
+                  >
+                    <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                      <item.icon className="h-4 w-4" />
+                      <span className="text-sm font-medium">{item.label}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
+          </SidebarMenu>
         </SidebarGroup>
 
         <SidebarGroup className="mt-6">

@@ -94,7 +94,7 @@ const supplierSchema = z.object({
   name: z.string().min(2, "El nombre es requerido"),
   code: z.string().optional(),
   contactName: z.string().optional(),
-  contactEmail: z.string().email().optional().or(z.literal("")),
+  contactEmail: z.union([z.string().email(), z.literal("")]).optional(),
   contactPhone: z.string().optional(),
   address: z.string().optional(),
   city: z.string().optional(),
