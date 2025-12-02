@@ -1,369 +1,463 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { StatsCard } from "@/components/StatsCard";
-import { MachineCard } from "@/components/MachineCard";
-import { AlertCard } from "@/components/AlertCard";
-import { TaskCard } from "@/components/TaskCard";
-import { CalendarStrip } from "@/components/CalendarStrip";
-import { QuickActionCard } from "@/components/QuickActionCard";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import {
-  Box,
-  DollarSign,
-  Users,
-  AlertTriangle,
-  Plus,
-  Truck,
-  FileText,
-  Clock,
-} from "lucide-react";
+import { Plus, MoreHorizontal, Check } from "lucide-react";
 
 // todo: remove mock functionality - replace with actual API data
-const mockMachines = [
+const mockProjects = [
   {
     id: "1",
-    name: "Plaza Central",
-    location: "Centro Comercial Norte",
-    status: "operando" as const,
-    inventoryLevel: 75,
-    lastVisit: "Dic 25",
-    assignedTeam: [
-      { name: "Carlos R", initials: "CR" },
-      { name: "María G", initials: "MG" },
-    ],
-    colorVariant: "blue" as const,
+    name: "Zona Norte",
+    subtitle: "Team",
+    progress: 55,
+    members: ["CR", "MG", "JP", "AL"],
+    date: "Dic 25",
+    colorClass: "bg-[#2F6FED]",
   },
   {
     id: "2",
-    name: "Edificio Corporativo",
-    location: "Zona Industrial",
-    status: "servicio" as const,
-    inventoryLevel: 35,
-    lastVisit: "Dic 24",
-    assignedTeam: [{ name: "Juan P", initials: "JP" }],
-    colorVariant: "dark" as const,
+    name: "Mantenimiento",
+    subtitle: "Preventivo",
+    progress: 55,
+    members: ["PS", "LH"],
+    date: "Dic 26",
+    colorClass: "bg-[#1D1D1D]",
   },
   {
     id: "3",
-    name: "Universidad Tech",
-    location: "Campus Sur",
-    status: "vacia" as const,
-    inventoryLevel: 8,
-    lastVisit: "Dic 23",
-    assignedTeam: [
-      { name: "Ana L", initials: "AL" },
-      { name: "Pedro S", initials: "PS" },
-    ],
-    colorVariant: "purple" as const,
-  },
-];
-
-const mockAlerts = [
-  {
-    id: "1",
-    type: "producto" as const,
-    title: "Producto Agotado",
-    description: "Coca-Cola 600ml se ha agotado",
-    machineName: "Plaza Central",
-    priority: "alta" as const,
-    timestamp: "Hace 2h",
-  },
-  {
-    id: "2",
-    type: "falla" as const,
-    title: "Falla en Dispensador",
-    description: "El dispensador de la fila 3 no responde",
-    machineName: "Edificio Corp",
-    priority: "alta" as const,
-    timestamp: "Hace 4h",
-  },
-  {
-    id: "3",
-    type: "dinero" as const,
-    title: "Coin Box Llena",
-    description: "El contenedor de monedas está al 95%",
-    machineName: "Universidad Tech",
-    priority: "media" as const,
-    timestamp: "Hace 6h",
+    name: "Rutas",
+    subtitle: "Optimización",
+    progress: 45,
+    members: ["RG", "AL", "MG"],
+    date: "Dic 27",
+    colorClass: "bg-[#FF6B3D]",
   },
 ];
 
 const mockTasks = [
   {
     id: "1",
-    title: "Revisar máquina Plaza Central",
-    subtitle: "Reabastecimiento urgente",
+    title: "Revisión de Inventario",
+    subtitle: "Zona Norte - Máquinas",
     time: "10:00 AM - 11:45 AM",
-    assignees: [{ name: "Carlos R", initials: "CR" }],
+    assignees: ["CR", "MG"],
     completed: true,
   },
   {
     id: "2",
-    title: "Mantenimiento Edificio Corp",
-    subtitle: "Limpieza programada",
-    time: "01:00 PM - 03:00 PM",
-    assignees: [{ name: "Juan P", initials: "JP" }],
-    completed: false,
+    title: "Revisión de Inventario",
+    subtitle: "Zona Sur - Máquinas",
+    time: "10:00 AM - 11:45 AM",
+    assignees: ["JP"],
+    completed: true,
   },
   {
     id: "3",
-    title: "Recolección de efectivo",
-    subtitle: "Zona Norte - 5 máquinas",
+    title: "Reunión con Cliente",
+    subtitle: "Contrato nuevo",
+    time: "01:00 PM - 03:00 PM",
+    assignees: ["AL", "PS"],
+    completed: false,
+  },
+  {
+    id: "4",
+    title: "Planeación",
+    subtitle: "Rutas semanales",
     time: "06:00 PM - 07:30 PM",
-    assignees: [
-      { name: "María G", initials: "MG" },
-      { name: "Pedro S", initials: "PS" },
-    ],
+    assignees: ["MG", "LH"],
+    completed: false,
+  },
+  {
+    id: "5",
+    title: "Crear Wireframe",
+    subtitle: "Dashboard rediseño",
+    time: "09:15 PM - 10:00 PM",
+    assignees: ["CR"],
     completed: false,
   },
 ];
 
+const mockCalendarEvents = [
+  {
+    id: "1",
+    title: "Revisión de Inventario",
+    members: ["CR", "+4"],
+    color: "bg-[#4ECB71]",
+    startCol: 3,
+    endCol: 5,
+    row: 1,
+  },
+  {
+    id: "2",
+    title: "Sesión de Planeación",
+    members: ["MG", "+3"],
+    color: "bg-[#8E59FF]",
+    startCol: 1,
+    endCol: 3,
+    row: 2,
+  },
+  {
+    id: "3",
+    title: "Sesión de Planeación",
+    members: ["JP", "+2"],
+    color: "bg-[#FF6B3D]",
+    startCol: 4,
+    endCol: 6,
+    row: 2,
+  },
+  {
+    id: "4",
+    title: "Rediseño de Rutas",
+    members: ["AL", "+4"],
+    color: "bg-[#2F6FED]",
+    startCol: 2,
+    endCol: 5,
+    row: 3,
+  },
+];
+
+const weekDays = [
+  { day: 13, label: "Vie" },
+  { day: 13, label: "Vie" },
+  { day: 14, label: "Sáb" },
+  { day: 15, label: "Dom", isToday: true },
+  { day: 16, label: "Lun" },
+  { day: 17, label: "Mar" },
+  { day: 17, label: "Mar" },
+];
+
 export function DashboardPage() {
   const { user } = useAuth();
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(new Date());
   const [activeTab, setActiveTab] = useState("today");
+  const [tasks, setTasks] = useState(mockTasks);
 
-  const currentTime = format(new Date(), "HH:mm:ss");
-  const currentDate = format(new Date(), "EEEE, d MMMM", { locale: es });
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const toggleTask = (taskId: string) => {
+    setTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId ? { ...task, completed: !task.completed } : task
+      )
+    );
+  };
+
+  const completedCount = tasks.filter((t) => t.completed).length;
+  const openCount = tasks.filter((t) => !t.completed).length;
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold">
-            Buenos días, {user?.fullName?.split(" ")[0] || "Usuario"}
-          </h1>
-          <p className="text-muted-foreground capitalize">{currentDate}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-3xl font-bold tabular-nums" data-testid="text-current-time">
-            {currentTime}
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard
-          title="Total Máquinas"
-          value={48}
-          subtitle="12 activas hoy"
-          trend={{ value: 12, isPositive: true }}
-          icon={Box}
-          iconColor="primary"
-        />
-        <StatsCard
-          title="Ingresos del Mes"
-          value="$125,430"
-          subtitle="Meta: $150,000"
-          trend={{ value: 8.5, isPositive: true }}
-          icon={DollarSign}
-          iconColor="success"
-        />
-        <StatsCard
-          title="Abastecedores"
-          value={8}
-          subtitle="5 en ruta"
-          icon={Users}
-          iconColor="purple"
-        />
-        <StatsCard
-          title="Alertas Activas"
-          value={5}
-          subtitle="2 críticas"
-          trend={{ value: 15, isPositive: false }}
-          icon={AlertTriangle}
-          iconColor="warning"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle>Máquinas</CardTitle>
-              <Button size="sm" data-testid="button-add-machine">
-                <Plus className="h-4 w-4 mr-2" />
-                Agregar
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                Tienes {mockMachines.length} máquinas registradas
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {mockMachines.map((machine) => (
-                  <MachineCard
-                    key={machine.id}
-                    {...machine}
-                    onViewDetails={() => console.log("View details:", machine.id)}
-                    onStartService={() => console.log("Start service:", machine.id)}
-                  />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Calendario</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-4 border-b pb-4">
-                <Tabs value="calendar" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3 max-w-xs">
-                    <TabsTrigger value="calendar">Calendario</TabsTrigger>
-                    <TabsTrigger value="teams">Equipos</TabsTrigger>
-                    <TabsTrigger value="favorites">Favoritos</TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
-              <CalendarStrip selectedDate={selectedDate} onDateSelect={setSelectedDate} />
-              <div className="space-y-3 pt-2">
-                <div className="flex items-center gap-2">
-                  <Badge className="bg-emerald-500 text-white">12:30</Badge>
-                </div>
-                <div className="relative pl-4 space-y-2">
-                  <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-border" />
-                  <Card className="bg-[#4ECB71] text-white border-0">
-                    <CardContent className="p-3 flex items-center gap-3">
-                      <div className="flex -space-x-2">
-                        <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center text-xs font-medium">
-                          CR
-                        </div>
-                        <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center text-xs font-medium">
-                          +4
-                        </div>
-                      </div>
-                      <span className="font-medium">Revisión de inventario</span>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-[#8E59FF] text-white border-0">
-                    <CardContent className="p-3 flex items-center gap-3">
-                      <div className="flex -space-x-2">
-                        <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center text-xs font-medium">
-                          MG
-                        </div>
-                      </div>
-                      <span className="font-medium">Sesión de planeación</span>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-primary text-primary-foreground border-0">
-                    <CardContent className="p-3 flex items-center gap-3">
-                      <div className="flex -space-x-2">
-                        <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center text-xs font-medium">
-                          JP
-                        </div>
-                        <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center text-xs font-medium">
-                          +4
-                        </div>
-                      </div>
-                      <span className="font-medium">Rediseño de rutas</span>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+    <div className="flex h-full">
+      <div className="flex-1 p-6 overflow-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-bold">Máquinas</h1>
+            <p className="text-sm text-muted-foreground">
+              Tienes {mockProjects.length} zonas activas
+            </p>
+          </div>
+          <Button className="gap-2" data-testid="button-add-project">
+            <Plus className="h-4 w-4" />
+            Agregar
+          </Button>
         </div>
 
-        <div className="space-y-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between gap-2">
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                  <TabsList className="w-full">
-                    <TabsTrigger value="messages" className="flex-1">Mensajes</TabsTrigger>
-                    <TabsTrigger value="today" className="flex-1">Hoy</TabsTrigger>
-                    <TabsTrigger value="activity" className="flex-1">Actividad</TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <TabsContent value="messages" className="m-0">
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No hay mensajes nuevos
-                </p>
-              </TabsContent>
-              <TabsContent value="today" className="m-0 space-y-4">
-                <div className="flex items-center justify-between gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          {mockProjects.map((project) => (
+            <Card
+              key={project.id}
+              className={`${project.colorClass} text-white border-0 overflow-hidden`}
+              data-testid={`card-project-${project.id}`}
+            >
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="font-semibold">Tareas de Hoy</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {format(new Date(), "EEEE, d MMMM", { locale: es })}
-                    </p>
+                    <h3 className="text-lg font-bold">{project.name}</h3>
+                    <p className="text-sm text-white/70">{project.subtitle}</p>
                   </div>
-                  <Button size="sm" variant="outline" data-testid="button-new-task">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Nueva
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10"
+                  >
+                    <MoreHorizontal className="h-5 w-5" />
                   </Button>
                 </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Badge variant="default">Todas 03</Badge>
-                  <Badge variant="secondary">Abiertas</Badge>
-                  <Badge variant="secondary">Cerradas</Badge>
-                  <Badge variant="secondary">Archivadas</Badge>
-                </div>
-                <div className="space-y-3">
-                  {mockTasks.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      {...task}
-                      onToggle={(completed) =>
-                        console.log("Task toggled:", task.id, completed)
-                      }
-                    />
-                  ))}
-                </div>
-              </TabsContent>
-              <TabsContent value="activity" className="m-0">
-                <div className="space-y-3">
-                  {mockAlerts.map((alert) => (
-                    <AlertCard
-                      key={alert.id}
-                      {...alert}
-                      onClick={() => console.log("Alert clicked:", alert.id)}
-                    />
-                  ))}
-                </div>
-              </TabsContent>
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Acciones Rápidas</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <QuickActionCard
-                title="Nueva Máquina"
-                description="Agregar una nueva máquina"
-                icon={Plus}
-                color="primary"
-                onClick={() => console.log("New machine")}
-              />
-              <QuickActionCard
-                title="Crear Ruta"
-                description="Planificar ruta de abastecimiento"
-                icon={Truck}
-                color="success"
-                onClick={() => console.log("New route")}
-              />
-              <QuickActionCard
-                title="Generar Reporte"
-                description="Crear reporte de ventas"
-                icon={FileText}
-                color="purple"
-                onClick={() => console.log("Generate report")}
-              />
-            </CardContent>
-          </Card>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-white/70">Progreso</span>
+                    <span className="text-sm font-medium">{project.progress}%</span>
+                  </div>
+                  <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-white rounded-full transition-all"
+                      style={{ width: `${project.progress}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex -space-x-2">
+                    {project.members.slice(0, 4).map((member, idx) => (
+                      <Avatar
+                        key={idx}
+                        className="h-8 w-8 border-2 border-current"
+                        style={{ borderColor: "inherit" }}
+                      >
+                        <AvatarFallback className="bg-white/20 text-white text-xs">
+                          {member}
+                        </AvatarFallback>
+                      </Avatar>
+                    ))}
+                    {project.members.length > 4 && (
+                      <Avatar className="h-8 w-8 border-2 border-current">
+                        <AvatarFallback className="bg-white/20 text-white text-xs">
+                          +{project.members.length - 4}
+                        </AvatarFallback>
+                      </Avatar>
+                    )}
+                  </div>
+                  <Badge
+                    variant="secondary"
+                    className="bg-white/20 text-white border-0 hover:bg-white/30"
+                  >
+                    {project.date}
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
+
+        <Card>
+          <CardHeader className="pb-4">
+            <Tabs defaultValue="calendar" className="w-full">
+              <TabsList className="bg-muted/50">
+                <TabsTrigger value="calendar">Calendario</TabsTrigger>
+                <TabsTrigger value="teams">Equipos</TabsTrigger>
+                <TabsTrigger value="favorite">Favoritos</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-7 gap-2 mb-4">
+              {weekDays.map((day, idx) => (
+                <div
+                  key={idx}
+                  className={`text-center p-2 rounded-xl ${
+                    day.isToday
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  <p className="text-2xl font-bold">{day.day}</p>
+                  <p className="text-xs">{day.label}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="relative mt-6">
+              <div className="absolute left-0 top-0 w-16">
+                <Badge className="bg-[#4ECB71] text-white border-0">12:30</Badge>
+              </div>
+
+              <div className="ml-20 space-y-3">
+                <div className="grid grid-cols-6 gap-2 relative h-12">
+                  <div className="col-start-3 col-span-2 bg-[#4ECB71] rounded-xl flex items-center gap-2 px-3 text-white">
+                    <div className="flex -space-x-1">
+                      <Avatar className="h-6 w-6 border border-white/30">
+                        <AvatarFallback className="bg-white/20 text-white text-[10px]">
+                          CR
+                        </AvatarFallback>
+                      </Avatar>
+                      <Avatar className="h-6 w-6 border border-white/30">
+                        <AvatarFallback className="bg-white/20 text-white text-[10px]">
+                          +4
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                    <span className="text-sm font-medium truncate">
+                      Revisión de Inventario
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-6 gap-2 relative h-12">
+                  <div className="col-start-1 col-span-2 bg-[#8E59FF] rounded-xl flex items-center gap-2 px-3 text-white">
+                    <div className="flex -space-x-1">
+                      <Avatar className="h-6 w-6 border border-white/30">
+                        <AvatarFallback className="bg-white/20 text-white text-[10px]">
+                          MG
+                        </AvatarFallback>
+                      </Avatar>
+                      <Avatar className="h-6 w-6 border border-white/30">
+                        <AvatarFallback className="bg-white/20 text-white text-[10px]">
+                          +3
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                    <span className="text-sm font-medium truncate">
+                      Sesión de Planeación
+                    </span>
+                  </div>
+                  <div className="col-start-4 col-span-2 bg-[#FF6B3D] rounded-xl flex items-center gap-2 px-3 text-white">
+                    <div className="flex -space-x-1">
+                      <Avatar className="h-6 w-6 border border-white/30">
+                        <AvatarFallback className="bg-white/20 text-white text-[10px]">
+                          JP
+                        </AvatarFallback>
+                      </Avatar>
+                      <Avatar className="h-6 w-6 border border-white/30">
+                        <AvatarFallback className="bg-white/20 text-white text-[10px]">
+                          +2
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                    <span className="text-sm font-medium truncate">
+                      Sesión de Planeación
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-6 gap-2 relative h-12">
+                  <div className="col-start-2 col-span-3 bg-[#2F6FED] rounded-xl flex items-center gap-2 px-3 text-white">
+                    <div className="flex -space-x-1">
+                      <Avatar className="h-6 w-6 border border-white/30">
+                        <AvatarFallback className="bg-white/20 text-white text-[10px]">
+                          AL
+                        </AvatarFallback>
+                      </Avatar>
+                      <Avatar className="h-6 w-6 border border-white/30">
+                        <AvatarFallback className="bg-white/20 text-white text-[10px]">
+                          +4
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                    <span className="text-sm font-medium truncate">
+                      Rediseño de Rutas
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="w-80 border-l bg-background p-4 overflow-auto hidden lg:block">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="w-full bg-muted/50">
+            <TabsTrigger value="messages" className="flex-1 text-xs">
+              Mensajes
+            </TabsTrigger>
+            <TabsTrigger value="today" className="flex-1 text-xs">
+              Tareas Hoy
+            </TabsTrigger>
+            <TabsTrigger value="activity" className="flex-1 text-xs">
+              Actividad
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        <TabsContent value="messages" className="mt-4">
+          <p className="text-sm text-muted-foreground text-center py-8">
+            No hay mensajes nuevos
+          </p>
+        </TabsContent>
+
+        <TabsContent value="today" className="mt-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold">Tareas de Hoy</h2>
+              <p className="text-xs text-muted-foreground">
+                {format(new Date(), "EEEE, d MMMM", { locale: es })}
+              </p>
+            </div>
+            <Button size="sm" className="h-8 gap-1 text-xs">
+              <Plus className="h-3 w-3" />
+              Nueva
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="default" className="text-xs">
+              Todas {tasks.length.toString().padStart(2, "0")}
+            </Badge>
+            <Badge variant="secondary" className="text-xs">
+              Abiertas {openCount.toString().padStart(2, "0")}
+            </Badge>
+            <Badge variant="secondary" className="text-xs">
+              Cerradas {completedCount.toString().padStart(2, "0")}
+            </Badge>
+            <Badge variant="secondary" className="text-xs">
+              Archivadas
+            </Badge>
+          </div>
+
+          <div className="space-y-3">
+            {tasks.map((task) => (
+              <div
+                key={task.id}
+                className="flex items-start gap-3 p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
+                data-testid={`task-item-${task.id}`}
+              >
+                <div
+                  className={`mt-0.5 h-5 w-5 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${
+                    task.completed
+                      ? "bg-primary border-primary"
+                      : "border-muted-foreground/30 hover:border-primary"
+                  }`}
+                  onClick={() => toggleTask(task.id)}
+                >
+                  {task.completed && <Check className="h-3 w-3 text-white" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={`font-medium text-sm ${
+                      task.completed ? "line-through text-muted-foreground" : ""
+                    }`}
+                  >
+                    {task.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {task.subtitle}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Hoy {task.time}
+                  </p>
+                </div>
+                <div className="flex -space-x-1">
+                  {task.assignees.slice(0, 2).map((assignee, idx) => (
+                    <Avatar key={idx} className="h-6 w-6 border-2 border-background">
+                      <AvatarFallback className="text-[10px] bg-muted">
+                        {assignee}
+                      </AvatarFallback>
+                    </Avatar>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="activity" className="mt-4">
+          <p className="text-sm text-muted-foreground text-center py-8">
+            No hay actividad reciente
+          </p>
+        </TabsContent>
       </div>
     </div>
   );
