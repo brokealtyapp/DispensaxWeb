@@ -2539,32 +2539,32 @@ export class DatabaseStorage implements IStorage {
       ));
     const totalSales = allSales.reduce((sum, s) => sum + parseFloat(s.totalAmount?.toString() || "0"), 0);
     
-    const purchaseOrders = await db.select().from(purchaseOrdersTable)
+    const ordersList = await db.select().from(purchaseOrders)
       .where(and(
-        gte(purchaseOrdersTable.createdAt, start),
-        lte(purchaseOrdersTable.createdAt, end)
+        gte(purchaseOrders.createdAt, start),
+        lte(purchaseOrders.createdAt, end)
       ));
-    const totalPurchases = purchaseOrders
+    const totalPurchases = ordersList
       .filter(o => o.status === 'received' || o.status === 'partial')
       .reduce((sum, o) => sum + parseFloat(o.totalAmount?.toString() || "0"), 0);
-    const pendingOrders = purchaseOrders.filter(o => o.status === 'pending' || o.status === 'approved').length;
+    const pendingOrders = ordersList.filter(o => o.status === 'pending' || o.status === 'approved').length;
     
     const fuelRecordsList = await db.select().from(fuelRecords)
       .where(and(
-        gte(fuelRecords.date, start),
-        lte(fuelRecords.date, end)
+        gte(fuelRecords.recordDate, start),
+        lte(fuelRecords.recordDate, end)
       ));
     const totalFuelCost = fuelRecordsList.reduce((sum, r) => sum + parseFloat(r.totalAmount?.toString() || "0"), 0);
     
     const pettyCashList = await db.select().from(pettyCashExpenses)
       .where(and(
-        gte(pettyCashExpenses.expenseDate, start),
-        lte(pettyCashExpenses.expenseDate, end)
+        gte(pettyCashExpenses.createdAt, start),
+        lte(pettyCashExpenses.createdAt, end)
       ));
     const totalPettyCash = pettyCashList
-      .filter(e => e.status === 'approved')
+      .filter(e => e.status === 'approved' || e.status === 'aprobado')
       .reduce((sum, e) => sum + parseFloat(e.amount?.toString() || "0"), 0);
-    const pendingExpenses = pettyCashList.filter(e => e.status === 'pending').length;
+    const pendingExpenses = pettyCashList.filter(e => e.status === 'pending' || e.status === 'pendiente').length;
     
     const lowStockProducts = await this.getLowStockProducts();
     
@@ -2603,11 +2603,13 @@ export class DatabaseStorage implements IStorage {
     if (groupBy === 'machine') {
       const byMachine: Record<string, { machineId: string; totalAmount: number; quantity: number }> = {};
       for (const sale of allSales) {
-        if (!byMachine[sale.machineId]) {
-          byMachine[sale.machineId] = { machineId: sale.machineId, totalAmount: 0, quantity: 0 };
+        const machineId = sale.machineId;
+        if (!machineId) continue;
+        if (!byMachine[machineId]) {
+          byMachine[machineId] = { machineId, totalAmount: 0, quantity: 0 };
         }
-        byMachine[sale.machineId].totalAmount += parseFloat(sale.totalAmount?.toString() || "0");
-        byMachine[sale.machineId].quantity += sale.quantity || 0;
+        byMachine[machineId].totalAmount += parseFloat(sale.totalAmount?.toString() || "0");
+        byMachine[machineId].quantity += sale.quantity || 0;
       }
       
       const result = await Promise.all(Object.values(byMachine).map(async (item) => {
@@ -2620,11 +2622,13 @@ export class DatabaseStorage implements IStorage {
     if (groupBy === 'product') {
       const byProduct: Record<string, { productId: string; totalAmount: number; quantity: number }> = {};
       for (const sale of allSales) {
-        if (!byProduct[sale.productId]) {
-          byProduct[sale.productId] = { productId: sale.productId, totalAmount: 0, quantity: 0 };
+        const productId = sale.productId;
+        if (!productId) continue;
+        if (!byProduct[productId]) {
+          byProduct[productId] = { productId, totalAmount: 0, quantity: 0 };
         }
-        byProduct[sale.productId].totalAmount += parseFloat(sale.totalAmount?.toString() || "0");
-        byProduct[sale.productId].quantity += sale.quantity || 0;
+        byProduct[productId].totalAmount += parseFloat(sale.totalAmount?.toString() || "0");
+        byProduct[productId].quantity += sale.quantity || 0;
       }
       
       const result = await Promise.all(Object.values(byProduct).map(async (item) => {
@@ -2637,6 +2641,7 @@ export class DatabaseStorage implements IStorage {
     if (groupBy === 'day') {
       const byDay: Record<string, { date: string; totalAmount: number; quantity: number }> = {};
       for (const sale of allSales) {
+        if (!sale.saleDate) continue;
         const dateKey = sale.saleDate.toISOString().split('T')[0];
         if (!byDay[dateKey]) {
           byDay[dateKey] = { date: dateKey, totalAmount: 0, quantity: 0 };
@@ -2659,10 +2664,10 @@ export class DatabaseStorage implements IStorage {
     const end = filters?.endDate || new Date();
     const groupBy = filters?.groupBy || 'supplier';
 
-    const orders = await db.select().from(purchaseOrdersTable)
+    const orders = await db.select().from(purchaseOrders)
       .where(and(
-        gte(purchaseOrdersTable.createdAt, start),
-        lte(purchaseOrdersTable.createdAt, end)
+        gte(purchaseOrders.createdAt, start),
+        lte(purchaseOrders.createdAt, end)
       ));
 
     if (groupBy === 'supplier') {
@@ -2685,6 +2690,7 @@ export class DatabaseStorage implements IStorage {
     if (groupBy === 'day') {
       const byDay: Record<string, { date: string; totalAmount: number; orderCount: number }> = {};
       for (const order of orders) {
+        if (!order.createdAt) continue;
         const dateKey = order.createdAt.toISOString().split('T')[0];
         if (!byDay[dateKey]) {
           byDay[dateKey] = { date: dateKey, totalAmount: 0, orderCount: 0 };
@@ -2709,8 +2715,8 @@ export class DatabaseStorage implements IStorage {
 
     const records = await db.select().from(fuelRecords)
       .where(and(
-        gte(fuelRecords.date, start),
-        lte(fuelRecords.date, end)
+        gte(fuelRecords.recordDate, start),
+        lte(fuelRecords.recordDate, end)
       ));
 
     if (groupBy === 'vehicle') {
@@ -2753,7 +2759,7 @@ export class DatabaseStorage implements IStorage {
     if (groupBy === 'day') {
       const byDay: Record<string, { date: string; totalAmount: number; totalLiters: number; recordCount: number }> = {};
       for (const record of records) {
-        const dateKey = record.date.toISOString().split('T')[0];
+        const dateKey = record.recordDate.toISOString().split('T')[0];
         if (!byDay[dateKey]) {
           byDay[dateKey] = { date: dateKey, totalAmount: 0, totalLiters: 0, recordCount: 0 };
         }
@@ -2778,9 +2784,12 @@ export class DatabaseStorage implements IStorage {
 
     const expenses = await db.select().from(pettyCashExpenses)
       .where(and(
-        gte(pettyCashExpenses.expenseDate, start),
-        lte(pettyCashExpenses.expenseDate, end),
-        eq(pettyCashExpenses.status, 'approved')
+        gte(pettyCashExpenses.createdAt, start),
+        lte(pettyCashExpenses.createdAt, end),
+        or(
+          eq(pettyCashExpenses.status, 'approved'),
+          eq(pettyCashExpenses.status, 'aprobado')
+        )
       ));
 
     if (groupBy === 'category') {
@@ -2799,11 +2808,12 @@ export class DatabaseStorage implements IStorage {
     if (groupBy === 'user') {
       const byUser: Record<string, { userId: string; totalAmount: number; expenseCount: number }> = {};
       for (const expense of expenses) {
-        if (!byUser[expense.requestedBy]) {
-          byUser[expense.requestedBy] = { userId: expense.requestedBy, totalAmount: 0, expenseCount: 0 };
+        const userId = expense.userId;
+        if (!byUser[userId]) {
+          byUser[userId] = { userId, totalAmount: 0, expenseCount: 0 };
         }
-        byUser[expense.requestedBy].totalAmount += parseFloat(expense.amount?.toString() || "0");
-        byUser[expense.requestedBy].expenseCount++;
+        byUser[userId].totalAmount += parseFloat(expense.amount?.toString() || "0");
+        byUser[userId].expenseCount++;
       }
       
       const result = await Promise.all(Object.values(byUser).map(async (item) => {
@@ -2816,7 +2826,8 @@ export class DatabaseStorage implements IStorage {
     if (groupBy === 'day') {
       const byDay: Record<string, { date: string; totalAmount: number; expenseCount: number }> = {};
       for (const expense of expenses) {
-        const dateKey = expense.expenseDate.toISOString().split('T')[0];
+        if (!expense.createdAt) continue;
+        const dateKey = expense.createdAt.toISOString().split('T')[0];
         if (!byDay[dateKey]) {
           byDay[dateKey] = { date: dateKey, totalAmount: 0, expenseCount: 0 };
         }
@@ -2873,11 +2884,13 @@ export class DatabaseStorage implements IStorage {
 
     const byProduct: Record<string, { productId: string; totalAmount: number; quantity: number }> = {};
     for (const sale of allSales) {
-      if (!byProduct[sale.productId]) {
-        byProduct[sale.productId] = { productId: sale.productId, totalAmount: 0, quantity: 0 };
+      const productId = sale.productId;
+      if (!productId) continue;
+      if (!byProduct[productId]) {
+        byProduct[productId] = { productId, totalAmount: 0, quantity: 0 };
       }
-      byProduct[sale.productId].totalAmount += parseFloat(sale.totalAmount?.toString() || "0");
-      byProduct[sale.productId].quantity += sale.quantity || 0;
+      byProduct[productId].totalAmount += parseFloat(sale.totalAmount?.toString() || "0");
+      byProduct[productId].quantity += sale.quantity || 0;
     }
 
     const sorted = Object.values(byProduct).sort((a, b) => b.totalAmount - a.totalAmount).slice(0, limit);
@@ -2894,10 +2907,10 @@ export class DatabaseStorage implements IStorage {
     const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     const end = endDate || new Date();
 
-    const orders = await db.select().from(purchaseOrdersTable)
+    const orders = await db.select().from(purchaseOrders)
       .where(and(
-        gte(purchaseOrdersTable.createdAt, start),
-        lte(purchaseOrdersTable.createdAt, end)
+        gte(purchaseOrders.createdAt, start),
+        lte(purchaseOrders.createdAt, end)
       ));
 
     const bySupplier: Record<string, { supplierId: string; totalAmount: number; orderCount: number; receivedCount: number }> = {};
@@ -2935,28 +2948,28 @@ export class DatabaseStorage implements IStorage {
           ))
           .orderBy(machineSales.saleDate);
         return Promise.all(sales.map(async (s) => {
-          const machine = await this.getMachine(s.machineId);
-          const product = await this.getProduct(s.productId);
+          const machine = s.machineId ? await this.getMachine(s.machineId) : null;
+          const product = s.productId ? await this.getProduct(s.productId) : null;
           return {
-            fecha: s.saleDate.toISOString().split('T')[0],
-            maquina: machine?.code || s.machineId,
-            producto: product?.name || s.productId,
+            fecha: s.saleDate ? s.saleDate.toISOString().split('T')[0] : '',
+            maquina: machine?.code || s.machineId || '',
+            producto: product?.name || s.productId || '',
             cantidad: s.quantity,
             monto: parseFloat(s.totalAmount?.toString() || "0")
           };
         }));
 
       case 'purchases':
-        const purchases = await db.select().from(purchaseOrdersTable)
+        const purchases = await db.select().from(purchaseOrders)
           .where(and(
-            gte(purchaseOrdersTable.createdAt, start),
-            lte(purchaseOrdersTable.createdAt, end)
+            gte(purchaseOrders.createdAt, start),
+            lte(purchaseOrders.createdAt, end)
           ))
-          .orderBy(purchaseOrdersTable.createdAt);
+          .orderBy(purchaseOrders.createdAt);
         return Promise.all(purchases.map(async (p) => {
           const supplier = await this.getSupplier(p.supplierId);
           return {
-            fecha: p.createdAt.toISOString().split('T')[0],
+            fecha: p.createdAt ? p.createdAt.toISOString().split('T')[0] : '',
             orden: p.orderNumber,
             proveedor: supplier?.name || p.supplierId,
             estado: p.status,
@@ -2967,14 +2980,14 @@ export class DatabaseStorage implements IStorage {
       case 'fuel':
         const fuel = await db.select().from(fuelRecords)
           .where(and(
-            gte(fuelRecords.date, start),
-            lte(fuelRecords.date, end)
+            gte(fuelRecords.recordDate, start),
+            lte(fuelRecords.recordDate, end)
           ))
-          .orderBy(fuelRecords.date);
+          .orderBy(fuelRecords.recordDate);
         return Promise.all(fuel.map(async (f) => {
           const vehicle = await this.getVehicle(f.vehicleId);
           return {
-            fecha: f.date.toISOString().split('T')[0],
+            fecha: f.recordDate.toISOString().split('T')[0],
             vehiculo: vehicle?.plate || f.vehicleId,
             litros: parseFloat(f.liters?.toString() || "0"),
             monto: parseFloat(f.totalAmount?.toString() || "0"),
@@ -2985,12 +2998,12 @@ export class DatabaseStorage implements IStorage {
       case 'pettycash':
         const pettycash = await db.select().from(pettyCashExpenses)
           .where(and(
-            gte(pettyCashExpenses.expenseDate, start),
-            lte(pettyCashExpenses.expenseDate, end)
+            gte(pettyCashExpenses.createdAt, start),
+            lte(pettyCashExpenses.createdAt, end)
           ))
-          .orderBy(pettyCashExpenses.expenseDate);
+          .orderBy(pettyCashExpenses.createdAt);
         return pettycash.map(p => ({
-          fecha: p.expenseDate.toISOString().split('T')[0],
+          fecha: p.createdAt ? p.createdAt.toISOString().split('T')[0] : '',
           descripcion: p.description,
           categoria: p.category,
           estado: p.status,
@@ -3002,9 +3015,9 @@ export class DatabaseStorage implements IStorage {
         return inventory.map(i => ({
           producto: i.product?.name || i.productId,
           codigo: i.product?.code,
-          cantidad: i.quantity,
-          minimo: i.minimumStock,
-          ubicacion: i.location
+          cantidad: i.currentStock,
+          minimo: i.minStock,
+          ubicacion: ''
         }));
 
       default:
