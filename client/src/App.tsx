@@ -160,7 +160,6 @@ function ProtectedRoutes() {
               <Route path="/caja-chica" component={PettyCashPage} />
               <Route path="/combustible" component={FuelPage} />
               <Route path="/contabilidad" component={AccountingPage} />
-              <Route path="/finanzas" component={AccountingPage} />
               <Route path="/compras" component={PurchasesPage} />
               <Route path="/rh" component={HRPage} />
               <Route path="/reportes" component={ReportsPage} />

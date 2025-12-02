@@ -32,7 +32,6 @@ import {
   Package,
   Fuel,
   Calculator,
-  CircleDollarSign,
   Wallet,
   ShoppingCart,
   Users,
@@ -58,7 +57,6 @@ const operacionItems = [
 
 const finanzasItems = [
   { icon: Calculator, label: "Contabilidad", href: "/contabilidad" },
-  { icon: CircleDollarSign, label: "Finanzas", href: "/finanzas" },
   { icon: Wallet, label: "Caja Chica", href: "/caja-chica" },
 ];
 
