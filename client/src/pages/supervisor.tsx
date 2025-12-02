@@ -77,7 +77,8 @@ export function SupervisorPage() {
     ? Math.round((routesSummary.completedStops / routesSummary.todayStops) * 100)
     : 0;
 
-  const getInitials = (name: string) => {
+  const getInitials = (name: string | null | undefined) => {
+    if (!name) return "??";
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   };
 

@@ -3064,7 +3064,7 @@ export async function registerRoutes(
         
         technicianStats.push({
           id: emp.id,
-          name: emp.fullName,
+          name: emp.fullName || emp.username || "Sin nombre",
           role: emp.role,
           visitsThisWeek: empVisits.length,
           tasksCompleted: completedTasks.length,
