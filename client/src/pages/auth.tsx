@@ -2,6 +2,7 @@ import { useState } from "react";
 import { LoginForm } from "@/components/LoginForm";
 import { RegisterForm } from "@/components/RegisterForm";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Logo } from "@/components/Logo";
 
 interface AuthPageProps {
   onSuccess?: () => void;
@@ -12,10 +13,17 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <header className="flex items-center justify-end p-4">
+      <header className="flex items-center justify-between p-4">
+        <Logo size="lg" />
         <ThemeToggle />
       </header>
-      <main className="flex-1 flex items-center justify-center p-4">
+      <main className="flex-1 flex flex-col items-center justify-center p-4">
+        <div className="mb-8 flex flex-col items-center">
+          <Logo size="lg" />
+          <p className="text-muted-foreground mt-2 text-center">
+            Sistema de Gestión de Máquinas Expendedoras
+          </p>
+        </div>
         {mode === "login" ? (
           <LoginForm
             onSwitchToRegister={() => setMode("register")}
