@@ -1,8 +1,9 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, UserRole, getRoleDisplayName } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import dispensaxLogo from "@assets/LOGO-DISPENSAX_1764711476889.png";
 import {
@@ -26,7 +27,6 @@ import {
   ChevronLeft,
   Moon,
   Sun,
-  Plus,
   LogOut,
   Truck,
   Package,
@@ -37,45 +37,77 @@ import {
   Users,
   FileText,
   ArrowDownUp,
+  Eye,
 } from "lucide-react";
 
-const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/" },
-  { icon: Box, label: "Máquinas", href: "/maquinas" },
-  { icon: ClipboardList, label: "Tareas Hoy", href: "/tareas" },
-  { icon: ListTodo, label: "Todas las Tareas", href: "/todas-tareas" },
-  { icon: Calendar, label: "Calendario", href: "/calendario" },
+interface MenuItem {
+  icon: any;
+  label: string;
+  href: string;
+  roles: UserRole[];
+}
+
+const menuItems: MenuItem[] = [
+  { icon: LayoutDashboard, label: "Dashboard", href: "/", roles: ["admin"] },
+  { icon: Eye, label: "Panel Supervisor", href: "/supervisor", roles: ["admin", "supervisor"] },
+  { icon: Box, label: "Máquinas", href: "/maquinas", roles: ["admin", "supervisor"] },
+  { icon: ClipboardList, label: "Tareas Hoy", href: "/tareas", roles: ["admin", "supervisor", "abastecedor", "almacen", "contabilidad", "rh"] },
+  { icon: ListTodo, label: "Todas las Tareas", href: "/todas-tareas", roles: ["admin", "supervisor"] },
+  { icon: Calendar, label: "Calendario", href: "/calendario", roles: ["admin", "supervisor", "abastecedor", "almacen", "contabilidad", "rh"] },
 ];
 
-const operacionItems = [
-  { icon: Package, label: "Almacén", href: "/almacen" },
-  { icon: Truck, label: "Abastecedor", href: "/abastecedor" },
-  { icon: ArrowDownUp, label: "Dinero y Productos", href: "/dinero-productos" },
-  { icon: ShoppingCart, label: "Compras", href: "/compras" },
-  { icon: Fuel, label: "Combustible", href: "/combustible" },
+const operacionItems: MenuItem[] = [
+  { icon: Package, label: "Almacén", href: "/almacen", roles: ["admin", "supervisor", "almacen"] },
+  { icon: Truck, label: "Abastecedor", href: "/abastecedor", roles: ["admin", "supervisor", "abastecedor"] },
+  { icon: ArrowDownUp, label: "Dinero y Productos", href: "/dinero-productos", roles: ["admin", "supervisor", "contabilidad"] },
+  { icon: ShoppingCart, label: "Compras", href: "/compras", roles: ["admin", "almacen"] },
+  { icon: Fuel, label: "Combustible", href: "/combustible", roles: ["admin", "supervisor"] },
 ];
 
-const finanzasItems = [
-  { icon: Calculator, label: "Contabilidad", href: "/contabilidad" },
-  { icon: Wallet, label: "Caja Chica", href: "/caja-chica" },
+const finanzasItems: MenuItem[] = [
+  { icon: Calculator, label: "Contabilidad", href: "/contabilidad", roles: ["admin", "contabilidad"] },
+  { icon: Wallet, label: "Caja Chica", href: "/caja-chica", roles: ["admin", "contabilidad"] },
 ];
 
-const adminItems = [
-  { icon: Users, label: "Recursos Humanos", href: "/rh" },
-  { icon: FileText, label: "Reportes", href: "/reportes" },
+const adminItems: MenuItem[] = [
+  { icon: Users, label: "Recursos Humanos", href: "/rh", roles: ["admin", "rh"] },
+  { icon: FileText, label: "Reportes", href: "/reportes", roles: ["admin"] },
 ];
 
+function filterByRole(items: MenuItem[], userRole: UserRole | undefined): MenuItem[] {
+  if (!userRole) return [];
+  return items.filter(item => item.roles.includes(userRole));
+}
 
 export function AppSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
 
+  const userRole = user?.role as UserRole | undefined;
+  
+  const visibleMenuItems = filterByRole(menuItems, userRole);
+  const visibleOperacionItems = filterByRole(operacionItems, userRole);
+  const visibleFinanzasItems = filterByRole(finanzasItems, userRole);
+  const visibleAdminItems = filterByRole(adminItems, userRole);
+
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return "Buenos días";
     if (hour < 18) return "Buenas tardes";
     return "Buenas noches";
+  };
+
+  const getRoleBadgeColor = (role: UserRole | undefined) => {
+    const colors: Record<UserRole, string> = {
+      admin: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+      supervisor: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+      abastecedor: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+      almacen: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+      contabilidad: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+      rh: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
+    };
+    return role ? colors[role] : "";
   };
 
   return (
@@ -103,9 +135,14 @@ export function AppSidebar() {
             <p className="font-semibold text-sm truncate">
               {user?.fullName || "Usuario"}
             </p>
-            <p className="text-xs text-muted-foreground">
-              {getGreeting()}, {user?.fullName?.split(" ")[0] || "Usuario"}
-            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <Badge 
+                variant="secondary" 
+                className={cn("text-[10px] px-2 py-0", getRoleBadgeColor(userRole))}
+              >
+                {userRole ? getRoleDisplayName(userRole) : "Sin rol"}
+              </Badge>
+            </div>
           </div>
           <Button
             variant="ghost"
@@ -119,121 +156,129 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="px-3">
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
-            MENÚ
-          </SidebarGroupLabel>
-          <SidebarMenu>
-            {menuItems.map((item) => {
-              const isActive = location === item.href;
-              return (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    asChild
-                    className={cn(
-                      "h-11 px-4 rounded-xl transition-all duration-200",
-                      isActive
-                        ? "bg-primary text-primary-foreground shadow-md"
-                        : "hover:bg-muted"
-                    )}
-                  >
-                    <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
-                      <item.icon className="h-5 w-5" />
-                      <span className="font-medium">{item.label}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-        </SidebarGroup>
+        {visibleMenuItems.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+              MENÚ
+            </SidebarGroupLabel>
+            <SidebarMenu>
+              {visibleMenuItems.map((item) => {
+                const isActive = location === item.href;
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      asChild
+                      className={cn(
+                        "h-11 px-4 rounded-xl transition-all duration-200",
+                        isActive
+                          ? "bg-primary text-primary-foreground shadow-md"
+                          : "hover:bg-muted"
+                      )}
+                    >
+                      <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                        <item.icon className="h-5 w-5" />
+                        <span className="font-medium">{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
 
-        <SidebarGroup className="mt-4">
-          <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
-            OPERACIONES
-          </SidebarGroupLabel>
-          <SidebarMenu>
-            {operacionItems.map((item) => {
-              const isActive = location === item.href;
-              return (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    asChild
-                    className={cn(
-                      "h-10 px-4 rounded-xl transition-all duration-200",
-                      isActive
-                        ? "bg-primary text-primary-foreground shadow-md"
-                        : "hover:bg-muted"
-                    )}
-                  >
-                    <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
-                      <item.icon className="h-4 w-4" />
-                      <span className="text-sm font-medium">{item.label}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-        </SidebarGroup>
+        {visibleOperacionItems.length > 0 && (
+          <SidebarGroup className="mt-4">
+            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+              OPERACIONES
+            </SidebarGroupLabel>
+            <SidebarMenu>
+              {visibleOperacionItems.map((item) => {
+                const isActive = location === item.href;
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      asChild
+                      className={cn(
+                        "h-10 px-4 rounded-xl transition-all duration-200",
+                        isActive
+                          ? "bg-primary text-primary-foreground shadow-md"
+                          : "hover:bg-muted"
+                      )}
+                    >
+                      <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                        <item.icon className="h-4 w-4" />
+                        <span className="text-sm font-medium">{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
 
-        <SidebarGroup className="mt-4">
-          <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
-            FINANZAS
-          </SidebarGroupLabel>
-          <SidebarMenu>
-            {finanzasItems.map((item) => {
-              const isActive = location === item.href;
-              return (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    asChild
-                    className={cn(
-                      "h-10 px-4 rounded-xl transition-all duration-200",
-                      isActive
-                        ? "bg-primary text-primary-foreground shadow-md"
-                        : "hover:bg-muted"
-                    )}
-                  >
-                    <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
-                      <item.icon className="h-4 w-4" />
-                      <span className="text-sm font-medium">{item.label}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-        </SidebarGroup>
+        {visibleFinanzasItems.length > 0 && (
+          <SidebarGroup className="mt-4">
+            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+              FINANZAS
+            </SidebarGroupLabel>
+            <SidebarMenu>
+              {visibleFinanzasItems.map((item) => {
+                const isActive = location === item.href;
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      asChild
+                      className={cn(
+                        "h-10 px-4 rounded-xl transition-all duration-200",
+                        isActive
+                          ? "bg-primary text-primary-foreground shadow-md"
+                          : "hover:bg-muted"
+                      )}
+                    >
+                      <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                        <item.icon className="h-4 w-4" />
+                        <span className="text-sm font-medium">{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
 
-        <SidebarGroup className="mt-4">
-          <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
-            ADMINISTRACIÓN
-          </SidebarGroupLabel>
-          <SidebarMenu>
-            {adminItems.map((item) => {
-              const isActive = location === item.href;
-              return (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    asChild
-                    className={cn(
-                      "h-10 px-4 rounded-xl transition-all duration-200",
-                      isActive
-                        ? "bg-primary text-primary-foreground shadow-md"
-                        : "hover:bg-muted"
-                    )}
-                  >
-                    <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
-                      <item.icon className="h-4 w-4" />
-                      <span className="text-sm font-medium">{item.label}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-        </SidebarGroup>
+        {visibleAdminItems.length > 0 && (
+          <SidebarGroup className="mt-4">
+            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+              ADMINISTRACIÓN
+            </SidebarGroupLabel>
+            <SidebarMenu>
+              {visibleAdminItems.map((item) => {
+                const isActive = location === item.href;
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      asChild
+                      className={cn(
+                        "h-10 px-4 rounded-xl transition-all duration-200",
+                        isActive
+                          ? "bg-primary text-primary-foreground shadow-md"
+                          : "hover:bg-muted"
+                      )}
+                    >
+                      <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                        <item.icon className="h-4 w-4" />
+                        <span className="text-sm font-medium">{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
 
         <SidebarGroup className="mt-6">
           <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">

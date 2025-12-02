@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, getRoleDefaultRoute } from "@/lib/auth-context";
+import { useLocation } from "wouter";
 
 const loginSchema = z.object({
-  username: z.string().min(3, "El usuario debe tener al menos 3 caracteres"),
-  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+  username: z.string().min(1, "El usuario es requerido"),
+  password: z.string().min(1, "La contraseña es requerida"),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -25,6 +26,7 @@ export function LoginForm({ onSuccess, onForgotPassword }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const { login, isLoading } = useAuth();
   const [error, setError] = useState<string | null>(null);
+  const [, setLocation] = useLocation();
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -36,11 +38,11 @@ export function LoginForm({ onSuccess, onForgotPassword }: LoginFormProps) {
 
   const onSubmit = async (data: LoginFormData) => {
     setError(null);
-    const success = await login(data.username, data.password);
-    if (success) {
+    const result = await login(data.username, data.password);
+    if (result.success) {
       onSuccess?.();
     } else {
-      setError("Credenciales inválidas. Intente de nuevo.");
+      setError(result.error || "Credenciales inválidas. Intente de nuevo.");
     }
   };
 

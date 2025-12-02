@@ -27,6 +27,7 @@ import { TasksPage } from "@/pages/tasks";
 import { TasksTodayPage } from "@/pages/tasks-today";
 import { CalendarPage } from "@/pages/calendar";
 import { ResetPasswordPage } from "@/pages/reset-password";
+import { SupervisorPage } from "@/pages/supervisor";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { format, formatDistanceToNow } from "date-fns";
@@ -167,6 +168,7 @@ function ProtectedRoutes() {
           <main className="flex-1 overflow-hidden">
             <Switch>
               <Route path="/" component={DashboardPage} />
+              <Route path="/supervisor" component={SupervisorPage} />
               <Route path="/maquinas" component={MachinesPage} />
               <Route path="/maquinas/:id" component={MachineDetailPage} />
               <Route path="/tareas" component={TasksTodayPage} />
@@ -192,7 +194,8 @@ function ProtectedRoutes() {
 }
 
 function AuthRoute() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
+  const [, setLocation] = useLocation();
 
   if (isLoading) {
     return (
@@ -202,11 +205,17 @@ function AuthRoute() {
     );
   }
 
-  if (isAuthenticated) {
-    return <Redirect to="/" />;
+  if (isAuthenticated && user) {
+    const { getRoleDefaultRoute } = require("@/lib/auth-context");
+    const defaultRoute = getRoleDefaultRoute(user.role);
+    return <Redirect to={defaultRoute} />;
   }
 
-  return <AuthPage onSuccess={() => window.location.href = "/"} />;
+  const handleSuccess = () => {
+    window.location.reload();
+  };
+
+  return <AuthPage onSuccess={handleSuccess} />;
 }
 
 function Router() {

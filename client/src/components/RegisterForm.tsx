@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAuth, UserRole } from "@/lib/auth-context";
+import { useAuth, UserRole, getRoleDisplayName } from "@/lib/auth-context";
 
 const registerSchema = z.object({
   fullName: z.string().min(3, "El nombre debe tener al menos 3 caracteres"),
@@ -27,9 +27,9 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 const roleLabels: Record<UserRole, string> = {
   admin: "Administrador",
   supervisor: "Supervisor",
-  abastecedor: "Abastecedor",
-  almacen: "Almacén",
-  contabilidad: "Contabilidad",
+  abastecedor: "Abastecedor/Técnico",
+  almacen: "Almacenista",
+  contabilidad: "Contador",
   rh: "Recursos Humanos",
 };
 
@@ -57,17 +57,17 @@ export function RegisterForm({ onSwitchToLogin, onSuccess }: RegisterFormProps) 
 
   const onSubmit = async (data: RegisterFormData) => {
     setError(null);
-    const success = await register({
+    const result = await register({
       username: data.username,
       password: data.password,
       fullName: data.fullName,
       email: data.email,
       role: data.role,
     });
-    if (success) {
+    if (result.success) {
       onSuccess?.();
     } else {
-      setError("Error al crear la cuenta. Intente de nuevo.");
+      setError(result.error || "Error al crear la cuenta. Intente de nuevo.");
     }
   };
 

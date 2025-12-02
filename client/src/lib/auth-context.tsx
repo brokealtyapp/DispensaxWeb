@@ -1,22 +1,24 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { apiRequest } from "./queryClient";
 
 export type UserRole = "admin" | "supervisor" | "abastecedor" | "almacen" | "contabilidad" | "rh";
 
 export interface User {
   id: string;
   username: string;
-  fullName: string;
-  email: string;
+  fullName: string | null;
+  email: string | null;
+  phone?: string | null;
   role: UserRole;
-  avatar?: string;
+  isActive?: boolean;
 }
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
-  register: (data: RegisterData) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 }
 
@@ -35,55 +37,100 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("dispensax_user");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setIsLoading(false);
+    const validateToken = async () => {
+      const token = localStorage.getItem("dispensax_token");
+      
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/auth/me", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setUser(data.user);
+        } else {
+          localStorage.removeItem("dispensax_token");
+          localStorage.removeItem("dispensax_user");
+        }
+      } catch (error) {
+        console.error("Error validating token:", error);
+        localStorage.removeItem("dispensax_token");
+        localStorage.removeItem("dispensax_user");
+      }
+      
+      setIsLoading(false);
+    };
+
+    validateToken();
   }, []);
 
-  const login = async (username: string, password: string): Promise<boolean> => {
+  const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
     
-    // todo: remove mock functionality - replace with actual API call
-    if (username && password) {
-      const mockUser: User = {
-        id: "1",
-        username,
-        fullName: "Carlos Rodríguez",
-        email: `${username}@dispensax.com`,
-        role: "admin",
-        avatar: undefined,
-      };
-      setUser(mockUser);
-      localStorage.setItem("dispensax_user", JSON.stringify(mockUser));
-      localStorage.setItem("dispensax_token", "mock-jwt-token");
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setIsLoading(false);
+        return { success: false, error: data.error || "Error al iniciar sesión" };
+      }
+
+      setUser(data.user);
+      localStorage.setItem("dispensax_token", data.token);
+      localStorage.setItem("dispensax_user", JSON.stringify(data.user));
       setIsLoading(false);
-      return true;
+      return { success: true };
+    } catch (error) {
+      console.error("Login error:", error);
+      setIsLoading(false);
+      return { success: false, error: "Error de conexión. Intenta de nuevo." };
     }
-    setIsLoading(false);
-    return false;
   };
 
-  const register = async (data: RegisterData): Promise<boolean> => {
+  const register = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
     
-    // todo: remove mock functionality - replace with actual API call
-    const mockUser: User = {
-      id: "1",
-      username: data.username,
-      fullName: data.fullName,
-      email: data.email,
-      role: data.role,
-      avatar: undefined,
-    };
-    setUser(mockUser);
-    localStorage.setItem("dispensax_user", JSON.stringify(mockUser));
-    localStorage.setItem("dispensax_token", "mock-jwt-token");
-    setIsLoading(false);
-    return true;
+    try {
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setIsLoading(false);
+        return { success: false, error: result.error || "Error al registrar usuario" };
+      }
+
+      setUser(result.user);
+      localStorage.setItem("dispensax_token", result.token);
+      localStorage.setItem("dispensax_user", JSON.stringify(result.user));
+      setIsLoading(false);
+      return { success: true };
+    } catch (error) {
+      console.error("Register error:", error);
+      setIsLoading(false);
+      return { success: false, error: "Error de conexión. Intenta de nuevo." };
+    }
   };
 
   const logout = () => {
@@ -114,4 +161,57 @@ export function useAuth() {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
+}
+
+export function getRoleDisplayName(role: UserRole): string {
+  const roleNames: Record<UserRole, string> = {
+    admin: "Administrador",
+    supervisor: "Supervisor",
+    abastecedor: "Abastecedor/Técnico",
+    almacen: "Almacenista",
+    contabilidad: "Contador",
+    rh: "Recursos Humanos",
+  };
+  return roleNames[role] || role;
+}
+
+export function getRoleDefaultRoute(role: UserRole): string {
+  const routes: Record<UserRole, string> = {
+    admin: "/",
+    supervisor: "/supervisor",
+    abastecedor: "/abastecedor",
+    almacen: "/almacen",
+    contabilidad: "/contabilidad",
+    rh: "/rh",
+  };
+  return routes[role] || "/";
+}
+
+export function canAccessRoute(role: UserRole, route: string): boolean {
+  const adminRoutes = ["/", "/maquinas", "/tareas", "/todas-tareas", "/calendario", "/almacen", "/abastecedor", 
+    "/dinero-productos", "/compras", "/combustible", "/contabilidad", "/caja-chica", "/rh", "/reportes", 
+    "/configuracion", "/supervisor"];
+  
+  const supervisorRoutes = ["/supervisor", "/maquinas", "/tareas", "/todas-tareas", "/calendario", 
+    "/almacen", "/abastecedor", "/dinero-productos", "/combustible", "/rh"];
+  
+  const abastecedorRoutes = ["/abastecedor", "/tareas", "/calendario"];
+  
+  const almacenRoutes = ["/almacen", "/compras", "/tareas", "/calendario"];
+  
+  const contabilidadRoutes = ["/contabilidad", "/caja-chica", "/dinero-productos", "/tareas", "/calendario"];
+  
+  const rhRoutes = ["/rh", "/tareas", "/calendario"];
+
+  const routePermissions: Record<UserRole, string[]> = {
+    admin: adminRoutes,
+    supervisor: supervisorRoutes,
+    abastecedor: abastecedorRoutes,
+    almacen: almacenRoutes,
+    contabilidad: contabilidadRoutes,
+    rh: rhRoutes,
+  };
+
+  const basePath = "/" + route.split("/")[1];
+  return routePermissions[role]?.includes(basePath) || false;
 }

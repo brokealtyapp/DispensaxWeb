@@ -1,6 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { 
   insertLocationSchema, 
   insertProductSchema, 
@@ -35,10 +37,155 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 
+const JWT_SECRET = process.env.SESSION_SECRET || "dispensax-secret-key-2024";
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // =====================
+  // AUTHENTICATION ROUTES
+  // =====================
+
+  const loginSchema = z.object({
+    username: z.string().min(1, "Usuario requerido"),
+    password: z.string().min(1, "Contraseña requerida"),
+  });
+
+  const registerSchema = z.object({
+    username: z.string().min(3, "Usuario debe tener al menos 3 caracteres"),
+    password: z.string().min(6, "Contraseña debe tener al menos 6 caracteres"),
+    fullName: z.string().min(1, "Nombre completo requerido"),
+    email: z.string().email("Email inválido"),
+    role: z.enum(["admin", "supervisor", "abastecedor", "almacen", "contabilidad", "rh"]).default("abastecedor"),
+  });
+
+  app.post("/api/auth/login", async (req: Request, res: Response) => {
+    try {
+      const { username, password } = loginSchema.parse(req.body);
+      
+      const user = await storage.getUserByUsername(username);
+      
+      if (!user) {
+        return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
+      }
+
+      const isValidPassword = await bcrypt.compare(password, user.password);
+      
+      if (!isValidPassword) {
+        return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
+      }
+
+      if (!user.isActive) {
+        return res.status(401).json({ error: "Usuario desactivado. Contacta al administrador." });
+      }
+
+      const token = jwt.sign(
+        { 
+          userId: user.id, 
+          username: user.username, 
+          role: user.role 
+        },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      const { password: _, ...userWithoutPassword } = user;
+
+      res.json({
+        token,
+        user: userWithoutPassword,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Login error:", error);
+      res.status(500).json({ error: "Error al iniciar sesión" });
+    }
+  });
+
+  app.post("/api/auth/register", async (req: Request, res: Response) => {
+    try {
+      const data = registerSchema.parse(req.body);
+      
+      const existingUser = await storage.getUserByUsername(data.username);
+      if (existingUser) {
+        return res.status(400).json({ error: "El nombre de usuario ya existe" });
+      }
+
+      const existingEmail = await storage.getUserByEmail(data.email);
+      if (existingEmail) {
+        return res.status(400).json({ error: "El email ya está registrado" });
+      }
+
+      const hashedPassword = await bcrypt.hash(data.password, 10);
+
+      const newUser = await storage.createEmployee({
+        username: data.username,
+        password: hashedPassword,
+        fullName: data.fullName,
+        email: data.email,
+        role: data.role,
+        isActive: true,
+      });
+
+      const token = jwt.sign(
+        { 
+          userId: newUser.id, 
+          username: newUser.username, 
+          role: newUser.role 
+        },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      const { password: _, ...userWithoutPassword } = newUser;
+
+      res.status(201).json({
+        token,
+        user: userWithoutPassword,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Register error:", error);
+      res.status(500).json({ error: "Error al registrar usuario" });
+    }
+  });
+
+  app.get("/api/auth/me", async (req: Request, res: Response) => {
+    try {
+      const authHeader = req.headers.authorization;
+      
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "No autorizado" });
+      }
+
+      const token = authHeader.split(" ")[1];
+      
+      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+      
+      const user = await storage.getEmployee(decoded.userId);
+      
+      if (!user) {
+        return res.status(401).json({ error: "Usuario no encontrado" });
+      }
+
+      const { password: _, ...userWithoutPassword } = user;
+
+      res.json({ user: userWithoutPassword });
+    } catch (error) {
+      console.error("Auth me error:", error);
+      res.status(401).json({ error: "Token inválido o expirado" });
+    }
+  });
+
+  // =====================
+  // LOCATION ROUTES
+  // =====================
 
   app.get("/api/locations", async (req: Request, res: Response) => {
     try {
