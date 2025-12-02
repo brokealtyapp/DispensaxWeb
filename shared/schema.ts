@@ -1283,3 +1283,115 @@ export const receptionItemsRelations = relations(receptionItems, ({ one }) => ({
     references: [products.id],
   }),
 }));
+
+// ==================== MÓDULO DE COMBUSTIBLE ====================
+
+export const vehicleTypeEnum = pgEnum("vehicle_type", [
+  "camioneta",
+  "van",
+  "camion",
+  "motocicleta",
+  "auto"
+]);
+
+export const vehicleStatusEnum = pgEnum("vehicle_status", [
+  "activo",
+  "mantenimiento",
+  "inactivo"
+]);
+
+export const fuelTypeEnum = pgEnum("fuel_type", [
+  "gasolina_regular",
+  "gasolina_premium",
+  "diesel"
+]);
+
+export const vehicles = pgTable("vehicles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  plate: text("plate").notNull().unique(),
+  brand: text("brand").notNull(),
+  model: text("model").notNull(),
+  year: integer("year"),
+  type: text("type").default("camioneta"),
+  color: text("color"),
+  status: text("status").default("activo"),
+  fuelType: text("fuel_type").default("gasolina_regular"),
+  tankCapacity: decimal("tank_capacity", { precision: 5, scale: 2 }),
+  expectedMileage: decimal("expected_mileage", { precision: 5, scale: 2 }),
+  currentOdometer: integer("current_odometer").default(0),
+  assignedUserId: varchar("assigned_user_id").references(() => users.id),
+  insuranceExpiry: timestamp("insurance_expiry"),
+  lastServiceDate: timestamp("last_service_date"),
+  nextServiceOdometer: integer("next_service_odometer"),
+  notes: text("notes"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertVehicleSchema = createInsertSchema(vehicles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertVehicle = z.infer<typeof insertVehicleSchema>;
+export type Vehicle = typeof vehicles.$inferSelect;
+
+export const fuelRecords = pgTable("fuel_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vehicleId: varchar("vehicle_id").references(() => vehicles.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  routeId: varchar("route_id").references(() => routes.id),
+  recordDate: timestamp("record_date").defaultNow().notNull(),
+  fuelType: text("fuel_type").default("gasolina_regular"),
+  liters: decimal("liters", { precision: 8, scale: 3 }).notNull(),
+  pricePerLiter: decimal("price_per_liter", { precision: 6, scale: 2 }).notNull(),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  odometerReading: integer("odometer_reading").notNull(),
+  previousOdometer: integer("previous_odometer"),
+  distanceTraveled: decimal("distance_traveled", { precision: 8, scale: 2 }),
+  calculatedMileage: decimal("calculated_mileage", { precision: 5, scale: 2 }),
+  ticketNumber: text("ticket_number"),
+  ticketPhotoUrl: text("ticket_photo_url"),
+  odometerPhotoUrl: text("odometer_photo_url"),
+  gasStation: text("gas_station"),
+  isFull: boolean("is_full").default(true),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertFuelRecordSchema = createInsertSchema(fuelRecords).omit({
+  id: true,
+  createdAt: true,
+  distanceTraveled: true,
+  calculatedMileage: true,
+  previousOdometer: true,
+});
+
+export type InsertFuelRecord = z.infer<typeof insertFuelRecordSchema>;
+export type FuelRecord = typeof fuelRecords.$inferSelect;
+
+// Relaciones Combustible
+export const vehiclesRelations = relations(vehicles, ({ one, many }) => ({
+  assignedUser: one(users, {
+    fields: [vehicles.assignedUserId],
+    references: [users.id],
+  }),
+  fuelRecords: many(fuelRecords),
+}));
+
+export const fuelRecordsRelations = relations(fuelRecords, ({ one }) => ({
+  vehicle: one(vehicles, {
+    fields: [fuelRecords.vehicleId],
+    references: [vehicles.id],
+  }),
+  user: one(users, {
+    fields: [fuelRecords.userId],
+    references: [users.id],
+  }),
+  route: one(routes, {
+    fields: [fuelRecords.routeId],
+    references: [routes.id],
+  }),
+}));

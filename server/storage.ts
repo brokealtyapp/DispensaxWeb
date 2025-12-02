@@ -29,12 +29,15 @@ import {
   type PurchaseOrderItem, type InsertPurchaseOrderItem,
   type PurchaseReception, type InsertPurchaseReception,
   type ReceptionItem, type InsertReceptionItem,
+  type Vehicle, type InsertVehicle,
+  type FuelRecord, type InsertFuelRecord,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
   cashMovements, bankDeposits, productTransfers, shrinkageRecords,
   pettyCashExpenses, pettyCashFund, pettyCashTransactions,
-  purchaseOrders, purchaseOrderItems, purchaseReceptions, receptionItems
+  purchaseOrders, purchaseOrderItems, purchaseReceptions, receptionItems,
+  vehicles, fuelRecords
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc } from "drizzle-orm";
@@ -237,6 +240,34 @@ export interface IStorage {
   getPurchaseStats(startDate?: Date, endDate?: Date): Promise<{ totalOrders: number; totalAmount: number; pendingOrders: number; topSuppliers: any[] }>;
   getSupplierPurchaseHistory(supplierId: string, limit?: number): Promise<any[]>;
   getLowStockProducts(): Promise<any[]>;
+  
+  // ==================== MÓDULO COMBUSTIBLE ====================
+  
+  // Vehículos
+  getVehicles(filters?: { status?: string; type?: string; assignedUserId?: string }): Promise<any[]>;
+  getVehicle(id: string): Promise<any>;
+  createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
+  updateVehicle(id: string, data: Partial<InsertVehicle>): Promise<Vehicle | undefined>;
+  deleteVehicle(id: string): Promise<boolean>;
+  
+  // Registros de Combustible
+  getFuelRecords(filters?: { vehicleId?: string; userId?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]>;
+  getFuelRecord(id: string): Promise<any>;
+  createFuelRecord(record: InsertFuelRecord): Promise<FuelRecord>;
+  deleteFuelRecord(id: string): Promise<boolean>;
+  
+  // Estadísticas de Combustible
+  getFuelStats(filters?: { vehicleId?: string; userId?: string; startDate?: Date; endDate?: Date }): Promise<{
+    totalLiters: number;
+    totalAmount: number;
+    averageMileage: number;
+    recordCount: number;
+    costPerKm: number;
+  }>;
+  getVehicleFuelStats(vehicleId: string, startDate?: Date, endDate?: Date): Promise<any>;
+  getUserFuelStats(userId: string, startDate?: Date, endDate?: Date): Promise<any>;
+  getFuelStatsPerRoute(startDate?: Date, endDate?: Date): Promise<any[]>;
+  getLowMileageVehicles(): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2144,6 +2175,288 @@ export class DatabaseStorage implements IStorage {
     }));
     
     return itemsWithProducts;
+  }
+
+  // ==================== MÓDULO COMBUSTIBLE ====================
+
+  async getVehicles(filters?: { status?: string; type?: string; assignedUserId?: string }): Promise<any[]> {
+    let conditions: any[] = [eq(vehicles.isActive, true)];
+    
+    if (filters?.status) conditions.push(eq(vehicles.status, filters.status));
+    if (filters?.type) conditions.push(eq(vehicles.type, filters.type));
+    if (filters?.assignedUserId) conditions.push(eq(vehicles.assignedUserId, filters.assignedUserId));
+    
+    const vehiclesList = await db.select().from(vehicles)
+      .where(and(...conditions))
+      .orderBy(vehicles.plate);
+    
+    const vehiclesWithUser = await Promise.all(vehiclesList.map(async (v) => {
+      const user = v.assignedUserId ? await this.getUser(v.assignedUserId) : null;
+      return { ...v, assignedUser: user };
+    }));
+    
+    return vehiclesWithUser;
+  }
+
+  async getVehicle(id: string): Promise<any> {
+    const [vehicle] = await db.select().from(vehicles).where(eq(vehicles.id, id));
+    if (!vehicle) return undefined;
+    
+    const user = vehicle.assignedUserId ? await this.getUser(vehicle.assignedUserId) : null;
+    const recentFuelRecords = await this.getFuelRecords({ vehicleId: id, limit: 5 });
+    
+    return { ...vehicle, assignedUser: user, recentFuelRecords };
+  }
+
+  async createVehicle(vehicle: InsertVehicle): Promise<Vehicle> {
+    const [newVehicle] = await db.insert(vehicles).values(vehicle).returning();
+    return newVehicle;
+  }
+
+  async updateVehicle(id: string, data: Partial<InsertVehicle>): Promise<Vehicle | undefined> {
+    const [updated] = await db.update(vehicles)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(vehicles.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteVehicle(id: string): Promise<boolean> {
+    await db.update(vehicles)
+      .set({ isActive: false })
+      .where(eq(vehicles.id, id));
+    return true;
+  }
+
+  async getFuelRecords(filters?: { vehicleId?: string; userId?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]> {
+    let conditions: any[] = [];
+    
+    if (filters?.vehicleId) conditions.push(eq(fuelRecords.vehicleId, filters.vehicleId));
+    if (filters?.userId) conditions.push(eq(fuelRecords.userId, filters.userId));
+    if (filters?.startDate) conditions.push(gte(fuelRecords.recordDate, filters.startDate));
+    if (filters?.endDate) conditions.push(lte(fuelRecords.recordDate, filters.endDate));
+    
+    let query = conditions.length > 0
+      ? db.select().from(fuelRecords).where(and(...conditions)).orderBy(desc(fuelRecords.recordDate))
+      : db.select().from(fuelRecords).orderBy(desc(fuelRecords.recordDate));
+    
+    const records = filters?.limit
+      ? await db.select().from(fuelRecords)
+          .where(conditions.length > 0 ? and(...conditions) : undefined)
+          .orderBy(desc(fuelRecords.recordDate))
+          .limit(filters.limit)
+      : await query;
+    
+    const recordsWithDetails = await Promise.all(records.map(async (r) => {
+      const vehicle = await this.getVehicle(r.vehicleId);
+      const user = await this.getUser(r.userId);
+      const route = r.routeId ? await this.getRoute(r.routeId) : null;
+      return { ...r, vehicle: { plate: vehicle?.plate, brand: vehicle?.brand, model: vehicle?.model }, user, route };
+    }));
+    
+    return recordsWithDetails;
+  }
+
+  async getFuelRecord(id: string): Promise<any> {
+    const [record] = await db.select().from(fuelRecords).where(eq(fuelRecords.id, id));
+    if (!record) return undefined;
+    
+    const vehicle = await this.getVehicle(record.vehicleId);
+    const user = await this.getUser(record.userId);
+    const route = record.routeId ? await this.getRoute(record.routeId) : null;
+    
+    return { ...record, vehicle, user, route };
+  }
+
+  async createFuelRecord(record: InsertFuelRecord): Promise<FuelRecord> {
+    // Obtener el último registro del vehículo para calcular distancia
+    const lastRecords = await db.select().from(fuelRecords)
+      .where(eq(fuelRecords.vehicleId, record.vehicleId))
+      .orderBy(desc(fuelRecords.recordDate))
+      .limit(1);
+    
+    const previousOdometer = lastRecords.length > 0 ? lastRecords[0].odometerReading : null;
+    const distanceTraveled = previousOdometer 
+      ? (record.odometerReading - previousOdometer).toString() 
+      : null;
+    
+    // Calcular rendimiento km/l si tenemos distancia y es tanque lleno
+    let calculatedMileage = null;
+    if (distanceTraveled && record.isFull !== false) {
+      const km = parseFloat(distanceTraveled);
+      const liters = parseFloat(record.liters.toString());
+      if (liters > 0) {
+        calculatedMileage = (km / liters).toFixed(2);
+      }
+    }
+    
+    const [newRecord] = await db.insert(fuelRecords).values({
+      ...record,
+      previousOdometer,
+      distanceTraveled,
+      calculatedMileage
+    }).returning();
+    
+    // Actualizar odómetro del vehículo
+    await db.update(vehicles)
+      .set({ currentOdometer: record.odometerReading, updatedAt: new Date() })
+      .where(eq(vehicles.id, record.vehicleId));
+    
+    return newRecord;
+  }
+
+  async deleteFuelRecord(id: string): Promise<boolean> {
+    await db.delete(fuelRecords).where(eq(fuelRecords.id, id));
+    return true;
+  }
+
+  async getFuelStats(filters?: { vehicleId?: string; userId?: string; startDate?: Date; endDate?: Date }): Promise<{
+    totalLiters: number;
+    totalAmount: number;
+    averageMileage: number;
+    recordCount: number;
+    costPerKm: number;
+  }> {
+    let conditions: any[] = [];
+    
+    if (filters?.vehicleId) conditions.push(eq(fuelRecords.vehicleId, filters.vehicleId));
+    if (filters?.userId) conditions.push(eq(fuelRecords.userId, filters.userId));
+    if (filters?.startDate) conditions.push(gte(fuelRecords.recordDate, filters.startDate));
+    if (filters?.endDate) conditions.push(lte(fuelRecords.recordDate, filters.endDate));
+    
+    const records = conditions.length > 0
+      ? await db.select().from(fuelRecords).where(and(...conditions))
+      : await db.select().from(fuelRecords);
+    
+    const totalLiters = records.reduce((sum, r) => sum + parseFloat(r.liters?.toString() || "0"), 0);
+    const totalAmount = records.reduce((sum, r) => sum + parseFloat(r.totalAmount?.toString() || "0"), 0);
+    const totalDistance = records.reduce((sum, r) => sum + parseFloat(r.distanceTraveled?.toString() || "0"), 0);
+    
+    const mileageRecords = records.filter(r => r.calculatedMileage && parseFloat(r.calculatedMileage.toString()) > 0);
+    const averageMileage = mileageRecords.length > 0
+      ? mileageRecords.reduce((sum, r) => sum + parseFloat(r.calculatedMileage!.toString()), 0) / mileageRecords.length
+      : 0;
+    
+    const costPerKm = totalDistance > 0 ? totalAmount / totalDistance : 0;
+    
+    return {
+      totalLiters,
+      totalAmount,
+      averageMileage,
+      recordCount: records.length,
+      costPerKm
+    };
+  }
+
+  async getVehicleFuelStats(vehicleId: string, startDate?: Date, endDate?: Date): Promise<any> {
+    const vehicle = await this.getVehicle(vehicleId);
+    const stats = await this.getFuelStats({ vehicleId, startDate, endDate });
+    const records = await this.getFuelRecords({ vehicleId, startDate, endDate });
+    
+    // Calcular promedio del último mes
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+    const lastMonthStats = await this.getFuelStats({ vehicleId, startDate: oneMonthAgo });
+    
+    // Detectar si el rendimiento está por debajo del esperado
+    const expectedMileage = parseFloat(vehicle?.expectedMileage?.toString() || "0");
+    const isLowMileage = expectedMileage > 0 && stats.averageMileage < expectedMileage * 0.85;
+    
+    return {
+      vehicle,
+      ...stats,
+      lastMonthStats,
+      expectedMileage,
+      isLowMileage,
+      mileageVariance: expectedMileage > 0 ? ((stats.averageMileage - expectedMileage) / expectedMileage * 100).toFixed(1) : 0,
+      records
+    };
+  }
+
+  async getUserFuelStats(userId: string, startDate?: Date, endDate?: Date): Promise<any> {
+    const user = await this.getUser(userId);
+    const stats = await this.getFuelStats({ userId, startDate, endDate });
+    const records = await this.getFuelRecords({ userId, startDate, endDate, limit: 10 });
+    
+    // Agrupar por vehículo
+    const byVehicle: Record<string, { vehicleId: string; liters: number; amount: number; count: number }> = {};
+    const allRecords = await this.getFuelRecords({ userId, startDate, endDate });
+    
+    for (const record of allRecords) {
+      if (!byVehicle[record.vehicleId]) {
+        byVehicle[record.vehicleId] = { vehicleId: record.vehicleId, liters: 0, amount: 0, count: 0 };
+      }
+      byVehicle[record.vehicleId].liters += parseFloat(record.liters?.toString() || "0");
+      byVehicle[record.vehicleId].amount += parseFloat(record.totalAmount?.toString() || "0");
+      byVehicle[record.vehicleId].count++;
+    }
+    
+    const vehicleStats = await Promise.all(Object.values(byVehicle).map(async (v) => {
+      const vehicle = await this.getVehicle(v.vehicleId);
+      return { ...v, vehicle: { plate: vehicle?.plate, brand: vehicle?.brand, model: vehicle?.model } };
+    }));
+    
+    return {
+      user,
+      ...stats,
+      vehicleStats,
+      recentRecords: records
+    };
+  }
+
+  async getFuelStatsPerRoute(startDate?: Date, endDate?: Date): Promise<any[]> {
+    let conditions: any[] = [];
+    if (startDate) conditions.push(gte(fuelRecords.recordDate, startDate));
+    if (endDate) conditions.push(lte(fuelRecords.recordDate, endDate));
+    
+    const records = conditions.length > 0
+      ? await db.select().from(fuelRecords).where(and(...conditions))
+      : await db.select().from(fuelRecords);
+    
+    // Agrupar por ruta
+    const byRoute: Record<string, { routeId: string; liters: number; amount: number; distance: number; count: number }> = {};
+    
+    for (const record of records) {
+      if (!record.routeId) continue;
+      
+      if (!byRoute[record.routeId]) {
+        byRoute[record.routeId] = { routeId: record.routeId, liters: 0, amount: 0, distance: 0, count: 0 };
+      }
+      byRoute[record.routeId].liters += parseFloat(record.liters?.toString() || "0");
+      byRoute[record.routeId].amount += parseFloat(record.totalAmount?.toString() || "0");
+      byRoute[record.routeId].distance += parseFloat(record.distanceTraveled?.toString() || "0");
+      byRoute[record.routeId].count++;
+    }
+    
+    const routeStats = await Promise.all(Object.values(byRoute).map(async (r) => {
+      const route = await this.getRoute(r.routeId);
+      const costPerKm = r.distance > 0 ? r.amount / r.distance : 0;
+      return { ...r, route, costPerKm };
+    }));
+    
+    return routeStats.sort((a, b) => b.amount - a.amount);
+  }
+
+  async getLowMileageVehicles(): Promise<any[]> {
+    const vehiclesList = await this.getVehicles();
+    
+    const vehiclesWithStats = await Promise.all(vehiclesList.map(async (v) => {
+      const stats = await this.getFuelStats({ vehicleId: v.id });
+      const expectedMileage = parseFloat(v.expectedMileage?.toString() || "0");
+      const isLowMileage = expectedMileage > 0 && stats.averageMileage < expectedMileage * 0.85;
+      
+      return {
+        ...v,
+        averageMileage: stats.averageMileage,
+        expectedMileage,
+        isLowMileage,
+        mileagePercentage: expectedMileage > 0 ? (stats.averageMileage / expectedMileage * 100).toFixed(1) : 100
+      };
+    }));
+    
+    return vehiclesWithStats
+      .filter(v => v.isLowMileage)
+      .sort((a, b) => a.averageMileage - b.averageMileage);
   }
 }
 

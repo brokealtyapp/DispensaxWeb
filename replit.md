@@ -47,6 +47,10 @@ client/src/
 │   ├── accounting.tsx   # Contabilidad y finanzas
 │   ├── hr.tsx           # Recursos humanos
 │   ├── settings.tsx     # Configuración
+│   ├── money-products.tsx # Dinero y Productos
+│   ├── petty-cash.tsx   # Caja Chica
+│   ├── purchases.tsx    # Compras
+│   ├── fuel.tsx         # Combustible
 │   └── not-found.tsx    # Página 404
 ├── lib/
 │   ├── auth-context.tsx  # Contexto de autenticación
@@ -95,7 +99,33 @@ client/src/
 - Control de tiempos
 - Rendimiento por abastecedor
 
-### 7. Configuración
+### 7. Combustible (NUEVO)
+- Gestión de vehículos de flota
+- Registro de cargas de combustible
+- Cálculo automático de rendimiento (km/L)
+- Gráficos de tendencia de rendimiento
+- Alertas de bajo rendimiento
+- Estadísticas de costos por vehículo y ruta
+- Distribución por tipo de combustible
+
+### 8. Compras
+- Gestión de proveedores
+- Órdenes de compra con workflow de aprobación
+- Recepción de mercancía
+- Historial de transacciones
+
+### 9. Caja Chica
+- Registro de gastos menores
+- Workflow de aprobación
+- Control de fondo fijo
+- Transacciones y estadísticas
+
+### 10. Dinero y Productos
+- Conciliación transversal de módulos
+- Flujo de efectivo
+- Movimientos de productos
+
+### 11. Configuración
 - Perfil de usuario
 - Notificaciones
 - Apariencia (tema claro/oscuro)
@@ -114,19 +144,35 @@ client/src/
 - [x] Diseño responsivo
 - [x] Tema claro/oscuro
 - [x] Componentes reutilizables
-- [ ] Backend API (pendiente)
-- [ ] Autenticación JWT completa (pendiente)
-- [ ] Base de datos PostgreSQL (pendiente)
-- [ ] Integración frontend-backend (pendiente)
+- [x] Backend API completo con PostgreSQL
+- [x] Módulo de Compras (órdenes, recepciones, proveedores)
+- [x] Módulo de Caja Chica (gastos, aprobaciones, fondo)
+- [x] Módulo de Dinero y Productos (conciliación)
+- [x] Módulo de Combustible (vehículos, cargas, rendimiento)
+- [ ] Autenticación JWT completa (parcialmente implementada)
 
 ## Preferencias de Usuario
 - Idioma: Español
+- Color primario: #E84545 (rojo Dispensax)
 - Diseño basado en el screenshot proporcionado (estilo dashboard moderno)
 - Tarjetas coloridas para máquinas
+- Todos los formularios usan React Hook Form + Zod
+- Todos los endpoints validan con Zod
+
+## Base de Datos (PostgreSQL)
+Tablas principales:
+- users, locations, products, machines
+- machine_inventory, machine_alerts, machine_visits, machine_sales
+- suppliers, warehouse_inventory, product_lots, warehouse_movements
+- routes, route_stops, service_records
+- cash_collections, product_loads, issue_reports
+- cash_movements, bank_deposits, product_transfers, shrinkage_records
+- petty_cash_expenses, petty_cash_fund, petty_cash_transactions
+- purchase_orders, purchase_order_items, purchase_receptions, reception_items
+- vehicles, fuel_records
 
 ## Próximos Pasos
-1. Implementar backend con autenticación JWT
-2. Crear esquema de base de datos
-3. Desarrollar API REST completa
-4. Conectar frontend con backend
-5. Implementar funcionalidades en tiempo real
+1. Completar autenticación JWT con roles
+2. Implementar reportes y exportación de datos
+3. Agregar dashboard con gráficos en tiempo real
+4. Implementar notificaciones push

@@ -21,6 +21,7 @@ import { SettingsPage } from "@/pages/settings";
 import { MoneyProductsPage } from "@/pages/money-products";
 import { PettyCashPage } from "@/pages/petty-cash";
 import PurchasesPage from "@/pages/purchases";
+import { FuelPage } from "@/pages/fuel";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
@@ -156,7 +157,7 @@ function ProtectedRoutes() {
               <Route path="/almacen" component={WarehousePage} />
               <Route path="/dinero-productos" component={MoneyProductsPage} />
               <Route path="/caja-chica" component={PettyCashPage} />
-              <Route path="/combustible" component={SupplierPage} />
+              <Route path="/combustible" component={FuelPage} />
               <Route path="/contabilidad" component={AccountingPage} />
               <Route path="/finanzas" component={AccountingPage} />
               <Route path="/compras" component={PurchasesPage} />

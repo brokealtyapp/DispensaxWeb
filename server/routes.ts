@@ -26,7 +26,9 @@ import {
   insertPurchaseOrderSchema,
   insertPurchaseOrderItemSchema,
   insertPurchaseReceptionSchema,
-  insertReceptionItemSchema
+  insertReceptionItemSchema,
+  insertVehicleSchema,
+  insertFuelRecordSchema
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -1753,6 +1755,196 @@ export async function registerRoutes(
       res.json(history);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener historial de compras" });
+    }
+  });
+
+  // ==================== MÓDULO COMBUSTIBLE ====================
+
+  // Vehículos
+  app.get("/api/vehicles", async (req: Request, res: Response) => {
+    try {
+      const { status, type, assignedUserId } = req.query;
+      const vehicles = await storage.getVehicles({
+        status: status as string,
+        type: type as string,
+        assignedUserId: assignedUserId as string
+      });
+      res.json(vehicles);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener vehículos" });
+    }
+  });
+
+  app.get("/api/vehicles/:id", async (req: Request, res: Response) => {
+    try {
+      const vehicle = await storage.getVehicle(req.params.id);
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehículo no encontrado" });
+      }
+      res.json(vehicle);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener vehículo" });
+    }
+  });
+
+  app.post("/api/vehicles", async (req: Request, res: Response) => {
+    try {
+      const validated = insertVehicleSchema.parse(req.body);
+      const vehicle = await storage.createVehicle(validated);
+      res.status(201).json(vehicle);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating vehicle:", error);
+      res.status(500).json({ error: "Error al crear vehículo" });
+    }
+  });
+
+  app.patch("/api/vehicles/:id", async (req: Request, res: Response) => {
+    try {
+      const validated = insertVehicleSchema.partial().parse(req.body);
+      const vehicle = await storage.updateVehicle(req.params.id, validated);
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehículo no encontrado" });
+      }
+      res.json(vehicle);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al actualizar vehículo" });
+    }
+  });
+
+  app.delete("/api/vehicles/:id", async (req: Request, res: Response) => {
+    try {
+      await storage.deleteVehicle(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Error al eliminar vehículo" });
+    }
+  });
+
+  // Estadísticas de vehículo
+  app.get("/api/vehicles/:id/fuel-stats", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const stats = await storage.getVehicleFuelStats(
+        req.params.id,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener estadísticas de vehículo" });
+    }
+  });
+
+  // Registros de combustible
+  app.get("/api/fuel-records", async (req: Request, res: Response) => {
+    try {
+      const { vehicleId, userId, startDate, endDate, limit } = req.query;
+      const records = await storage.getFuelRecords({
+        vehicleId: vehicleId as string,
+        userId: userId as string,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+        limit: limit ? parseInt(limit as string) : undefined
+      });
+      res.json(records);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener registros de combustible" });
+    }
+  });
+
+  app.get("/api/fuel-records/:id", async (req: Request, res: Response) => {
+    try {
+      const record = await storage.getFuelRecord(req.params.id);
+      if (!record) {
+        return res.status(404).json({ error: "Registro no encontrado" });
+      }
+      res.json(record);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener registro de combustible" });
+    }
+  });
+
+  app.post("/api/fuel-records", async (req: Request, res: Response) => {
+    try {
+      const validated = insertFuelRecordSchema.parse(req.body);
+      const record = await storage.createFuelRecord(validated);
+      res.status(201).json(record);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating fuel record:", error);
+      res.status(500).json({ error: "Error al crear registro de combustible" });
+    }
+  });
+
+  app.delete("/api/fuel-records/:id", async (req: Request, res: Response) => {
+    try {
+      await storage.deleteFuelRecord(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Error al eliminar registro de combustible" });
+    }
+  });
+
+  // Estadísticas generales de combustible
+  app.get("/api/fuel-stats", async (req: Request, res: Response) => {
+    try {
+      const { vehicleId, userId, startDate, endDate } = req.query;
+      const stats = await storage.getFuelStats({
+        vehicleId: vehicleId as string,
+        userId: userId as string,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined
+      });
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener estadísticas de combustible" });
+    }
+  });
+
+  // Estadísticas por usuario
+  app.get("/api/users/:id/fuel-stats", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const stats = await storage.getUserFuelStats(
+        req.params.id,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener estadísticas del usuario" });
+    }
+  });
+
+  // Estadísticas por ruta
+  app.get("/api/fuel-stats/by-route", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const stats = await storage.getFuelStatsPerRoute(
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener estadísticas por ruta" });
+    }
+  });
+
+  // Vehículos con bajo rendimiento
+  app.get("/api/vehicles/low-mileage", async (req: Request, res: Response) => {
+    try {
+      const vehicles = await storage.getLowMileageVehicles();
+      res.json(vehicles);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener vehículos con bajo rendimiento" });
     }
   });
 
