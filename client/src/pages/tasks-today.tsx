@@ -70,17 +70,13 @@ export function TasksTodayPage() {
     queryKey: ["/api/tasks/today"],
   });
 
-  const { data: stats } = useQuery<any>({
-    queryKey: ["/api/tasks/stats"],
-  });
-
   const completeTaskMutation = useMutation({
     mutationFn: async (id: string) => {
       return apiRequest("POST", `/api/tasks/${id}/complete`, { completedBy: "system" });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks/today"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       toast({ title: "Tarea completada", description: "La tarea ha sido marcada como completada" });
     },
     onError: () => {
@@ -94,7 +90,7 @@ export function TasksTodayPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks/today"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       toast({ title: "Estado actualizado" });
     },
     onError: () => {
@@ -106,7 +102,7 @@ export function TasksTodayPage() {
   const highTasks = tasks?.filter(t => t.priority === "alta") || [];
   const normalTasks = tasks?.filter(t => t.priority === "media" || t.priority === "baja") || [];
 
-  const completedToday = stats?.completed || 0;
+  const completedToday = tasks?.filter(t => t.status === "completada").length || 0;
   const totalToday = tasks?.length || 0;
   const progress = totalToday > 0 ? (completedToday / totalToday) * 100 : 0;
 

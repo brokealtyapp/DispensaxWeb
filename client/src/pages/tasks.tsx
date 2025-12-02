@@ -241,7 +241,7 @@ export function TasksPage() {
       description: task.description || "",
       type: task.type || "otro",
       priority: task.priority || "media",
-      dueDate: task.dueDate ? new Date(task.dueDate) : undefined,
+      dueDate: task.dueDate ? parseISO(task.dueDate) : undefined,
       startTime: task.startTime || "",
       endTime: task.endTime || "",
       assignedUserId: task.assignedUserId || "",
