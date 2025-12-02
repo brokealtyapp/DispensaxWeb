@@ -237,7 +237,7 @@ export interface IStorage {
   // Recepciones de Mercancía
   getPurchaseReceptions(filters?: { orderId?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
   getPurchaseReception(id: string): Promise<any>;
-  createPurchaseReception(reception: InsertPurchaseReception, items: InsertReceptionItem[]): Promise<PurchaseReception>;
+  createPurchaseReception(reception: InsertPurchaseReception, items: Omit<InsertReceptionItem, 'receptionId'>[]): Promise<PurchaseReception>;
   getNextReceptionNumber(): Promise<string>;
   
   // Estadísticas de Compras
@@ -2157,7 +2157,7 @@ export class DatabaseStorage implements IStorage {
     return { ...reception, order, receivedByUser, items: itemsWithProducts };
   }
 
-  async createPurchaseReception(reception: InsertPurchaseReception, items: InsertReceptionItem[]): Promise<PurchaseReception> {
+  async createPurchaseReception(reception: InsertPurchaseReception, items: Omit<InsertReceptionItem, 'receptionId'>[]): Promise<PurchaseReception> {
     const [newReception] = await db.insert(purchaseReceptions).values(reception).returning();
     
     for (const item of items) {

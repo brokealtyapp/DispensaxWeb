@@ -152,7 +152,18 @@ client/src/
 - [x] Módulo de Dinero y Productos (conciliación)
 - [x] Módulo de Combustible (vehículos, cargas, rendimiento)
 - [x] Sistema de recuperación de contraseña por SMTP
+- [x] Dashboard conectado a APIs reales (sin datos mock)
+- [x] Búsqueda global funcional (/api/search)
+- [x] Notificaciones basadas en alertas reales
 - [ ] Autenticación JWT completa (parcialmente implementada)
+
+## Cambios Recientes (Diciembre 2025)
+- Dashboard modernizado con datos reales de APIs
+- Estadísticas en tiempo real (máquinas activas, alertas, tareas del día)
+- Búsqueda global que busca en máquinas, productos, empleados y tareas
+- Notificaciones conectadas a alertas reales del sistema
+- Calendario semanal dinámico
+- Tarjetas de zona con progreso de operatividad
 
 ## Preferencias de Usuario
 - Idioma: Español

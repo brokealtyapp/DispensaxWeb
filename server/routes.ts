@@ -2596,5 +2596,81 @@ export async function registerRoutes(
     }
   });
 
+  // Global search endpoint
+  app.get("/api/search", async (req: Request, res: Response) => {
+    try {
+      const { q } = req.query;
+      const query = (q as string || "").toLowerCase().trim();
+      
+      if (!query || query.length < 2) {
+        return res.json([]);
+      }
+
+      const results: any[] = [];
+
+      // Search machines
+      const machines = await storage.getMachines();
+      machines.forEach(m => {
+        if (m.name?.toLowerCase().includes(query) || m.code?.toLowerCase().includes(query) || m.zone?.toLowerCase().includes(query)) {
+          results.push({
+            id: m.id,
+            type: "machine",
+            title: m.name,
+            subtitle: m.zone || "Sin zona",
+            href: `/maquinas/${m.id}`
+          });
+        }
+      });
+
+      // Search products
+      const products = await storage.getProducts();
+      products.forEach(p => {
+        if (p.name?.toLowerCase().includes(query) || p.code?.toLowerCase().includes(query) || p.category?.toLowerCase().includes(query)) {
+          results.push({
+            id: p.id,
+            type: "product",
+            title: p.name,
+            subtitle: p.category || "Sin categoría",
+            href: `/almacen`
+          });
+        }
+      });
+
+      // Search employees
+      const employees = await storage.getEmployees();
+      employees.forEach((u: any) => {
+        if (u.fullName?.toLowerCase().includes(query) || u.email?.toLowerCase().includes(query) || u.role?.toLowerCase().includes(query)) {
+          results.push({
+            id: u.id,
+            type: "employee",
+            title: u.fullName,
+            subtitle: u.role || "Sin rol",
+            href: `/rh`
+          });
+        }
+      });
+
+      // Search tasks
+      const tasks = await storage.getTasks();
+      tasks.forEach(t => {
+        if (t.title?.toLowerCase().includes(query) || t.description?.toLowerCase().includes(query)) {
+          results.push({
+            id: t.id,
+            type: "task",
+            title: t.title,
+            subtitle: t.type || "Sin tipo",
+            href: `/todas-tareas`
+          });
+        }
+      });
+
+      // Limit results
+      res.json(results.slice(0, 10));
+    } catch (error) {
+      console.error("Error in search:", error);
+      res.status(500).json({ error: "Error al buscar" });
+    }
+  });
+
   return httpServer;
 }

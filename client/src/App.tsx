@@ -1,6 +1,6 @@
-import { Switch, Route, Redirect } from "wouter";
-import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { Switch, Route, Redirect, useLocation } from "wouter";
+import { queryClient, apiRequest } from "./lib/queryClient";
+import { QueryClientProvider, useQuery, useMutation } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -28,45 +28,64 @@ import { TasksTodayPage } from "@/pages/tasks-today";
 import { CalendarPage } from "@/pages/calendar";
 import { ResetPasswordPage } from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
-import { useState, useEffect } from "react";
-import { format } from "date-fns";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { format, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
-import { MessageCircle, Bell } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-// todo: remove mock functionality - replace with actual API data
-const mockNotifications = [
-  {
-    id: "1",
-    title: "Máquina sin stock",
-    message: "Plaza Central se ha quedado sin Coca-Cola 600ml",
-    time: "Hace 5 min",
-    read: false,
-    type: "warning" as const,
-  },
-  {
-    id: "2",
-    title: "Ruta completada",
-    message: "Carlos completó la ruta Norte exitosamente",
-    time: "Hace 1 hora",
-    read: false,
-    type: "success" as const,
-  },
-  {
-    id: "3",
-    title: "Nuevo empleado",
-    message: "Se ha registrado un nuevo abastecedor",
-    time: "Hace 3 horas",
-    read: true,
-    type: "info" as const,
-  },
-];
 
 function ProtectedRoutes() {
   const { isAuthenticated, isLoading } = useAuth();
-  const [notifications, setNotifications] = useState(mockNotifications);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [, navigate] = useLocation();
+  const [searchQuery, setSearchQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [readAlerts, setReadAlerts] = useState<Set<string>>(new Set());
+
+  const { data: alertsData = [] } = useQuery<any[]>({
+    queryKey: ["/api/alerts", { resolved: false }],
+    refetchInterval: 30000,
+  });
+
+  const { data: searchResults = [] } = useQuery<any[]>({
+    queryKey: ["/api/search", searchQuery],
+    queryFn: async () => {
+      if (!searchQuery.trim()) return [];
+      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: searchQuery.length > 0,
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: async (alertId: string) => {
+      return apiRequest("PATCH", `/api/alerts/${alertId}/resolve`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/alerts"] });
+    },
+  });
+
+  const notifications = useMemo(() => {
+    return alertsData.slice(0, 10).map((alert: any) => {
+      const priorityTypes: Record<string, "warning" | "success" | "info"> = {
+        critica: "warning",
+        alta: "warning",
+        media: "info",
+        baja: "success",
+      };
+      return {
+        id: alert.id,
+        title: alert.type?.replace(/_/g, " ") || "Alerta",
+        message: alert.message,
+        time: alert.createdAt 
+          ? formatDistanceToNow(new Date(alert.createdAt), { addSuffix: true, locale: es })
+          : "Hace un momento",
+        read: readAlerts.has(alert.id),
+        type: priorityTypes[alert.priority] || "info",
+      };
+    });
+  }, [alertsData, readAlerts]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -75,28 +94,23 @@ function ProtectedRoutes() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleSearch = (query: string) => {
-    if (!query) {
-      setSearchResults([]);
-      return;
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+  }, []);
+
+  const handleResultClick = useCallback((result: any) => {
+    if (result.href) {
+      navigate(result.href);
     }
-    // todo: remove mock functionality - replace with actual API search
-    setSearchResults([
-      { id: "1", type: "machine", title: "Plaza Central", subtitle: "Centro Comercial Norte" },
-      { id: "2", type: "product", title: "Coca-Cola 600ml", subtitle: "Bebidas carbonatadas" },
-      { id: "3", type: "employee", title: "Carlos Rodríguez", subtitle: "Abastecedor" },
-    ]);
-  };
+  }, [navigate]);
 
-  const markAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
-  };
+  const markAsRead = useCallback((id: string) => {
+    setReadAlerts(prev => new Set(prev).add(id));
+  }, []);
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  };
+  const markAllAsRead = useCallback(() => {
+    setReadAlerts(new Set(notifications.map(n => n.id)));
+  }, [notifications]);
 
   if (isLoading) {
     return (
@@ -126,7 +140,7 @@ function ProtectedRoutes() {
               <SearchBar
                 onSearch={handleSearch}
                 results={searchResults}
-                onResultClick={(result) => console.log("Search result clicked:", result)}
+                onResultClick={handleResultClick}
               />
             </div>
             <div className="flex items-center gap-6">
