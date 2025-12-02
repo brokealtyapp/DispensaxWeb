@@ -28,7 +28,8 @@ import {
   insertPurchaseReceptionSchema,
   insertReceptionItemSchema,
   insertVehicleSchema,
-  insertFuelRecordSchema
+  insertFuelRecordSchema,
+  insertEmployeeSchema
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -2142,6 +2143,169 @@ export async function registerRoutes(
       }
       console.error("Error exporting data:", error);
       res.status(500).json({ error: "Error al exportar datos" });
+    }
+  });
+
+  // ==================== MÓDULO CONTABILIDAD ====================
+
+  app.get("/api/accounting/overview", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const overview = await storage.getAccountingOverview(
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(overview);
+    } catch (error) {
+      console.error("Error getting accounting overview:", error);
+      res.status(500).json({ error: "Error al obtener resumen contable" });
+    }
+  });
+
+  app.get("/api/accounting/machine-sales", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const sales = await storage.getMachineSalesReport(
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(sales);
+    } catch (error) {
+      console.error("Error getting machine sales report:", error);
+      res.status(500).json({ error: "Error al obtener ventas por máquina" });
+    }
+  });
+
+  app.get("/api/accounting/expenses", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate, category } = req.query;
+      const expenses = await storage.getExpensesReport({
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+        category: category as string | undefined
+      });
+      res.json(expenses);
+    } catch (error) {
+      console.error("Error getting expenses report:", error);
+      res.status(500).json({ error: "Error al obtener reporte de gastos" });
+    }
+  });
+
+  app.get("/api/accounting/cash-cut", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const report = await storage.getCashCutReport(
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(report);
+    } catch (error) {
+      console.error("Error getting cash cut report:", error);
+      res.status(500).json({ error: "Error al obtener corte de caja" });
+    }
+  });
+
+  // ==================== MÓDULO RRHH ====================
+
+  app.get("/api/hr/employees", async (req: Request, res: Response) => {
+    try {
+      const { role, isActive, search } = req.query;
+      const employees = await storage.getEmployees({
+        role: role as string | undefined,
+        isActive: isActive === "true" ? true : isActive === "false" ? false : undefined,
+        search: search as string | undefined
+      });
+      res.json(employees);
+    } catch (error) {
+      console.error("Error getting employees:", error);
+      res.status(500).json({ error: "Error al obtener empleados" });
+    }
+  });
+
+  app.get("/api/hr/employees/:id", async (req: Request, res: Response) => {
+    try {
+      const employee = await storage.getEmployee(req.params.id);
+      if (!employee) {
+        return res.status(404).json({ error: "Empleado no encontrado" });
+      }
+      res.json(employee);
+    } catch (error) {
+      console.error("Error getting employee:", error);
+      res.status(500).json({ error: "Error al obtener empleado" });
+    }
+  });
+
+  app.post("/api/hr/employees", async (req: Request, res: Response) => {
+    try {
+      const data = insertEmployeeSchema.parse(req.body);
+      const employee = await storage.createEmployee(data);
+      res.status(201).json(employee);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating employee:", error);
+      res.status(500).json({ error: "Error al crear empleado" });
+    }
+  });
+
+  app.patch("/api/hr/employees/:id", async (req: Request, res: Response) => {
+    try {
+      const data = insertEmployeeSchema.partial().parse(req.body);
+      const employee = await storage.updateEmployee(req.params.id, data);
+      if (!employee) {
+        return res.status(404).json({ error: "Empleado no encontrado" });
+      }
+      res.json(employee);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error updating employee:", error);
+      res.status(500).json({ error: "Error al actualizar empleado" });
+    }
+  });
+
+  app.delete("/api/hr/employees/:id", async (req: Request, res: Response) => {
+    try {
+      const success = await storage.deleteEmployee(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Empleado no encontrado" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting employee:", error);
+      res.status(500).json({ error: "Error al desactivar empleado" });
+    }
+  });
+
+  app.get("/api/hr/time-tracking", async (req: Request, res: Response) => {
+    try {
+      const { userId, startDate, endDate } = req.query;
+      const records = await storage.getTimeTracking({
+        userId: userId as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined
+      });
+      res.json(records);
+    } catch (error) {
+      console.error("Error getting time tracking:", error);
+      res.status(500).json({ error: "Error al obtener control de tiempos" });
+    }
+  });
+
+  app.get("/api/hr/performance", async (req: Request, res: Response) => {
+    try {
+      const { userId, startDate, endDate } = req.query;
+      const performance = await storage.getEmployeePerformance({
+        userId: userId as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined
+      });
+      res.json(performance);
+    } catch (error) {
+      console.error("Error getting performance:", error);
+      res.status(500).json({ error: "Error al obtener rendimiento" });
     }
   });
 

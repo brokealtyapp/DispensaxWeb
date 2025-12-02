@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { DataTable, Column } from "@/components/DataTable";
 import { StatsCard } from "@/components/StatsCard";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DollarSign,
   TrendingUp,
@@ -36,81 +38,181 @@ import {
   Cell,
 } from "recharts";
 
-// todo: remove mock functionality - replace with actual API data
-const mockSalesData = [
-  { month: "Ene", ventas: 85000, gastos: 45000 },
-  { month: "Feb", ventas: 92000, gastos: 48000 },
-  { month: "Mar", ventas: 78000, gastos: 42000 },
-  { month: "Abr", ventas: 105000, gastos: 52000 },
-  { month: "May", ventas: 115000, gastos: 55000 },
-  { month: "Jun", ventas: 125430, gastos: 58000 },
-];
-
-const mockMachineSales = [
-  { id: "1", machine: "Plaza Central", today: 2340, week: 14520, month: 58200, status: "up" },
-  { id: "2", machine: "Edificio Corporativo", today: 1890, week: 11230, month: 45800, status: "up" },
-  { id: "3", machine: "Universidad Tech", today: 3210, week: 19450, month: 78900, status: "up" },
-  { id: "4", machine: "Hospital Central", today: 980, week: 6540, month: 26100, status: "down" },
-  { id: "5", machine: "Aeropuerto Terminal A", today: 4520, week: 28900, month: 115600, status: "up" },
-];
-
-const mockExpenses = [
-  { id: "1", concept: "Compra de productos", category: "Inventario", amount: 35000, date: "2024-12-25" },
-  { id: "2", concept: "Combustible rutas", category: "Operaciones", amount: 8500, date: "2024-12-25" },
-  { id: "3", concept: "Nómina semanal", category: "Personal", amount: 45000, date: "2024-12-24" },
-  { id: "4", concept: "Mantenimiento máquinas", category: "Mantenimiento", amount: 12000, date: "2024-12-23" },
-  { id: "5", concept: "Servicios oficina", category: "Operaciones", amount: 5500, date: "2024-12-22" },
-];
-
-const mockCategoryData = [
-  { name: "Bebidas carbonatadas", value: 45 },
-  { name: "Agua", value: 25 },
-  { name: "Jugos", value: 15 },
-  { name: "Energéticas", value: 10 },
-  { name: "Otros", value: 5 },
-];
-
 const COLORS = ["#2F6FED", "#8E59FF", "#4ECB71", "#FF6B3D", "#6B7280"];
+
+function getDateRange(period: string): { startDate: string; endDate: string } {
+  const now = new Date();
+  const endDate = now.toISOString();
+  let startDate: Date;
+
+  switch (period) {
+    case "week":
+      startDate = new Date(now.setDate(now.getDate() - 7));
+      break;
+    case "month":
+      startDate = new Date(now.setMonth(now.getMonth() - 1));
+      break;
+    case "quarter":
+      startDate = new Date(now.setMonth(now.getMonth() - 3));
+      break;
+    case "year":
+      startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+      break;
+    default:
+      startDate = new Date(now.setMonth(now.getMonth() - 1));
+  }
+
+  return { startDate: startDate.toISOString(), endDate };
+}
+
+interface MachineSale {
+  machineId: string;
+  machineName: string;
+  totalSales: number;
+  transactionCount: number;
+  averageTicket: number;
+}
+
+interface ExpenseItem {
+  id: string;
+  concept: string;
+  category: string;
+  amount: number;
+  date: string;
+}
+
+interface AccountingOverview {
+  totalIngresos: number;
+  totalGastos: number;
+  utilidadNeta: number;
+  margen: number;
+  transacciones: number;
+  promedioTicket: number;
+  tendenciaIngresos: number;
+  tendenciaGastos: number;
+  monthlyData: { month: string; ventas: number; gastos: number }[];
+  categoryData: { name: string; value: number }[];
+}
+
+interface CashCutReport {
+  totalRecolectado: number;
+  totalEsperado: number;
+  diferencia: number;
+  byMachine: { machineId: string; recolectado: number; esperado: number; diferencia: number }[];
+  byUser: { userId: string; recolectado: number; esperado: number; diferencia: number; maquinas: number }[];
+}
 
 export function AccountingPage() {
   const [period, setPeriod] = useState("month");
+  const [selectedUser, setSelectedUser] = useState("all");
+  const dateRange = useMemo(() => getDateRange(period), [period]);
 
-  const salesColumns: Column<(typeof mockMachineSales)[0]>[] = [
-    { key: "machine", header: "Máquina" },
+  const buildUrl = (base: string, params: Record<string, string | undefined>) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) searchParams.append(key, value);
+    });
+    const queryString = searchParams.toString();
+    return queryString ? `${base}?${queryString}` : base;
+  };
+
+  const overviewUrl = buildUrl("/api/accounting/overview", {
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+  });
+
+  const { data: overview, isLoading: loadingOverview, isError: errorOverview } = useQuery<AccountingOverview>({
+    queryKey: ["/api/accounting/overview", dateRange.startDate, dateRange.endDate],
+    queryFn: async () => {
+      const res = await fetch(overviewUrl);
+      if (!res.ok) throw new Error("Error al cargar resumen contable");
+      return res.json();
+    },
+  });
+
+  const salesUrl = buildUrl("/api/accounting/machine-sales", {
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+  });
+
+  const { data: machineSales, isLoading: loadingSales, isError: errorSales } = useQuery<MachineSale[]>({
+    queryKey: ["/api/accounting/machine-sales", dateRange.startDate, dateRange.endDate],
+    queryFn: async () => {
+      const res = await fetch(salesUrl);
+      if (!res.ok) throw new Error("Error al cargar ventas por máquina");
+      return res.json();
+    },
+  });
+
+  const expensesUrl = buildUrl("/api/accounting/expenses", {
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+  });
+
+  const { data: expenses, isLoading: loadingExpenses, isError: errorExpenses } = useQuery<{ expenses: ExpenseItem[]; byCategory: Record<string, number>; total: number }>({
+    queryKey: ["/api/accounting/expenses", dateRange.startDate, dateRange.endDate],
+    queryFn: async () => {
+      const res = await fetch(expensesUrl);
+      if (!res.ok) throw new Error("Error al cargar gastos");
+      return res.json();
+    },
+  });
+
+  const cashCutUrl = buildUrl("/api/accounting/cash-cut", {
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+    userId: selectedUser !== "all" ? selectedUser : undefined,
+  });
+
+  const { data: cashCut, isLoading: loadingCashCut, isError: errorCashCut } = useQuery<CashCutReport>({
+    queryKey: ["/api/accounting/cash-cut", dateRange.startDate, dateRange.endDate, selectedUser],
+    queryFn: async () => {
+      const res = await fetch(cashCutUrl);
+      if (!res.ok) throw new Error("Error al cargar corte de caja");
+      return res.json();
+    },
+  });
+
+  const { data: employees } = useQuery<any[]>({
+    queryKey: ["/api/hr/employees", "abastecedor"],
+  });
+
+  const salesColumns: Column<MachineSale>[] = [
+    { key: "machineName", header: "Máquina" },
     {
-      key: "today",
-      header: "Hoy",
-      render: (item) => `$${item.today.toLocaleString()}`,
+      key: "totalSales",
+      header: "Total Ventas",
+      render: (item) => `$${item.totalSales.toLocaleString()}`,
     },
     {
-      key: "week",
-      header: "Semana",
-      render: (item) => `$${item.week.toLocaleString()}`,
+      key: "transactionCount",
+      header: "Transacciones",
+      render: (item) => item.transactionCount.toLocaleString(),
     },
     {
-      key: "month",
-      header: "Mes",
-      render: (item) => `$${item.month.toLocaleString()}`,
+      key: "averageTicket",
+      header: "Ticket Promedio",
+      render: (item) => `$${item.averageTicket.toFixed(2)}`,
     },
     {
-      key: "status",
+      key: "totalSales" as keyof MachineSale,
       header: "Tendencia",
       render: (item) =>
-        item.status === "up" ? (
+        item.totalSales > 0 ? (
           <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-500">
             <TrendingUp className="h-3 w-3 mr-1" />
-            Arriba
+            Activa
           </Badge>
         ) : (
           <Badge variant="secondary" className="bg-destructive/10 text-destructive">
             <TrendingDown className="h-3 w-3 mr-1" />
-            Abajo
+            Sin ventas
           </Badge>
         ),
     },
   ];
 
-  const expenseColumns: Column<(typeof mockExpenses)[0]>[] = [
+  const expenseColumns: Column<ExpenseItem>[] = [
     { key: "date", header: "Fecha" },
     { key: "concept", header: "Concepto" },
     {
@@ -129,18 +231,21 @@ export function AccountingPage() {
     },
   ];
 
+  const chartData = overview?.monthlyData || [];
+  const categoryData = overview?.categoryData || [];
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Contabilidad</h1>
+          <h1 className="text-2xl font-bold" data-testid="text-page-title">Contabilidad</h1>
           <p className="text-muted-foreground">
             Control de ventas, ingresos y egresos
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className="w-[150px]" data-testid="select-period">
               <Calendar className="h-4 w-4 mr-2" />
               <SelectValue placeholder="Período" />
             </SelectTrigger>
@@ -151,7 +256,7 @@ export function AccountingPage() {
               <SelectItem value="year">Este Año</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" className="gap-2" data-testid="button-export">
             <Download className="h-4 w-4" />
             Exportar
           </Button>
@@ -159,44 +264,54 @@ export function AccountingPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard
-          title="Ingresos del Mes"
-          value="$125,430"
-          subtitle="Meta: $150,000"
-          trend={{ value: 8.5, isPositive: true }}
-          icon={DollarSign}
-          iconColor="success"
-        />
-        <StatsCard
-          title="Gastos del Mes"
-          value="$58,000"
-          subtitle="Presupuesto: $65,000"
-          trend={{ value: 5.2, isPositive: false }}
-          icon={TrendingDown}
-          iconColor="destructive"
-        />
-        <StatsCard
-          title="Utilidad Neta"
-          value="$67,430"
-          subtitle="Margen: 53.8%"
-          trend={{ value: 12.3, isPositive: true }}
-          icon={TrendingUp}
-          iconColor="primary"
-        />
-        <StatsCard
-          title="Transacciones"
-          value="4,892"
-          subtitle="Promedio: $25.65"
-          icon={Receipt}
-          iconColor="purple"
-        />
+        {loadingOverview ? (
+          <>
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-32" />
+            ))}
+          </>
+        ) : (
+          <>
+            <StatsCard
+              title="Ingresos del Período"
+              value={`$${(overview?.totalIngresos || 0).toLocaleString()}`}
+              subtitle={`Tendencia: ${overview?.tendenciaIngresos?.toFixed(1) || 0}%`}
+              trend={{ value: overview?.tendenciaIngresos || 0, isPositive: (overview?.tendenciaIngresos || 0) >= 0 }}
+              icon={DollarSign}
+              iconColor="success"
+            />
+            <StatsCard
+              title="Gastos del Período"
+              value={`$${(overview?.totalGastos || 0).toLocaleString()}`}
+              subtitle={`Tendencia: ${overview?.tendenciaGastos?.toFixed(1) || 0}%`}
+              trend={{ value: Math.abs(overview?.tendenciaGastos || 0), isPositive: (overview?.tendenciaGastos || 0) <= 0 }}
+              icon={TrendingDown}
+              iconColor="destructive"
+            />
+            <StatsCard
+              title="Utilidad Neta"
+              value={`$${(overview?.utilidadNeta || 0).toLocaleString()}`}
+              subtitle={`Margen: ${overview?.margen?.toFixed(1) || 0}%`}
+              trend={{ value: overview?.margen || 0, isPositive: (overview?.margen || 0) > 0 }}
+              icon={TrendingUp}
+              iconColor="primary"
+            />
+            <StatsCard
+              title="Transacciones"
+              value={(overview?.transacciones || 0).toLocaleString()}
+              subtitle={`Promedio: $${overview?.promedioTicket?.toFixed(2) || 0}`}
+              icon={Receipt}
+              iconColor="purple"
+            />
+          </>
+        )}
       </div>
 
       <Tabs defaultValue="ventas">
         <TabsList>
-          <TabsTrigger value="ventas">Ventas por Máquina</TabsTrigger>
-          <TabsTrigger value="ingresos">Ingresos y Egresos</TabsTrigger>
-          <TabsTrigger value="corte">Corte de Caja</TabsTrigger>
+          <TabsTrigger value="ventas" data-testid="tab-ventas">Ventas por Máquina</TabsTrigger>
+          <TabsTrigger value="ingresos" data-testid="tab-ingresos">Ingresos y Egresos</TabsTrigger>
+          <TabsTrigger value="corte" data-testid="tab-corte">Corte de Caja</TabsTrigger>
         </TabsList>
 
         <TabsContent value="ventas" className="mt-6 space-y-6">
@@ -207,37 +322,41 @@ export function AccountingPage() {
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={mockSalesData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="month" className="text-xs" />
-                      <YAxis className="text-xs" />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "hsl(var(--card))",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "8px",
-                        }}
-                        formatter={(value: number) => [`$${value.toLocaleString()}`, ""]}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="ventas"
-                        stroke="#2F6FED"
-                        fill="#2F6FED"
-                        fillOpacity={0.2}
-                        name="Ventas"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="gastos"
-                        stroke="#FF6B3D"
-                        fill="#FF6B3D"
-                        fillOpacity={0.2}
-                        name="Gastos"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  {loadingOverview ? (
+                    <Skeleton className="h-full w-full" />
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                        <XAxis dataKey="month" className="text-xs" />
+                        <YAxis className="text-xs" />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "hsl(var(--card))",
+                            border: "1px solid hsl(var(--border))",
+                            borderRadius: "8px",
+                          }}
+                          formatter={(value: number) => [`$${value.toLocaleString()}`, ""]}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="ventas"
+                          stroke="#2F6FED"
+                          fill="#2F6FED"
+                          fillOpacity={0.2}
+                          name="Ventas"
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="gastos"
+                          stroke="#FF6B3D"
+                          fill="#FF6B3D"
+                          fillOpacity={0.2}
+                          name="Gastos"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -248,46 +367,56 @@ export function AccountingPage() {
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={mockCategoryData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={100}
-                        paddingAngle={2}
-                        dataKey="value"
-                      >
-                        {mockCategoryData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "hsl(var(--card))",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "8px",
-                        }}
-                        formatter={(value: number) => [`${value}%`, ""]}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="space-y-2 mt-4">
-                  {mockCategoryData.map((item, index) => (
-                    <div key={item.name} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: COLORS[index] }}
+                  {loadingOverview ? (
+                    <Skeleton className="h-full w-full" />
+                  ) : categoryData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={categoryData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={100}
+                          paddingAngle={2}
+                          dataKey="value"
+                        >
+                          {categoryData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "hsl(var(--card))",
+                            border: "1px solid hsl(var(--border))",
+                            borderRadius: "8px",
+                          }}
+                          formatter={(value: number) => [`${value}%`, ""]}
                         />
-                        <span>{item.name}</span>
-                      </div>
-                      <span className="font-medium">{item.value}%</span>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                      No hay datos de categorías
                     </div>
-                  ))}
+                  )}
                 </div>
+                {categoryData.length > 0 && (
+                  <div className="space-y-2 mt-4">
+                    {categoryData.map((item, index) => (
+                      <div key={item.name} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                          />
+                          <span>{item.name}</span>
+                        </div>
+                        <span className="font-medium">{item.value}%</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -297,12 +426,16 @@ export function AccountingPage() {
               <CardTitle>Ventas por Máquina</CardTitle>
             </CardHeader>
             <CardContent>
-              <DataTable
-                data={mockMachineSales}
-                columns={salesColumns}
-                searchPlaceholder="Buscar máquina..."
-                searchKeys={["machine"]}
-              />
+              {loadingSales ? (
+                <Skeleton className="h-64 w-full" />
+              ) : (
+                <DataTable
+                  data={machineSales || []}
+                  columns={salesColumns}
+                  searchPlaceholder="Buscar máquina..."
+                  searchKeys={["machineName"]}
+                />
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -314,25 +447,29 @@ export function AccountingPage() {
                 <CardTitle className="text-emerald-500">Ingresos</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-4xl font-bold text-emerald-500 mb-4">
-                  $125,430
+                <div className="text-4xl font-bold text-emerald-500 mb-4" data-testid="text-total-ingresos">
+                  ${(overview?.totalIngresos || 0).toLocaleString()}
                 </div>
                 <div className="h-[200px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={mockSalesData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="month" className="text-xs" />
-                      <YAxis className="text-xs" />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "hsl(var(--card))",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "8px",
-                        }}
-                      />
-                      <Bar dataKey="ventas" fill="#4ECB71" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {loadingOverview ? (
+                    <Skeleton className="h-full w-full" />
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                        <XAxis dataKey="month" className="text-xs" />
+                        <YAxis className="text-xs" />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "hsl(var(--card))",
+                            border: "1px solid hsl(var(--border))",
+                            borderRadius: "8px",
+                          }}
+                        />
+                        <Bar dataKey="ventas" fill="#4ECB71" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -342,14 +479,18 @@ export function AccountingPage() {
                 <CardTitle className="text-destructive">Egresos</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-4xl font-bold text-destructive mb-4">
-                  $58,000
+                <div className="text-4xl font-bold text-destructive mb-4" data-testid="text-total-gastos">
+                  ${(expenses?.total || 0).toLocaleString()}
                 </div>
-                <DataTable
-                  data={mockExpenses}
-                  columns={expenseColumns}
-                  pageSize={5}
-                />
+                {loadingExpenses ? (
+                  <Skeleton className="h-48 w-full" />
+                ) : (
+                  <DataTable
+                    data={expenses?.expenses || []}
+                    columns={expenseColumns}
+                    pageSize={5}
+                  />
+                )}
               </CardContent>
             </Card>
           </div>
@@ -360,45 +501,81 @@ export function AccountingPage() {
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle>Corte de Caja</CardTitle>
               <div className="flex items-center gap-2">
-                <Select defaultValue="all">
-                  <SelectTrigger className="w-[180px]">
+                <Select value={selectedUser} onValueChange={setSelectedUser}>
+                  <SelectTrigger className="w-[180px]" data-testid="select-user">
                     <Filter className="h-4 w-4 mr-2" />
                     <SelectValue placeholder="Abastecedor" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="carlos">Carlos R.</SelectItem>
-                    <SelectItem value="maria">María G.</SelectItem>
-                    <SelectItem value="juan">Juan P.</SelectItem>
+                    {employees?.map((emp) => (
+                      <SelectItem key={emp.id} value={emp.id}>
+                        {emp.fullName || emp.username}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
-                <Button>Generar Corte</Button>
+                <Button data-testid="button-generar-corte">Generar Corte</Button>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <Card className="bg-muted/50">
-                  <CardContent className="p-4">
-                    <p className="text-sm text-muted-foreground">Efectivo Esperado</p>
-                    <p className="text-2xl font-bold">$15,240</p>
-                  </CardContent>
-                </Card>
-                <Card className="bg-muted/50">
-                  <CardContent className="p-4">
-                    <p className="text-sm text-muted-foreground">Efectivo Real</p>
-                    <p className="text-2xl font-bold">$15,180</p>
-                  </CardContent>
-                </Card>
-                <Card className="bg-muted/50">
-                  <CardContent className="p-4">
-                    <p className="text-sm text-muted-foreground">Diferencia</p>
-                    <p className="text-2xl font-bold text-destructive">-$60</p>
-                  </CardContent>
-                </Card>
-              </div>
-              <p className="text-sm text-muted-foreground text-center py-8">
-                Selecciona un período y abastecedor para generar el corte de caja
-              </p>
+              {loadingCashCut ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-24" />
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <Card className="bg-muted/50">
+                      <CardContent className="p-4">
+                        <p className="text-sm text-muted-foreground">Efectivo Esperado</p>
+                        <p className="text-2xl font-bold" data-testid="text-efectivo-esperado">
+                          ${(cashCut?.totalEsperado || 0).toLocaleString()}
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card className="bg-muted/50">
+                      <CardContent className="p-4">
+                        <p className="text-sm text-muted-foreground">Efectivo Real</p>
+                        <p className="text-2xl font-bold" data-testid="text-efectivo-real">
+                          ${(cashCut?.totalRecolectado || 0).toLocaleString()}
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card className="bg-muted/50">
+                      <CardContent className="p-4">
+                        <p className="text-sm text-muted-foreground">Diferencia</p>
+                        <p className={`text-2xl font-bold ${(cashCut?.diferencia || 0) < 0 ? "text-destructive" : "text-emerald-500"}`} data-testid="text-diferencia">
+                          {(cashCut?.diferencia || 0) < 0 ? "-" : "+"}${Math.abs(cashCut?.diferencia || 0).toLocaleString()}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                  {cashCut?.byUser && cashCut.byUser.length > 0 ? (
+                    <div className="space-y-2">
+                      <h4 className="font-medium mb-2">Desglose por Abastecedor</h4>
+                      {cashCut.byUser.map((user) => (
+                        <div key={user.userId} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                          <span>{user.userId}</span>
+                          <div className="flex gap-4 text-sm">
+                            <span>Esperado: ${user.esperado.toLocaleString()}</span>
+                            <span>Real: ${user.recolectado.toLocaleString()}</span>
+                            <span className={user.diferencia < 0 ? "text-destructive" : "text-emerald-500"}>
+                              Dif: ${user.diferencia.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      No hay datos de recolección para el período seleccionado
+                    </p>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

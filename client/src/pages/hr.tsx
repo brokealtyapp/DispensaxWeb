@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,15 +24,17 @@ import {
 } from "@/components/ui/select";
 import { DataTable, Column } from "@/components/DataTable";
 import { StatsCard } from "@/components/StatsCard";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   Users,
   Clock,
   TrendingUp,
   UserPlus,
-  Plus,
   Search,
   MoreHorizontal,
   Calendar,
@@ -43,78 +46,46 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-// todo: remove mock functionality - replace with actual API data
-const mockEmployees = [
-  {
-    id: "1",
-    name: "Carlos Rodríguez",
-    email: "carlos@dispensax.com",
-    role: "Abastecedor",
-    status: "activo",
-    machines: 12,
-    hoursWeek: 45,
-    efficiency: 92,
-  },
-  {
-    id: "2",
-    name: "María García",
-    email: "maria@dispensax.com",
-    role: "Supervisor",
-    status: "activo",
-    machines: 0,
-    hoursWeek: 42,
-    efficiency: 0,
-  },
-  {
-    id: "3",
-    name: "Juan Pérez",
-    email: "juan@dispensax.com",
-    role: "Abastecedor",
-    status: "inactivo",
-    machines: 0,
-    hoursWeek: 0,
-    efficiency: 0,
-  },
-  {
-    id: "4",
-    name: "Ana López",
-    email: "ana@dispensax.com",
-    role: "Almacén",
-    status: "activo",
-    machines: 0,
-    hoursWeek: 40,
-    efficiency: 0,
-  },
-  {
-    id: "5",
-    name: "Pedro Sánchez",
-    email: "pedro@dispensax.com",
-    role: "Abastecedor",
-    status: "activo",
-    machines: 15,
-    hoursWeek: 48,
-    efficiency: 88,
-  },
-];
+interface Employee {
+  id: string;
+  username: string;
+  fullName: string | null;
+  email: string | null;
+  phone: string | null;
+  role: string;
+  isActive: boolean;
+}
 
-const mockTimeRecords = [
-  { id: "1", employee: "Carlos Rodríguez", date: "2024-12-25", checkIn: "08:00", checkOut: "17:30", hours: 9.5, machines: 8 },
-  { id: "2", employee: "Pedro Sánchez", date: "2024-12-25", checkIn: "07:30", checkOut: "18:00", hours: 10.5, machines: 10 },
-  { id: "3", employee: "Carlos Rodríguez", date: "2024-12-24", checkIn: "08:15", checkOut: "17:00", hours: 8.75, machines: 7 },
-  { id: "4", employee: "María García", date: "2024-12-24", checkIn: "09:00", checkOut: "18:00", hours: 9, machines: 0 },
-  { id: "5", employee: "Ana López", date: "2024-12-24", checkIn: "08:00", checkOut: "16:00", hours: 8, machines: 0 },
-];
+interface TimeRecord {
+  id: string;
+  employee: string;
+  employeeId: string;
+  date: string;
+  checkIn: string;
+  checkOut: string;
+  hours: number;
+  machine: string | null;
+  machineId: string | null;
+}
 
-const mockPerformance = [
-  { id: "1", employee: "Carlos Rodríguez", machinesDay: 8.2, avgTime: 35, efficiency: 92, rating: 4.8 },
-  { id: "2", employee: "Pedro Sánchez", machinesDay: 9.5, avgTime: 28, efficiency: 88, rating: 4.5 },
-  { id: "3", employee: "Juan Martínez", machinesDay: 6.8, avgTime: 42, efficiency: 75, rating: 3.9 },
-];
+interface PerformanceRecord {
+  id: string;
+  employee: string;
+  machinesDay: number;
+  avgTime: number;
+  efficiency: number;
+  totalMachines: number;
+  totalCollected: number;
+  rating: number;
+}
 
 const employeeSchema = z.object({
-  name: z.string().min(3, "El nombre debe tener al menos 3 caracteres"),
+  fullName: z.string().min(3, "El nombre debe tener al menos 3 caracteres"),
   email: z.string().email("Email inválido"),
+  phone: z.string().optional(),
   role: z.string().min(1, "Selecciona un rol"),
+  username: z.string().min(3, "El usuario debe tener al menos 3 caracteres"),
+  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
@@ -131,42 +102,100 @@ const roleLabels: Record<string, string> = {
 export function HRPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const { toast } = useToast();
 
   const form = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeSchema),
     defaultValues: {
-      name: "",
+      fullName: "",
       email: "",
+      phone: "",
       role: "",
+      username: "",
+      password: "",
     },
   });
 
-  const filteredEmployees = mockEmployees.filter(
+  const { data: employees, isLoading: loadingEmployees } = useQuery<Employee[]>({
+    queryKey: ["/api/hr/employees"],
+  });
+
+  const { data: timeRecords, isLoading: loadingTime } = useQuery<TimeRecord[]>({
+    queryKey: ["/api/hr/time-tracking"],
+  });
+
+  const { data: performance, isLoading: loadingPerformance } = useQuery<PerformanceRecord[]>({
+    queryKey: ["/api/hr/performance"],
+  });
+
+  const createEmployeeMutation = useMutation({
+    mutationFn: async (data: EmployeeFormData) => {
+      return await apiRequest("/api/hr/employees", {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/employees"] });
+      toast({ title: "Empleado creado correctamente" });
+      setIsAddDialogOpen(false);
+      form.reset();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error al crear empleado", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteEmployeeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await apiRequest(`/api/hr/employees/${id}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/employees"] });
+      toast({ title: "Empleado desactivado correctamente" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error al desactivar empleado", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const filteredEmployees = (employees || []).filter(
     (emp) =>
-      emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.email.toLowerCase().includes(searchQuery.toLowerCase())
+      (emp.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       emp.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       emp.email?.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const activeEmployees = mockEmployees.filter((e) => e.status === "activo").length;
+  const activeEmployees = (employees || []).filter((e) => e.isActive).length;
+  const avgHours = timeRecords?.length 
+    ? (timeRecords.reduce((acc, r) => acc + r.hours, 0) / timeRecords.length).toFixed(1)
+    : "0";
+  const avgEfficiency = performance?.length
+    ? (performance.reduce((acc, p) => acc + p.efficiency, 0) / performance.length).toFixed(0)
+    : "0";
 
-  const employeeColumns: Column<(typeof mockEmployees)[0]>[] = [
+  const employeeColumns: Column<Employee>[] = [
     {
-      key: "name",
+      key: "fullName",
       header: "Empleado",
       render: (item) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
             <AvatarFallback className="bg-primary/10 text-primary text-xs">
-              {item.name
+              {(item.fullName || item.username)
                 .split(" ")
                 .map((n) => n[0])
                 .join("")
-                .toUpperCase()}
+                .toUpperCase()
+                .slice(0, 2)}
             </AvatarFallback>
           </Avatar>
           <div>
-            <p className="font-medium">{item.name}</p>
-            <p className="text-xs text-muted-foreground">{item.email}</p>
+            <p className="font-medium">{item.fullName || item.username}</p>
+            <p className="text-xs text-muted-foreground">{item.email || "-"}</p>
           </div>
         </div>
       ),
@@ -174,51 +203,55 @@ export function HRPage() {
     {
       key: "role",
       header: "Rol",
-      render: (item) => <Badge variant="secondary">{item.role}</Badge>,
+      render: (item) => <Badge variant="secondary">{roleLabels[item.role] || item.role}</Badge>,
     },
     {
-      key: "status",
+      key: "isActive",
       header: "Estado",
       render: (item) => (
         <Badge
           variant="secondary"
           className={
-            item.status === "activo"
+            item.isActive
               ? "bg-emerald-500/10 text-emerald-500"
               : "bg-muted text-muted-foreground"
           }
         >
-          {item.status === "activo" ? "Activo" : "Inactivo"}
+          {item.isActive ? "Activo" : "Inactivo"}
         </Badge>
       ),
     },
-    { key: "machines", header: "Máquinas Asignadas" },
     {
-      key: "hoursWeek",
-      header: "Horas/Semana",
-      render: (item) => `${item.hoursWeek}h`,
+      key: "phone",
+      header: "Teléfono",
+      render: (item) => item.phone || "-",
     },
     {
-      key: "actions",
+      key: "id",
       header: "",
       render: (item) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" data-testid={`button-menu-${item.id}`}>
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem>Ver Perfil</DropdownMenuItem>
             <DropdownMenuItem>Editar</DropdownMenuItem>
-            <DropdownMenuItem className="text-destructive">Desactivar</DropdownMenuItem>
+            <DropdownMenuItem 
+              className="text-destructive"
+              onClick={() => deleteEmployeeMutation.mutate(item.id)}
+            >
+              Desactivar
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),
     },
   ];
 
-  const timeColumns: Column<(typeof mockTimeRecords)[0]>[] = [
+  const timeColumns: Column<TimeRecord>[] = [
     { key: "date", header: "Fecha" },
     { key: "employee", header: "Empleado" },
     { key: "checkIn", header: "Entrada" },
@@ -228,10 +261,14 @@ export function HRPage() {
       header: "Horas",
       render: (item) => `${item.hours}h`,
     },
-    { key: "machines", header: "Máquinas" },
+    { 
+      key: "machine", 
+      header: "Máquina",
+      render: (item) => item.machine || "-",
+    },
   ];
 
-  const performanceColumns: Column<(typeof mockPerformance)[0]>[] = [
+  const performanceColumns: Column<PerformanceRecord>[] = [
     { key: "employee", header: "Empleado" },
     {
       key: "machinesDay",
@@ -266,19 +303,22 @@ export function HRPage() {
       header: "Calificación",
       render: (item) => `${item.rating}/5`,
     },
+    {
+      key: "totalCollected",
+      header: "Total Recolectado",
+      render: (item) => `$${item.totalCollected.toLocaleString()}`,
+    },
   ];
 
   const onSubmit = (data: EmployeeFormData) => {
-    console.log("New employee:", data);
-    setIsAddDialogOpen(false);
-    form.reset();
+    createEmployeeMutation.mutate(data);
   };
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Recursos Humanos</h1>
+          <h1 className="text-2xl font-bold" data-testid="text-page-title">Recursos Humanos</h1>
           <p className="text-muted-foreground">Gestión de personal y control de tiempos</p>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -297,12 +337,25 @@ export function HRPage() {
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField
                   control={form.control}
-                  name="name"
+                  name="fullName"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Nombre Completo</FormLabel>
                       <FormControl>
-                        <Input placeholder="Ej: Juan Pérez" {...field} />
+                        <Input placeholder="Ej: Juan Pérez" {...field} data-testid="input-fullname" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="username"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Usuario</FormLabel>
+                      <FormControl>
+                        <Input placeholder="jperez" {...field} data-testid="input-username" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -315,7 +368,33 @@ export function HRPage() {
                     <FormItem>
                       <FormLabel>Email</FormLabel>
                       <FormControl>
-                        <Input placeholder="juan@dispensax.com" {...field} />
+                        <Input placeholder="juan@dispensax.com" {...field} data-testid="input-email" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Teléfono (opcional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="555-1234" {...field} data-testid="input-phone" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Contraseña</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="••••••" {...field} data-testid="input-password" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -329,7 +408,7 @@ export function HRPage() {
                       <FormLabel>Rol</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger>
+                          <SelectTrigger data-testid="select-role">
                             <SelectValue placeholder="Selecciona un rol" />
                           </SelectTrigger>
                         </FormControl>
@@ -349,7 +428,9 @@ export function HRPage() {
                   <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                     Cancelar
                   </Button>
-                  <Button type="submit">Agregar Empleado</Button>
+                  <Button type="submit" disabled={createEmployeeMutation.isPending} data-testid="button-submit">
+                    {createEmployeeMutation.isPending ? "Agregando..." : "Agregar Empleado"}
+                  </Button>
                 </div>
               </form>
             </Form>
@@ -358,43 +439,51 @@ export function HRPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatsCard
-          title="Total Empleados"
-          value={mockEmployees.length}
-          subtitle={`${activeEmployees} activos`}
-          icon={Users}
-          iconColor="primary"
-        />
-        <StatsCard
-          title="Horas Promedio"
-          value="42.5h"
-          subtitle="Esta semana"
-          trend={{ value: 5.2, isPositive: true }}
-          icon={Clock}
-          iconColor="purple"
-        />
-        <StatsCard
-          title="Eficiencia Promedio"
-          value="87%"
-          subtitle="Abastecedores"
-          trend={{ value: 3.1, isPositive: true }}
-          icon={TrendingUp}
-          iconColor="success"
-        />
-        <StatsCard
-          title="Nuevos este Mes"
-          value={1}
-          subtitle="2 en proceso"
-          icon={UserPlus}
-          iconColor="warning"
-        />
+        {loadingEmployees ? (
+          <>
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-32" />
+            ))}
+          </>
+        ) : (
+          <>
+            <StatsCard
+              title="Total Empleados"
+              value={employees?.length || 0}
+              subtitle={`${activeEmployees} activos`}
+              icon={Users}
+              iconColor="primary"
+            />
+            <StatsCard
+              title="Horas Promedio"
+              value={`${avgHours}h`}
+              subtitle="Esta semana"
+              icon={Clock}
+              iconColor="purple"
+            />
+            <StatsCard
+              title="Eficiencia Promedio"
+              value={`${avgEfficiency}%`}
+              subtitle="Abastecedores"
+              icon={TrendingUp}
+              iconColor="success"
+            />
+            <StatsCard
+              title="Roles"
+              value={Object.keys(roleLabels).length}
+              subtitle="Tipos definidos"
+              icon={UserPlus}
+              iconColor="warning"
+            />
+          </>
+        )}
       </div>
 
       <Tabs defaultValue="personal">
         <TabsList>
-          <TabsTrigger value="personal">Personal</TabsTrigger>
-          <TabsTrigger value="tiempos">Control de Tiempos</TabsTrigger>
-          <TabsTrigger value="rendimiento">Rendimiento</TabsTrigger>
+          <TabsTrigger value="personal" data-testid="tab-personal">Personal</TabsTrigger>
+          <TabsTrigger value="tiempos" data-testid="tab-tiempos">Control de Tiempos</TabsTrigger>
+          <TabsTrigger value="rendimiento" data-testid="tab-rendimiento">Rendimiento</TabsTrigger>
         </TabsList>
 
         <TabsContent value="personal" className="mt-6">
@@ -414,12 +503,16 @@ export function HRPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <DataTable
-                data={filteredEmployees}
-                columns={employeeColumns}
-                searchPlaceholder="Buscar..."
-                searchKeys={["name", "email"]}
-              />
+              {loadingEmployees ? (
+                <Skeleton className="h-64 w-full" />
+              ) : (
+                <DataTable
+                  data={filteredEmployees}
+                  columns={employeeColumns}
+                  searchPlaceholder="Buscar..."
+                  searchKeys={["fullName", "email", "username"]}
+                />
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -431,17 +524,21 @@ export function HRPage() {
               <div className="flex items-center gap-2">
                 <Button variant="outline" className="gap-2">
                   <Calendar className="h-4 w-4" />
-                  Dic 2024
+                  Últimos 7 días
                 </Button>
               </div>
             </CardHeader>
             <CardContent>
-              <DataTable
-                data={mockTimeRecords}
-                columns={timeColumns}
-                searchPlaceholder="Buscar..."
-                searchKeys={["employee"]}
-              />
+              {loadingTime ? (
+                <Skeleton className="h-64 w-full" />
+              ) : (
+                <DataTable
+                  data={timeRecords || []}
+                  columns={timeColumns}
+                  searchPlaceholder="Buscar..."
+                  searchKeys={["employee"]}
+                />
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -452,12 +549,16 @@ export function HRPage() {
               <CardTitle>Rendimiento por Abastecedor</CardTitle>
             </CardHeader>
             <CardContent>
-              <DataTable
-                data={mockPerformance}
-                columns={performanceColumns}
-                searchPlaceholder="Buscar..."
-                searchKeys={["employee"]}
-              />
+              {loadingPerformance ? (
+                <Skeleton className="h-64 w-full" />
+              ) : (
+                <DataTable
+                  data={performance || []}
+                  columns={performanceColumns}
+                  searchPlaceholder="Buscar..."
+                  searchKeys={["employee"]}
+                />
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -9,7 +9,10 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   fullName: text("full_name"),
+  email: text("email"),
+  phone: text("phone"),
   role: text("role").default("abastecedor"),
+  isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -18,7 +21,13 @@ export const insertUserSchema = createInsertSchema(users).pick({
   password: true,
 });
 
+export const insertEmployeeSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
 export type User = typeof users.$inferSelect;
 
 export const machineStatusEnum = pgEnum("machine_status", [

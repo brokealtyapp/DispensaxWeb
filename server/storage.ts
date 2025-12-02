@@ -1,5 +1,5 @@
 import { 
-  type User, type InsertUser,
+  type User, type InsertUser, type InsertEmployee,
   type Location, type InsertLocation,
   type Product, type InsertProduct,
   type Machine, type InsertMachine,
@@ -319,6 +319,45 @@ export interface IStorage {
     startDate?: Date;
     endDate?: Date;
   }): Promise<any[]>;
+  
+  // ==================== MÓDULO CONTABILIDAD ====================
+  
+  getAccountingOverview(startDate?: Date, endDate?: Date): Promise<{
+    ingresosTotales: number;
+    egresosTotales: number;
+    utilidadNeta: number;
+    transacciones: number;
+    tendenciaIngresos: number;
+    tendenciaEgresos: number;
+  }>;
+  
+  getMachineSalesReport(startDate?: Date, endDate?: Date): Promise<any[]>;
+  
+  getExpensesReport(filters?: { startDate?: Date; endDate?: Date; category?: string }): Promise<any[]>;
+  
+  getCashCutReport(startDate?: Date, endDate?: Date): Promise<{
+    totalEsperado: number;
+    totalRecolectado: number;
+    diferencia: number;
+    detallePorMaquina: any[];
+    detallePorAbastecedor: any[];
+  }>;
+  
+  // ==================== MÓDULO RRHH ====================
+  
+  getEmployees(filters?: { role?: string; isActive?: boolean; search?: string }): Promise<User[]>;
+  
+  getEmployee(id: string): Promise<User | undefined>;
+  
+  createEmployee(employee: InsertEmployee): Promise<User>;
+  
+  updateEmployee(id: string, data: Partial<InsertEmployee>): Promise<User | undefined>;
+  
+  deleteEmployee(id: string): Promise<boolean>;
+  
+  getTimeTracking(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  
+  getEmployeePerformance(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3023,6 +3062,469 @@ export class DatabaseStorage implements IStorage {
       default:
         return [];
     }
+  }
+
+  // ==================== MÓDULO CONTABILIDAD ====================
+
+  async getAccountingOverview(startDate?: Date, endDate?: Date): Promise<{
+    ingresosTotales: number;
+    egresosTotales: number;
+    utilidadNeta: number;
+    transacciones: number;
+    tendenciaIngresos: number;
+    tendenciaEgresos: number;
+  }> {
+    const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
+    const end = endDate || new Date();
+    
+    const prevStart = new Date(start.getTime() - (end.getTime() - start.getTime()));
+    const prevEnd = start;
+
+    const sales = await db.select().from(machineSales)
+      .where(and(
+        gte(machineSales.saleDate, start),
+        lte(machineSales.saleDate, end)
+      ));
+    
+    const prevSales = await db.select().from(machineSales)
+      .where(and(
+        gte(machineSales.saleDate, prevStart),
+        lte(machineSales.saleDate, prevEnd)
+      ));
+
+    const ingresosTotales = sales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
+    const prevIngresos = prevSales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
+
+    const pettyCashExp = await db.select().from(pettyCashExpenses)
+      .where(and(
+        gte(pettyCashExpenses.createdAt, start),
+        lte(pettyCashExpenses.createdAt, end),
+        eq(pettyCashExpenses.status, "pagado")
+      ));
+
+    const prevPettyCash = await db.select().from(pettyCashExpenses)
+      .where(and(
+        gte(pettyCashExpenses.createdAt, prevStart),
+        lte(pettyCashExpenses.createdAt, prevEnd),
+        eq(pettyCashExpenses.status, "pagado")
+      ));
+
+    const purchaseExp = await db.select().from(purchaseOrders)
+      .where(and(
+        gte(purchaseOrders.createdAt, start),
+        lte(purchaseOrders.createdAt, end),
+        eq(purchaseOrders.status, "recibida")
+      ));
+
+    const prevPurchases = await db.select().from(purchaseOrders)
+      .where(and(
+        gte(purchaseOrders.createdAt, prevStart),
+        lte(purchaseOrders.createdAt, prevEnd),
+        eq(purchaseOrders.status, "recibida")
+      ));
+
+    const fuelExp = await db.select().from(fuelRecords)
+      .where(and(
+        gte(fuelRecords.recordDate, start),
+        lte(fuelRecords.recordDate, end)
+      ));
+
+    const prevFuel = await db.select().from(fuelRecords)
+      .where(and(
+        gte(fuelRecords.recordDate, prevStart),
+        lte(fuelRecords.recordDate, prevEnd)
+      ));
+
+    const egresosPettyCash = pettyCashExp.reduce((acc, e) => acc + parseFloat(e.amount?.toString() || "0"), 0);
+    const egresosCompras = purchaseExp.reduce((acc, p) => acc + parseFloat(p.total?.toString() || "0"), 0);
+    const egresosCombustible = fuelExp.reduce((acc, f) => acc + parseFloat(f.totalAmount?.toString() || "0"), 0);
+    const egresosTotales = egresosPettyCash + egresosCompras + egresosCombustible;
+
+    const prevEgresosPettyCash = prevPettyCash.reduce((acc, e) => acc + parseFloat(e.amount?.toString() || "0"), 0);
+    const prevEgresosCompras = prevPurchases.reduce((acc, p) => acc + parseFloat(p.total?.toString() || "0"), 0);
+    const prevEgresosCombustible = prevFuel.reduce((acc, f) => acc + parseFloat(f.totalAmount?.toString() || "0"), 0);
+    const prevEgresos = prevEgresosPettyCash + prevEgresosCompras + prevEgresosCombustible;
+
+    const tendenciaIngresos = prevIngresos > 0 ? ((ingresosTotales - prevIngresos) / prevIngresos * 100) : 0;
+    const tendenciaEgresos = prevEgresos > 0 ? ((egresosTotales - prevEgresos) / prevEgresos * 100) : 0;
+
+    return {
+      ingresosTotales,
+      egresosTotales,
+      utilidadNeta: ingresosTotales - egresosTotales,
+      transacciones: sales.length,
+      tendenciaIngresos: parseFloat(tendenciaIngresos.toFixed(1)),
+      tendenciaEgresos: parseFloat(tendenciaEgresos.toFixed(1)),
+    };
+  }
+
+  async getMachineSalesReport(startDate?: Date, endDate?: Date): Promise<any[]> {
+    const end = endDate || new Date();
+    const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const weekStart = new Date(today);
+    weekStart.setDate(weekStart.getDate() - 7);
+    
+    const monthStart = new Date(today);
+    monthStart.setMonth(monthStart.getMonth() - 1);
+
+    const allMachines = await db.select().from(machines);
+    
+    const result = await Promise.all(allMachines.map(async (machine) => {
+      const todaySales = await db.select().from(machineSales)
+        .where(and(
+          eq(machineSales.machineId, machine.id),
+          gte(machineSales.saleDate, today)
+        ));
+      
+      const weekSales = await db.select().from(machineSales)
+        .where(and(
+          eq(machineSales.machineId, machine.id),
+          gte(machineSales.saleDate, weekStart)
+        ));
+      
+      const monthSales = await db.select().from(machineSales)
+        .where(and(
+          eq(machineSales.machineId, machine.id),
+          gte(machineSales.saleDate, monthStart)
+        ));
+      
+      const periodSales = await db.select().from(machineSales)
+        .where(and(
+          eq(machineSales.machineId, machine.id),
+          gte(machineSales.saleDate, start),
+          lte(machineSales.saleDate, end)
+        ));
+
+      const todayTotal = todaySales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
+      const weekTotal = weekSales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
+      const monthTotal = monthSales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
+      const periodTotal = periodSales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
+
+      const prevWeekStart = new Date(weekStart);
+      prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+      const prevWeekSales = await db.select().from(machineSales)
+        .where(and(
+          eq(machineSales.machineId, machine.id),
+          gte(machineSales.saleDate, prevWeekStart),
+          lte(machineSales.saleDate, weekStart)
+        ));
+      const prevWeekTotal = prevWeekSales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
+
+      const location = machine.locationId ? await this.getLocation(machine.locationId) : null;
+
+      return {
+        id: machine.id,
+        machine: machine.name || machine.code,
+        code: machine.code,
+        location: location?.name || "Sin ubicación",
+        today: todayTotal,
+        week: weekTotal,
+        month: monthTotal,
+        total: periodTotal,
+        status: weekTotal >= prevWeekTotal ? "up" : "down",
+        transacciones: periodSales.length
+      };
+    }));
+
+    return result.sort((a, b) => b.month - a.month);
+  }
+
+  async getExpensesReport(filters?: { startDate?: Date; endDate?: Date; category?: string }): Promise<any[]> {
+    const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
+    const end = filters?.endDate || new Date();
+
+    const expenses: any[] = [];
+
+    const pettyCashConditions = [
+      gte(pettyCashExpenses.createdAt, start),
+      lte(pettyCashExpenses.createdAt, end),
+    ];
+    if (filters?.category) {
+      pettyCashConditions.push(eq(pettyCashExpenses.category, filters.category));
+    }
+    
+    const pettyCash = await db.select().from(pettyCashExpenses)
+      .where(and(...pettyCashConditions))
+      .orderBy(desc(pettyCashExpenses.createdAt));
+
+    for (const exp of pettyCash) {
+      expenses.push({
+        id: exp.id,
+        fuente: "caja_chica",
+        concepto: exp.description,
+        category: exp.category,
+        amount: parseFloat(exp.amount?.toString() || "0"),
+        date: exp.createdAt?.toISOString().split('T')[0] || "",
+        status: exp.status
+      });
+    }
+
+    if (!filters?.category || filters.category === "compras") {
+      const purchases = await db.select().from(purchaseOrders)
+        .where(and(
+          gte(purchaseOrders.createdAt, start),
+          lte(purchaseOrders.createdAt, end)
+        ))
+        .orderBy(desc(purchaseOrders.createdAt));
+
+      for (const po of purchases) {
+        const supplier = await this.getSupplier(po.supplierId);
+        expenses.push({
+          id: po.id,
+          fuente: "compras",
+          concepto: `Orden ${po.orderNumber} - ${supplier?.name || "Proveedor"}`,
+          category: "compras",
+          amount: parseFloat(po.total?.toString() || "0"),
+          date: po.createdAt?.toISOString().split('T')[0] || "",
+          status: po.status
+        });
+      }
+    }
+
+    if (!filters?.category || filters.category === "combustible") {
+      const fuel = await db.select().from(fuelRecords)
+        .where(and(
+          gte(fuelRecords.recordDate, start),
+          lte(fuelRecords.recordDate, end)
+        ))
+        .orderBy(desc(fuelRecords.recordDate));
+
+      for (const f of fuel) {
+        const vehicle = await this.getVehicle(f.vehicleId);
+        expenses.push({
+          id: f.id,
+          fuente: "combustible",
+          concepto: `Carga ${vehicle?.plate || f.vehicleId} - ${parseFloat(f.liters?.toString() || "0").toFixed(1)}L`,
+          category: "combustible",
+          amount: parseFloat(f.totalAmount?.toString() || "0"),
+          date: f.recordDate.toISOString().split('T')[0],
+          status: "pagado"
+        });
+      }
+    }
+
+    return expenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+
+  async getCashCutReport(startDate?: Date, endDate?: Date): Promise<{
+    totalEsperado: number;
+    totalRecolectado: number;
+    diferencia: number;
+    detallePorMaquina: any[];
+    detallePorAbastecedor: any[];
+  }> {
+    const start = startDate || new Date(new Date().setHours(0, 0, 0, 0));
+    const end = endDate || new Date();
+
+    const collections = await db.select().from(cashCollections)
+      .where(and(
+        gte(cashCollections.createdAt, start),
+        lte(cashCollections.createdAt, end)
+      ));
+
+    const totalRecolectado = collections.reduce((acc, c) => acc + parseFloat(c.actualAmount?.toString() || "0"), 0);
+    const totalEsperado = collections.reduce((acc, c) => acc + parseFloat(c.expectedAmount?.toString() || "0"), 0);
+
+    const byMachine: Record<string, { machineId: string; recolectado: number; esperado: number; diferencia: number }> = {};
+    const byUser: Record<string, { userId: string; recolectado: number; esperado: number; diferencia: number; maquinas: number }> = {};
+
+    for (const c of collections) {
+      if (c.machineId) {
+        if (!byMachine[c.machineId]) {
+          byMachine[c.machineId] = { machineId: c.machineId, recolectado: 0, esperado: 0, diferencia: 0 };
+        }
+        byMachine[c.machineId].recolectado += parseFloat(c.actualAmount?.toString() || "0");
+        byMachine[c.machineId].esperado += parseFloat(c.expectedAmount?.toString() || "0");
+        byMachine[c.machineId].diferencia = byMachine[c.machineId].recolectado - byMachine[c.machineId].esperado;
+      }
+
+      if (c.userId) {
+        if (!byUser[c.userId]) {
+          byUser[c.userId] = { userId: c.userId, recolectado: 0, esperado: 0, diferencia: 0, maquinas: 0 };
+        }
+        byUser[c.userId].recolectado += parseFloat(c.actualAmount?.toString() || "0");
+        byUser[c.userId].esperado += parseFloat(c.expectedAmount?.toString() || "0");
+        byUser[c.userId].diferencia = byUser[c.userId].recolectado - byUser[c.userId].esperado;
+        byUser[c.userId].maquinas++;
+      }
+    }
+
+    const detallePorMaquina = await Promise.all(Object.values(byMachine).map(async (item) => {
+      const machine = await this.getMachine(item.machineId);
+      return { ...item, machine: machine?.name || machine?.code || item.machineId };
+    }));
+
+    const detallePorAbastecedor = await Promise.all(Object.values(byUser).map(async (item) => {
+      const user = await this.getUser(item.userId);
+      return { ...item, abastecedor: user?.fullName || user?.username || item.userId };
+    }));
+
+    return {
+      totalEsperado,
+      totalRecolectado,
+      diferencia: totalRecolectado - totalEsperado,
+      detallePorMaquina,
+      detallePorAbastecedor
+    };
+  }
+
+  // ==================== MÓDULO RRHH ====================
+
+  async getEmployees(filters?: { role?: string; isActive?: boolean; search?: string }): Promise<User[]> {
+    const conditions: any[] = [];
+    
+    if (filters?.role) {
+      conditions.push(eq(users.role, filters.role));
+    }
+    if (filters?.isActive !== undefined) {
+      conditions.push(eq(users.isActive, filters.isActive));
+    }
+    
+    let query = db.select().from(users);
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+    
+    const result = await query.orderBy(asc(users.fullName));
+    
+    if (filters?.search) {
+      const searchLower = filters.search.toLowerCase();
+      return result.filter(u => 
+        u.fullName?.toLowerCase().includes(searchLower) ||
+        u.username.toLowerCase().includes(searchLower) ||
+        u.email?.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    return result;
+  }
+
+  async getEmployee(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async createEmployee(employee: InsertEmployee): Promise<User> {
+    const [created] = await db.insert(users).values(employee).returning();
+    return created;
+  }
+
+  async updateEmployee(id: string, data: Partial<InsertEmployee>): Promise<User | undefined> {
+    const [updated] = await db.update(users).set(data).where(eq(users.id, id)).returning();
+    return updated;
+  }
+
+  async deleteEmployee(id: string): Promise<boolean> {
+    const [updated] = await db.update(users)
+      .set({ isActive: false })
+      .where(eq(users.id, id))
+      .returning();
+    return !!updated;
+  }
+
+  async getTimeTracking(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+    const start = filters?.startDate || new Date(new Date().setDate(new Date().getDate() - 7));
+    const end = filters?.endDate || new Date();
+
+    const conditions = [
+      gte(serviceRecords.startTime, start),
+      lte(serviceRecords.startTime, end)
+    ];
+
+    if (filters?.userId) {
+      conditions.push(eq(serviceRecords.userId, filters.userId));
+    }
+
+    const records = await db.select().from(serviceRecords)
+      .where(and(...conditions))
+      .orderBy(desc(serviceRecords.startTime));
+
+    const result = await Promise.all(records.map(async (r) => {
+      const user = await this.getUser(r.userId);
+      const machine = r.machineId ? await this.getMachine(r.machineId) : null;
+      
+      const startTime = r.startTime ? new Date(r.startTime) : null;
+      const endTime = r.endTime ? new Date(r.endTime) : null;
+      
+      let hours = 0;
+      if (startTime && endTime) {
+        hours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+      } else if (r.durationMinutes) {
+        hours = r.durationMinutes / 60;
+      }
+
+      return {
+        id: r.id,
+        employee: user?.fullName || user?.username || r.userId,
+        employeeId: r.userId,
+        date: startTime?.toISOString().split('T')[0] || "",
+        checkIn: startTime?.toTimeString().slice(0, 5) || "",
+        checkOut: endTime?.toTimeString().slice(0, 5) || "",
+        hours: parseFloat(hours.toFixed(2)),
+        machine: machine?.name || machine?.code || null,
+        machineId: r.machineId
+      };
+    }));
+
+    return result;
+  }
+
+  async getEmployeePerformance(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+    const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
+    const end = filters?.endDate || new Date();
+
+    const abastecedores = await db.select().from(users)
+      .where(eq(users.role, "abastecedor"));
+
+    const filtered = filters?.userId 
+      ? abastecedores.filter(u => u.id === filters.userId)
+      : abastecedores;
+
+    const result = await Promise.all(filtered.map(async (user) => {
+      const records = await db.select().from(serviceRecords)
+        .where(and(
+          eq(serviceRecords.userId, user.id),
+          gte(serviceRecords.startTime, start),
+          lte(serviceRecords.startTime, end)
+        ));
+
+      const totalMachines = records.length;
+      const totalDuration = records.reduce((acc, r) => acc + (r.durationMinutes || 0), 0);
+      const avgTime = totalMachines > 0 ? totalDuration / totalMachines : 0;
+
+      const collections = await db.select().from(cashCollections)
+        .where(and(
+          eq(cashCollections.userId, user.id),
+          gte(cashCollections.createdAt, start),
+          lte(cashCollections.createdAt, end)
+        ));
+
+      const totalCollected = collections.reduce((acc, c) => acc + parseFloat(c.actualAmount?.toString() || "0"), 0);
+      const totalExpected = collections.reduce((acc, c) => acc + parseFloat(c.expectedAmount?.toString() || "0"), 0);
+
+      const efficiency = totalExpected > 0 ? (totalCollected / totalExpected * 100) : 100;
+
+      const daysWorked = new Set(records.map(r => r.startTime?.toISOString().split('T')[0])).size;
+      const machinesPerDay = daysWorked > 0 ? totalMachines / daysWorked : 0;
+
+      return {
+        id: user.id,
+        employee: user.fullName || user.username,
+        machinesDay: parseFloat(machinesPerDay.toFixed(1)),
+        avgTime: Math.round(avgTime),
+        efficiency: parseFloat(efficiency.toFixed(1)),
+        totalMachines,
+        totalCollected,
+        rating: efficiency >= 95 ? 5 : efficiency >= 85 ? 4 : efficiency >= 75 ? 3.5 : efficiency >= 60 ? 3 : 2.5
+      };
+    }));
+
+    return result.sort((a, b) => b.efficiency - a.efficiency);
   }
 }
 
