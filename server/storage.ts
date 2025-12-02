@@ -40,7 +40,7 @@ import {
   vehicles, fuelRecords
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, asc } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, asc, or } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -2545,9 +2545,9 @@ export class DatabaseStorage implements IStorage {
         lte(purchaseOrders.createdAt, end)
       ));
     const totalPurchases = ordersList
-      .filter(o => o.status === 'received' || o.status === 'partial')
-      .reduce((sum, o) => sum + parseFloat(o.totalAmount?.toString() || "0"), 0);
-    const pendingOrders = ordersList.filter(o => o.status === 'pending' || o.status === 'approved').length;
+      .filter(o => o.status === 'recibida' || o.status === 'parcialmente_recibida')
+      .reduce((sum, o) => sum + (parseFloat(o.subtotal?.toString() || "0") + parseFloat(o.taxAmount?.toString() || "0")), 0);
+    const pendingOrders = ordersList.filter(o => o.status === 'borrador' || o.status === 'enviada').length;
     
     const fuelRecordsList = await db.select().from(fuelRecords)
       .where(and(
@@ -2676,7 +2676,7 @@ export class DatabaseStorage implements IStorage {
         if (!bySupplier[order.supplierId]) {
           bySupplier[order.supplierId] = { supplierId: order.supplierId, totalAmount: 0, orderCount: 0 };
         }
-        bySupplier[order.supplierId].totalAmount += parseFloat(order.totalAmount?.toString() || "0");
+        bySupplier[order.supplierId].totalAmount += (parseFloat(order.subtotal?.toString() || "0") + parseFloat(order.taxAmount?.toString() || "0"));
         bySupplier[order.supplierId].orderCount++;
       }
       
@@ -2695,7 +2695,7 @@ export class DatabaseStorage implements IStorage {
         if (!byDay[dateKey]) {
           byDay[dateKey] = { date: dateKey, totalAmount: 0, orderCount: 0 };
         }
-        byDay[dateKey].totalAmount += parseFloat(order.totalAmount?.toString() || "0");
+        byDay[dateKey].totalAmount += (parseFloat(order.subtotal?.toString() || "0") + parseFloat(order.taxAmount?.toString() || "0"));
         byDay[dateKey].orderCount++;
       }
       return Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date));
@@ -2918,9 +2918,9 @@ export class DatabaseStorage implements IStorage {
       if (!bySupplier[order.supplierId]) {
         bySupplier[order.supplierId] = { supplierId: order.supplierId, totalAmount: 0, orderCount: 0, receivedCount: 0 };
       }
-      bySupplier[order.supplierId].totalAmount += parseFloat(order.totalAmount?.toString() || "0");
+      bySupplier[order.supplierId].totalAmount += (parseFloat(order.subtotal?.toString() || "0") + parseFloat(order.taxAmount?.toString() || "0"));
       bySupplier[order.supplierId].orderCount++;
-      if (order.status === 'received') bySupplier[order.supplierId].receivedCount++;
+      if (order.status === 'recibida') bySupplier[order.supplierId].receivedCount++;
     }
 
     const result = await Promise.all(Object.values(bySupplier).map(async (item) => {
@@ -2973,7 +2973,7 @@ export class DatabaseStorage implements IStorage {
             orden: p.orderNumber,
             proveedor: supplier?.name || p.supplierId,
             estado: p.status,
-            monto: parseFloat(p.totalAmount?.toString() || "0")
+            monto: parseFloat(p.subtotal?.toString() || "0") + parseFloat(p.taxAmount?.toString() || "0")
           };
         }));
 
