@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -116,65 +118,105 @@ function formatCurrency(value: number): string {
 }
 
 export function ReportsPage() {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("overview");
   const [dateRange, setDateRange] = useState("30d");
   const [salesGroupBy, setSalesGroupBy] = useState<string>("machine");
   const [purchasesGroupBy, setPurchasesGroupBy] = useState<string>("supplier");
   const [fuelGroupBy, setFuelGroupBy] = useState<string>("vehicle");
   const [pettyCashGroupBy, setPettyCashGroupBy] = useState<string>("category");
+  const [isExporting, setIsExporting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { startDate, endDate } = getDateRange(dateRange);
   const startDateStr = startDate.toISOString();
   const endDateStr = endDate.toISOString();
 
-  const { data: overview, isLoading: loadingOverview, refetch: refetchOverview } = useQuery<any>({
+  const { data: overview, isLoading: loadingOverview } = useQuery<any>({
     queryKey: ["/api/reports/overview", { startDate: startDateStr, endDate: endDateStr }],
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: salesBreakdown = [], isLoading: loadingSales } = useQuery<any[]>({
     queryKey: ["/api/reports/sales", { startDate: startDateStr, endDate: endDateStr, groupBy: salesGroupBy }],
     enabled: activeTab === "sales" || activeTab === "overview",
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: purchasesBreakdown = [], isLoading: loadingPurchases } = useQuery<any[]>({
     queryKey: ["/api/reports/purchases", { startDate: startDateStr, endDate: endDateStr, groupBy: purchasesGroupBy }],
     enabled: activeTab === "purchases" || activeTab === "overview",
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: fuelBreakdown = [], isLoading: loadingFuel } = useQuery<any[]>({
     queryKey: ["/api/reports/fuel", { startDate: startDateStr, endDate: endDateStr, groupBy: fuelGroupBy }],
     enabled: activeTab === "fuel" || activeTab === "overview",
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: pettyCashBreakdown = [], isLoading: loadingPettyCash } = useQuery<any[]>({
     queryKey: ["/api/reports/petty-cash", { startDate: startDateStr, endDate: endDateStr, groupBy: pettyCashGroupBy }],
     enabled: activeTab === "petty-cash" || activeTab === "overview",
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: machinePerformance = [], isLoading: loadingMachines } = useQuery<any[]>({
     queryKey: ["/api/reports/machine-performance", { startDate: startDateStr, endDate: endDateStr }],
     enabled: activeTab === "machines",
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: topProducts = [], isLoading: loadingProducts } = useQuery<any[]>({
     queryKey: ["/api/reports/top-products", { startDate: startDateStr, endDate: endDateStr, limit: "10" }],
     enabled: activeTab === "products" || activeTab === "overview",
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: supplierRanking = [], isLoading: loadingSuppliers } = useQuery<any[]>({
     queryKey: ["/api/reports/supplier-ranking", { startDate: startDateStr, endDate: endDateStr }],
     enabled: activeTab === "suppliers",
+    staleTime: 5 * 60 * 1000,
   });
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+      toast({
+        title: "Datos actualizados",
+        description: "Los reportes se han actualizado correctamente",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudieron actualizar los datos",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const handleExport = async (type: 'sales' | 'purchases' | 'fuel' | 'pettycash' | 'inventory') => {
+    setIsExporting(true);
     try {
       const response = await fetch(
         `/api/reports/export?type=${type}&startDate=${startDateStr}&endDate=${endDateStr}`
       );
+      
+      if (!response.ok) {
+        throw new Error("Error al obtener datos");
+      }
+      
       const data = await response.json();
       
       if (data.length === 0) {
-        alert("No hay datos para exportar");
+        toast({
+          title: "Sin datos",
+          description: "No hay datos para exportar en el período seleccionado",
+          variant: "destructive",
+        });
         return;
       }
 
@@ -191,9 +233,20 @@ export function ReportsPage() {
       link.download = `reporte_${type}_${format(new Date(), "yyyy-MM-dd")}.csv`;
       link.click();
       URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Exportación completada",
+        description: `Se exportaron ${data.length} registros`,
+      });
     } catch (error) {
       console.error("Error exporting data:", error);
-      alert("Error al exportar datos");
+      toast({
+        title: "Error de exportación",
+        description: "No se pudo exportar el archivo. Intente nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -488,10 +541,11 @@ export function ReportsPage() {
         <Button
           variant="outline"
           onClick={() => handleExport("sales")}
+          disabled={isExporting}
           data-testid="button-export-sales"
         >
-          <Download className="h-4 w-4 mr-2" />
-          Exportar CSV
+          <Download className={`h-4 w-4 mr-2 ${isExporting ? 'animate-pulse' : ''}`} />
+          {isExporting ? "Exportando..." : "Exportar CSV"}
         </Button>
       </div>
 
@@ -603,10 +657,11 @@ export function ReportsPage() {
         <Button
           variant="outline"
           onClick={() => handleExport("purchases")}
+          disabled={isExporting}
           data-testid="button-export-purchases"
         >
-          <Download className="h-4 w-4 mr-2" />
-          Exportar CSV
+          <Download className={`h-4 w-4 mr-2 ${isExporting ? 'animate-pulse' : ''}`} />
+          {isExporting ? "Exportando..." : "Exportar CSV"}
         </Button>
       </div>
 
@@ -710,10 +765,11 @@ export function ReportsPage() {
         <Button
           variant="outline"
           onClick={() => handleExport("fuel")}
+          disabled={isExporting}
           data-testid="button-export-fuel"
         >
-          <Download className="h-4 w-4 mr-2" />
-          Exportar CSV
+          <Download className={`h-4 w-4 mr-2 ${isExporting ? 'animate-pulse' : ''}`} />
+          {isExporting ? "Exportando..." : "Exportar CSV"}
         </Button>
       </div>
 
@@ -828,10 +884,11 @@ export function ReportsPage() {
         <Button
           variant="outline"
           onClick={() => handleExport("pettycash")}
+          disabled={isExporting}
           data-testid="button-export-pettycash"
         >
-          <Download className="h-4 w-4 mr-2" />
-          Exportar CSV
+          <Download className={`h-4 w-4 mr-2 ${isExporting ? 'animate-pulse' : ''}`} />
+          {isExporting ? "Exportando..." : "Exportar CSV"}
         </Button>
       </div>
 
@@ -1135,10 +1192,11 @@ export function ReportsPage() {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => refetchOverview()}
+              onClick={handleRefresh}
+              disabled={isRefreshing}
               data-testid="button-refresh"
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         </div>
