@@ -23,6 +23,9 @@ import { PettyCashPage } from "@/pages/petty-cash";
 import PurchasesPage from "@/pages/purchases";
 import { FuelPage } from "@/pages/fuel";
 import { ReportsPage } from "@/pages/reports";
+import { TasksPage } from "@/pages/tasks";
+import { TasksTodayPage } from "@/pages/tasks-today";
+import { CalendarPage } from "@/pages/calendar";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
@@ -151,9 +154,9 @@ function ProtectedRoutes() {
               <Route path="/" component={DashboardPage} />
               <Route path="/maquinas" component={MachinesPage} />
               <Route path="/maquinas/:id" component={MachineDetailPage} />
-              <Route path="/tareas" component={DashboardPage} />
-              <Route path="/todas-tareas" component={DashboardPage} />
-              <Route path="/calendario" component={DashboardPage} />
+              <Route path="/tareas" component={TasksTodayPage} />
+              <Route path="/todas-tareas" component={TasksPage} />
+              <Route path="/calendario" component={CalendarPage} />
               <Route path="/abastecedor" component={SupplierPage} />
               <Route path="/almacen" component={WarehousePage} />
               <Route path="/dinero-productos" component={MoneyProductsPage} />
