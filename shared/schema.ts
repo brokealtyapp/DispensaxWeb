@@ -425,3 +425,335 @@ export const suppliersRelations = relations(suppliers, ({ many }) => ({
   lots: many(productLots),
   movements: many(warehouseMovements),
 }));
+
+// ==================== MÓDULO ABASTECEDOR ====================
+
+export const routeStatusEnum = pgEnum("route_status", [
+  "pendiente",
+  "en_progreso",
+  "completada",
+  "cancelada"
+]);
+
+export const routes = pgTable("routes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  date: timestamp("date").notNull(),
+  supplierId: varchar("supplier_id").references(() => users.id).notNull(),
+  supervisorId: varchar("supervisor_id").references(() => users.id),
+  status: text("status").default("pendiente"),
+  totalStops: integer("total_stops").default(0),
+  completedStops: integer("completed_stops").default(0),
+  estimatedDuration: integer("estimated_duration_minutes"),
+  actualDuration: integer("actual_duration_minutes"),
+  startTime: timestamp("start_time"),
+  endTime: timestamp("end_time"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertRouteSchema = createInsertSchema(routes).omit({
+  id: true,
+  createdAt: true,
+  completedStops: true,
+  actualDuration: true,
+  startTime: true,
+  endTime: true,
+});
+
+export type InsertRoute = z.infer<typeof insertRouteSchema>;
+export type Route = typeof routes.$inferSelect;
+
+export const stopStatusEnum = pgEnum("stop_status", [
+  "pendiente",
+  "en_progreso",
+  "completada",
+  "omitida"
+]);
+
+export const routeStops = pgTable("route_stops", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  routeId: varchar("route_id").references(() => routes.id).notNull(),
+  machineId: varchar("machine_id").references(() => machines.id).notNull(),
+  order: integer("order").notNull(),
+  status: text("status").default("pendiente"),
+  estimatedArrival: timestamp("estimated_arrival"),
+  actualArrival: timestamp("actual_arrival"),
+  actualDeparture: timestamp("actual_departure"),
+  durationMinutes: integer("duration_minutes"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertRouteStopSchema = createInsertSchema(routeStops).omit({
+  id: true,
+  createdAt: true,
+  actualArrival: true,
+  actualDeparture: true,
+  durationMinutes: true,
+});
+
+export type InsertRouteStop = z.infer<typeof insertRouteStopSchema>;
+export type RouteStop = typeof routeStops.$inferSelect;
+
+export const serviceTypeEnum = pgEnum("service_type", [
+  "abastecimiento",
+  "limpieza",
+  "mantenimiento",
+  "reparacion",
+  "inspeccion",
+  "recoleccion_efectivo"
+]);
+
+export const serviceRecords = pgTable("service_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  routeStopId: varchar("route_stop_id").references(() => routeStops.id),
+  machineId: varchar("machine_id").references(() => machines.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  serviceType: text("service_type").default("abastecimiento"),
+  startTime: timestamp("start_time").notNull(),
+  endTime: timestamp("end_time"),
+  durationMinutes: integer("duration_minutes"),
+  status: text("status").default("en_progreso"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertServiceRecordSchema = createInsertSchema(serviceRecords).omit({
+  id: true,
+  createdAt: true,
+  endTime: true,
+  durationMinutes: true,
+});
+
+export type InsertServiceRecord = z.infer<typeof insertServiceRecordSchema>;
+export type ServiceRecord = typeof serviceRecords.$inferSelect;
+
+export const cashCollections = pgTable("cash_collections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  serviceRecordId: varchar("service_record_id").references(() => serviceRecords.id),
+  machineId: varchar("machine_id").references(() => machines.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  expectedAmount: decimal("expected_amount", { precision: 10, scale: 2 }),
+  actualAmount: decimal("actual_amount", { precision: 10, scale: 2 }).notNull(),
+  difference: decimal("difference", { precision: 10, scale: 2 }),
+  coinAmount: decimal("coin_amount", { precision: 10, scale: 2 }),
+  billAmount: decimal("bill_amount", { precision: 10, scale: 2 }),
+  photoUrl: text("photo_url"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCashCollectionSchema = createInsertSchema(cashCollections).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCashCollection = z.infer<typeof insertCashCollectionSchema>;
+export type CashCollection = typeof cashCollections.$inferSelect;
+
+export const productLoadTypeEnum = pgEnum("product_load_type", [
+  "cargado",
+  "retirado_caduco",
+  "retirado_dañado",
+  "retirado_sobrante",
+  "ajuste"
+]);
+
+export const productLoads = pgTable("product_loads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  serviceRecordId: varchar("service_record_id").references(() => serviceRecords.id),
+  machineId: varchar("machine_id").references(() => machines.id).notNull(),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  loadType: text("load_type").default("cargado"),
+  quantity: integer("quantity").notNull(),
+  lotId: varchar("lot_id").references(() => productLots.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertProductLoadSchema = createInsertSchema(productLoads).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertProductLoad = z.infer<typeof insertProductLoadSchema>;
+export type ProductLoad = typeof productLoads.$inferSelect;
+
+export const issueTypeEnum = pgEnum("issue_type", [
+  "falla_tecnica",
+  "suciedad",
+  "pieza_faltante",
+  "vandalismo",
+  "error_sistema",
+  "otro"
+]);
+
+export const issuePriorityEnum = pgEnum("issue_priority", [
+  "baja",
+  "media",
+  "alta",
+  "critica"
+]);
+
+export const issueReports = pgTable("issue_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  serviceRecordId: varchar("service_record_id").references(() => serviceRecords.id),
+  machineId: varchar("machine_id").references(() => machines.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  issueType: text("issue_type").notNull(),
+  priority: text("priority").default("media"),
+  description: text("description").notNull(),
+  photoUrl: text("photo_url"),
+  status: text("status").default("pendiente"),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: varchar("resolved_by").references(() => users.id),
+  resolution: text("resolution"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertIssueReportSchema = createInsertSchema(issueReports).omit({
+  id: true,
+  createdAt: true,
+  resolvedAt: true,
+  resolvedBy: true,
+  resolution: true,
+});
+
+export type InsertIssueReport = z.infer<typeof insertIssueReportSchema>;
+export type IssueReport = typeof issueReports.$inferSelect;
+
+export const supplierInventory = pgTable("supplier_inventory", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  quantity: integer("quantity").default(0),
+  lotId: varchar("lot_id").references(() => productLots.id),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+});
+
+export const insertSupplierInventorySchema = createInsertSchema(supplierInventory).omit({
+  id: true,
+  lastUpdated: true,
+});
+
+export type InsertSupplierInventory = z.infer<typeof insertSupplierInventorySchema>;
+export type SupplierInventory = typeof supplierInventory.$inferSelect;
+
+// Relaciones del módulo Abastecedor
+export const routesRelations = relations(routes, ({ one, many }) => ({
+  supplier: one(users, {
+    fields: [routes.supplierId],
+    references: [users.id],
+    relationName: "supplierRoutes",
+  }),
+  supervisor: one(users, {
+    fields: [routes.supervisorId],
+    references: [users.id],
+    relationName: "supervisorRoutes",
+  }),
+  stops: many(routeStops),
+}));
+
+export const routeStopsRelations = relations(routeStops, ({ one, many }) => ({
+  route: one(routes, {
+    fields: [routeStops.routeId],
+    references: [routes.id],
+  }),
+  machine: one(machines, {
+    fields: [routeStops.machineId],
+    references: [machines.id],
+  }),
+  serviceRecords: many(serviceRecords),
+}));
+
+export const serviceRecordsRelations = relations(serviceRecords, ({ one, many }) => ({
+  routeStop: one(routeStops, {
+    fields: [serviceRecords.routeStopId],
+    references: [routeStops.id],
+  }),
+  machine: one(machines, {
+    fields: [serviceRecords.machineId],
+    references: [machines.id],
+  }),
+  user: one(users, {
+    fields: [serviceRecords.userId],
+    references: [users.id],
+  }),
+  cashCollections: many(cashCollections),
+  productLoads: many(productLoads),
+  issueReports: many(issueReports),
+}));
+
+export const cashCollectionsRelations = relations(cashCollections, ({ one }) => ({
+  serviceRecord: one(serviceRecords, {
+    fields: [cashCollections.serviceRecordId],
+    references: [serviceRecords.id],
+  }),
+  machine: one(machines, {
+    fields: [cashCollections.machineId],
+    references: [machines.id],
+  }),
+  user: one(users, {
+    fields: [cashCollections.userId],
+    references: [users.id],
+  }),
+}));
+
+export const productLoadsRelations = relations(productLoads, ({ one }) => ({
+  serviceRecord: one(serviceRecords, {
+    fields: [productLoads.serviceRecordId],
+    references: [serviceRecords.id],
+  }),
+  machine: one(machines, {
+    fields: [productLoads.machineId],
+    references: [machines.id],
+  }),
+  product: one(products, {
+    fields: [productLoads.productId],
+    references: [products.id],
+  }),
+  user: one(users, {
+    fields: [productLoads.userId],
+    references: [users.id],
+  }),
+  lot: one(productLots, {
+    fields: [productLoads.lotId],
+    references: [productLots.id],
+  }),
+}));
+
+export const issueReportsRelations = relations(issueReports, ({ one }) => ({
+  serviceRecord: one(serviceRecords, {
+    fields: [issueReports.serviceRecordId],
+    references: [serviceRecords.id],
+  }),
+  machine: one(machines, {
+    fields: [issueReports.machineId],
+    references: [machines.id],
+  }),
+  user: one(users, {
+    fields: [issueReports.userId],
+    references: [users.id],
+  }),
+  resolvedByUser: one(users, {
+    fields: [issueReports.resolvedBy],
+    references: [users.id],
+    relationName: "resolvedIssues",
+  }),
+}));
+
+export const supplierInventoryRelations = relations(supplierInventory, ({ one }) => ({
+  user: one(users, {
+    fields: [supplierInventory.userId],
+    references: [users.id],
+  }),
+  product: one(products, {
+    fields: [supplierInventory.productId],
+    references: [products.id],
+  }),
+  lot: one(productLots, {
+    fields: [supplierInventory.lotId],
+    references: [productLots.id],
+  }),
+}));
