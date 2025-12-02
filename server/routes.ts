@@ -8,7 +8,9 @@ import {
   insertMachineInventorySchema,
   insertMachineAlertSchema,
   insertMachineVisitSchema,
-  insertMachineSaleSchema
+  insertMachineSaleSchema,
+  insertSupplierSchema,
+  insertProductLotSchema
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -394,6 +396,225 @@ export async function registerRoutes(
       res.json(zones);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener zonas" });
+    }
+  });
+
+  // ==================== MÓDULO ALMACÉN ====================
+
+  // Proveedores
+  app.get("/api/suppliers", async (req: Request, res: Response) => {
+    try {
+      const suppliers = await storage.getSuppliers();
+      res.json(suppliers);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener proveedores" });
+    }
+  });
+
+  app.get("/api/suppliers/:id", async (req: Request, res: Response) => {
+    try {
+      const supplier = await storage.getSupplier(req.params.id);
+      if (!supplier) {
+        return res.status(404).json({ error: "Proveedor no encontrado" });
+      }
+      res.json(supplier);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener proveedor" });
+    }
+  });
+
+  app.post("/api/suppliers", async (req: Request, res: Response) => {
+    try {
+      const data = insertSupplierSchema.parse(req.body);
+      const supplier = await storage.createSupplier(data);
+      res.status(201).json(supplier);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al crear proveedor" });
+    }
+  });
+
+  app.patch("/api/suppliers/:id", async (req: Request, res: Response) => {
+    try {
+      const data = insertSupplierSchema.partial().parse(req.body);
+      const supplier = await storage.updateSupplier(req.params.id, data);
+      if (!supplier) {
+        return res.status(404).json({ error: "Proveedor no encontrado" });
+      }
+      res.json(supplier);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al actualizar proveedor" });
+    }
+  });
+
+  app.delete("/api/suppliers/:id", async (req: Request, res: Response) => {
+    try {
+      await storage.deleteSupplier(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Error al eliminar proveedor" });
+    }
+  });
+
+  // Inventario de Almacén
+  app.get("/api/warehouse/inventory", async (req: Request, res: Response) => {
+    try {
+      const inventory = await storage.getWarehouseInventory();
+      res.json(inventory);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener inventario de almacén" });
+    }
+  });
+
+  app.get("/api/warehouse/low-stock", async (req: Request, res: Response) => {
+    try {
+      const lowStock = await storage.getLowStockAlerts();
+      res.json(lowStock);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener alertas de stock bajo" });
+    }
+  });
+
+  app.patch("/api/warehouse/inventory/:productId", async (req: Request, res: Response) => {
+    try {
+      const { quantity, minStock, maxStock, reorderPoint } = req.body;
+      const inventory = await storage.updateWarehouseStock(req.params.productId, quantity);
+      res.json(inventory);
+    } catch (error) {
+      res.status(500).json({ error: "Error al actualizar stock" });
+    }
+  });
+
+  // Lotes de Productos
+  app.get("/api/warehouse/lots", async (req: Request, res: Response) => {
+    try {
+      const { productId } = req.query;
+      const lots = await storage.getProductLots(productId as string | undefined);
+      res.json(lots);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener lotes" });
+    }
+  });
+
+  app.get("/api/warehouse/lots/expiring", async (req: Request, res: Response) => {
+    try {
+      const { days } = req.query;
+      const expiringLots = await storage.getExpiringLots(parseInt(days as string) || 30);
+      res.json(expiringLots);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener lotes por vencer" });
+    }
+  });
+
+  app.post("/api/warehouse/lots", async (req: Request, res: Response) => {
+    try {
+      const data = insertProductLotSchema.parse(req.body);
+      const lot = await storage.createProductLot(data);
+      res.status(201).json(lot);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al crear lote" });
+    }
+  });
+
+  // Movimientos (Kardex)
+  app.get("/api/warehouse/movements", async (req: Request, res: Response) => {
+    try {
+      const { productId, limit } = req.query;
+      const movements = await storage.getWarehouseMovements(
+        productId as string | undefined,
+        limit ? parseInt(limit as string) : undefined
+      );
+      res.json(movements);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener movimientos" });
+    }
+  });
+
+  // Entrada de mercancía (compra)
+  app.post("/api/warehouse/entry", async (req: Request, res: Response) => {
+    try {
+      const { productId, quantity, unitCost, supplierId, lotNumber, expirationDate, notes } = req.body;
+      
+      if (!productId || !quantity || !unitCost || !lotNumber) {
+        return res.status(400).json({ error: "Faltan campos requeridos" });
+      }
+      
+      const movement = await storage.registerPurchaseEntry({
+        productId,
+        quantity: parseInt(quantity),
+        unitCost: parseFloat(unitCost),
+        supplierId,
+        lotNumber,
+        expirationDate: expirationDate ? new Date(expirationDate) : undefined,
+        notes,
+      });
+      
+      res.status(201).json(movement);
+    } catch (error) {
+      console.error("Error registering entry:", error);
+      res.status(500).json({ error: "Error al registrar entrada" });
+    }
+  });
+
+  // Salida hacia abastecedor
+  app.post("/api/warehouse/exit", async (req: Request, res: Response) => {
+    try {
+      const { productId, quantity, destinationUserId, notes } = req.body;
+      
+      if (!productId || !quantity || !destinationUserId) {
+        return res.status(400).json({ error: "Faltan campos requeridos" });
+      }
+      
+      const movement = await storage.registerSupplierExit({
+        productId,
+        quantity: parseInt(quantity),
+        destinationUserId,
+        notes,
+      });
+      
+      res.status(201).json(movement);
+    } catch (error: any) {
+      if (error.message === "Stock insuficiente") {
+        return res.status(400).json({ error: "Stock insuficiente para realizar la salida" });
+      }
+      console.error("Error registering exit:", error);
+      res.status(500).json({ error: "Error al registrar salida" });
+    }
+  });
+
+  // Estadísticas del almacén
+  app.get("/api/warehouse/stats", async (req: Request, res: Response) => {
+    try {
+      const inventory = await storage.getWarehouseInventory();
+      const lowStock = await storage.getLowStockAlerts();
+      const expiringLots = await storage.getExpiringLots(30);
+      const movements = await storage.getWarehouseMovements(undefined, 10);
+      
+      const totalProducts = inventory.length;
+      const totalStock = inventory.reduce((sum, inv) => sum + (inv.currentStock || 0), 0);
+      const totalValue = inventory.reduce((sum, inv) => {
+        const cost = parseFloat(inv.product.costPrice || "0");
+        return sum + (inv.currentStock || 0) * cost;
+      }, 0);
+      
+      res.json({
+        totalProducts,
+        totalStock,
+        totalValue,
+        lowStockCount: lowStock.length,
+        expiringCount: expiringLots.length,
+        recentMovements: movements,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener estadísticas" });
     }
   });
 

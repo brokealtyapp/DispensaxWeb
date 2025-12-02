@@ -7,10 +7,15 @@ import {
   type MachineAlert, type InsertMachineAlert,
   type MachineVisit, type InsertMachineVisit,
   type MachineSale, type InsertMachineSale,
-  users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales
+  type Supplier, type InsertSupplier,
+  type WarehouseInventory, type InsertWarehouseInventory,
+  type ProductLot, type InsertProductLot,
+  type WarehouseMovement, type InsertWarehouseMovement,
+  users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
+  suppliers, warehouseInventory, productLots, warehouseMovements
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, asc } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -52,6 +57,32 @@ export interface IStorage {
   getMachineSales(machineId: string, startDate?: Date, endDate?: Date): Promise<MachineSale[]>;
   createMachineSale(sale: InsertMachineSale): Promise<MachineSale>;
   getMachineSalesSummary(machineId: string): Promise<{ today: number; week: number; month: number }>;
+  
+  // Almacén - Proveedores
+  getSuppliers(): Promise<Supplier[]>;
+  getSupplier(id: string): Promise<Supplier | undefined>;
+  createSupplier(supplier: InsertSupplier): Promise<Supplier>;
+  updateSupplier(id: string, supplier: Partial<InsertSupplier>): Promise<Supplier | undefined>;
+  deleteSupplier(id: string): Promise<boolean>;
+  
+  // Almacén - Inventario
+  getWarehouseInventory(): Promise<(WarehouseInventory & { product: Product })[]>;
+  getWarehouseInventoryItem(productId: string): Promise<WarehouseInventory | undefined>;
+  updateWarehouseStock(productId: string, quantity: number): Promise<WarehouseInventory>;
+  getLowStockAlerts(): Promise<(WarehouseInventory & { product: Product })[]>;
+  
+  // Almacén - Lotes
+  getProductLots(productId?: string): Promise<(ProductLot & { product: Product; supplier?: Supplier })[]>;
+  getProductLot(id: string): Promise<ProductLot | undefined>;
+  createProductLot(lot: InsertProductLot): Promise<ProductLot>;
+  updateProductLot(id: string, lot: Partial<InsertProductLot>): Promise<ProductLot | undefined>;
+  getExpiringLots(days: number): Promise<(ProductLot & { product: Product })[]>;
+  
+  // Almacén - Movimientos (Kardex)
+  getWarehouseMovements(productId?: string, limit?: number): Promise<(WarehouseMovement & { product: Product })[]>;
+  createWarehouseMovement(movement: InsertWarehouseMovement): Promise<WarehouseMovement>;
+  registerPurchaseEntry(data: { productId: string; quantity: number; unitCost: number; supplierId?: string; lotNumber: string; expirationDate?: Date; notes?: string }): Promise<WarehouseMovement>;
+  registerSupplierExit(data: { productId: string; quantity: number; destinationUserId: string; notes?: string }): Promise<WarehouseMovement>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -327,6 +358,244 @@ export class DatabaseStorage implements IStorage {
       week: parseFloat(weekSales[0]?.total || "0"),
       month: parseFloat(monthSales[0]?.total || "0"),
     };
+  }
+
+  // ==================== MÓDULO ALMACÉN ====================
+
+  // Proveedores
+  async getSuppliers(): Promise<Supplier[]> {
+    return db.select().from(suppliers).where(eq(suppliers.isActive, true)).orderBy(suppliers.name);
+  }
+
+  async getSupplier(id: string): Promise<Supplier | undefined> {
+    const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, id));
+    return supplier;
+  }
+
+  async createSupplier(supplier: InsertSupplier): Promise<Supplier> {
+    const [newSupplier] = await db.insert(suppliers).values(supplier).returning();
+    return newSupplier;
+  }
+
+  async updateSupplier(id: string, supplier: Partial<InsertSupplier>): Promise<Supplier | undefined> {
+    const [updated] = await db.update(suppliers).set(supplier).where(eq(suppliers.id, id)).returning();
+    return updated;
+  }
+
+  async deleteSupplier(id: string): Promise<boolean> {
+    await db.update(suppliers).set({ isActive: false }).where(eq(suppliers.id, id));
+    return true;
+  }
+
+  // Inventario de Almacén
+  async getWarehouseInventory(): Promise<(WarehouseInventory & { product: Product })[]> {
+    const inventory = await db.select().from(warehouseInventory);
+    
+    const result = await Promise.all(inventory.map(async (inv) => {
+      const product = await this.getProduct(inv.productId);
+      return { ...inv, product: product! };
+    }));
+    
+    return result.filter(inv => inv.product);
+  }
+
+  async getWarehouseInventoryItem(productId: string): Promise<WarehouseInventory | undefined> {
+    const [item] = await db.select().from(warehouseInventory).where(eq(warehouseInventory.productId, productId));
+    return item;
+  }
+
+  async updateWarehouseStock(productId: string, quantity: number): Promise<WarehouseInventory> {
+    const existing = await this.getWarehouseInventoryItem(productId);
+    
+    if (existing) {
+      const [updated] = await db.update(warehouseInventory)
+        .set({ currentStock: quantity, lastUpdated: new Date() })
+        .where(eq(warehouseInventory.productId, productId))
+        .returning();
+      return updated;
+    }
+    
+    const [newInventory] = await db.insert(warehouseInventory)
+      .values({ productId, currentStock: quantity })
+      .returning();
+    return newInventory;
+  }
+
+  async getLowStockAlerts(): Promise<(WarehouseInventory & { product: Product })[]> {
+    const inventory = await db.select().from(warehouseInventory);
+    const lowStock = inventory.filter(inv => (inv.currentStock || 0) <= (inv.reorderPoint || 20));
+    
+    const result = await Promise.all(lowStock.map(async (inv) => {
+      const product = await this.getProduct(inv.productId);
+      return { ...inv, product: product! };
+    }));
+    
+    return result.filter(inv => inv.product);
+  }
+
+  // Lotes de Productos
+  async getProductLots(productId?: string): Promise<(ProductLot & { product: Product; supplier?: Supplier })[]> {
+    let lotsQuery = productId 
+      ? db.select().from(productLots).where(and(eq(productLots.productId, productId), eq(productLots.isActive, true)))
+      : db.select().from(productLots).where(eq(productLots.isActive, true));
+    
+    const lots = await lotsQuery.orderBy(asc(productLots.expirationDate));
+    
+    const result = await Promise.all(lots.map(async (lot) => {
+      const product = await this.getProduct(lot.productId);
+      const supplier = lot.supplierId ? await this.getSupplier(lot.supplierId) : undefined;
+      return { ...lot, product: product!, supplier };
+    }));
+    
+    return result.filter(lot => lot.product);
+  }
+
+  async getProductLot(id: string): Promise<ProductLot | undefined> {
+    const [lot] = await db.select().from(productLots).where(eq(productLots.id, id));
+    return lot;
+  }
+
+  async createProductLot(lot: InsertProductLot): Promise<ProductLot> {
+    const [newLot] = await db.insert(productLots)
+      .values({ ...lot, remainingQuantity: lot.quantity })
+      .returning();
+    return newLot;
+  }
+
+  async updateProductLot(id: string, lot: Partial<InsertProductLot>): Promise<ProductLot | undefined> {
+    const [updated] = await db.update(productLots).set(lot).where(eq(productLots.id, id)).returning();
+    return updated;
+  }
+
+  async getExpiringLots(days: number): Promise<(ProductLot & { product: Product })[]> {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + days);
+    
+    const lots = await db.select().from(productLots)
+      .where(and(
+        eq(productLots.isActive, true),
+        lte(productLots.expirationDate, futureDate),
+        gte(productLots.remainingQuantity, 1)
+      ))
+      .orderBy(asc(productLots.expirationDate));
+    
+    const result = await Promise.all(lots.map(async (lot) => {
+      const product = await this.getProduct(lot.productId);
+      return { ...lot, product: product! };
+    }));
+    
+    return result.filter(lot => lot.product);
+  }
+
+  // Movimientos de Almacén (Kardex)
+  async getWarehouseMovements(productId?: string, limit?: number): Promise<(WarehouseMovement & { product: Product })[]> {
+    let query = productId
+      ? db.select().from(warehouseMovements).where(eq(warehouseMovements.productId, productId))
+      : db.select().from(warehouseMovements);
+    
+    const movements = await query.orderBy(desc(warehouseMovements.createdAt)).limit(limit || 100);
+    
+    const result = await Promise.all(movements.map(async (mov) => {
+      const product = await this.getProduct(mov.productId);
+      return { ...mov, product: product! };
+    }));
+    
+    return result.filter(mov => mov.product);
+  }
+
+  async createWarehouseMovement(movement: InsertWarehouseMovement): Promise<WarehouseMovement> {
+    const [newMovement] = await db.insert(warehouseMovements).values(movement).returning();
+    return newMovement;
+  }
+
+  async registerPurchaseEntry(data: { 
+    productId: string; 
+    quantity: number; 
+    unitCost: number; 
+    supplierId?: string; 
+    lotNumber: string; 
+    expirationDate?: Date; 
+    notes?: string 
+  }): Promise<WarehouseMovement> {
+    const currentInventory = await this.getWarehouseInventoryItem(data.productId);
+    const previousStock = currentInventory?.currentStock || 0;
+    const newStock = previousStock + data.quantity;
+
+    // Crear lote
+    const lot = await this.createProductLot({
+      productId: data.productId,
+      lotNumber: data.lotNumber,
+      quantity: data.quantity,
+      costPrice: String(data.unitCost),
+      expirationDate: data.expirationDate,
+      supplierId: data.supplierId,
+      notes: data.notes,
+    });
+
+    // Actualizar inventario
+    await this.updateWarehouseStock(data.productId, newStock);
+
+    // Registrar movimiento
+    const movement = await this.createWarehouseMovement({
+      productId: data.productId,
+      lotId: lot.id,
+      movementType: "entrada_compra",
+      quantity: data.quantity,
+      previousStock,
+      newStock,
+      unitCost: String(data.unitCost),
+      totalCost: String(data.quantity * data.unitCost),
+      supplierId: data.supplierId,
+      notes: data.notes,
+    });
+
+    return movement;
+  }
+
+  async registerSupplierExit(data: { 
+    productId: string; 
+    quantity: number; 
+    destinationUserId: string; 
+    notes?: string 
+  }): Promise<WarehouseMovement> {
+    const currentInventory = await this.getWarehouseInventoryItem(data.productId);
+    const previousStock = currentInventory?.currentStock || 0;
+    
+    if (previousStock < data.quantity) {
+      throw new Error("Stock insuficiente");
+    }
+    
+    const newStock = previousStock - data.quantity;
+
+    // Actualizar inventario
+    await this.updateWarehouseStock(data.productId, newStock);
+
+    // Descontar de lotes (FIFO - primero los más próximos a caducar)
+    const lots = await this.getProductLots(data.productId);
+    let remaining = data.quantity;
+    
+    for (const lot of lots) {
+      if (remaining <= 0) break;
+      
+      const toDeduct = Math.min(remaining, lot.remainingQuantity);
+      await db.update(productLots)
+        .set({ remainingQuantity: lot.remainingQuantity - toDeduct })
+        .where(eq(productLots.id, lot.id));
+      remaining -= toDeduct;
+    }
+
+    // Registrar movimiento
+    const movement = await this.createWarehouseMovement({
+      productId: data.productId,
+      movementType: "salida_abastecedor",
+      quantity: data.quantity,
+      previousStock,
+      newStock,
+      destinationUserId: data.destinationUserId,
+      notes: data.notes,
+    });
+
+    return movement;
   }
 }
 

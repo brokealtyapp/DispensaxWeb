@@ -273,3 +273,155 @@ export const machineSalesRelations = relations(machineSales, ({ one }) => ({
     references: [products.id],
   }),
 }));
+
+// ==================== MÓDULO ALMACÉN ====================
+
+export const suppliers = pgTable("suppliers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  code: text("code").unique(),
+  contactName: text("contact_name"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+  address: text("address"),
+  city: text("city"),
+  taxId: text("tax_id"),
+  paymentTerms: text("payment_terms"),
+  notes: text("notes"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSupplierSchema = createInsertSchema(suppliers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSupplier = z.infer<typeof insertSupplierSchema>;
+export type Supplier = typeof suppliers.$inferSelect;
+
+export const warehouseInventory = pgTable("warehouse_inventory", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  currentStock: integer("current_stock").default(0),
+  minStock: integer("min_stock").default(10),
+  maxStock: integer("max_stock").default(100),
+  reorderPoint: integer("reorder_point").default(20),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+});
+
+export const insertWarehouseInventorySchema = createInsertSchema(warehouseInventory).omit({
+  id: true,
+  lastUpdated: true,
+});
+
+export type InsertWarehouseInventory = z.infer<typeof insertWarehouseInventorySchema>;
+export type WarehouseInventory = typeof warehouseInventory.$inferSelect;
+
+export const productLots = pgTable("product_lots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  lotNumber: text("lot_number").notNull(),
+  quantity: integer("quantity").notNull(),
+  remainingQuantity: integer("remaining_quantity").notNull(),
+  costPrice: decimal("cost_price", { precision: 10, scale: 2 }),
+  expirationDate: timestamp("expiration_date"),
+  supplierId: varchar("supplier_id").references(() => suppliers.id),
+  purchaseDate: timestamp("purchase_date").defaultNow(),
+  notes: text("notes"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertProductLotSchema = createInsertSchema(productLots).omit({
+  id: true,
+  createdAt: true,
+  remainingQuantity: true,
+});
+
+export type InsertProductLot = z.infer<typeof insertProductLotSchema>;
+export type ProductLot = typeof productLots.$inferSelect;
+
+export const movementTypes = pgEnum("movement_type", [
+  "entrada_compra",
+  "entrada_devolucion",
+  "salida_abastecedor",
+  "salida_merma",
+  "salida_caducidad",
+  "salida_danio",
+  "ajuste_inventario",
+  "transferencia"
+]);
+
+export const warehouseMovements = pgTable("warehouse_movements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  lotId: varchar("lot_id").references(() => productLots.id),
+  movementType: text("movement_type").notNull(),
+  quantity: integer("quantity").notNull(),
+  previousStock: integer("previous_stock").notNull(),
+  newStock: integer("new_stock").notNull(),
+  unitCost: decimal("unit_cost", { precision: 10, scale: 2 }),
+  totalCost: decimal("total_cost", { precision: 10, scale: 2 }),
+  reference: text("reference"),
+  supplierId: varchar("supplier_id").references(() => suppliers.id),
+  userId: varchar("user_id").references(() => users.id),
+  destinationUserId: varchar("destination_user_id").references(() => users.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertWarehouseMovementSchema = createInsertSchema(warehouseMovements).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertWarehouseMovement = z.infer<typeof insertWarehouseMovementSchema>;
+export type WarehouseMovement = typeof warehouseMovements.$inferSelect;
+
+// Relaciones del módulo Almacén
+export const warehouseInventoryRelations = relations(warehouseInventory, ({ one }) => ({
+  product: one(products, {
+    fields: [warehouseInventory.productId],
+    references: [products.id],
+  }),
+}));
+
+export const productLotsRelations = relations(productLots, ({ one }) => ({
+  product: one(products, {
+    fields: [productLots.productId],
+    references: [products.id],
+  }),
+  supplier: one(suppliers, {
+    fields: [productLots.supplierId],
+    references: [suppliers.id],
+  }),
+}));
+
+export const warehouseMovementsRelations = relations(warehouseMovements, ({ one }) => ({
+  product: one(products, {
+    fields: [warehouseMovements.productId],
+    references: [products.id],
+  }),
+  lot: one(productLots, {
+    fields: [warehouseMovements.lotId],
+    references: [productLots.id],
+  }),
+  supplier: one(suppliers, {
+    fields: [warehouseMovements.supplierId],
+    references: [suppliers.id],
+  }),
+  user: one(users, {
+    fields: [warehouseMovements.userId],
+    references: [users.id],
+  }),
+  destinationUser: one(users, {
+    fields: [warehouseMovements.destinationUserId],
+    references: [users.id],
+  }),
+}));
+
+export const suppliersRelations = relations(suppliers, ({ many }) => ({
+  lots: many(productLots),
+  movements: many(warehouseMovements),
+}));
