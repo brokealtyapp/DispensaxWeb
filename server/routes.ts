@@ -10,7 +10,13 @@ import {
   insertMachineVisitSchema,
   insertMachineSaleSchema,
   insertSupplierSchema,
-  insertProductLotSchema
+  insertProductLotSchema,
+  insertRouteSchema,
+  insertRouteStopSchema,
+  insertServiceRecordSchema,
+  insertCashCollectionSchema,
+  insertProductLoadSchema,
+  insertIssueReportSchema
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -615,6 +621,436 @@ export async function registerRoutes(
       });
     } catch (error) {
       res.status(500).json({ error: "Error al obtener estadísticas" });
+    }
+  });
+
+  // ==================== MÓDULO ABASTECEDOR ====================
+
+  // Rutas
+  app.get("/api/supplier/routes", async (req: Request, res: Response) => {
+    try {
+      const { userId, date, status } = req.query;
+      const routes = await storage.getRoutes(
+        userId as string | undefined,
+        date ? new Date(date as string) : undefined,
+        status as string | undefined
+      );
+      res.json(routes);
+    } catch (error) {
+      console.error("Error getting routes:", error);
+      res.status(500).json({ error: "Error al obtener rutas" });
+    }
+  });
+
+  app.get("/api/supplier/routes/:id", async (req: Request, res: Response) => {
+    try {
+      const route = await storage.getRoute(req.params.id);
+      if (!route) {
+        return res.status(404).json({ error: "Ruta no encontrada" });
+      }
+      res.json(route);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener ruta" });
+    }
+  });
+
+  app.get("/api/supplier/today-route/:userId", async (req: Request, res: Response) => {
+    try {
+      const route = await storage.getTodayRoute(req.params.userId);
+      if (!route) {
+        return res.json(null);
+      }
+      res.json(route);
+    } catch (error) {
+      console.error("Error getting today route:", error);
+      res.status(500).json({ error: "Error al obtener ruta del día" });
+    }
+  });
+
+  app.post("/api/supplier/routes", async (req: Request, res: Response) => {
+    try {
+      const data = insertRouteSchema.parse(req.body);
+      const route = await storage.createRoute(data);
+      res.status(201).json(route);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating route:", error);
+      res.status(500).json({ error: "Error al crear ruta" });
+    }
+  });
+
+  app.patch("/api/supplier/routes/:id", async (req: Request, res: Response) => {
+    try {
+      const data = insertRouteSchema.partial().parse(req.body);
+      const route = await storage.updateRoute(req.params.id, data);
+      if (!route) {
+        return res.status(404).json({ error: "Ruta no encontrada" });
+      }
+      res.json(route);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al actualizar ruta" });
+    }
+  });
+
+  app.post("/api/supplier/routes/:id/start", async (req: Request, res: Response) => {
+    try {
+      const route = await storage.startRoute(req.params.id);
+      if (!route) {
+        return res.status(404).json({ error: "Ruta no encontrada" });
+      }
+      res.json(route);
+    } catch (error) {
+      res.status(500).json({ error: "Error al iniciar ruta" });
+    }
+  });
+
+  app.post("/api/supplier/routes/:id/complete", async (req: Request, res: Response) => {
+    try {
+      const route = await storage.completeRoute(req.params.id);
+      if (!route) {
+        return res.status(404).json({ error: "Ruta no encontrada" });
+      }
+      res.json(route);
+    } catch (error) {
+      res.status(500).json({ error: "Error al completar ruta" });
+    }
+  });
+
+  // Paradas de Ruta
+  app.get("/api/supplier/routes/:routeId/stops", async (req: Request, res: Response) => {
+    try {
+      const stops = await storage.getRouteStops(req.params.routeId);
+      res.json(stops);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener paradas" });
+    }
+  });
+
+  app.get("/api/supplier/stops/:id", async (req: Request, res: Response) => {
+    try {
+      const stop = await storage.getRouteStop(req.params.id);
+      if (!stop) {
+        return res.status(404).json({ error: "Parada no encontrada" });
+      }
+      res.json(stop);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener parada" });
+    }
+  });
+
+  app.post("/api/supplier/routes/:routeId/stops", async (req: Request, res: Response) => {
+    try {
+      const data = insertRouteStopSchema.parse({
+        ...req.body,
+        routeId: req.params.routeId,
+      });
+      const stop = await storage.createRouteStop(data);
+      
+      // Actualizar total de paradas en la ruta
+      const route = await storage.getRoute(req.params.routeId);
+      if (route) {
+        await storage.updateRoute(req.params.routeId, { totalStops: (route.totalStops || 0) + 1 });
+      }
+      
+      res.status(201).json(stop);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating stop:", error);
+      res.status(500).json({ error: "Error al crear parada" });
+    }
+  });
+
+  app.post("/api/supplier/stops/:id/start", async (req: Request, res: Response) => {
+    try {
+      const stop = await storage.startStop(req.params.id);
+      if (!stop) {
+        return res.status(404).json({ error: "Parada no encontrada" });
+      }
+      res.json(stop);
+    } catch (error) {
+      res.status(500).json({ error: "Error al iniciar parada" });
+    }
+  });
+
+  app.post("/api/supplier/stops/:id/complete", async (req: Request, res: Response) => {
+    try {
+      const stop = await storage.completeStop(req.params.id);
+      if (!stop) {
+        return res.status(404).json({ error: "Parada no encontrada" });
+      }
+      res.json(stop);
+    } catch (error) {
+      res.status(500).json({ error: "Error al completar parada" });
+    }
+  });
+
+  // Registros de Servicio
+  app.get("/api/supplier/services", async (req: Request, res: Response) => {
+    try {
+      const { userId, machineId, limit } = req.query;
+      const services = await storage.getServiceRecords(
+        userId as string | undefined,
+        machineId as string | undefined,
+        limit ? parseInt(limit as string) : undefined
+      );
+      res.json(services);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener servicios" });
+    }
+  });
+
+  app.get("/api/supplier/services/:id", async (req: Request, res: Response) => {
+    try {
+      const service = await storage.getServiceRecord(req.params.id);
+      if (!service) {
+        return res.status(404).json({ error: "Servicio no encontrado" });
+      }
+      res.json(service);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener servicio" });
+    }
+  });
+
+  app.get("/api/supplier/active-service/:userId", async (req: Request, res: Response) => {
+    try {
+      const service = await storage.getActiveService(req.params.userId);
+      res.json(service || null);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener servicio activo" });
+    }
+  });
+
+  app.post("/api/supplier/services", async (req: Request, res: Response) => {
+    try {
+      const data = insertServiceRecordSchema.parse(req.body);
+      const service = await storage.startService(data);
+      res.status(201).json(service);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error starting service:", error);
+      res.status(500).json({ error: "Error al iniciar servicio" });
+    }
+  });
+
+  app.post("/api/supplier/services/:id/end", async (req: Request, res: Response) => {
+    try {
+      const { notes } = req.body;
+      const service = await storage.endService(req.params.id, notes);
+      if (!service) {
+        return res.status(404).json({ error: "Servicio no encontrado" });
+      }
+      res.json(service);
+    } catch (error) {
+      res.status(500).json({ error: "Error al finalizar servicio" });
+    }
+  });
+
+  // Recolección de Efectivo
+  app.get("/api/supplier/cash", async (req: Request, res: Response) => {
+    try {
+      const { userId, machineId, startDate, endDate } = req.query;
+      const collections = await storage.getCashCollections(
+        userId as string | undefined,
+        machineId as string | undefined,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(collections);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener recolecciones" });
+    }
+  });
+
+  app.post("/api/supplier/cash", async (req: Request, res: Response) => {
+    try {
+      const data = insertCashCollectionSchema.parse(req.body);
+      const collection = await storage.createCashCollection(data);
+      res.status(201).json(collection);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating cash collection:", error);
+      res.status(500).json({ error: "Error al registrar recolección" });
+    }
+  });
+
+  app.get("/api/supplier/cash/summary/:userId", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const summary = await storage.getCashCollectionsSummary(
+        req.params.userId,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(summary);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener resumen de efectivo" });
+    }
+  });
+
+  // Carga/Retiro de Productos
+  app.get("/api/supplier/loads", async (req: Request, res: Response) => {
+    try {
+      const { serviceRecordId, machineId } = req.query;
+      const loads = await storage.getProductLoads(
+        serviceRecordId as string | undefined,
+        machineId as string | undefined
+      );
+      res.json(loads);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener cargas" });
+    }
+  });
+
+  app.post("/api/supplier/loads", async (req: Request, res: Response) => {
+    try {
+      const data = insertProductLoadSchema.parse(req.body);
+      const load = await storage.createProductLoad(data);
+      res.status(201).json(load);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating product load:", error);
+      res.status(500).json({ error: "Error al registrar carga" });
+    }
+  });
+
+  // Reportes de Problemas
+  app.get("/api/supplier/issues", async (req: Request, res: Response) => {
+    try {
+      const { machineId, status } = req.query;
+      const issues = await storage.getIssueReports(
+        machineId as string | undefined,
+        status as string | undefined
+      );
+      res.json(issues);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener reportes" });
+    }
+  });
+
+  app.get("/api/supplier/issues/:id", async (req: Request, res: Response) => {
+    try {
+      const issue = await storage.getIssueReport(req.params.id);
+      if (!issue) {
+        return res.status(404).json({ error: "Reporte no encontrado" });
+      }
+      res.json(issue);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener reporte" });
+    }
+  });
+
+  app.post("/api/supplier/issues", async (req: Request, res: Response) => {
+    try {
+      const data = insertIssueReportSchema.parse(req.body);
+      const issue = await storage.createIssueReport(data);
+      res.status(201).json(issue);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating issue report:", error);
+      res.status(500).json({ error: "Error al crear reporte" });
+    }
+  });
+
+  app.post("/api/supplier/issues/:id/resolve", async (req: Request, res: Response) => {
+    try {
+      const { userId, resolution } = req.body;
+      if (!userId || !resolution) {
+        return res.status(400).json({ error: "Faltan campos requeridos" });
+      }
+      const issue = await storage.resolveIssue(req.params.id, userId, resolution);
+      if (!issue) {
+        return res.status(404).json({ error: "Reporte no encontrado" });
+      }
+      res.json(issue);
+    } catch (error) {
+      res.status(500).json({ error: "Error al resolver reporte" });
+    }
+  });
+
+  // Inventario del Abastecedor
+  app.get("/api/supplier/inventory/:userId", async (req: Request, res: Response) => {
+    try {
+      const inventory = await storage.getSupplierInventory(req.params.userId);
+      res.json(inventory);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener inventario del abastecedor" });
+    }
+  });
+
+  app.post("/api/supplier/inventory/load", async (req: Request, res: Response) => {
+    try {
+      const { userId, productId, quantity } = req.body;
+      if (!userId || !productId || !quantity) {
+        return res.status(400).json({ error: "Faltan campos requeridos" });
+      }
+      await storage.loadProductsFromWarehouse(userId, productId, parseInt(quantity));
+      res.status(201).json({ message: "Productos cargados exitosamente" });
+    } catch (error: any) {
+      if (error.message === "Stock insuficiente") {
+        return res.status(400).json({ error: "Stock insuficiente en almacén" });
+      }
+      console.error("Error loading products:", error);
+      res.status(500).json({ error: "Error al cargar productos" });
+    }
+  });
+
+  app.post("/api/supplier/inventory/unload", async (req: Request, res: Response) => {
+    try {
+      const { userId, machineId, productId, quantity } = req.body;
+      if (!userId || !machineId || !productId || !quantity) {
+        return res.status(400).json({ error: "Faltan campos requeridos" });
+      }
+      await storage.unloadProductsToMachine(userId, machineId, productId, parseInt(quantity));
+      res.status(201).json({ message: "Productos descargados exitosamente" });
+    } catch (error: any) {
+      if (error.message === "Inventario insuficiente del abastecedor") {
+        return res.status(400).json({ error: "Inventario insuficiente del abastecedor" });
+      }
+      console.error("Error unloading products:", error);
+      res.status(500).json({ error: "Error al descargar productos" });
+    }
+  });
+
+  // Estadísticas del Abastecedor
+  app.get("/api/supplier/stats/:userId", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const stats = await storage.getSupplierStats(
+        req.params.userId,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(stats);
+    } catch (error) {
+      console.error("Error getting supplier stats:", error);
+      res.status(500).json({ error: "Error al obtener estadísticas" });
+    }
+  });
+
+  // Usuarios (para demo)
+  app.get("/api/users", async (req: Request, res: Response) => {
+    try {
+      const { db } = await import("./db");
+      const { users } = await import("@shared/schema");
+      const allUsers = await db.select().from(users);
+      res.json(allUsers);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener usuarios" });
     }
   });
 
