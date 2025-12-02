@@ -2030,14 +2030,21 @@ export class DatabaseStorage implements IStorage {
         });
       }
       
-      // Actualizar inventario del almacén
-      await this.updateWarehouseStock(item.productId, item.quantityReceived);
+      // Leer stock ANTES de actualizar para registrar correctamente el movimiento
+      const currentInventory = await this.getWarehouseInventoryItem(item.productId);
+      const previousStock = currentInventory?.currentStock || 0;
+      const newStock = previousStock + item.quantityReceived;
       
-      // Registrar movimiento de almacén
+      // Actualizar inventario del almacén con el nuevo stock total
+      await this.updateWarehouseStock(item.productId, newStock);
+      
+      // Registrar movimiento de almacén con valores correctos
       await this.createWarehouseMovement({
         productId: item.productId,
-        type: "entrada_compra",
+        movementType: "entrada_compra",
         quantity: item.quantityReceived,
+        previousStock,
+        newStock,
         reference: `Recepción ${newReception.receptionNumber}`,
         notes: item.notes
       });

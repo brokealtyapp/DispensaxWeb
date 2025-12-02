@@ -22,7 +22,11 @@ import {
   insertProductTransferSchema,
   insertShrinkageRecordSchema,
   insertPettyCashExpenseSchema,
-  insertPettyCashFundSchema
+  insertPettyCashFundSchema,
+  insertPurchaseOrderSchema,
+  insertPurchaseOrderItemSchema,
+  insertPurchaseReceptionSchema,
+  insertReceptionItemSchema
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -1491,6 +1495,264 @@ export async function registerRoutes(
       res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener estadísticas" });
+    }
+  });
+
+  // ==================== MÓDULO COMPRAS ====================
+
+  // Órdenes de Compra
+  app.get("/api/purchase-orders", async (req: Request, res: Response) => {
+    try {
+      const { supplierId, status, startDate, endDate } = req.query;
+      const filters: any = {};
+      if (supplierId) filters.supplierId = supplierId as string;
+      if (status) filters.status = status as string;
+      if (startDate) filters.startDate = new Date(startDate as string);
+      if (endDate) filters.endDate = new Date(endDate as string);
+      
+      const orders = await storage.getPurchaseOrders(Object.keys(filters).length > 0 ? filters : undefined);
+      res.json(orders);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener órdenes de compra" });
+    }
+  });
+
+  app.get("/api/purchase-orders/next-number", async (req: Request, res: Response) => {
+    try {
+      const orderNumber = await storage.getNextOrderNumber();
+      res.json({ orderNumber });
+    } catch (error) {
+      res.status(500).json({ error: "Error al generar número de orden" });
+    }
+  });
+
+  app.get("/api/purchase-orders/stats", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const stats = await storage.getPurchaseStats(
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener estadísticas de compras" });
+    }
+  });
+
+  app.get("/api/purchase-orders/low-stock", async (req: Request, res: Response) => {
+    try {
+      const products = await storage.getLowStockProducts();
+      res.json(products);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener productos con bajo stock" });
+    }
+  });
+
+  app.get("/api/purchase-orders/:id", async (req: Request, res: Response) => {
+    try {
+      const order = await storage.getPurchaseOrder(req.params.id);
+      if (!order) {
+        return res.status(404).json({ error: "Orden no encontrada" });
+      }
+      res.json(order);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener orden" });
+    }
+  });
+
+  app.post("/api/purchase-orders", async (req: Request, res: Response) => {
+    try {
+      const data = insertPurchaseOrderSchema.omit({ orderNumber: true }).parse(req.body);
+      const orderNumber = await storage.getNextOrderNumber();
+      const order = await storage.createPurchaseOrder({
+        ...data,
+        orderNumber
+      });
+      res.status(201).json(order);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating purchase order:", error);
+      res.status(500).json({ error: "Error al crear orden de compra" });
+    }
+  });
+
+  app.patch("/api/purchase-orders/:id", async (req: Request, res: Response) => {
+    try {
+      const data = insertPurchaseOrderSchema.partial().parse(req.body);
+      const order = await storage.updatePurchaseOrder(req.params.id, data);
+      if (!order) {
+        return res.status(404).json({ error: "Orden no encontrada" });
+      }
+      res.json(order);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al actualizar orden" });
+    }
+  });
+
+  app.patch("/api/purchase-orders/:id/status", async (req: Request, res: Response) => {
+    try {
+      const statusSchema = z.object({
+        status: z.enum(["borrador", "enviada", "parcialmente_recibida", "recibida", "cancelada"]),
+        userId: z.string().optional(),
+        reason: z.string().optional()
+      });
+      const { status, userId, reason } = statusSchema.parse(req.body);
+      const order = await storage.updatePurchaseOrderStatus(req.params.id, status, userId, reason);
+      if (!order) {
+        return res.status(404).json({ error: "Orden no encontrada" });
+      }
+      res.json(order);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al actualizar estado de orden" });
+    }
+  });
+
+  app.delete("/api/purchase-orders/:id", async (req: Request, res: Response) => {
+    try {
+      const deleted = await storage.deletePurchaseOrder(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Orden no encontrada" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Error al eliminar orden" });
+    }
+  });
+
+  // Items de Orden de Compra
+  app.get("/api/purchase-orders/:id/items", async (req: Request, res: Response) => {
+    try {
+      const items = await storage.getPurchaseOrderItems(req.params.id);
+      res.json(items);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener items de la orden" });
+    }
+  });
+
+  app.post("/api/purchase-orders/:id/items", async (req: Request, res: Response) => {
+    try {
+      const data = insertPurchaseOrderItemSchema.omit({ orderId: true }).parse(req.body);
+      const item = await storage.addPurchaseOrderItem({
+        ...data,
+        orderId: req.params.id
+      });
+      res.status(201).json(item);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error adding item:", error);
+      res.status(500).json({ error: "Error al agregar item a la orden" });
+    }
+  });
+
+  app.patch("/api/purchase-order-items/:id", async (req: Request, res: Response) => {
+    try {
+      const data = insertPurchaseOrderItemSchema.partial().parse(req.body);
+      const item = await storage.updatePurchaseOrderItem(req.params.id, data);
+      if (!item) {
+        return res.status(404).json({ error: "Item no encontrado" });
+      }
+      res.json(item);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al actualizar item" });
+    }
+  });
+
+  app.delete("/api/purchase-order-items/:id", async (req: Request, res: Response) => {
+    try {
+      const deleted = await storage.removePurchaseOrderItem(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Item no encontrado" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Error al eliminar item" });
+    }
+  });
+
+  // Recepciones de Mercancía
+  app.get("/api/purchase-receptions", async (req: Request, res: Response) => {
+    try {
+      const { orderId, startDate, endDate } = req.query;
+      const filters: any = {};
+      if (orderId) filters.orderId = orderId as string;
+      if (startDate) filters.startDate = new Date(startDate as string);
+      if (endDate) filters.endDate = new Date(endDate as string);
+      
+      const receptions = await storage.getPurchaseReceptions(Object.keys(filters).length > 0 ? filters : undefined);
+      res.json(receptions);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener recepciones" });
+    }
+  });
+
+  app.get("/api/purchase-receptions/next-number", async (req: Request, res: Response) => {
+    try {
+      const receptionNumber = await storage.getNextReceptionNumber();
+      res.json({ receptionNumber });
+    } catch (error) {
+      res.status(500).json({ error: "Error al generar número de recepción" });
+    }
+  });
+
+  app.get("/api/purchase-receptions/:id", async (req: Request, res: Response) => {
+    try {
+      const reception = await storage.getPurchaseReception(req.params.id);
+      if (!reception) {
+        return res.status(404).json({ error: "Recepción no encontrada" });
+      }
+      res.json(reception);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener recepción" });
+    }
+  });
+
+  app.post("/api/purchase-receptions", async (req: Request, res: Response) => {
+    try {
+      const bodySchema = z.object({
+        reception: insertPurchaseReceptionSchema.omit({ receptionNumber: true }),
+        items: z.array(insertReceptionItemSchema.omit({ receptionId: true }))
+      });
+      const { reception, items } = bodySchema.parse(req.body);
+      const receptionNumber = await storage.getNextReceptionNumber();
+      
+      const newReception = await storage.createPurchaseReception(
+        { ...reception, receptionNumber },
+        items
+      );
+      res.status(201).json(newReception);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating reception:", error);
+      res.status(500).json({ error: "Error al crear recepción" });
+    }
+  });
+
+  // Historial de compras por proveedor
+  app.get("/api/suppliers/:id/purchase-history", async (req: Request, res: Response) => {
+    try {
+      const { limit } = req.query;
+      const history = await storage.getSupplierPurchaseHistory(
+        req.params.id,
+        limit ? parseInt(limit as string) : undefined
+      );
+      res.json(history);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener historial de compras" });
     }
   });
 
