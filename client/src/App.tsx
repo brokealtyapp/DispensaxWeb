@@ -4,7 +4,7 @@ import { QueryClientProvider, useQuery, useMutation } from "@tanstack/react-quer
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { AuthProvider, useAuth, canAccessRoute, getRoleDefaultRoute, UserRole } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SearchBar } from "@/components/SearchBar";
@@ -37,9 +37,31 @@ import { es } from "date-fns/locale";
 import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+interface ProtectedRouteProps {
+  component: React.ComponentType<any>;
+  path: string;
+}
+
+function ProtectedRoute({ component: Component, path }: ProtectedRouteProps) {
+  const { user } = useAuth();
+  const [location] = useLocation();
+  
+  if (!user) return null;
+  
+  const userRole = user.role as UserRole;
+  const hasAccess = canAccessRoute(userRole, path);
+  
+  if (!hasAccess) {
+    const defaultRoute = getRoleDefaultRoute(userRole);
+    return <Redirect to={defaultRoute} />;
+  }
+  
+  return <Component />;
+}
+
 function ProtectedRoutes() {
-  const { isAuthenticated, isLoading } = useAuth();
-  const [, navigate] = useLocation();
+  const { isAuthenticated, isLoading, user } = useAuth();
+  const [location, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [readAlerts, setReadAlerts] = useState<Set<string>>(new Set());
@@ -169,24 +191,24 @@ function ProtectedRoutes() {
           </header>
           <main className="flex-1 overflow-hidden">
             <Switch>
-              <Route path="/" component={DashboardPage} />
-              <Route path="/supervisor" component={SupervisorPage} />
-              <Route path="/almacen-panel" component={AlmacenPanelPage} />
-              <Route path="/contabilidad-panel" component={ContabilidadPanelPage} />
-              <Route path="/maquinas" component={MachinesPage} />
+              <Route path="/">{() => <ProtectedRoute path="/" component={DashboardPage} />}</Route>
+              <Route path="/supervisor">{() => <ProtectedRoute path="/supervisor" component={SupervisorPage} />}</Route>
+              <Route path="/almacen-panel">{() => <ProtectedRoute path="/almacen-panel" component={AlmacenPanelPage} />}</Route>
+              <Route path="/contabilidad-panel">{() => <ProtectedRoute path="/contabilidad-panel" component={ContabilidadPanelPage} />}</Route>
+              <Route path="/maquinas">{() => <ProtectedRoute path="/maquinas" component={MachinesPage} />}</Route>
               <Route path="/maquinas/:id" component={MachineDetailPage} />
-              <Route path="/tareas" component={TasksTodayPage} />
-              <Route path="/todas-tareas" component={TasksPage} />
-              <Route path="/calendario" component={CalendarPage} />
-              <Route path="/abastecedor" component={SupplierPage} />
-              <Route path="/almacen" component={WarehousePage} />
-              <Route path="/dinero-productos" component={MoneyProductsPage} />
-              <Route path="/caja-chica" component={PettyCashPage} />
-              <Route path="/combustible" component={FuelPage} />
-              <Route path="/contabilidad" component={AccountingPage} />
-              <Route path="/compras" component={PurchasesPage} />
-              <Route path="/rh" component={HRPage} />
-              <Route path="/reportes" component={ReportsPage} />
+              <Route path="/tareas">{() => <ProtectedRoute path="/tareas" component={TasksTodayPage} />}</Route>
+              <Route path="/todas-tareas">{() => <ProtectedRoute path="/todas-tareas" component={TasksPage} />}</Route>
+              <Route path="/calendario">{() => <ProtectedRoute path="/calendario" component={CalendarPage} />}</Route>
+              <Route path="/abastecedor">{() => <ProtectedRoute path="/abastecedor" component={SupplierPage} />}</Route>
+              <Route path="/almacen">{() => <ProtectedRoute path="/almacen" component={WarehousePage} />}</Route>
+              <Route path="/dinero-productos">{() => <ProtectedRoute path="/dinero-productos" component={MoneyProductsPage} />}</Route>
+              <Route path="/caja-chica">{() => <ProtectedRoute path="/caja-chica" component={PettyCashPage} />}</Route>
+              <Route path="/combustible">{() => <ProtectedRoute path="/combustible" component={FuelPage} />}</Route>
+              <Route path="/contabilidad">{() => <ProtectedRoute path="/contabilidad" component={AccountingPage} />}</Route>
+              <Route path="/compras">{() => <ProtectedRoute path="/compras" component={PurchasesPage} />}</Route>
+              <Route path="/rh">{() => <ProtectedRoute path="/rh" component={HRPage} />}</Route>
+              <Route path="/reportes">{() => <ProtectedRoute path="/reportes" component={ReportsPage} />}</Route>
               <Route path="/configuracion" component={SettingsPage} />
               <Route component={NotFound} />
             </Switch>
@@ -199,7 +221,6 @@ function ProtectedRoutes() {
 
 function AuthRoute() {
   const { isAuthenticated, isLoading, user } = useAuth();
-  const [, setLocation] = useLocation();
 
   if (isLoading) {
     return (
@@ -210,8 +231,7 @@ function AuthRoute() {
   }
 
   if (isAuthenticated && user) {
-    const { getRoleDefaultRoute } = require("@/lib/auth-context");
-    const defaultRoute = getRoleDefaultRoute(user.role);
+    const defaultRoute = getRoleDefaultRoute(user.role as UserRole);
     return <Redirect to={defaultRoute} />;
   }
 
