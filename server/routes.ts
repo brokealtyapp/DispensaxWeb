@@ -29,7 +29,9 @@ import {
   insertReceptionItemSchema,
   insertVehicleSchema,
   insertFuelRecordSchema,
-  insertEmployeeSchema
+  insertEmployeeSchema,
+  insertTaskSchema,
+  insertCalendarEventSchema
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -2306,6 +2308,195 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting performance:", error);
       res.status(500).json({ error: "Error al obtener rendimiento" });
+    }
+  });
+
+  // ==================== MÓDULO TAREAS ====================
+
+  app.get("/api/tasks", async (req: Request, res: Response) => {
+    try {
+      const { status, priority, assignedUserId, startDate, endDate, type } = req.query;
+      const tasks = await storage.getTasks({
+        status: status as string | undefined,
+        priority: priority as string | undefined,
+        assignedUserId: assignedUserId as string | undefined,
+        type: type as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined
+      });
+      res.json(tasks);
+    } catch (error) {
+      console.error("Error getting tasks:", error);
+      res.status(500).json({ error: "Error al obtener tareas" });
+    }
+  });
+
+  app.get("/api/tasks/today", async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.query;
+      const tasks = await storage.getTasksForToday(userId as string | undefined);
+      res.json(tasks);
+    } catch (error) {
+      console.error("Error getting today tasks:", error);
+      res.status(500).json({ error: "Error al obtener tareas de hoy" });
+    }
+  });
+
+  app.get("/api/tasks/stats", async (req: Request, res: Response) => {
+    try {
+      const { userId, startDate, endDate } = req.query;
+      const stats = await storage.getTaskStats({
+        userId: userId as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined
+      });
+      res.json(stats);
+    } catch (error) {
+      console.error("Error getting task stats:", error);
+      res.status(500).json({ error: "Error al obtener estadísticas de tareas" });
+    }
+  });
+
+  app.get("/api/tasks/:id", async (req: Request, res: Response) => {
+    try {
+      const task = await storage.getTask(req.params.id);
+      if (!task) {
+        return res.status(404).json({ error: "Tarea no encontrada" });
+      }
+      res.json(task);
+    } catch (error) {
+      console.error("Error getting task:", error);
+      res.status(500).json({ error: "Error al obtener tarea" });
+    }
+  });
+
+  app.post("/api/tasks", async (req: Request, res: Response) => {
+    try {
+      const data = insertTaskSchema.parse(req.body);
+      const task = await storage.createTask(data);
+      res.status(201).json(task);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating task:", error);
+      res.status(500).json({ error: "Error al crear tarea" });
+    }
+  });
+
+  app.patch("/api/tasks/:id", async (req: Request, res: Response) => {
+    try {
+      const data = insertTaskSchema.partial().parse(req.body);
+      const task = await storage.updateTask(req.params.id, data);
+      if (!task) {
+        return res.status(404).json({ error: "Tarea no encontrada" });
+      }
+      res.json(task);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error updating task:", error);
+      res.status(500).json({ error: "Error al actualizar tarea" });
+    }
+  });
+
+  app.post("/api/tasks/:id/complete", async (req: Request, res: Response) => {
+    try {
+      const { completedBy } = req.body;
+      if (!completedBy) {
+        return res.status(400).json({ error: "Se requiere completedBy" });
+      }
+      const task = await storage.completeTask(req.params.id, completedBy);
+      if (!task) {
+        return res.status(404).json({ error: "Tarea no encontrada" });
+      }
+      res.json(task);
+    } catch (error) {
+      console.error("Error completing task:", error);
+      res.status(500).json({ error: "Error al completar tarea" });
+    }
+  });
+
+  app.delete("/api/tasks/:id", async (req: Request, res: Response) => {
+    try {
+      await storage.deleteTask(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting task:", error);
+      res.status(500).json({ error: "Error al eliminar tarea" });
+    }
+  });
+
+  // ==================== MÓDULO CALENDARIO ====================
+
+  app.get("/api/calendar/events", async (req: Request, res: Response) => {
+    try {
+      const { userId, startDate, endDate, eventType } = req.query;
+      const events = await storage.getCalendarEvents({
+        userId: userId as string | undefined,
+        eventType: eventType as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined
+      });
+      res.json(events);
+    } catch (error) {
+      console.error("Error getting calendar events:", error);
+      res.status(500).json({ error: "Error al obtener eventos" });
+    }
+  });
+
+  app.get("/api/calendar/events/:id", async (req: Request, res: Response) => {
+    try {
+      const event = await storage.getCalendarEvent(req.params.id);
+      if (!event) {
+        return res.status(404).json({ error: "Evento no encontrado" });
+      }
+      res.json(event);
+    } catch (error) {
+      console.error("Error getting calendar event:", error);
+      res.status(500).json({ error: "Error al obtener evento" });
+    }
+  });
+
+  app.post("/api/calendar/events", async (req: Request, res: Response) => {
+    try {
+      const data = insertCalendarEventSchema.parse(req.body);
+      const event = await storage.createCalendarEvent(data);
+      res.status(201).json(event);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating calendar event:", error);
+      res.status(500).json({ error: "Error al crear evento" });
+    }
+  });
+
+  app.patch("/api/calendar/events/:id", async (req: Request, res: Response) => {
+    try {
+      const data = insertCalendarEventSchema.partial().parse(req.body);
+      const event = await storage.updateCalendarEvent(req.params.id, data);
+      if (!event) {
+        return res.status(404).json({ error: "Evento no encontrado" });
+      }
+      res.json(event);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error updating calendar event:", error);
+      res.status(500).json({ error: "Error al actualizar evento" });
+    }
+  });
+
+  app.delete("/api/calendar/events/:id", async (req: Request, res: Response) => {
+    try {
+      await storage.deleteCalendarEvent(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting calendar event:", error);
+      res.status(500).json({ error: "Error al eliminar evento" });
     }
   });
 

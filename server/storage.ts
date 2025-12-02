@@ -31,13 +31,16 @@ import {
   type ReceptionItem, type InsertReceptionItem,
   type Vehicle, type InsertVehicle,
   type FuelRecord, type InsertFuelRecord,
+  type Task, type InsertTask,
+  type CalendarEvent, type InsertCalendarEvent,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
   cashMovements, bankDeposits, productTransfers, shrinkageRecords,
   pettyCashExpenses, pettyCashFund, pettyCashTransactions,
   purchaseOrders, purchaseOrderItems, purchaseReceptions, receptionItems,
-  vehicles, fuelRecords
+  vehicles, fuelRecords,
+  tasks, calendarEvents
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc, or } from "drizzle-orm";
@@ -358,6 +361,32 @@ export interface IStorage {
   getTimeTracking(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
   
   getEmployeePerformance(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  
+  // ==================== MÓDULO TAREAS ====================
+  
+  getTasks(filters?: { status?: string; priority?: string; assignedUserId?: string; startDate?: Date; endDate?: Date; type?: string }): Promise<any[]>;
+  getTask(id: string): Promise<any>;
+  getTasksForToday(userId?: string): Promise<any[]>;
+  createTask(task: InsertTask): Promise<Task>;
+  updateTask(id: string, data: Partial<InsertTask>): Promise<Task | undefined>;
+  completeTask(id: string, completedBy: string): Promise<Task | undefined>;
+  deleteTask(id: string): Promise<boolean>;
+  getTaskStats(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<{
+    total: number;
+    pending: number;
+    inProgress: number;
+    completed: number;
+    cancelled: number;
+    overdue: number;
+  }>;
+  
+  // ==================== MÓDULO CALENDARIO ====================
+  
+  getCalendarEvents(filters?: { userId?: string; startDate?: Date; endDate?: Date; eventType?: string }): Promise<any[]>;
+  getCalendarEvent(id: string): Promise<any>;
+  createCalendarEvent(event: InsertCalendarEvent): Promise<CalendarEvent>;
+  updateCalendarEvent(id: string, data: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined>;
+  deleteCalendarEvent(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3525,6 +3554,242 @@ export class DatabaseStorage implements IStorage {
     }));
 
     return result.sort((a, b) => b.efficiency - a.efficiency);
+  }
+
+  // ==================== MÓDULO TAREAS ====================
+
+  async getTasks(filters?: { status?: string; priority?: string; assignedUserId?: string; startDate?: Date; endDate?: Date; type?: string }): Promise<any[]> {
+    const conditions: any[] = [];
+    
+    if (filters?.status) {
+      conditions.push(eq(tasks.status, filters.status));
+    }
+    if (filters?.priority) {
+      conditions.push(eq(tasks.priority, filters.priority));
+    }
+    if (filters?.assignedUserId) {
+      conditions.push(eq(tasks.assignedUserId, filters.assignedUserId));
+    }
+    if (filters?.type) {
+      conditions.push(eq(tasks.type, filters.type));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(tasks.dueDate, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(tasks.dueDate, filters.endDate));
+    }
+
+    const taskList = conditions.length > 0
+      ? await db.select().from(tasks).where(and(...conditions)).orderBy(desc(tasks.dueDate))
+      : await db.select().from(tasks).orderBy(desc(tasks.dueDate));
+
+    return Promise.all(taskList.map(async (task) => {
+      const assignedUser = task.assignedUserId ? await this.getUser(task.assignedUserId) : null;
+      const machine = task.machineId ? await this.getMachine(task.machineId) : null;
+      const route = task.routeId ? await this.getRoute(task.routeId) : null;
+      const creator = task.createdBy ? await this.getUser(task.createdBy) : null;
+
+      return {
+        ...task,
+        assignedUser: assignedUser ? { id: assignedUser.id, name: assignedUser.fullName || assignedUser.username } : null,
+        machine: machine ? { id: machine.id, name: machine.name, code: machine.code } : null,
+        route: route ? { id: route.id, name: route.name } : null,
+        creator: creator ? { id: creator.id, name: creator.fullName || creator.username } : null
+      };
+    }));
+  }
+
+  async getTask(id: string): Promise<any> {
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
+    if (!task) return undefined;
+
+    const assignedUser = task.assignedUserId ? await this.getUser(task.assignedUserId) : null;
+    const machine = task.machineId ? await this.getMachine(task.machineId) : null;
+    const route = task.routeId ? await this.getRoute(task.routeId) : null;
+    const creator = task.createdBy ? await this.getUser(task.createdBy) : null;
+    const completer = task.completedBy ? await this.getUser(task.completedBy) : null;
+
+    return {
+      ...task,
+      assignedUser: assignedUser ? { id: assignedUser.id, name: assignedUser.fullName || assignedUser.username } : null,
+      machine: machine ? { id: machine.id, name: machine.name, code: machine.code } : null,
+      route: route ? { id: route.id, name: route.name } : null,
+      creator: creator ? { id: creator.id, name: creator.fullName || creator.username } : null,
+      completer: completer ? { id: completer.id, name: completer.fullName || completer.username } : null
+    };
+  }
+
+  async getTasksForToday(userId?: string): Promise<any[]> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const conditions: any[] = [
+      gte(tasks.dueDate, today),
+      lte(tasks.dueDate, tomorrow),
+      or(eq(tasks.status, "pendiente"), eq(tasks.status, "en_progreso"))
+    ];
+
+    if (userId) {
+      conditions.push(eq(tasks.assignedUserId, userId));
+    }
+
+    const taskList = await db.select().from(tasks)
+      .where(and(...conditions))
+      .orderBy(
+        sql`CASE tasks.priority WHEN 'urgente' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END`,
+        asc(tasks.startTime)
+      );
+
+    return Promise.all(taskList.map(async (task) => {
+      const assignedUser = task.assignedUserId ? await this.getUser(task.assignedUserId) : null;
+      const machine = task.machineId ? await this.getMachine(task.machineId) : null;
+
+      return {
+        ...task,
+        assignedUser: assignedUser ? { id: assignedUser.id, name: assignedUser.fullName || assignedUser.username, initials: (assignedUser.fullName || assignedUser.username || "").split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) } : null,
+        machine: machine ? { id: machine.id, name: machine.name, code: machine.code } : null
+      };
+    }));
+  }
+
+  async createTask(task: InsertTask): Promise<Task> {
+    const [newTask] = await db.insert(tasks).values(task).returning();
+    return newTask;
+  }
+
+  async updateTask(id: string, data: Partial<InsertTask>): Promise<Task | undefined> {
+    const [updated] = await db.update(tasks)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(tasks.id, id))
+      .returning();
+    return updated;
+  }
+
+  async completeTask(id: string, completedBy: string): Promise<Task | undefined> {
+    const [updated] = await db.update(tasks)
+      .set({ 
+        status: "completada", 
+        completedAt: new Date(), 
+        completedBy,
+        updatedAt: new Date() 
+      })
+      .where(eq(tasks.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTask(id: string): Promise<boolean> {
+    await db.delete(tasks).where(eq(tasks.id, id));
+    return true;
+  }
+
+  async getTaskStats(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<{
+    total: number;
+    pending: number;
+    inProgress: number;
+    completed: number;
+    cancelled: number;
+    overdue: number;
+  }> {
+    const conditions: any[] = [];
+    
+    if (filters?.userId) {
+      conditions.push(eq(tasks.assignedUserId, filters.userId));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(tasks.dueDate, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(tasks.dueDate, filters.endDate));
+    }
+
+    const taskList = conditions.length > 0
+      ? await db.select().from(tasks).where(and(...conditions))
+      : await db.select().from(tasks);
+
+    const now = new Date();
+    const overdue = taskList.filter(t => 
+      t.dueDate && new Date(t.dueDate) < now && 
+      (t.status === "pendiente" || t.status === "en_progreso")
+    ).length;
+
+    return {
+      total: taskList.length,
+      pending: taskList.filter(t => t.status === "pendiente").length,
+      inProgress: taskList.filter(t => t.status === "en_progreso").length,
+      completed: taskList.filter(t => t.status === "completada").length,
+      cancelled: taskList.filter(t => t.status === "cancelada").length,
+      overdue
+    };
+  }
+
+  // ==================== MÓDULO CALENDARIO ====================
+
+  async getCalendarEvents(filters?: { userId?: string; startDate?: Date; endDate?: Date; eventType?: string }): Promise<any[]> {
+    const conditions: any[] = [];
+    
+    if (filters?.userId) {
+      conditions.push(eq(calendarEvents.userId, filters.userId));
+    }
+    if (filters?.eventType) {
+      conditions.push(eq(calendarEvents.eventType, filters.eventType));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(calendarEvents.startDate, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(calendarEvents.startDate, filters.endDate));
+    }
+
+    const events = conditions.length > 0
+      ? await db.select().from(calendarEvents).where(and(...conditions)).orderBy(asc(calendarEvents.startDate))
+      : await db.select().from(calendarEvents).orderBy(asc(calendarEvents.startDate));
+
+    return Promise.all(events.map(async (event) => {
+      const user = event.userId ? await this.getUser(event.userId) : null;
+      const task = event.taskId ? await this.getTask(event.taskId) : null;
+
+      return {
+        ...event,
+        user: user ? { id: user.id, name: user.fullName || user.username, initials: (user.fullName || user.username || "").split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) } : null,
+        task: task ? { id: task.id, title: task.title } : null
+      };
+    }));
+  }
+
+  async getCalendarEvent(id: string): Promise<any> {
+    const [event] = await db.select().from(calendarEvents).where(eq(calendarEvents.id, id));
+    if (!event) return undefined;
+
+    const user = event.userId ? await this.getUser(event.userId) : null;
+    const task = event.taskId ? await this.getTask(event.taskId) : null;
+
+    return {
+      ...event,
+      user: user ? { id: user.id, name: user.fullName || user.username } : null,
+      task
+    };
+  }
+
+  async createCalendarEvent(event: InsertCalendarEvent): Promise<CalendarEvent> {
+    const [newEvent] = await db.insert(calendarEvents).values(event).returning();
+    return newEvent;
+  }
+
+  async updateCalendarEvent(id: string, data: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined> {
+    const [updated] = await db.update(calendarEvents)
+      .set(data)
+      .where(eq(calendarEvents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCalendarEvent(id: string): Promise<boolean> {
+    await db.delete(calendarEvents).where(eq(calendarEvents.id, id));
+    return true;
   }
 }
 
