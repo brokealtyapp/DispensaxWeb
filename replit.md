@@ -37,6 +37,7 @@ client/src/
 │   ├── QuickActionCard.tsx  # Acciones rápidas
 │   ├── DataTable.tsx    # Tabla de datos reutilizable
 │   ├── LoginForm.tsx    # Formulario de login
+│   ├── ForgotPasswordForm.tsx # Formulario de recuperación de contraseña
 │   └── RegisterForm.tsx # Formulario de registro
 ├── pages/
 │   ├── auth.tsx         # Página de autenticación
@@ -51,6 +52,7 @@ client/src/
 │   ├── petty-cash.tsx   # Caja Chica
 │   ├── purchases.tsx    # Compras
 │   ├── fuel.tsx         # Combustible
+│   ├── reset-password.tsx # Restablecer contraseña
 │   └── not-found.tsx    # Página 404
 ├── lib/
 │   ├── auth-context.tsx  # Contexto de autenticación
@@ -149,6 +151,7 @@ client/src/
 - [x] Módulo de Caja Chica (gastos, aprobaciones, fondo)
 - [x] Módulo de Dinero y Productos (conciliación)
 - [x] Módulo de Combustible (vehículos, cargas, rendimiento)
+- [x] Sistema de recuperación de contraseña por SMTP
 - [ ] Autenticación JWT completa (parcialmente implementada)
 
 ## Preferencias de Usuario
@@ -170,6 +173,7 @@ Tablas principales:
 - petty_cash_expenses, petty_cash_fund, petty_cash_transactions
 - purchase_orders, purchase_order_items, purchase_receptions, reception_items
 - vehicles, fuel_records
+- password_reset_tokens
 
 ## Próximos Pasos
 1. Completar autenticación JWT con roles
