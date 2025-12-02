@@ -371,94 +371,95 @@ export function DashboardPage() {
               Actividad
             </TabsTrigger>
           </TabsList>
-        </Tabs>
 
-        <TabsContent value="messages" className="mt-4">
-          <p className="text-sm text-muted-foreground text-center py-8">
-            No hay mensajes nuevos
-          </p>
-        </TabsContent>
+          <TabsContent value="messages" className="mt-4">
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No hay mensajes nuevos
+            </p>
+          </TabsContent>
 
-        <TabsContent value="today" className="mt-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-bold">Tareas de Hoy</h2>
-              <p className="text-xs text-muted-foreground">
-                {format(new Date(), "EEEE, d MMMM", { locale: es })}
-              </p>
-            </div>
-            <Button size="sm" className="h-8 gap-1 text-xs" data-testid="button-new-task">
-              <Plus className="h-3 w-3" />
-              Nueva
-            </Button>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="default" className="text-xs">
-              Todas {tasks.length.toString().padStart(2, "0")}
-            </Badge>
-            <Badge variant="secondary" className="text-xs">
-              Abiertas {openCount.toString().padStart(2, "0")}
-            </Badge>
-            <Badge variant="secondary" className="text-xs">
-              Cerradas {completedCount.toString().padStart(2, "0")}
-            </Badge>
-            <Badge variant="secondary" className="text-xs">
-              Archivadas
-            </Badge>
-          </div>
-
-          <div className="space-y-3">
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                className="flex items-start gap-3 p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
-                data-testid={`task-item-${task.id}`}
-              >
-                <div
-                  className={`mt-0.5 h-5 w-5 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${
-                    task.completed
-                      ? "bg-primary border-primary"
-                      : "border-muted-foreground/30 hover:border-primary"
-                  }`}
-                  onClick={() => toggleTask(task.id)}
-                >
-                  {task.completed && <Check className="h-3 w-3 text-white" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p
-                    className={`font-medium text-sm ${
-                      task.completed ? "line-through text-muted-foreground" : ""
-                    }`}
-                  >
-                    {task.title}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {task.subtitle}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Hoy {task.time}
-                  </p>
-                </div>
-                <div className="flex -space-x-1">
-                  {task.assignees.slice(0, 2).map((assignee, idx) => (
-                    <Avatar key={idx} className="h-6 w-6 border-2 border-background">
-                      <AvatarFallback className="text-[10px] bg-muted">
-                        {assignee}
-                      </AvatarFallback>
-                    </Avatar>
-                  ))}
-                </div>
+          <TabsContent value="today" className="mt-4 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-lg font-bold">Tareas de Hoy</h2>
+                <p className="text-xs text-muted-foreground">
+                  {format(new Date(), "EEEE, d MMMM", { locale: es })}
+                </p>
               </div>
-            ))}
-          </div>
-        </TabsContent>
+              <Button size="sm" className="h-8 gap-1 text-xs" data-testid="button-new-task">
+                <Plus className="h-3 w-3" />
+                Nueva
+              </Button>
+            </div>
 
-        <TabsContent value="activity" className="mt-4">
-          <p className="text-sm text-muted-foreground text-center py-8">
-            No hay actividad reciente
-          </p>
-        </TabsContent>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="default" className="text-xs">
+                Todas {tasks.length.toString().padStart(2, "0")}
+              </Badge>
+              <Badge variant="secondary" className="text-xs">
+                Abiertas {openCount.toString().padStart(2, "0")}
+              </Badge>
+              <Badge variant="secondary" className="text-xs">
+                Cerradas {completedCount.toString().padStart(2, "0")}
+              </Badge>
+              <Badge variant="secondary" className="text-xs">
+                Archivadas
+              </Badge>
+            </div>
+
+            <div className="space-y-3">
+              {tasks.map((task) => (
+                <div
+                  key={task.id}
+                  className="flex items-start gap-3 p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
+                  data-testid={`task-item-${task.id}`}
+                >
+                  <div
+                    className={`mt-0.5 h-5 w-5 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${
+                      task.completed
+                        ? "bg-primary border-primary"
+                        : "border-muted-foreground/30 hover:border-primary"
+                    }`}
+                    onClick={() => toggleTask(task.id)}
+                    data-testid={`checkbox-task-${task.id}`}
+                  >
+                    {task.completed && <Check className="h-3 w-3 text-white" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className={`font-medium text-sm ${
+                        task.completed ? "line-through text-muted-foreground" : ""
+                      }`}
+                    >
+                      {task.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {task.subtitle}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Hoy {task.time}
+                    </p>
+                  </div>
+                  <div className="flex -space-x-1">
+                    {task.assignees.slice(0, 2).map((assignee, idx) => (
+                      <Avatar key={idx} className="h-6 w-6 border-2 border-background">
+                        <AvatarFallback className="text-[10px] bg-muted">
+                          {assignee}
+                        </AvatarFallback>
+                      </Avatar>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="activity" className="mt-4">
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No hay actividad reciente
+            </p>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
