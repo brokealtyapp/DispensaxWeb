@@ -43,6 +43,7 @@ export interface IStorage {
   getMachineAlerts(machineId?: string, resolved?: boolean): Promise<MachineAlert[]>;
   createMachineAlert(alert: InsertMachineAlert): Promise<MachineAlert>;
   resolveAlert(id: string, userId: string): Promise<MachineAlert | undefined>;
+  resolveAlertSimple(id: string): Promise<MachineAlert | undefined>;
   
   getMachineVisits(machineId: string): Promise<MachineVisit[]>;
   createMachineVisit(visit: InsertMachineVisit): Promise<MachineVisit>;
@@ -243,6 +244,14 @@ export class DatabaseStorage implements IStorage {
   async resolveAlert(id: string, userId: string): Promise<MachineAlert | undefined> {
     const [updated] = await db.update(machineAlerts)
       .set({ isResolved: true, resolvedAt: new Date(), resolvedBy: userId })
+      .where(eq(machineAlerts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async resolveAlertSimple(id: string): Promise<MachineAlert | undefined> {
+    const [updated] = await db.update(machineAlerts)
+      .set({ isResolved: true, resolvedAt: new Date() })
       .where(eq(machineAlerts.id, id))
       .returning();
     return updated;

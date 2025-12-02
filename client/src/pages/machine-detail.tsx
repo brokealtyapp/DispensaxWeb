@@ -105,6 +105,11 @@ export function MachineDetailPage() {
 
   const { data: machine, isLoading } = useQuery<MachineWithDetails>({
     queryKey: ["/api/machines", machineId],
+    queryFn: async () => {
+      const response = await fetch(`/api/machines/${machineId}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Error loading machine");
+      return response.json();
+    },
     enabled: !!machineId,
   });
 
@@ -122,7 +127,7 @@ export function MachineDetailPage() {
 
   const resolveAlertMutation = useMutation({
     mutationFn: async (alertId: string) => {
-      const response = await apiRequest("PATCH", `/api/alerts/${alertId}/resolve`, { userId: "admin" });
+      const response = await apiRequest("PATCH", `/api/alerts/${alertId}/resolve`, {});
       return response.json();
     },
     onSuccess: () => {

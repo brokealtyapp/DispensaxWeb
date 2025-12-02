@@ -295,8 +295,7 @@ export async function registerRoutes(
 
   app.patch("/api/alerts/:id/resolve", async (req: Request, res: Response) => {
     try {
-      const { userId } = req.body;
-      const alert = await storage.resolveAlert(req.params.id, userId);
+      const alert = await storage.resolveAlertSimple(req.params.id);
       if (!alert) {
         return res.status(404).json({ error: "Alerta no encontrada" });
       }
