@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import dispensaxLogo from "@assets/Logo_Dispensax_1764686241640.png";
 import {
   Sidebar,
   SidebarContent,
@@ -57,7 +58,15 @@ export function AppSidebar() {
 
   return (
     <Sidebar className="border-r-0">
-      <SidebarHeader className="p-4 pb-6">
+      <SidebarHeader className="p-4 pb-6 space-y-4">
+        <div className="flex items-center justify-center py-2">
+          <img 
+            src={dispensaxLogo} 
+            alt="Dispensax" 
+            className="h-8 w-auto"
+            data-testid="img-logo"
+          />
+        </div>
         <div className="flex items-center gap-3">
           <Avatar className="h-11 w-11 ring-2 ring-primary/20">
             <AvatarFallback className="bg-primary text-primary-foreground font-medium">
