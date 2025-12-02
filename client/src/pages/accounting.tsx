@@ -66,19 +66,26 @@ function getDateRange(period: string): { startDate: string; endDate: string } {
 }
 
 interface MachineSale {
-  machineId: string;
-  machineName: string;
-  totalSales: number;
-  transactionCount: number;
-  averageTicket: number;
+  id: string;
+  machine: string;
+  code: string;
+  location: string;
+  today: number;
+  week: number;
+  month: number;
+  total: number;
+  status: "up" | "down";
+  transacciones: number;
 }
 
 interface ExpenseItem {
   id: string;
-  concept: string;
+  fuente: string;
+  concepto: string;
   category: string;
   amount: number;
   date: string;
+  status: string;
 }
 
 interface AccountingOverview {
@@ -98,8 +105,8 @@ interface CashCutReport {
   totalRecolectado: number;
   totalEsperado: number;
   diferencia: number;
-  byMachine: { machineId: string; recolectado: number; esperado: number; diferencia: number }[];
-  byUser: { userId: string; recolectado: number; esperado: number; diferencia: number; maquinas: number }[];
+  detallePorMaquina: { machineId: string; recolectado: number; esperado: number; diferencia: number }[];
+  detallePorAbastecedor: { userId: string; recolectado: number; esperado: number; diferencia: number; maquinas: number }[];
 }
 
 export function AccountingPage() {
@@ -149,7 +156,7 @@ export function AccountingPage() {
     endDate: dateRange.endDate,
   });
 
-  const { data: expenses, isLoading: loadingExpenses, isError: errorExpenses } = useQuery<{ expenses: ExpenseItem[]; byCategory: Record<string, number>; total: number }>({
+  const { data: expenses, isLoading: loadingExpenses, isError: errorExpenses } = useQuery<ExpenseItem[]>({
     queryKey: ["/api/accounting/expenses", dateRange.startDate, dateRange.endDate],
     queryFn: async () => {
       const res = await fetch(expensesUrl);
@@ -178,35 +185,49 @@ export function AccountingPage() {
   });
 
   const salesColumns: Column<MachineSale>[] = [
-    { key: "machineName", header: "Máquina" },
-    {
-      key: "totalSales",
-      header: "Total Ventas",
-      render: (item) => `$${item.totalSales.toLocaleString()}`,
+    { 
+      key: "machine", 
+      header: "Máquina",
+      render: (item) => (
+        <div>
+          <p className="font-medium">{item.machine || item.code}</p>
+          <p className="text-xs text-muted-foreground">{item.location}</p>
+        </div>
+      ),
     },
     {
-      key: "transactionCount",
+      key: "today",
+      header: "Hoy",
+      render: (item) => `$${(item.today || 0).toLocaleString()}`,
+    },
+    {
+      key: "week",
+      header: "Semana",
+      render: (item) => `$${(item.week || 0).toLocaleString()}`,
+    },
+    {
+      key: "month",
+      header: "Mes",
+      render: (item) => `$${(item.month || 0).toLocaleString()}`,
+    },
+    {
+      key: "transacciones",
       header: "Transacciones",
-      render: (item) => item.transactionCount.toLocaleString(),
+      render: (item) => (item.transacciones || 0).toLocaleString(),
     },
     {
-      key: "averageTicket",
-      header: "Ticket Promedio",
-      render: (item) => `$${item.averageTicket.toFixed(2)}`,
-    },
-    {
-      key: "totalSales" as keyof MachineSale,
+      key: "status",
       header: "Tendencia",
       render: (item) =>
-        item.totalSales > 0 ? (
+        item.status === "up" ? (
           <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-500">
             <TrendingUp className="h-3 w-3 mr-1" />
-            Activa
+            Arriba
           </Badge>
         ) : (
           <Badge variant="secondary" className="bg-destructive/10 text-destructive">
             <TrendingDown className="h-3 w-3 mr-1" />
-            Sin ventas
+            Abajo
           </Badge>
         ),
     },
@@ -214,7 +235,7 @@ export function AccountingPage() {
 
   const expenseColumns: Column<ExpenseItem>[] = [
     { key: "date", header: "Fecha" },
-    { key: "concept", header: "Concepto" },
+    { key: "concepto", header: "Concepto" },
     {
       key: "category",
       header: "Categoría",
@@ -225,7 +246,7 @@ export function AccountingPage() {
       header: "Monto",
       render: (item) => (
         <span className="text-destructive font-medium">
-          -${item.amount.toLocaleString()}
+          -${(item.amount || 0).toLocaleString()}
         </span>
       ),
     },
@@ -433,7 +454,7 @@ export function AccountingPage() {
                   data={machineSales || []}
                   columns={salesColumns}
                   searchPlaceholder="Buscar máquina..."
-                  searchKeys={["machineName"]}
+                  searchKeys={["machine", "code", "location"]}
                 />
               )}
             </CardContent>
@@ -480,13 +501,13 @@ export function AccountingPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-4xl font-bold text-destructive mb-4" data-testid="text-total-gastos">
-                  ${(expenses?.total || 0).toLocaleString()}
+                  ${(expenses?.reduce((acc, e) => acc + (e.amount || 0), 0) || 0).toLocaleString()}
                 </div>
                 {loadingExpenses ? (
                   <Skeleton className="h-48 w-full" />
                 ) : (
                   <DataTable
-                    data={expenses?.expenses || []}
+                    data={expenses || []}
                     columns={expenseColumns}
                     pageSize={5}
                   />
@@ -553,17 +574,17 @@ export function AccountingPage() {
                       </CardContent>
                     </Card>
                   </div>
-                  {cashCut?.byUser && cashCut.byUser.length > 0 ? (
+                  {cashCut?.detallePorAbastecedor && cashCut.detallePorAbastecedor.length > 0 ? (
                     <div className="space-y-2">
                       <h4 className="font-medium mb-2">Desglose por Abastecedor</h4>
-                      {cashCut.byUser.map((user) => (
+                      {cashCut.detallePorAbastecedor.map((user) => (
                         <div key={user.userId} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                           <span>{user.userId}</span>
                           <div className="flex gap-4 text-sm">
-                            <span>Esperado: ${user.esperado.toLocaleString()}</span>
-                            <span>Real: ${user.recolectado.toLocaleString()}</span>
-                            <span className={user.diferencia < 0 ? "text-destructive" : "text-emerald-500"}>
-                              Dif: ${user.diferencia.toLocaleString()}
+                            <span>Esperado: ${(user.esperado || 0).toLocaleString()}</span>
+                            <span>Real: ${(user.recolectado || 0).toLocaleString()}</span>
+                            <span className={(user.diferencia || 0) < 0 ? "text-destructive" : "text-emerald-500"}>
+                              Dif: ${(user.diferencia || 0).toLocaleString()}
                             </span>
                           </div>
                         </div>
