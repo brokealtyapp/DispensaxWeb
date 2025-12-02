@@ -126,6 +126,7 @@ export function AppSidebar() {
               variant="ghost"
               size="icon"
               className="h-6 w-6 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+              data-testid="button-add-team"
             >
               <Plus className="h-3 w-3" />
             </Button>

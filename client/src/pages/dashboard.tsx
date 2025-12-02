@@ -191,6 +191,7 @@ export function DashboardPage() {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10"
+                    data-testid={`button-project-menu-${project.id}`}
                   >
                     <MoreHorizontal className="h-5 w-5" />
                   </Button>
@@ -357,7 +358,7 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      <div className="w-80 border-l bg-background p-4 overflow-auto hidden lg:block">
+      <div className="w-80 border-l bg-background p-4 overflow-auto hidden md:block" data-testid="panel-today-tasks">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="w-full bg-muted/50">
             <TabsTrigger value="messages" className="flex-1 text-xs">
@@ -386,7 +387,7 @@ export function DashboardPage() {
                 {format(new Date(), "EEEE, d MMMM", { locale: es })}
               </p>
             </div>
-            <Button size="sm" className="h-8 gap-1 text-xs">
+            <Button size="sm" className="h-8 gap-1 text-xs" data-testid="button-new-task">
               <Plus className="h-3 w-3" />
               Nueva
             </Button>

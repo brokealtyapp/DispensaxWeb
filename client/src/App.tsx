@@ -120,16 +120,16 @@ function ProtectedRoutes() {
               />
             </div>
             <div className="flex items-center gap-6">
-              <div className="text-right hidden md:block">
-                <p className="text-2xl font-bold tabular-nums tracking-tight" data-testid="text-current-time">
+              <div className="text-right">
+                <p className="text-xl sm:text-2xl font-bold tabular-nums tracking-tight" data-testid="text-current-time">
                   {format(currentTime, "HH:mm:ss")}
                 </p>
-                <p className="text-xs text-muted-foreground capitalize">
+                <p className="text-[10px] sm:text-xs text-muted-foreground capitalize hidden sm:block">
                   {format(currentTime, "EEEE, d MMMM", { locale: es })}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="relative">
+                <Button variant="ghost" size="icon" className="relative" data-testid="button-messages">
                   <MessageCircle className="h-5 w-5" />
                 </Button>
                 <NotificationBell
