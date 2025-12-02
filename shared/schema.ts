@@ -757,3 +757,362 @@ export const supplierInventoryRelations = relations(supplierInventory, ({ one })
     references: [productLots.id],
   }),
 }));
+
+// ==================== MÓDULO PRODUCTOS Y DINERO (TRANSVERSAL) ====================
+
+export const cashMovementTypeEnum = pgEnum("cash_movement_type", [
+  "recoleccion_maquina",
+  "entrega_oficina",
+  "deposito_bancario",
+  "ajuste_positivo",
+  "ajuste_negativo",
+  "gasto_caja_chica"
+]);
+
+export const cashMovementStatusEnum = pgEnum("cash_movement_status", [
+  "pendiente",
+  "entregado",
+  "depositado",
+  "conciliado"
+]);
+
+export const cashMovements = pgTable("cash_movements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  type: text("type").notNull(),
+  status: text("status").default("pendiente"),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  expectedAmount: decimal("expected_amount", { precision: 10, scale: 2 }),
+  difference: decimal("difference", { precision: 10, scale: 2 }),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  machineId: varchar("machine_id").references(() => machines.id),
+  cashCollectionId: varchar("cash_collection_id").references(() => cashCollections.id),
+  bankDepositId: varchar("bank_deposit_id"),
+  reference: text("reference"),
+  notes: text("notes"),
+  photoUrl: text("photo_url"),
+  reconciliatedAt: timestamp("reconciliated_at"),
+  reconciliatedBy: varchar("reconciliated_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCashMovementSchema = createInsertSchema(cashMovements).omit({
+  id: true,
+  createdAt: true,
+  reconciliatedAt: true,
+  reconciliatedBy: true,
+});
+
+export type InsertCashMovement = z.infer<typeof insertCashMovementSchema>;
+export type CashMovement = typeof cashMovements.$inferSelect;
+
+export const bankDeposits = pgTable("bank_deposits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  bankName: text("bank_name"),
+  accountNumber: text("account_number"),
+  depositDate: timestamp("deposit_date").notNull(),
+  reference: text("reference"),
+  receiptUrl: text("receipt_url"),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  status: text("status").default("pendiente"),
+  reconciliatedAmount: decimal("reconciliated_amount", { precision: 10, scale: 2 }),
+  reconciliatedAt: timestamp("reconciliated_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBankDepositSchema = createInsertSchema(bankDeposits).omit({
+  id: true,
+  createdAt: true,
+  reconciliatedAt: true,
+  reconciliatedAmount: true,
+});
+
+export type InsertBankDeposit = z.infer<typeof insertBankDepositSchema>;
+export type BankDeposit = typeof bankDeposits.$inferSelect;
+
+export const transferTypeEnum = pgEnum("transfer_type", [
+  "almacen_a_abastecedor",
+  "abastecedor_a_maquina",
+  "maquina_a_abastecedor",
+  "abastecedor_a_almacen",
+  "devolucion"
+]);
+
+export const productTransfers = pgTable("product_transfers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  transferType: text("transfer_type").notNull(),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  quantity: integer("quantity").notNull(),
+  lotId: varchar("lot_id").references(() => productLots.id),
+  sourceUserId: varchar("source_user_id").references(() => users.id),
+  destinationUserId: varchar("destination_user_id").references(() => users.id),
+  sourceMachineId: varchar("source_machine_id").references(() => machines.id),
+  destinationMachineId: varchar("destination_machine_id").references(() => machines.id),
+  serviceRecordId: varchar("service_record_id").references(() => serviceRecords.id),
+  reference: text("reference"),
+  notes: text("notes"),
+  status: text("status").default("completado"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertProductTransferSchema = createInsertSchema(productTransfers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertProductTransfer = z.infer<typeof insertProductTransferSchema>;
+export type ProductTransfer = typeof productTransfers.$inferSelect;
+
+export const shrinkageTypeEnum = pgEnum("shrinkage_type", [
+  "caducidad",
+  "danio",
+  "robo",
+  "perdida",
+  "error_conteo",
+  "otro"
+]);
+
+export const shrinkageRecords = pgTable("shrinkage_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  shrinkageType: text("shrinkage_type").notNull(),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  quantity: integer("quantity").notNull(),
+  unitCost: decimal("unit_cost", { precision: 10, scale: 2 }),
+  totalLoss: decimal("total_loss", { precision: 10, scale: 2 }),
+  lotId: varchar("lot_id").references(() => productLots.id),
+  machineId: varchar("machine_id").references(() => machines.id),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  photoUrl: text("photo_url"),
+  reason: text("reason"),
+  notes: text("notes"),
+  status: text("status").default("pendiente"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertShrinkageRecordSchema = createInsertSchema(shrinkageRecords).omit({
+  id: true,
+  createdAt: true,
+  approvedBy: true,
+  totalLoss: true,
+});
+
+export type InsertShrinkageRecord = z.infer<typeof insertShrinkageRecordSchema>;
+export type ShrinkageRecord = typeof shrinkageRecords.$inferSelect;
+
+// Relaciones Productos y Dinero
+export const cashMovementsRelations = relations(cashMovements, ({ one }) => ({
+  user: one(users, {
+    fields: [cashMovements.userId],
+    references: [users.id],
+  }),
+  machine: one(machines, {
+    fields: [cashMovements.machineId],
+    references: [machines.id],
+  }),
+  cashCollection: one(cashCollections, {
+    fields: [cashMovements.cashCollectionId],
+    references: [cashCollections.id],
+  }),
+  reconciliatedByUser: one(users, {
+    fields: [cashMovements.reconciliatedBy],
+    references: [users.id],
+    relationName: "reconciliatedCashMovements",
+  }),
+}));
+
+export const bankDepositsRelations = relations(bankDeposits, ({ one }) => ({
+  user: one(users, {
+    fields: [bankDeposits.userId],
+    references: [users.id],
+  }),
+}));
+
+export const productTransfersRelations = relations(productTransfers, ({ one }) => ({
+  product: one(products, {
+    fields: [productTransfers.productId],
+    references: [products.id],
+  }),
+  lot: one(productLots, {
+    fields: [productTransfers.lotId],
+    references: [productLots.id],
+  }),
+  sourceUser: one(users, {
+    fields: [productTransfers.sourceUserId],
+    references: [users.id],
+    relationName: "sourceTransfers",
+  }),
+  destinationUser: one(users, {
+    fields: [productTransfers.destinationUserId],
+    references: [users.id],
+    relationName: "destinationTransfers",
+  }),
+  sourceMachine: one(machines, {
+    fields: [productTransfers.sourceMachineId],
+    references: [machines.id],
+    relationName: "sourceTransferMachine",
+  }),
+  destinationMachine: one(machines, {
+    fields: [productTransfers.destinationMachineId],
+    references: [machines.id],
+    relationName: "destinationTransferMachine",
+  }),
+  serviceRecord: one(serviceRecords, {
+    fields: [productTransfers.serviceRecordId],
+    references: [serviceRecords.id],
+  }),
+}));
+
+export const shrinkageRecordsRelations = relations(shrinkageRecords, ({ one }) => ({
+  product: one(products, {
+    fields: [shrinkageRecords.productId],
+    references: [products.id],
+  }),
+  lot: one(productLots, {
+    fields: [shrinkageRecords.lotId],
+    references: [productLots.id],
+  }),
+  machine: one(machines, {
+    fields: [shrinkageRecords.machineId],
+    references: [machines.id],
+  }),
+  user: one(users, {
+    fields: [shrinkageRecords.userId],
+    references: [users.id],
+  }),
+  approvedByUser: one(users, {
+    fields: [shrinkageRecords.approvedBy],
+    references: [users.id],
+    relationName: "approvedShrinkages",
+  }),
+}));
+
+// ==================== MÓDULO CAJA CHICA ====================
+
+export const expenseCategoryEnum = pgEnum("expense_category", [
+  "herramientas",
+  "reparaciones",
+  "viaticos",
+  "combustible",
+  "limpieza",
+  "papeleria",
+  "otros"
+]);
+
+export const pettyCashExpenses = pgTable("petty_cash_expenses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  category: text("category").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  description: text("description").notNull(),
+  receiptUrl: text("receipt_url"),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  machineId: varchar("machine_id").references(() => machines.id),
+  vehicleId: varchar("vehicle_id"),
+  status: text("status").default("pendiente"),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectedBy: varchar("rejected_by").references(() => users.id),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionReason: text("rejection_reason"),
+  paidAt: timestamp("paid_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPettyCashExpenseSchema = createInsertSchema(pettyCashExpenses).omit({
+  id: true,
+  createdAt: true,
+  approvedBy: true,
+  approvedAt: true,
+  rejectedBy: true,
+  rejectedAt: true,
+  rejectionReason: true,
+  paidAt: true,
+});
+
+export type InsertPettyCashExpense = z.infer<typeof insertPettyCashExpenseSchema>;
+export type PettyCashExpense = typeof pettyCashExpenses.$inferSelect;
+
+export const pettyCashFund = pgTable("petty_cash_fund", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  initialBalance: decimal("initial_balance", { precision: 10, scale: 2 }).notNull(),
+  currentBalance: decimal("current_balance", { precision: 10, scale: 2 }).notNull(),
+  minBalance: decimal("min_balance", { precision: 10, scale: 2 }).default("500"),
+  lastReplenishmentDate: timestamp("last_replenishment_date"),
+  lastReplenishmentAmount: decimal("last_replenishment_amount", { precision: 10, scale: 2 }),
+  managedBy: varchar("managed_by").references(() => users.id),
+  notes: text("notes"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPettyCashFundSchema = createInsertSchema(pettyCashFund).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPettyCashFund = z.infer<typeof insertPettyCashFundSchema>;
+export type PettyCashFund = typeof pettyCashFund.$inferSelect;
+
+export const pettyCashTransactions = pgTable("petty_cash_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  type: text("type").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  previousBalance: decimal("previous_balance", { precision: 10, scale: 2 }).notNull(),
+  newBalance: decimal("new_balance", { precision: 10, scale: 2 }).notNull(),
+  expenseId: varchar("expense_id").references(() => pettyCashExpenses.id),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  reference: text("reference"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPettyCashTransactionSchema = createInsertSchema(pettyCashTransactions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPettyCashTransaction = z.infer<typeof insertPettyCashTransactionSchema>;
+export type PettyCashTransaction = typeof pettyCashTransactions.$inferSelect;
+
+// Relaciones Caja Chica
+export const pettyCashExpensesRelations = relations(pettyCashExpenses, ({ one }) => ({
+  user: one(users, {
+    fields: [pettyCashExpenses.userId],
+    references: [users.id],
+  }),
+  machine: one(machines, {
+    fields: [pettyCashExpenses.machineId],
+    references: [machines.id],
+  }),
+  approvedByUser: one(users, {
+    fields: [pettyCashExpenses.approvedBy],
+    references: [users.id],
+    relationName: "approvedExpenses",
+  }),
+  rejectedByUser: one(users, {
+    fields: [pettyCashExpenses.rejectedBy],
+    references: [users.id],
+    relationName: "rejectedExpenses",
+  }),
+}));
+
+export const pettyCashFundRelations = relations(pettyCashFund, ({ one }) => ({
+  manager: one(users, {
+    fields: [pettyCashFund.managedBy],
+    references: [users.id],
+  }),
+}));
+
+export const pettyCashTransactionsRelations = relations(pettyCashTransactions, ({ one }) => ({
+  expense: one(pettyCashExpenses, {
+    fields: [pettyCashTransactions.expenseId],
+    references: [pettyCashExpenses.id],
+  }),
+  user: one(users, {
+    fields: [pettyCashTransactions.userId],
+    references: [users.id],
+  }),
+}));
