@@ -1116,3 +1116,170 @@ export const pettyCashTransactionsRelations = relations(pettyCashTransactions, (
     references: [users.id],
   }),
 }));
+
+// ==================== MÓDULO COMPRAS ====================
+
+export const purchaseOrderStatus = pgEnum("purchase_order_status", [
+  "borrador",
+  "enviada",
+  "parcialmente_recibida",
+  "recibida",
+  "cancelada"
+]);
+
+export const purchaseOrders = pgTable("purchase_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderNumber: text("order_number").notNull().unique(),
+  supplierId: varchar("supplier_id").references(() => suppliers.id).notNull(),
+  status: purchaseOrderStatus("status").default("borrador").notNull(),
+  issueDate: timestamp("issue_date").defaultNow().notNull(),
+  expectedDeliveryDate: timestamp("expected_delivery_date"),
+  subtotal: decimal("subtotal", { precision: 12, scale: 2 }).default("0"),
+  taxAmount: decimal("tax_amount", { precision: 12, scale: 2 }).default("0"),
+  total: decimal("total", { precision: 12, scale: 2 }).default("0"),
+  notes: text("notes"),
+  createdBy: varchar("created_by").references(() => users.id).notNull(),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  cancelledBy: varchar("cancelled_by").references(() => users.id),
+  cancelledAt: timestamp("cancelled_at"),
+  cancellationReason: text("cancellation_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  approvedBy: true,
+  approvedAt: true,
+  cancelledBy: true,
+  cancelledAt: true,
+  cancellationReason: true,
+});
+
+export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+
+export const purchaseOrderItems = pgTable("purchase_order_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").references(() => purchaseOrders.id).notNull(),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  quantity: integer("quantity").notNull(),
+  receivedQuantity: integer("received_quantity").default(0),
+  unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
+  subtotal: decimal("subtotal", { precision: 12, scale: 2 }).notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPurchaseOrderItemSchema = createInsertSchema(purchaseOrderItems).omit({
+  id: true,
+  createdAt: true,
+  receivedQuantity: true,
+});
+
+export type InsertPurchaseOrderItem = z.infer<typeof insertPurchaseOrderItemSchema>;
+export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
+
+export const purchaseReceptions = pgTable("purchase_receptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderId: varchar("order_id").references(() => purchaseOrders.id).notNull(),
+  receptionNumber: text("reception_number").notNull().unique(),
+  receptionDate: timestamp("reception_date").defaultNow().notNull(),
+  invoiceNumber: text("invoice_number"),
+  invoiceDate: timestamp("invoice_date"),
+  invoiceAmount: decimal("invoice_amount", { precision: 12, scale: 2 }),
+  receivedBy: varchar("received_by").references(() => users.id).notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPurchaseReceptionSchema = createInsertSchema(purchaseReceptions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPurchaseReception = z.infer<typeof insertPurchaseReceptionSchema>;
+export type PurchaseReception = typeof purchaseReceptions.$inferSelect;
+
+export const receptionItems = pgTable("reception_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  receptionId: varchar("reception_id").references(() => purchaseReceptions.id).notNull(),
+  orderItemId: varchar("order_item_id").references(() => purchaseOrderItems.id).notNull(),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  quantityReceived: integer("quantity_received").notNull(),
+  lotNumber: text("lot_number"),
+  expirationDate: timestamp("expiration_date"),
+  unitCost: decimal("unit_cost", { precision: 10, scale: 2 }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertReceptionItemSchema = createInsertSchema(receptionItems).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertReceptionItem = z.infer<typeof insertReceptionItemSchema>;
+export type ReceptionItem = typeof receptionItems.$inferSelect;
+
+// Relaciones Compras
+export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many }) => ({
+  supplier: one(suppliers, {
+    fields: [purchaseOrders.supplierId],
+    references: [suppliers.id],
+  }),
+  createdByUser: one(users, {
+    fields: [purchaseOrders.createdBy],
+    references: [users.id],
+    relationName: "createdOrders",
+  }),
+  approvedByUser: one(users, {
+    fields: [purchaseOrders.approvedBy],
+    references: [users.id],
+    relationName: "approvedOrders",
+  }),
+  items: many(purchaseOrderItems),
+  receptions: many(purchaseReceptions),
+}));
+
+export const purchaseOrderItemsRelations = relations(purchaseOrderItems, ({ one, many }) => ({
+  order: one(purchaseOrders, {
+    fields: [purchaseOrderItems.orderId],
+    references: [purchaseOrders.id],
+  }),
+  product: one(products, {
+    fields: [purchaseOrderItems.productId],
+    references: [products.id],
+  }),
+  receptionItems: many(receptionItems),
+}));
+
+export const purchaseReceptionsRelations = relations(purchaseReceptions, ({ one, many }) => ({
+  order: one(purchaseOrders, {
+    fields: [purchaseReceptions.orderId],
+    references: [purchaseOrders.id],
+  }),
+  receivedByUser: one(users, {
+    fields: [purchaseReceptions.receivedBy],
+    references: [users.id],
+  }),
+  items: many(receptionItems),
+}));
+
+export const receptionItemsRelations = relations(receptionItems, ({ one }) => ({
+  reception: one(purchaseReceptions, {
+    fields: [receptionItems.receptionId],
+    references: [purchaseReceptions.id],
+  }),
+  orderItem: one(purchaseOrderItems, {
+    fields: [receptionItems.orderItemId],
+    references: [purchaseOrderItems.id],
+  }),
+  product: one(products, {
+    fields: [receptionItems.productId],
+    references: [products.id],
+  }),
+}));

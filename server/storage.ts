@@ -25,11 +25,16 @@ import {
   type PettyCashExpense, type InsertPettyCashExpense,
   type PettyCashFund, type InsertPettyCashFund,
   type PettyCashTransaction, type InsertPettyCashTransaction,
+  type PurchaseOrder, type InsertPurchaseOrder,
+  type PurchaseOrderItem, type InsertPurchaseOrderItem,
+  type PurchaseReception, type InsertPurchaseReception,
+  type ReceptionItem, type InsertReceptionItem,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
   cashMovements, bankDeposits, productTransfers, shrinkageRecords,
-  pettyCashExpenses, pettyCashFund, pettyCashTransactions
+  pettyCashExpenses, pettyCashFund, pettyCashTransactions,
+  purchaseOrders, purchaseOrderItems, purchaseReceptions, receptionItems
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc } from "drizzle-orm";
@@ -203,6 +208,35 @@ export interface IStorage {
   getPettyCashTransactions(limit?: number): Promise<any[]>;
   createPettyCashTransaction(transaction: InsertPettyCashTransaction): Promise<PettyCashTransaction>;
   getPettyCashStats(): Promise<{ currentBalance: number; todayExpenses: number; pendingApprovals: number; monthlyExpenses: number }>;
+  
+  // ==================== MÓDULO COMPRAS ====================
+  
+  // Órdenes de Compra
+  getPurchaseOrders(filters?: { supplierId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getPurchaseOrder(id: string): Promise<any>;
+  createPurchaseOrder(order: InsertPurchaseOrder): Promise<PurchaseOrder>;
+  updatePurchaseOrder(id: string, data: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined>;
+  updatePurchaseOrderStatus(id: string, status: string, userId?: string, reason?: string): Promise<PurchaseOrder | undefined>;
+  deletePurchaseOrder(id: string): Promise<boolean>;
+  getNextOrderNumber(): Promise<string>;
+  
+  // Items de Orden de Compra
+  getPurchaseOrderItems(orderId: string): Promise<any[]>;
+  addPurchaseOrderItem(item: InsertPurchaseOrderItem): Promise<PurchaseOrderItem>;
+  updatePurchaseOrderItem(id: string, data: Partial<InsertPurchaseOrderItem>): Promise<PurchaseOrderItem | undefined>;
+  removePurchaseOrderItem(id: string): Promise<boolean>;
+  recalculateOrderTotals(orderId: string): Promise<void>;
+  
+  // Recepciones de Mercancía
+  getPurchaseReceptions(filters?: { orderId?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getPurchaseReception(id: string): Promise<any>;
+  createPurchaseReception(reception: InsertPurchaseReception, items: InsertReceptionItem[]): Promise<PurchaseReception>;
+  getNextReceptionNumber(): Promise<string>;
+  
+  // Estadísticas de Compras
+  getPurchaseStats(startDate?: Date, endDate?: Date): Promise<{ totalOrders: number; totalAmount: number; pendingOrders: number; topSuppliers: any[] }>;
+  getSupplierPurchaseHistory(supplierId: string, limit?: number): Promise<any[]>;
+  getLowStockProducts(): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1763,6 +1797,346 @@ export class DatabaseStorage implements IStorage {
       pendingApprovals: pendingResult[0]?.count || 0,
       monthlyExpenses: parseFloat(monthlyExpensesResult[0]?.total || "0"),
     };
+  }
+
+  // ==================== MÓDULO COMPRAS ====================
+
+  async getPurchaseOrders(filters?: { supplierId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+    let conditions = [];
+    
+    if (filters?.supplierId) {
+      conditions.push(eq(purchaseOrders.supplierId, filters.supplierId));
+    }
+    if (filters?.status) {
+      conditions.push(eq(purchaseOrders.status, filters.status as any));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(purchaseOrders.issueDate, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(purchaseOrders.issueDate, filters.endDate));
+    }
+    
+    const orders = conditions.length > 0
+      ? await db.select().from(purchaseOrders).where(and(...conditions)).orderBy(desc(purchaseOrders.createdAt))
+      : await db.select().from(purchaseOrders).orderBy(desc(purchaseOrders.createdAt));
+    
+    const ordersWithDetails = await Promise.all(orders.map(async (order) => {
+      const supplier = await this.getSupplier(order.supplierId);
+      const items = await this.getPurchaseOrderItems(order.id);
+      const createdByUser = await this.getUser(order.createdBy);
+      return { ...order, supplier, items, createdByUser, itemCount: items.length };
+    }));
+    
+    return ordersWithDetails;
+  }
+
+  async getPurchaseOrder(id: string): Promise<any> {
+    const [order] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id));
+    if (!order) return undefined;
+    
+    const supplier = await this.getSupplier(order.supplierId);
+    const items = await this.getPurchaseOrderItems(order.id);
+    const createdByUser = await this.getUser(order.createdBy);
+    const receptions = await this.getPurchaseReceptions({ orderId: id });
+    
+    return { ...order, supplier, items, createdByUser, receptions };
+  }
+
+  async createPurchaseOrder(order: InsertPurchaseOrder): Promise<PurchaseOrder> {
+    const [newOrder] = await db.insert(purchaseOrders).values(order).returning();
+    return newOrder;
+  }
+
+  async updatePurchaseOrder(id: string, data: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined> {
+    const [updated] = await db.update(purchaseOrders)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(purchaseOrders.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updatePurchaseOrderStatus(id: string, status: string, userId?: string, reason?: string): Promise<PurchaseOrder | undefined> {
+    const updateData: any = { status, updatedAt: new Date() };
+    
+    if (status === "enviada" && userId) {
+      updateData.approvedBy = userId;
+      updateData.approvedAt = new Date();
+    }
+    if (status === "cancelada") {
+      updateData.cancelledBy = userId;
+      updateData.cancelledAt = new Date();
+      updateData.cancellationReason = reason;
+    }
+    
+    const [updated] = await db.update(purchaseOrders)
+      .set(updateData)
+      .where(eq(purchaseOrders.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deletePurchaseOrder(id: string): Promise<boolean> {
+    await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.orderId, id));
+    const result = await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
+    return true;
+  }
+
+  async getNextOrderNumber(): Promise<string> {
+    const year = new Date().getFullYear();
+    const result = await db.select({ count: sql<number>`COUNT(*)` })
+      .from(purchaseOrders)
+      .where(sql`EXTRACT(YEAR FROM ${purchaseOrders.createdAt}) = ${year}`);
+    
+    const count = (result[0]?.count || 0) + 1;
+    return `OC-${year}-${String(count).padStart(4, "0")}`;
+  }
+
+  async getPurchaseOrderItems(orderId: string): Promise<any[]> {
+    const items = await db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.orderId, orderId));
+    
+    const itemsWithProducts = await Promise.all(items.map(async (item) => {
+      const product = await this.getProduct(item.productId);
+      return { ...item, product };
+    }));
+    
+    return itemsWithProducts;
+  }
+
+  async addPurchaseOrderItem(item: InsertPurchaseOrderItem): Promise<PurchaseOrderItem> {
+    const [newItem] = await db.insert(purchaseOrderItems).values(item).returning();
+    await this.recalculateOrderTotals(item.orderId);
+    return newItem;
+  }
+
+  async updatePurchaseOrderItem(id: string, data: Partial<InsertPurchaseOrderItem>): Promise<PurchaseOrderItem | undefined> {
+    const [existing] = await db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.id, id));
+    if (!existing) return undefined;
+    
+    const [updated] = await db.update(purchaseOrderItems)
+      .set(data)
+      .where(eq(purchaseOrderItems.id, id))
+      .returning();
+    
+    await this.recalculateOrderTotals(existing.orderId);
+    return updated;
+  }
+
+  async removePurchaseOrderItem(id: string): Promise<boolean> {
+    const [existing] = await db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.id, id));
+    if (!existing) return false;
+    
+    await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.id, id));
+    await this.recalculateOrderTotals(existing.orderId);
+    return true;
+  }
+
+  async recalculateOrderTotals(orderId: string): Promise<void> {
+    const items = await db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.orderId, orderId));
+    
+    const subtotal = items.reduce((sum, item) => sum + parseFloat(item.subtotal), 0);
+    const taxAmount = subtotal * 0.16; // 16% IVA
+    const total = subtotal + taxAmount;
+    
+    await db.update(purchaseOrders)
+      .set({
+        subtotal: subtotal.toFixed(2),
+        taxAmount: taxAmount.toFixed(2),
+        total: total.toFixed(2),
+        updatedAt: new Date()
+      })
+      .where(eq(purchaseOrders.id, orderId));
+  }
+
+  async getPurchaseReceptions(filters?: { orderId?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+    let conditions = [];
+    
+    if (filters?.orderId) {
+      conditions.push(eq(purchaseReceptions.orderId, filters.orderId));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(purchaseReceptions.receptionDate, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(purchaseReceptions.receptionDate, filters.endDate));
+    }
+    
+    const receptions = conditions.length > 0
+      ? await db.select().from(purchaseReceptions).where(and(...conditions)).orderBy(desc(purchaseReceptions.createdAt))
+      : await db.select().from(purchaseReceptions).orderBy(desc(purchaseReceptions.createdAt));
+    
+    const receptionsWithDetails = await Promise.all(receptions.map(async (reception) => {
+      const order = await this.getPurchaseOrder(reception.orderId);
+      const receivedByUser = await this.getUser(reception.receivedBy);
+      const items = await db.select().from(receptionItems).where(eq(receptionItems.receptionId, reception.id));
+      
+      const itemsWithProducts = await Promise.all(items.map(async (item) => {
+        const product = await this.getProduct(item.productId);
+        return { ...item, product };
+      }));
+      
+      return { ...reception, order, receivedByUser, items: itemsWithProducts };
+    }));
+    
+    return receptionsWithDetails;
+  }
+
+  async getPurchaseReception(id: string): Promise<any> {
+    const [reception] = await db.select().from(purchaseReceptions).where(eq(purchaseReceptions.id, id));
+    if (!reception) return undefined;
+    
+    const order = await this.getPurchaseOrder(reception.orderId);
+    const receivedByUser = await this.getUser(reception.receivedBy);
+    const items = await db.select().from(receptionItems).where(eq(receptionItems.receptionId, id));
+    
+    const itemsWithProducts = await Promise.all(items.map(async (item) => {
+      const product = await this.getProduct(item.productId);
+      return { ...item, product };
+    }));
+    
+    return { ...reception, order, receivedByUser, items: itemsWithProducts };
+  }
+
+  async createPurchaseReception(reception: InsertPurchaseReception, items: InsertReceptionItem[]): Promise<PurchaseReception> {
+    const [newReception] = await db.insert(purchaseReceptions).values(reception).returning();
+    
+    for (const item of items) {
+      await db.insert(receptionItems).values({
+        ...item,
+        receptionId: newReception.id
+      });
+      
+      // Actualizar cantidad recibida en el item de la orden
+      const [orderItem] = await db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.id, item.orderItemId));
+      if (orderItem) {
+        const newReceivedQty = (orderItem.receivedQuantity || 0) + item.quantityReceived;
+        await db.update(purchaseOrderItems)
+          .set({ receivedQuantity: newReceivedQty })
+          .where(eq(purchaseOrderItems.id, item.orderItemId));
+      }
+      
+      // Crear lote de producto si tiene número de lote
+      if (item.lotNumber) {
+        const order = await this.getPurchaseOrder(reception.orderId);
+        await this.createProductLot({
+          productId: item.productId,
+          lotNumber: item.lotNumber,
+          quantity: item.quantityReceived,
+          costPrice: item.unitCost?.toString(),
+          expirationDate: item.expirationDate,
+          supplierId: order?.supplierId,
+          purchaseDate: new Date(),
+          notes: item.notes
+        });
+      }
+      
+      // Actualizar inventario del almacén
+      await this.updateWarehouseStock(item.productId, item.quantityReceived);
+      
+      // Registrar movimiento de almacén
+      await this.createWarehouseMovement({
+        productId: item.productId,
+        type: "entrada_compra",
+        quantity: item.quantityReceived,
+        reference: `Recepción ${newReception.receptionNumber}`,
+        notes: item.notes
+      });
+    }
+    
+    // Verificar si la orden está completa
+    const orderItems = await this.getPurchaseOrderItems(reception.orderId);
+    const allReceived = orderItems.every(item => (item.receivedQuantity || 0) >= item.quantity);
+    const someReceived = orderItems.some(item => (item.receivedQuantity || 0) > 0);
+    
+    if (allReceived) {
+      await this.updatePurchaseOrderStatus(reception.orderId, "recibida");
+    } else if (someReceived) {
+      await this.updatePurchaseOrderStatus(reception.orderId, "parcialmente_recibida");
+    }
+    
+    return newReception;
+  }
+
+  async getNextReceptionNumber(): Promise<string> {
+    const year = new Date().getFullYear();
+    const result = await db.select({ count: sql<number>`COUNT(*)` })
+      .from(purchaseReceptions)
+      .where(sql`EXTRACT(YEAR FROM ${purchaseReceptions.createdAt}) = ${year}`);
+    
+    const count = (result[0]?.count || 0) + 1;
+    return `REC-${year}-${String(count).padStart(4, "0")}`;
+  }
+
+  async getPurchaseStats(startDate?: Date, endDate?: Date): Promise<{ totalOrders: number; totalAmount: number; pendingOrders: number; topSuppliers: any[] }> {
+    let conditions = [];
+    if (startDate) conditions.push(gte(purchaseOrders.createdAt, startDate));
+    if (endDate) conditions.push(lte(purchaseOrders.createdAt, endDate));
+    
+    const ordersQuery = conditions.length > 0
+      ? db.select().from(purchaseOrders).where(and(...conditions))
+      : db.select().from(purchaseOrders);
+    
+    const orders = await ordersQuery;
+    
+    const totalOrders = orders.length;
+    const totalAmount = orders.reduce((sum, o) => sum + parseFloat(o.total || "0"), 0);
+    const pendingOrders = orders.filter(o => o.status === "borrador" || o.status === "enviada").length;
+    
+    // Top 5 proveedores por monto
+    const supplierTotals: Record<string, { supplierId: string; total: number; count: number }> = {};
+    for (const order of orders) {
+      if (!supplierTotals[order.supplierId]) {
+        supplierTotals[order.supplierId] = { supplierId: order.supplierId, total: 0, count: 0 };
+      }
+      supplierTotals[order.supplierId].total += parseFloat(order.total || "0");
+      supplierTotals[order.supplierId].count++;
+    }
+    
+    const topSuppliersData = Object.values(supplierTotals)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+    
+    const topSuppliers = await Promise.all(topSuppliersData.map(async (s) => {
+      const supplier = await this.getSupplier(s.supplierId);
+      return { ...s, supplier };
+    }));
+    
+    return { totalOrders, totalAmount, pendingOrders, topSuppliers };
+  }
+
+  async getSupplierPurchaseHistory(supplierId: string, limit?: number): Promise<any[]> {
+    const query = limit
+      ? db.select().from(purchaseOrders)
+          .where(eq(purchaseOrders.supplierId, supplierId))
+          .orderBy(desc(purchaseOrders.createdAt))
+          .limit(limit)
+      : db.select().from(purchaseOrders)
+          .where(eq(purchaseOrders.supplierId, supplierId))
+          .orderBy(desc(purchaseOrders.createdAt));
+    
+    const orders = await query;
+    
+    const ordersWithItems = await Promise.all(orders.map(async (order) => {
+      const items = await this.getPurchaseOrderItems(order.id);
+      return { ...order, items, itemCount: items.length };
+    }));
+    
+    return ordersWithItems;
+  }
+
+  async getLowStockProducts(): Promise<any[]> {
+    const inventory = await db.select().from(warehouseInventory);
+    
+    const lowStockItems = inventory.filter(item => 
+      (item.currentStock || 0) <= (item.reorderPoint || 20)
+    );
+    
+    const itemsWithProducts = await Promise.all(lowStockItems.map(async (item) => {
+      const product = await this.getProduct(item.productId);
+      return { ...item, product };
+    }));
+    
+    return itemsWithProducts;
   }
 }
 
