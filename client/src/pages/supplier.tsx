@@ -122,7 +122,7 @@ export function SupplierPage() {
       return apiRequest("POST", `/api/supplier/routes/${routeId}/start`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route", supplierId] });
       toast({ title: "Ruta iniciada", description: "Tu ruta del día ha comenzado" });
     },
   });
@@ -132,7 +132,7 @@ export function SupplierPage() {
       return apiRequest("POST", `/api/supplier/stops/${stopId}/start`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route", supplierId] });
     },
   });
 
@@ -141,7 +141,7 @@ export function SupplierPage() {
       return apiRequest("POST", `/api/supplier/stops/${stopId}/complete`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route", supplierId] });
     },
   });
 
@@ -171,6 +171,7 @@ export function SupplierPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/cash"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/stats", supplierId] });
       toast({ title: "Efectivo registrado", description: `$${cashAmount} MXN registrados` });
       setCashAmount("");
       setExpectedAmount("");
@@ -184,6 +185,7 @@ export function SupplierPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/issues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route", supplierId] });
       toast({ title: "Reporte enviado", description: "El supervisor ha sido notificado" });
       setIssueType("");
       setIssueDescription("");
