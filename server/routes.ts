@@ -16,7 +16,13 @@ import {
   insertServiceRecordSchema,
   insertCashCollectionSchema,
   insertProductLoadSchema,
-  insertIssueReportSchema
+  insertIssueReportSchema,
+  insertCashMovementSchema,
+  insertBankDepositSchema,
+  insertProductTransferSchema,
+  insertShrinkageRecordSchema,
+  insertPettyCashExpenseSchema,
+  insertPettyCashFundSchema
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -1051,6 +1057,440 @@ export async function registerRoutes(
       res.json(allUsers);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener usuarios" });
+    }
+  });
+
+  // ==================== MÓDULO PRODUCTOS Y DINERO ====================
+
+  // Movimientos de Efectivo
+  app.get("/api/cash-movements", async (req: Request, res: Response) => {
+    try {
+      const { userId, type, status, startDate, endDate } = req.query;
+      const filters = {
+        userId: userId as string | undefined,
+        type: type as string | undefined,
+        status: status as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+      };
+      const movements = await storage.getCashMovements(filters);
+      res.json(movements);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener movimientos" });
+    }
+  });
+
+  app.get("/api/cash-movements/summary", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const summary = await storage.getCashMovementsSummary(
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(summary);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener resumen" });
+    }
+  });
+
+  app.get("/api/cash-movements/:id", async (req: Request, res: Response) => {
+    try {
+      const movement = await storage.getCashMovement(req.params.id);
+      if (!movement) {
+        return res.status(404).json({ error: "Movimiento no encontrado" });
+      }
+      res.json(movement);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener movimiento" });
+    }
+  });
+
+  app.post("/api/cash-movements", async (req: Request, res: Response) => {
+    try {
+      const data = insertCashMovementSchema.parse(req.body);
+      const movement = await storage.createCashMovement(data);
+      res.status(201).json(movement);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al crear movimiento" });
+    }
+  });
+
+  app.patch("/api/cash-movements/:id/status", async (req: Request, res: Response) => {
+    try {
+      const { status } = req.body;
+      if (!status) {
+        return res.status(400).json({ error: "Falta el estado" });
+      }
+      const movement = await storage.updateCashMovementStatus(req.params.id, status);
+      if (!movement) {
+        return res.status(404).json({ error: "Movimiento no encontrado" });
+      }
+      res.json(movement);
+    } catch (error) {
+      res.status(500).json({ error: "Error al actualizar movimiento" });
+    }
+  });
+
+  app.post("/api/cash-movements/:id/reconcile", async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ error: "Falta el usuario que concilia" });
+      }
+      const movement = await storage.reconcileCashMovement(req.params.id, userId);
+      if (!movement) {
+        return res.status(404).json({ error: "Movimiento no encontrado" });
+      }
+      res.json(movement);
+    } catch (error) {
+      res.status(500).json({ error: "Error al conciliar movimiento" });
+    }
+  });
+
+  // Depósitos Bancarios
+  app.get("/api/bank-deposits", async (req: Request, res: Response) => {
+    try {
+      const { userId, status, startDate, endDate } = req.query;
+      const filters = {
+        userId: userId as string | undefined,
+        status: status as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+      };
+      const deposits = await storage.getBankDeposits(filters);
+      res.json(deposits);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener depósitos" });
+    }
+  });
+
+  app.get("/api/bank-deposits/:id", async (req: Request, res: Response) => {
+    try {
+      const deposit = await storage.getBankDeposit(req.params.id);
+      if (!deposit) {
+        return res.status(404).json({ error: "Depósito no encontrado" });
+      }
+      res.json(deposit);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener depósito" });
+    }
+  });
+
+  app.post("/api/bank-deposits", async (req: Request, res: Response) => {
+    try {
+      const data = insertBankDepositSchema.parse(req.body);
+      const deposit = await storage.createBankDeposit(data);
+      res.status(201).json(deposit);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al crear depósito" });
+    }
+  });
+
+  app.post("/api/bank-deposits/:id/reconcile", async (req: Request, res: Response) => {
+    try {
+      const { amount } = req.body;
+      if (amount === undefined) {
+        return res.status(400).json({ error: "Falta el monto conciliado" });
+      }
+      const deposit = await storage.reconcileBankDeposit(req.params.id, parseFloat(amount));
+      if (!deposit) {
+        return res.status(404).json({ error: "Depósito no encontrado" });
+      }
+      res.json(deposit);
+    } catch (error) {
+      res.status(500).json({ error: "Error al conciliar depósito" });
+    }
+  });
+
+  // Transferencias de Productos
+  app.get("/api/product-transfers", async (req: Request, res: Response) => {
+    try {
+      const { type, productId, startDate, endDate } = req.query;
+      const filters = {
+        type: type as string | undefined,
+        productId: productId as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+      };
+      const transfers = await storage.getProductTransfers(filters);
+      res.json(transfers);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener transferencias" });
+    }
+  });
+
+  app.get("/api/product-transfers/:id", async (req: Request, res: Response) => {
+    try {
+      const transfer = await storage.getProductTransfer(req.params.id);
+      if (!transfer) {
+        return res.status(404).json({ error: "Transferencia no encontrada" });
+      }
+      res.json(transfer);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener transferencia" });
+    }
+  });
+
+  app.post("/api/product-transfers", async (req: Request, res: Response) => {
+    try {
+      const data = insertProductTransferSchema.parse(req.body);
+      const transfer = await storage.createProductTransfer(data);
+      res.status(201).json(transfer);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al crear transferencia" });
+    }
+  });
+
+  // Mermas
+  app.get("/api/shrinkage", async (req: Request, res: Response) => {
+    try {
+      const { type, productId, status } = req.query;
+      const filters = {
+        type: type as string | undefined,
+        productId: productId as string | undefined,
+        status: status as string | undefined,
+      };
+      const records = await storage.getShrinkageRecords(filters);
+      res.json(records);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener mermas" });
+    }
+  });
+
+  app.get("/api/shrinkage/summary", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const summary = await storage.getShrinkageSummary(
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(summary);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener resumen de mermas" });
+    }
+  });
+
+  app.get("/api/shrinkage/:id", async (req: Request, res: Response) => {
+    try {
+      const record = await storage.getShrinkageRecord(req.params.id);
+      if (!record) {
+        return res.status(404).json({ error: "Merma no encontrada" });
+      }
+      res.json(record);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener merma" });
+    }
+  });
+
+  app.post("/api/shrinkage", async (req: Request, res: Response) => {
+    try {
+      const data = insertShrinkageRecordSchema.parse(req.body);
+      const record = await storage.createShrinkageRecord(data);
+      res.status(201).json(record);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al registrar merma" });
+    }
+  });
+
+  app.post("/api/shrinkage/:id/approve", async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ error: "Falta el usuario que aprueba" });
+      }
+      const record = await storage.approveShrinkage(req.params.id, userId);
+      if (!record) {
+        return res.status(404).json({ error: "Merma no encontrada" });
+      }
+      res.json(record);
+    } catch (error) {
+      res.status(500).json({ error: "Error al aprobar merma" });
+    }
+  });
+
+  // Conciliación
+  app.get("/api/reconciliation/daily", async (req: Request, res: Response) => {
+    try {
+      const { date } = req.query;
+      const targetDate = date ? new Date(date as string) : new Date();
+      const reconciliation = await storage.getDailyReconciliation(targetDate);
+      res.json(reconciliation);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener conciliación diaria" });
+    }
+  });
+
+  app.get("/api/reconciliation/supplier/:userId", async (req: Request, res: Response) => {
+    try {
+      const { date } = req.query;
+      const targetDate = date ? new Date(date as string) : new Date();
+      const reconciliation = await storage.getSupplierReconciliation(req.params.userId, targetDate);
+      res.json(reconciliation);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener conciliación del abastecedor" });
+    }
+  });
+
+  // ==================== MÓDULO CAJA CHICA ====================
+
+  // Gastos de Caja Chica
+  app.get("/api/petty-cash/expenses", async (req: Request, res: Response) => {
+    try {
+      const { userId, category, status, startDate, endDate } = req.query;
+      const filters = {
+        userId: userId as string | undefined,
+        category: category as string | undefined,
+        status: status as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+      };
+      const expenses = await storage.getPettyCashExpenses(filters);
+      res.json(expenses);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener gastos" });
+    }
+  });
+
+  app.get("/api/petty-cash/expenses/:id", async (req: Request, res: Response) => {
+    try {
+      const expense = await storage.getPettyCashExpense(req.params.id);
+      if (!expense) {
+        return res.status(404).json({ error: "Gasto no encontrado" });
+      }
+      res.json(expense);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener gasto" });
+    }
+  });
+
+  app.post("/api/petty-cash/expenses", async (req: Request, res: Response) => {
+    try {
+      const data = insertPettyCashExpenseSchema.parse(req.body);
+      const expense = await storage.createPettyCashExpense(data);
+      res.status(201).json(expense);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al registrar gasto" });
+    }
+  });
+
+  app.post("/api/petty-cash/expenses/:id/approve", async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ error: "Falta el usuario que aprueba" });
+      }
+      const expense = await storage.approvePettyCashExpense(req.params.id, userId);
+      if (!expense) {
+        return res.status(404).json({ error: "Gasto no encontrado" });
+      }
+      res.json(expense);
+    } catch (error) {
+      res.status(500).json({ error: "Error al aprobar gasto" });
+    }
+  });
+
+  app.post("/api/petty-cash/expenses/:id/reject", async (req: Request, res: Response) => {
+    try {
+      const { userId, reason } = req.body;
+      if (!userId || !reason) {
+        return res.status(400).json({ error: "Faltan datos requeridos" });
+      }
+      const expense = await storage.rejectPettyCashExpense(req.params.id, userId, reason);
+      if (!expense) {
+        return res.status(404).json({ error: "Gasto no encontrado" });
+      }
+      res.json(expense);
+    } catch (error) {
+      res.status(500).json({ error: "Error al rechazar gasto" });
+    }
+  });
+
+  app.post("/api/petty-cash/expenses/:id/pay", async (req: Request, res: Response) => {
+    try {
+      const expense = await storage.markPettyCashExpenseAsPaid(req.params.id);
+      if (!expense) {
+        return res.status(400).json({ error: "No se puede pagar este gasto" });
+      }
+      res.json(expense);
+    } catch (error) {
+      res.status(500).json({ error: "Error al pagar gasto" });
+    }
+  });
+
+  // Fondo de Caja Chica
+  app.get("/api/petty-cash/fund", async (req: Request, res: Response) => {
+    try {
+      const fund = await storage.getPettyCashFund();
+      res.json(fund || { initialized: false });
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener fondo" });
+    }
+  });
+
+  app.post("/api/petty-cash/fund", async (req: Request, res: Response) => {
+    try {
+      const data = insertPettyCashFundSchema.parse(req.body);
+      const fund = await storage.initializePettyCashFund(data);
+      res.status(201).json(fund);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al inicializar fondo" });
+    }
+  });
+
+  app.post("/api/petty-cash/fund/replenish", async (req: Request, res: Response) => {
+    try {
+      const { amount, userId } = req.body;
+      if (!amount || !userId) {
+        return res.status(400).json({ error: "Faltan datos requeridos" });
+      }
+      const fund = await storage.replenishPettyCashFund(parseFloat(amount), userId);
+      if (!fund) {
+        return res.status(400).json({ error: "El fondo no está inicializado" });
+      }
+      res.json(fund);
+    } catch (error) {
+      res.status(500).json({ error: "Error al reponer fondo" });
+    }
+  });
+
+  // Transacciones de Caja Chica
+  app.get("/api/petty-cash/transactions", async (req: Request, res: Response) => {
+    try {
+      const { limit } = req.query;
+      const transactions = await storage.getPettyCashTransactions(
+        limit ? parseInt(limit as string) : undefined
+      );
+      res.json(transactions);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener transacciones" });
+    }
+  });
+
+  // Estadísticas de Caja Chica
+  app.get("/api/petty-cash/stats", async (req: Request, res: Response) => {
+    try {
+      const stats = await storage.getPettyCashStats();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener estadísticas" });
     }
   });
 

@@ -18,9 +18,18 @@ import {
   type ProductLoad, type InsertProductLoad,
   type IssueReport, type InsertIssueReport,
   type SupplierInventory, type InsertSupplierInventory,
+  type CashMovement, type InsertCashMovement,
+  type BankDeposit, type InsertBankDeposit,
+  type ProductTransfer, type InsertProductTransfer,
+  type ShrinkageRecord, type InsertShrinkageRecord,
+  type PettyCashExpense, type InsertPettyCashExpense,
+  type PettyCashFund, type InsertPettyCashFund,
+  type PettyCashTransaction, type InsertPettyCashTransaction,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
-  routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory
+  routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
+  cashMovements, bankDeposits, productTransfers, shrinkageRecords,
+  pettyCashExpenses, pettyCashFund, pettyCashTransactions
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc } from "drizzle-orm";
@@ -141,6 +150,59 @@ export interface IStorage {
   
   // Estadísticas del Abastecedor
   getSupplierStats(userId: string, startDate?: Date, endDate?: Date): Promise<any>;
+  
+  // ==================== MÓDULO PRODUCTOS Y DINERO ====================
+  
+  // Movimientos de Efectivo
+  getCashMovements(filters?: { userId?: string; type?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getCashMovement(id: string): Promise<any>;
+  createCashMovement(movement: InsertCashMovement): Promise<CashMovement>;
+  updateCashMovementStatus(id: string, status: string): Promise<CashMovement | undefined>;
+  reconcileCashMovement(id: string, reconciledBy: string): Promise<CashMovement | undefined>;
+  getCashMovementsSummary(startDate?: Date, endDate?: Date): Promise<{ total: number; pending: number; delivered: number; deposited: number; differences: number }>;
+  
+  // Depósitos Bancarios
+  getBankDeposits(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getBankDeposit(id: string): Promise<any>;
+  createBankDeposit(deposit: InsertBankDeposit): Promise<BankDeposit>;
+  reconcileBankDeposit(id: string, reconciledAmount: number): Promise<BankDeposit | undefined>;
+  
+  // Transferencias de Productos
+  getProductTransfers(filters?: { type?: string; productId?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getProductTransfer(id: string): Promise<any>;
+  createProductTransfer(transfer: InsertProductTransfer): Promise<ProductTransfer>;
+  
+  // Mermas
+  getShrinkageRecords(filters?: { type?: string; productId?: string; status?: string }): Promise<any[]>;
+  getShrinkageRecord(id: string): Promise<any>;
+  createShrinkageRecord(record: InsertShrinkageRecord): Promise<ShrinkageRecord>;
+  approveShrinkage(id: string, approvedBy: string): Promise<ShrinkageRecord | undefined>;
+  getShrinkageSummary(startDate?: Date, endDate?: Date): Promise<{ totalQuantity: number; totalLoss: number; byType: Record<string, number> }>;
+  
+  // Conciliación
+  getDailyReconciliation(date: Date): Promise<any>;
+  getSupplierReconciliation(userId: string, date: Date): Promise<any>;
+  
+  // ==================== MÓDULO CAJA CHICA ====================
+  
+  // Gastos de Caja Chica
+  getPettyCashExpenses(filters?: { userId?: string; category?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getPettyCashExpense(id: string): Promise<any>;
+  createPettyCashExpense(expense: InsertPettyCashExpense): Promise<PettyCashExpense>;
+  approvePettyCashExpense(id: string, approvedBy: string): Promise<PettyCashExpense | undefined>;
+  rejectPettyCashExpense(id: string, rejectedBy: string, reason: string): Promise<PettyCashExpense | undefined>;
+  markPettyCashExpenseAsPaid(id: string): Promise<PettyCashExpense | undefined>;
+  
+  // Fondo de Caja Chica
+  getPettyCashFund(): Promise<PettyCashFund | undefined>;
+  initializePettyCashFund(fund: InsertPettyCashFund): Promise<PettyCashFund>;
+  updatePettyCashBalance(amount: number, type: 'add' | 'subtract'): Promise<PettyCashFund | undefined>;
+  replenishPettyCashFund(amount: number, userId: string): Promise<PettyCashFund | undefined>;
+  
+  // Transacciones de Caja Chica
+  getPettyCashTransactions(limit?: number): Promise<any[]>;
+  createPettyCashTransaction(transaction: InsertPettyCashTransaction): Promise<PettyCashTransaction>;
+  getPettyCashStats(): Promise<{ currentBalance: number; todayExpenses: number; pendingApprovals: number; monthlyExpenses: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1183,6 +1245,523 @@ export class DatabaseStorage implements IStorage {
       cashDifference: cashSummary.difference,
       productsLoaded: productsLoaded[0]?.total || 0,
       issuesReported: issuesReported[0]?.count || 0,
+    };
+  }
+
+  // ==================== MÓDULO PRODUCTOS Y DINERO ====================
+
+  // Movimientos de Efectivo
+  async getCashMovements(filters?: { userId?: string; type?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+    let conditions: any[] = [];
+    
+    if (filters?.userId) conditions.push(eq(cashMovements.userId, filters.userId));
+    if (filters?.type) conditions.push(eq(cashMovements.type, filters.type));
+    if (filters?.status) conditions.push(eq(cashMovements.status, filters.status));
+    if (filters?.startDate) conditions.push(gte(cashMovements.createdAt, filters.startDate));
+    if (filters?.endDate) conditions.push(lte(cashMovements.createdAt, filters.endDate));
+    
+    const query = conditions.length > 0
+      ? db.select().from(cashMovements).where(and(...conditions))
+      : db.select().from(cashMovements);
+    
+    const movements = await query.orderBy(desc(cashMovements.createdAt));
+    
+    const movementsWithDetails = await Promise.all(movements.map(async (mov) => {
+      const user = await this.getUser(mov.userId);
+      const machine = mov.machineId ? await this.getMachine(mov.machineId) : undefined;
+      const reconciliatedByUser = mov.reconciliatedBy ? await this.getUser(mov.reconciliatedBy) : undefined;
+      return { ...mov, user, machine, reconciliatedByUser };
+    }));
+    
+    return movementsWithDetails;
+  }
+
+  async getCashMovement(id: string): Promise<any> {
+    const [movement] = await db.select().from(cashMovements).where(eq(cashMovements.id, id));
+    if (!movement) return undefined;
+    
+    const user = await this.getUser(movement.userId);
+    const machine = movement.machineId ? await this.getMachine(movement.machineId) : undefined;
+    const reconciliatedByUser = movement.reconciliatedBy ? await this.getUser(movement.reconciliatedBy) : undefined;
+    
+    return { ...movement, user, machine, reconciliatedByUser };
+  }
+
+  async createCashMovement(movement: InsertCashMovement): Promise<CashMovement> {
+    const difference = movement.expectedAmount && movement.amount
+      ? parseFloat(movement.amount) - parseFloat(movement.expectedAmount)
+      : null;
+    
+    const [newMovement] = await db.insert(cashMovements)
+      .values({ ...movement, difference: difference?.toString() })
+      .returning();
+    return newMovement;
+  }
+
+  async updateCashMovementStatus(id: string, status: string): Promise<CashMovement | undefined> {
+    const [updated] = await db.update(cashMovements)
+      .set({ status })
+      .where(eq(cashMovements.id, id))
+      .returning();
+    return updated;
+  }
+
+  async reconcileCashMovement(id: string, reconciledBy: string): Promise<CashMovement | undefined> {
+    const [updated] = await db.update(cashMovements)
+      .set({ status: "conciliado", reconciliatedAt: new Date(), reconciliatedBy: reconciledBy })
+      .where(eq(cashMovements.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getCashMovementsSummary(startDate?: Date, endDate?: Date): Promise<{ total: number; pending: number; delivered: number; deposited: number; differences: number }> {
+    const start = startDate || new Date(new Date().setHours(0, 0, 0, 0));
+    const end = endDate || new Date();
+    
+    const movements = await db.select().from(cashMovements)
+      .where(and(gte(cashMovements.createdAt, start), lte(cashMovements.createdAt, end)));
+    
+    return {
+      total: movements.reduce((sum, m) => sum + parseFloat(m.amount || "0"), 0),
+      pending: movements.filter(m => m.status === "pendiente").reduce((sum, m) => sum + parseFloat(m.amount || "0"), 0),
+      delivered: movements.filter(m => m.status === "entregado").reduce((sum, m) => sum + parseFloat(m.amount || "0"), 0),
+      deposited: movements.filter(m => m.status === "depositado").reduce((sum, m) => sum + parseFloat(m.amount || "0"), 0),
+      differences: movements.reduce((sum, m) => sum + parseFloat(m.difference || "0"), 0),
+    };
+  }
+
+  // Depósitos Bancarios
+  async getBankDeposits(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+    let conditions: any[] = [];
+    
+    if (filters?.userId) conditions.push(eq(bankDeposits.userId, filters.userId));
+    if (filters?.status) conditions.push(eq(bankDeposits.status, filters.status));
+    if (filters?.startDate) conditions.push(gte(bankDeposits.depositDate, filters.startDate));
+    if (filters?.endDate) conditions.push(lte(bankDeposits.depositDate, filters.endDate));
+    
+    const query = conditions.length > 0
+      ? db.select().from(bankDeposits).where(and(...conditions))
+      : db.select().from(bankDeposits);
+    
+    const deposits = await query.orderBy(desc(bankDeposits.depositDate));
+    
+    const depositsWithDetails = await Promise.all(deposits.map(async (dep) => {
+      const user = await this.getUser(dep.userId);
+      return { ...dep, user };
+    }));
+    
+    return depositsWithDetails;
+  }
+
+  async getBankDeposit(id: string): Promise<any> {
+    const [deposit] = await db.select().from(bankDeposits).where(eq(bankDeposits.id, id));
+    if (!deposit) return undefined;
+    
+    const user = await this.getUser(deposit.userId);
+    return { ...deposit, user };
+  }
+
+  async createBankDeposit(deposit: InsertBankDeposit): Promise<BankDeposit> {
+    const [newDeposit] = await db.insert(bankDeposits).values(deposit).returning();
+    return newDeposit;
+  }
+
+  async reconcileBankDeposit(id: string, reconciledAmount: number): Promise<BankDeposit | undefined> {
+    const [updated] = await db.update(bankDeposits)
+      .set({ 
+        status: "conciliado", 
+        reconciliatedAt: new Date(), 
+        reconciliatedAmount: reconciledAmount.toString() 
+      })
+      .where(eq(bankDeposits.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Transferencias de Productos
+  async getProductTransfers(filters?: { type?: string; productId?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+    let conditions: any[] = [];
+    
+    if (filters?.type) conditions.push(eq(productTransfers.transferType, filters.type));
+    if (filters?.productId) conditions.push(eq(productTransfers.productId, filters.productId));
+    if (filters?.startDate) conditions.push(gte(productTransfers.createdAt, filters.startDate));
+    if (filters?.endDate) conditions.push(lte(productTransfers.createdAt, filters.endDate));
+    
+    const query = conditions.length > 0
+      ? db.select().from(productTransfers).where(and(...conditions))
+      : db.select().from(productTransfers);
+    
+    const transfers = await query.orderBy(desc(productTransfers.createdAt));
+    
+    const transfersWithDetails = await Promise.all(transfers.map(async (t) => {
+      const product = await this.getProduct(t.productId);
+      const sourceUser = t.sourceUserId ? await this.getUser(t.sourceUserId) : undefined;
+      const destinationUser = t.destinationUserId ? await this.getUser(t.destinationUserId) : undefined;
+      const sourceMachine = t.sourceMachineId ? await this.getMachine(t.sourceMachineId) : undefined;
+      const destinationMachine = t.destinationMachineId ? await this.getMachine(t.destinationMachineId) : undefined;
+      return { ...t, product, sourceUser, destinationUser, sourceMachine, destinationMachine };
+    }));
+    
+    return transfersWithDetails;
+  }
+
+  async getProductTransfer(id: string): Promise<any> {
+    const [transfer] = await db.select().from(productTransfers).where(eq(productTransfers.id, id));
+    if (!transfer) return undefined;
+    
+    const product = await this.getProduct(transfer.productId);
+    const sourceUser = transfer.sourceUserId ? await this.getUser(transfer.sourceUserId) : undefined;
+    const destinationUser = transfer.destinationUserId ? await this.getUser(transfer.destinationUserId) : undefined;
+    
+    return { ...transfer, product, sourceUser, destinationUser };
+  }
+
+  async createProductTransfer(transfer: InsertProductTransfer): Promise<ProductTransfer> {
+    const [newTransfer] = await db.insert(productTransfers).values(transfer).returning();
+    return newTransfer;
+  }
+
+  // Mermas
+  async getShrinkageRecords(filters?: { type?: string; productId?: string; status?: string }): Promise<any[]> {
+    let conditions: any[] = [];
+    
+    if (filters?.type) conditions.push(eq(shrinkageRecords.shrinkageType, filters.type));
+    if (filters?.productId) conditions.push(eq(shrinkageRecords.productId, filters.productId));
+    if (filters?.status) conditions.push(eq(shrinkageRecords.status, filters.status));
+    
+    const query = conditions.length > 0
+      ? db.select().from(shrinkageRecords).where(and(...conditions))
+      : db.select().from(shrinkageRecords);
+    
+    const records = await query.orderBy(desc(shrinkageRecords.createdAt));
+    
+    const recordsWithDetails = await Promise.all(records.map(async (r) => {
+      const product = await this.getProduct(r.productId);
+      const user = await this.getUser(r.userId);
+      const machine = r.machineId ? await this.getMachine(r.machineId) : undefined;
+      const approvedByUser = r.approvedBy ? await this.getUser(r.approvedBy) : undefined;
+      return { ...r, product, user, machine, approvedByUser };
+    }));
+    
+    return recordsWithDetails;
+  }
+
+  async getShrinkageRecord(id: string): Promise<any> {
+    const [record] = await db.select().from(shrinkageRecords).where(eq(shrinkageRecords.id, id));
+    if (!record) return undefined;
+    
+    const product = await this.getProduct(record.productId);
+    const user = await this.getUser(record.userId);
+    
+    return { ...record, product, user };
+  }
+
+  async createShrinkageRecord(record: InsertShrinkageRecord): Promise<ShrinkageRecord> {
+    const product = await this.getProduct(record.productId);
+    const unitCost = record.unitCost || product?.costPrice || "0";
+    const totalLoss = (parseFloat(unitCost) * record.quantity).toString();
+    
+    const [newRecord] = await db.insert(shrinkageRecords)
+      .values({ ...record, unitCost, totalLoss })
+      .returning();
+    return newRecord;
+  }
+
+  async approveShrinkage(id: string, approvedBy: string): Promise<ShrinkageRecord | undefined> {
+    const [updated] = await db.update(shrinkageRecords)
+      .set({ status: "aprobado", approvedBy })
+      .where(eq(shrinkageRecords.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getShrinkageSummary(startDate?: Date, endDate?: Date): Promise<{ totalQuantity: number; totalLoss: number; byType: Record<string, number> }> {
+    const start = startDate || new Date(new Date().setDate(new Date().getDate() - 30));
+    const end = endDate || new Date();
+    
+    const records = await db.select().from(shrinkageRecords)
+      .where(and(gte(shrinkageRecords.createdAt, start), lte(shrinkageRecords.createdAt, end)));
+    
+    const byType: Record<string, number> = {};
+    records.forEach(r => {
+      byType[r.shrinkageType] = (byType[r.shrinkageType] || 0) + r.quantity;
+    });
+    
+    return {
+      totalQuantity: records.reduce((sum, r) => sum + r.quantity, 0),
+      totalLoss: records.reduce((sum, r) => sum + parseFloat(r.totalLoss || "0"), 0),
+      byType,
+    };
+  }
+
+  // Conciliación
+  async getDailyReconciliation(date: Date): Promise<any> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const collections = await db.select().from(cashCollections)
+      .where(and(gte(cashCollections.createdAt, startOfDay), lte(cashCollections.createdAt, endOfDay)));
+    
+    const movements = await db.select().from(cashMovements)
+      .where(and(gte(cashMovements.createdAt, startOfDay), lte(cashMovements.createdAt, endOfDay)));
+    
+    const deposits = await db.select().from(bankDeposits)
+      .where(and(gte(bankDeposits.depositDate, startOfDay), lte(bankDeposits.depositDate, endOfDay)));
+    
+    return {
+      date,
+      totalCollected: collections.reduce((sum, c) => sum + parseFloat(c.actualAmount || "0"), 0),
+      totalExpected: collections.reduce((sum, c) => sum + parseFloat(c.expectedAmount || "0"), 0),
+      totalDifference: collections.reduce((sum, c) => sum + parseFloat(c.difference || "0"), 0),
+      totalDeposited: deposits.reduce((sum, d) => sum + parseFloat(d.amount || "0"), 0),
+      pendingMovements: movements.filter(m => m.status === "pendiente").length,
+      collectionsCount: collections.length,
+      movementsCount: movements.length,
+      depositsCount: deposits.length,
+    };
+  }
+
+  async getSupplierReconciliation(userId: string, date: Date): Promise<any> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const collections = await db.select().from(cashCollections)
+      .where(and(
+        eq(cashCollections.userId, userId),
+        gte(cashCollections.createdAt, startOfDay),
+        lte(cashCollections.createdAt, endOfDay)
+      ));
+    
+    const user = await this.getUser(userId);
+    
+    const collectionsWithMachines = await Promise.all(collections.map(async (c) => {
+      const machine = await this.getMachine(c.machineId);
+      return { ...c, machine };
+    }));
+    
+    return {
+      user,
+      date,
+      collections: collectionsWithMachines,
+      totalCollected: collections.reduce((sum, c) => sum + parseFloat(c.actualAmount || "0"), 0),
+      totalExpected: collections.reduce((sum, c) => sum + parseFloat(c.expectedAmount || "0"), 0),
+      totalDifference: collections.reduce((sum, c) => sum + parseFloat(c.difference || "0"), 0),
+      machinesVisited: collections.length,
+    };
+  }
+
+  // ==================== MÓDULO CAJA CHICA ====================
+
+  // Gastos de Caja Chica
+  async getPettyCashExpenses(filters?: { userId?: string; category?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+    let conditions: any[] = [];
+    
+    if (filters?.userId) conditions.push(eq(pettyCashExpenses.userId, filters.userId));
+    if (filters?.category) conditions.push(eq(pettyCashExpenses.category, filters.category));
+    if (filters?.status) conditions.push(eq(pettyCashExpenses.status, filters.status));
+    if (filters?.startDate) conditions.push(gte(pettyCashExpenses.createdAt, filters.startDate));
+    if (filters?.endDate) conditions.push(lte(pettyCashExpenses.createdAt, filters.endDate));
+    
+    const query = conditions.length > 0
+      ? db.select().from(pettyCashExpenses).where(and(...conditions))
+      : db.select().from(pettyCashExpenses);
+    
+    const expenses = await query.orderBy(desc(pettyCashExpenses.createdAt));
+    
+    const expensesWithDetails = await Promise.all(expenses.map(async (exp) => {
+      const user = await this.getUser(exp.userId);
+      const machine = exp.machineId ? await this.getMachine(exp.machineId) : undefined;
+      const approvedByUser = exp.approvedBy ? await this.getUser(exp.approvedBy) : undefined;
+      return { ...exp, user, machine, approvedByUser };
+    }));
+    
+    return expensesWithDetails;
+  }
+
+  async getPettyCashExpense(id: string): Promise<any> {
+    const [expense] = await db.select().from(pettyCashExpenses).where(eq(pettyCashExpenses.id, id));
+    if (!expense) return undefined;
+    
+    const user = await this.getUser(expense.userId);
+    const machine = expense.machineId ? await this.getMachine(expense.machineId) : undefined;
+    
+    return { ...expense, user, machine };
+  }
+
+  async createPettyCashExpense(expense: InsertPettyCashExpense): Promise<PettyCashExpense> {
+    const [newExpense] = await db.insert(pettyCashExpenses).values(expense).returning();
+    return newExpense;
+  }
+
+  async approvePettyCashExpense(id: string, approvedBy: string): Promise<PettyCashExpense | undefined> {
+    const [updated] = await db.update(pettyCashExpenses)
+      .set({ status: "aprobado", approvedBy, approvedAt: new Date() })
+      .where(eq(pettyCashExpenses.id, id))
+      .returning();
+    return updated;
+  }
+
+  async rejectPettyCashExpense(id: string, rejectedBy: string, reason: string): Promise<PettyCashExpense | undefined> {
+    const [updated] = await db.update(pettyCashExpenses)
+      .set({ status: "rechazado", rejectedBy, rejectedAt: new Date(), rejectionReason: reason })
+      .where(eq(pettyCashExpenses.id, id))
+      .returning();
+    return updated;
+  }
+
+  async markPettyCashExpenseAsPaid(id: string): Promise<PettyCashExpense | undefined> {
+    const expense = await this.getPettyCashExpense(id);
+    if (!expense || expense.status !== "aprobado") return undefined;
+    
+    const [updated] = await db.update(pettyCashExpenses)
+      .set({ status: "pagado", paidAt: new Date() })
+      .where(eq(pettyCashExpenses.id, id))
+      .returning();
+    
+    // Actualizar el saldo de caja chica
+    await this.updatePettyCashBalance(parseFloat(expense.amount), 'subtract');
+    
+    // Registrar la transacción
+    const fund = await this.getPettyCashFund();
+    if (fund) {
+      await this.createPettyCashTransaction({
+        type: "gasto",
+        amount: expense.amount,
+        previousBalance: (parseFloat(fund.currentBalance) + parseFloat(expense.amount)).toString(),
+        newBalance: fund.currentBalance,
+        expenseId: id,
+        userId: expense.userId,
+        reference: `Gasto: ${expense.description}`,
+      });
+    }
+    
+    return updated;
+  }
+
+  // Fondo de Caja Chica
+  async getPettyCashFund(): Promise<PettyCashFund | undefined> {
+    const [fund] = await db.select().from(pettyCashFund).limit(1);
+    return fund;
+  }
+
+  async initializePettyCashFund(fund: InsertPettyCashFund): Promise<PettyCashFund> {
+    const existing = await this.getPettyCashFund();
+    if (existing) {
+      const [updated] = await db.update(pettyCashFund)
+        .set({ ...fund, updatedAt: new Date() })
+        .where(eq(pettyCashFund.id, existing.id))
+        .returning();
+      return updated;
+    }
+    
+    const [newFund] = await db.insert(pettyCashFund).values(fund).returning();
+    return newFund;
+  }
+
+  async updatePettyCashBalance(amount: number, type: 'add' | 'subtract'): Promise<PettyCashFund | undefined> {
+    const fund = await this.getPettyCashFund();
+    if (!fund) return undefined;
+    
+    const currentBalance = parseFloat(fund.currentBalance);
+    const newBalance = type === 'add' ? currentBalance + amount : currentBalance - amount;
+    
+    const [updated] = await db.update(pettyCashFund)
+      .set({ currentBalance: newBalance.toString(), updatedAt: new Date() })
+      .where(eq(pettyCashFund.id, fund.id))
+      .returning();
+    return updated;
+  }
+
+  async replenishPettyCashFund(amount: number, userId: string): Promise<PettyCashFund | undefined> {
+    const fund = await this.getPettyCashFund();
+    if (!fund) return undefined;
+    
+    const previousBalance = parseFloat(fund.currentBalance);
+    const newBalance = previousBalance + amount;
+    
+    const [updated] = await db.update(pettyCashFund)
+      .set({ 
+        currentBalance: newBalance.toString(), 
+        lastReplenishmentDate: new Date(),
+        lastReplenishmentAmount: amount.toString(),
+        updatedAt: new Date() 
+      })
+      .where(eq(pettyCashFund.id, fund.id))
+      .returning();
+    
+    // Registrar la transacción
+    await this.createPettyCashTransaction({
+      type: "reposicion",
+      amount: amount.toString(),
+      previousBalance: previousBalance.toString(),
+      newBalance: newBalance.toString(),
+      userId,
+      reference: "Reposición de fondo",
+    });
+    
+    return updated;
+  }
+
+  // Transacciones de Caja Chica
+  async getPettyCashTransactions(limit?: number): Promise<any[]> {
+    const query = limit
+      ? db.select().from(pettyCashTransactions).orderBy(desc(pettyCashTransactions.createdAt)).limit(limit)
+      : db.select().from(pettyCashTransactions).orderBy(desc(pettyCashTransactions.createdAt));
+    
+    const transactions = await query;
+    
+    const transactionsWithDetails = await Promise.all(transactions.map(async (t) => {
+      const user = await this.getUser(t.userId);
+      const expense = t.expenseId ? await this.getPettyCashExpense(t.expenseId) : undefined;
+      return { ...t, user, expense };
+    }));
+    
+    return transactionsWithDetails;
+  }
+
+  async createPettyCashTransaction(transaction: InsertPettyCashTransaction): Promise<PettyCashTransaction> {
+    const [newTransaction] = await db.insert(pettyCashTransactions).values(transaction).returning();
+    return newTransaction;
+  }
+
+  async getPettyCashStats(): Promise<{ currentBalance: number; todayExpenses: number; pendingApprovals: number; monthlyExpenses: number }> {
+    const fund = await this.getPettyCashFund();
+    const currentBalance = fund ? parseFloat(fund.currentBalance) : 0;
+    
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    
+    const todayExpensesResult = await db.select({ total: sql<string>`COALESCE(SUM(${pettyCashExpenses.amount}), 0)` })
+      .from(pettyCashExpenses)
+      .where(and(
+        eq(pettyCashExpenses.status, "pagado"),
+        gte(pettyCashExpenses.paidAt, todayStart)
+      ));
+    
+    const pendingResult = await db.select({ count: sql<number>`COUNT(*)` })
+      .from(pettyCashExpenses)
+      .where(eq(pettyCashExpenses.status, "pendiente"));
+    
+    const monthlyExpensesResult = await db.select({ total: sql<string>`COALESCE(SUM(${pettyCashExpenses.amount}), 0)` })
+      .from(pettyCashExpenses)
+      .where(and(
+        eq(pettyCashExpenses.status, "pagado"),
+        gte(pettyCashExpenses.paidAt, monthStart)
+      ));
+    
+    return {
+      currentBalance,
+      todayExpenses: parseFloat(todayExpensesResult[0]?.total || "0"),
+      pendingApprovals: pendingResult[0]?.count || 0,
+      monthlyExpenses: parseFloat(monthlyExpensesResult[0]?.total || "0"),
     };
   }
 }

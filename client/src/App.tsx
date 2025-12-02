@@ -18,6 +18,8 @@ import { WarehousePage } from "@/pages/warehouse";
 import { AccountingPage } from "@/pages/accounting";
 import { HRPage } from "@/pages/hr";
 import { SettingsPage } from "@/pages/settings";
+import { MoneyProductsPage } from "@/pages/money-products";
+import { PettyCashPage } from "@/pages/petty-cash";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
@@ -151,10 +153,11 @@ function ProtectedRoutes() {
               <Route path="/calendario" component={DashboardPage} />
               <Route path="/abastecedor" component={SupplierPage} />
               <Route path="/almacen" component={WarehousePage} />
+              <Route path="/dinero-productos" component={MoneyProductsPage} />
+              <Route path="/caja-chica" component={PettyCashPage} />
               <Route path="/combustible" component={SupplierPage} />
               <Route path="/contabilidad" component={AccountingPage} />
               <Route path="/finanzas" component={AccountingPage} />
-              <Route path="/caja-chica" component={AccountingPage} />
               <Route path="/compras" component={WarehousePage} />
               <Route path="/rh" component={HRPage} />
               <Route path="/reportes" component={AccountingPage} />

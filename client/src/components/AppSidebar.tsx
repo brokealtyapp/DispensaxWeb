@@ -37,6 +37,7 @@ import {
   ShoppingCart,
   Users,
   FileText,
+  ArrowDownUp,
 } from "lucide-react";
 
 const menuItems = [
@@ -50,6 +51,7 @@ const menuItems = [
 const operacionItems = [
   { icon: Package, label: "Almacén", href: "/almacen" },
   { icon: Truck, label: "Abastecedor", href: "/abastecedor" },
+  { icon: ArrowDownUp, label: "Dinero y Productos", href: "/dinero-productos" },
   { icon: ShoppingCart, label: "Compras", href: "/compras" },
   { icon: Fuel, label: "Combustible", href: "/combustible" },
 ];
