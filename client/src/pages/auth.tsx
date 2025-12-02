@@ -13,8 +13,7 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <header className="flex items-center justify-between p-4">
-        <Logo size="lg" />
+      <header className="flex items-center justify-end p-4">
         <ThemeToggle />
       </header>
       <main className="flex-1 flex flex-col items-center justify-center p-4">

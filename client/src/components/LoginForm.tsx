@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Logo } from "./Logo";
 import { useAuth } from "@/lib/auth-context";
 
 const loginSchema = z.object({
@@ -47,14 +46,9 @@ export function LoginForm({ onSwitchToRegister, onSuccess }: LoginFormProps) {
 
   return (
     <Card className="w-full max-w-md mx-auto">
-      <CardHeader className="text-center space-y-4">
-        <div className="flex justify-center">
-          <Logo size="lg" />
-        </div>
-        <div>
-          <CardTitle className="text-2xl">Iniciar Sesión</CardTitle>
-          <CardDescription>Ingresa tus credenciales para acceder al sistema</CardDescription>
-        </div>
+      <CardHeader className="text-center space-y-2">
+        <CardTitle className="text-2xl">Iniciar Sesión</CardTitle>
+        <CardDescription>Ingresa tus credenciales para acceder al sistema</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>

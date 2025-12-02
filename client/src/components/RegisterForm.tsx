@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Logo } from "./Logo";
 import { useAuth, UserRole } from "@/lib/auth-context";
 
 const registerSchema = z.object({
@@ -74,14 +73,9 @@ export function RegisterForm({ onSwitchToLogin, onSuccess }: RegisterFormProps) 
 
   return (
     <Card className="w-full max-w-md mx-auto">
-      <CardHeader className="text-center space-y-4">
-        <div className="flex justify-center">
-          <Logo size="lg" />
-        </div>
-        <div>
-          <CardTitle className="text-2xl">Crear Cuenta</CardTitle>
-          <CardDescription>Completa el formulario para registrarte</CardDescription>
-        </div>
+      <CardHeader className="text-center space-y-2">
+        <CardTitle className="text-2xl">Crear Cuenta</CardTitle>
+        <CardDescription>Completa el formulario para registrarte</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
