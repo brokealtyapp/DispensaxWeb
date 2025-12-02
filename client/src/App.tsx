@@ -12,6 +12,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { AuthPage } from "@/pages/auth";
 import { DashboardPage } from "@/pages/dashboard";
 import { MachinesPage } from "@/pages/machines";
+import { MachineDetailPage } from "@/pages/machine-detail";
 import { SupplierPage } from "@/pages/supplier";
 import { WarehousePage } from "@/pages/warehouse";
 import { AccountingPage } from "@/pages/accounting";
@@ -144,6 +145,7 @@ function ProtectedRoutes() {
             <Switch>
               <Route path="/" component={DashboardPage} />
               <Route path="/maquinas" component={MachinesPage} />
+              <Route path="/maquinas/:id" component={MachineDetailPage} />
               <Route path="/tareas" component={DashboardPage} />
               <Route path="/todas-tareas" component={DashboardPage} />
               <Route path="/calendario" component={DashboardPage} />

@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -20,9 +20,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { MachineCard, MachineStatus } from "@/components/MachineCard";
-import { DataTable, Column } from "@/components/DataTable";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plus,
   Search,
@@ -30,104 +29,61 @@ import {
   List,
   MapPin,
   Filter,
+  AlertTriangle,
+  Clock,
+  Eye,
+  Wrench,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Link } from "wouter";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { Machine, Location } from "@shared/schema";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
-// todo: remove mock functionality - replace with actual API data
-const mockMachines = [
-  {
-    id: "1",
-    name: "Plaza Central",
-    location: "Centro Comercial Norte",
-    zone: "Norte",
-    status: "operando" as const,
-    inventoryLevel: 75,
-    lastVisit: "2024-12-25",
-    assignedTeam: [
-      { name: "Carlos R", initials: "CR" },
-      { name: "María G", initials: "MG" },
-    ],
-  },
-  {
-    id: "2",
-    name: "Edificio Corporativo",
-    location: "Zona Industrial",
-    zone: "Sur",
-    status: "servicio" as const,
-    inventoryLevel: 35,
-    lastVisit: "2024-12-24",
-    assignedTeam: [{ name: "Juan P", initials: "JP" }],
-  },
-  {
-    id: "3",
-    name: "Universidad Tech",
-    location: "Campus Sur",
-    zone: "Sur",
-    status: "vacia" as const,
-    inventoryLevel: 8,
-    lastVisit: "2024-12-23",
-    assignedTeam: [
-      { name: "Ana L", initials: "AL" },
-      { name: "Pedro S", initials: "PS" },
-    ],
-  },
-  {
-    id: "4",
-    name: "Hospital Central",
-    location: "Zona Médica",
-    zone: "Centro",
-    status: "offline" as const,
-    inventoryLevel: 0,
-    lastVisit: "2024-12-20",
-    assignedTeam: [],
-  },
-  {
-    id: "5",
-    name: "Aeropuerto Terminal A",
-    location: "Terminal Principal",
-    zone: "Este",
-    status: "operando" as const,
-    inventoryLevel: 92,
-    lastVisit: "2024-12-25",
-    assignedTeam: [{ name: "María G", initials: "MG" }],
-  },
-  {
-    id: "6",
-    name: "Centro Deportivo",
-    location: "Parque Olímpico",
-    zone: "Oeste",
-    status: "operando" as const,
-    inventoryLevel: 65,
-    lastVisit: "2024-12-24",
-    assignedTeam: [{ name: "Carlos R", initials: "CR" }],
-  },
-];
-
-const statusLabels: Record<MachineStatus, string> = {
+const statusLabels: Record<string, string> = {
   operando: "Operando",
-  servicio: "Necesita Servicio",
+  necesita_servicio: "Necesita Servicio",
   vacia: "Vacía",
-  offline: "Fuera de Línea",
+  fuera_de_linea: "Fuera de Línea",
+  mantenimiento: "Mantenimiento",
 };
 
-const statusColors: Record<MachineStatus, string> = {
+const statusColors: Record<string, string> = {
   operando: "bg-emerald-500 text-white",
-  servicio: "bg-amber-500 text-white",
+  necesita_servicio: "bg-amber-500 text-white",
   vacia: "bg-destructive text-destructive-foreground",
-  offline: "bg-muted text-muted-foreground",
+  fuera_de_linea: "bg-muted text-muted-foreground",
+  mantenimiento: "bg-blue-500 text-white",
 };
 
-const colorVariants: ("blue" | "dark" | "purple" | "green")[] = ["blue", "dark", "purple", "green"];
+const colorVariants = [
+  "bg-[#E84545]",
+  "bg-[#1D1D1D]",
+  "bg-[#8E59FF]",
+  "bg-[#4ECB71]",
+  "bg-[#FF6B3D]",
+];
 
 const machineSchema = z.object({
   name: z.string().min(3, "El nombre debe tener al menos 3 caracteres"),
-  location: z.string().min(3, "La ubicación es requerida"),
+  code: z.string().optional(),
+  type: z.string().default("mixta"),
   zone: z.string().min(1, "Selecciona una zona"),
+  locationId: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 type MachineFormData = z.infer<typeof machineSchema>;
+
+interface MachineWithDetails extends Machine {
+  location?: Location;
+  inventoryPercentage?: number;
+  alerts?: any[];
+  salesSummary?: { today: number; week: number; month: number };
+}
 
 export function MachinesPage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -136,57 +92,83 @@ export function MachinesPage() {
   const [zoneFilter, setZoneFilter] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
+  const { data: machines = [], isLoading } = useQuery<MachineWithDetails[]>({
+    queryKey: ["/api/machines"],
+  });
+
+  const { data: locations = [] } = useQuery<Location[]>({
+    queryKey: ["/api/locations"],
+  });
+
+  const { data: zones = [] } = useQuery<string[]>({
+    queryKey: ["/api/stats/zones"],
+  });
+
+  const createMachineMutation = useMutation({
+    mutationFn: async (data: MachineFormData) => {
+      const response = await apiRequest("POST", "/api/machines", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+      setIsAddDialogOpen(false);
+      form.reset();
+    },
+  });
+
   const form = useForm<MachineFormData>({
     resolver: zodResolver(machineSchema),
     defaultValues: {
       name: "",
-      location: "",
+      code: "",
+      type: "mixta",
       zone: "",
+      notes: "",
     },
   });
 
-  const filteredMachines = mockMachines.filter((machine) => {
+  const filteredMachines = machines.filter((machine) => {
     const matchesSearch =
       machine.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      machine.location.toLowerCase().includes(searchQuery.toLowerCase());
+      (machine.location?.name || "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "all" || machine.status === statusFilter;
     const matchesZone = zoneFilter === "all" || machine.zone === zoneFilter;
     return matchesSearch && matchesStatus && matchesZone;
   });
 
-  const zones = Array.from(new Set(mockMachines.map((m) => m.zone)));
-
-  const columns: Column<(typeof mockMachines)[0]>[] = [
-    { key: "name", header: "Nombre" },
-    { key: "location", header: "Ubicación" },
-    { key: "zone", header: "Zona" },
-    {
-      key: "status",
-      header: "Estado",
-      render: (item) => (
-        <Badge className={statusColors[item.status]} variant="secondary">
-          {statusLabels[item.status]}
-        </Badge>
-      ),
-    },
-    {
-      key: "inventoryLevel",
-      header: "Inventario",
-      render: (item) => (
-        <div className="flex items-center gap-2 min-w-[100px]">
-          <Progress value={item.inventoryLevel} className="h-2 flex-1" />
-          <span className="text-sm tabular-nums w-10 text-right">{item.inventoryLevel}%</span>
-        </div>
-      ),
-    },
-    { key: "lastVisit", header: "Última Visita" },
-  ];
+  const allZones = Array.from(new Set([...zones, ...machines.map(m => m.zone).filter(Boolean)]));
 
   const onSubmit = (data: MachineFormData) => {
-    console.log("New machine:", data);
-    setIsAddDialogOpen(false);
-    form.reset();
+    createMachineMutation.mutate(data);
   };
+
+  const formatDate = (date: string | Date | null | undefined) => {
+    if (!date) return "Sin visitas";
+    try {
+      return format(new Date(date), "d MMM yyyy", { locale: es });
+    } catch {
+      return "Sin visitas";
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64 mt-2" />
+          </div>
+          <Skeleton className="h-10 w-36" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} className="h-48 rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -194,7 +176,7 @@ export function MachinesPage() {
         <div>
           <h1 className="text-2xl font-bold">Máquinas</h1>
           <p className="text-muted-foreground">
-            Gestiona todas las máquinas expendedoras
+            {machines.length} máquinas registradas
           </p>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -220,7 +202,7 @@ export function MachinesPage() {
                     <FormItem>
                       <FormLabel>Nombre</FormLabel>
                       <FormControl>
-                        <Input placeholder="Ej: Plaza Central" {...field} />
+                        <Input placeholder="Ej: Plaza Central" {...field} data-testid="input-machine-name" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -228,13 +210,36 @@ export function MachinesPage() {
                 />
                 <FormField
                   control={form.control}
-                  name="location"
+                  name="code"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Ubicación</FormLabel>
+                      <FormLabel>Código (opcional)</FormLabel>
                       <FormControl>
-                        <Input placeholder="Ej: Centro Comercial Norte" {...field} />
+                        <Input placeholder="Ej: MAQ-001" {...field} data-testid="input-machine-code" />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-machine-type">
+                            <SelectValue placeholder="Selecciona un tipo" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="bebidas_frias">Bebidas Frías</SelectItem>
+                          <SelectItem value="bebidas_calientes">Bebidas Calientes</SelectItem>
+                          <SelectItem value="snacks">Snacks</SelectItem>
+                          <SelectItem value="mixta">Mixta</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -245,20 +250,46 @@ export function MachinesPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Zona</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ej: Zona Norte" {...field} data-testid="input-machine-zone" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="locationId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Ubicación</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecciona una zona" />
+                          <SelectTrigger data-testid="select-machine-location">
+                            <SelectValue placeholder="Selecciona una ubicación" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {zones.map((zone) => (
-                            <SelectItem key={zone} value={zone}>
-                              {zone}
+                          {locations.map((loc) => (
+                            <SelectItem key={loc.id} value={loc.id}>
+                              {loc.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notas (opcional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Notas adicionales..." {...field} data-testid="input-machine-notes" />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -271,7 +302,9 @@ export function MachinesPage() {
                   >
                     Cancelar
                   </Button>
-                  <Button type="submit">Agregar Máquina</Button>
+                  <Button type="submit" disabled={createMachineMutation.isPending} data-testid="button-submit-machine">
+                    {createMachineMutation.isPending ? "Guardando..." : "Agregar Máquina"}
+                  </Button>
                 </div>
               </form>
             </Form>
@@ -292,16 +325,17 @@ export function MachinesPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[150px]" data-testid="select-status-filter">
+            <SelectTrigger className="w-[160px]" data-testid="select-status-filter">
               <Filter className="h-4 w-4 mr-2" />
               <SelectValue placeholder="Estado" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos</SelectItem>
               <SelectItem value="operando">Operando</SelectItem>
-              <SelectItem value="servicio">Necesita Servicio</SelectItem>
+              <SelectItem value="necesita_servicio">Necesita Servicio</SelectItem>
               <SelectItem value="vacia">Vacía</SelectItem>
-              <SelectItem value="offline">Fuera de Línea</SelectItem>
+              <SelectItem value="fuera_de_linea">Fuera de Línea</SelectItem>
+              <SelectItem value="mantenimiento">Mantenimiento</SelectItem>
             </SelectContent>
           </Select>
           <Select value={zoneFilter} onValueChange={setZoneFilter}>
@@ -311,8 +345,8 @@ export function MachinesPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas</SelectItem>
-              {zones.map((zone) => (
-                <SelectItem key={zone} value={zone}>
+              {allZones.map((zone) => (
+                <SelectItem key={zone} value={zone as string}>
                   {zone}
                 </SelectItem>
               ))}
@@ -339,44 +373,152 @@ export function MachinesPage() {
         </div>
       </div>
 
-      <Card>
-        <CardContent className="p-6">
-          {viewMode === "grid" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredMachines.map((machine, index) => (
-                <MachineCard
-                  key={machine.id}
-                  id={machine.id}
-                  name={machine.name}
-                  location={machine.location}
-                  status={machine.status}
-                  inventoryLevel={machine.inventoryLevel}
-                  lastVisit={machine.lastVisit}
-                  assignedTeam={machine.assignedTeam}
-                  colorVariant={colorVariants[index % colorVariants.length]}
-                  onViewDetails={() => console.log("View details:", machine.id)}
-                  onStartService={() => console.log("Start service:", machine.id)}
-                />
-              ))}
+      {viewMode === "grid" ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredMachines.map((machine, index) => (
+            <Card
+              key={machine.id}
+              className={`${colorVariants[index % colorVariants.length]} text-white border-0 overflow-hidden hover-elevate cursor-pointer`}
+              data-testid={`card-machine-${machine.id}`}
+            >
+              <Link href={`/maquinas/${machine.id}`}>
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between mb-4 gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-lg font-bold truncate">{machine.name}</h3>
+                      <p className="text-sm text-white/70 truncate">
+                        {machine.location?.name || machine.zone || "Sin ubicación"}
+                      </p>
+                    </div>
+                    <Badge
+                      variant="secondary"
+                      className="bg-white/20 text-white border-0 shrink-0"
+                    >
+                      {statusLabels[machine.status || "operando"]}
+                    </Badge>
+                  </div>
+
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-white/70">Inventario</span>
+                      <span className="text-sm font-medium">{machine.inventoryPercentage || 0}%</span>
+                    </div>
+                    <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-white rounded-full transition-all"
+                        style={{ width: `${machine.inventoryPercentage || 0}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-1 text-white/70">
+                      <Clock className="h-4 w-4" />
+                      <span>{formatDate(machine.lastVisit)}</span>
+                    </div>
+                    {(machine.alerts?.length || 0) > 0 && (
+                      <div className="flex items-center gap-1 text-amber-300">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span>{machine.alerts?.length} alertas</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/20">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-1 text-white hover:bg-white/10"
+                      onClick={(e) => { e.preventDefault(); }}
+                      data-testid={`button-view-machine-${machine.id}`}
+                    >
+                      <Eye className="h-4 w-4 mr-1" />
+                      Ver
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-1 text-white hover:bg-white/10"
+                      onClick={(e) => { e.preventDefault(); }}
+                      data-testid={`button-service-machine-${machine.id}`}
+                    >
+                      <Wrench className="h-4 w-4 mr-1" />
+                      Servicio
+                    </Button>
+                  </div>
+                </CardContent>
+              </Link>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-4 font-medium">Nombre</th>
+                    <th className="text-left p-4 font-medium">Ubicación</th>
+                    <th className="text-left p-4 font-medium">Zona</th>
+                    <th className="text-left p-4 font-medium">Estado</th>
+                    <th className="text-left p-4 font-medium">Inventario</th>
+                    <th className="text-left p-4 font-medium">Última Visita</th>
+                    <th className="text-left p-4 font-medium">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredMachines.map((machine) => (
+                    <tr key={machine.id} className="border-b hover:bg-muted/50" data-testid={`row-machine-${machine.id}`}>
+                      <td className="p-4 font-medium">{machine.name}</td>
+                      <td className="p-4 text-muted-foreground">{machine.location?.name || "-"}</td>
+                      <td className="p-4">{machine.zone || "-"}</td>
+                      <td className="p-4">
+                        <Badge className={statusColors[machine.status || "operando"]} variant="secondary">
+                          {statusLabels[machine.status || "operando"]}
+                        </Badge>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2 min-w-[100px]">
+                          <Progress value={machine.inventoryPercentage || 0} className="h-2 flex-1" />
+                          <span className="text-sm tabular-nums w-10 text-right">{machine.inventoryPercentage || 0}%</span>
+                        </div>
+                      </td>
+                      <td className="p-4 text-muted-foreground">{formatDate(machine.lastVisit)}</td>
+                      <td className="p-4">
+                        <Link href={`/maquinas/${machine.id}`}>
+                          <Button variant="ghost" size="sm" data-testid={`button-details-${machine.id}`}>
+                            <Eye className="h-4 w-4 mr-1" />
+                            Ver
+                          </Button>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : (
-            <DataTable
-              data={filteredMachines}
-              columns={columns}
-              searchPlaceholder="Buscar..."
-              searchKeys={["name", "location"]}
-              onRowClick={(item) => console.log("Row clicked:", item)}
-            />
-          )}
-          {filteredMachines.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">
-                No se encontraron máquinas con los filtros seleccionados
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
+
+      {filteredMachines.length === 0 && !isLoading && (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground mb-4">
+              {machines.length === 0
+                ? "No hay máquinas registradas"
+                : "No se encontraron máquinas con los filtros seleccionados"}
+            </p>
+            {machines.length === 0 && (
+              <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-first-machine">
+                <Plus className="h-4 w-4 mr-2" />
+                Agregar primera máquina
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
