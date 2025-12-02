@@ -2500,5 +2500,101 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== PASSWORD RESET ====================
+
+  app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
+    try {
+      const { email } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ error: "Email requerido" });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      
+      if (!user) {
+        return res.json({ success: true, message: "Si el email existe, recibirás un enlace de recuperación" });
+      }
+
+      const crypto = await import("crypto");
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+      await storage.createPasswordResetToken(user.id, token, expiresAt);
+
+      const { sendPasswordResetEmail } = await import("./email");
+      await sendPasswordResetEmail(email, token, user.fullName || user.username);
+
+      res.json({ success: true, message: "Si el email existe, recibirás un enlace de recuperación" });
+    } catch (error) {
+      console.error("Error requesting password reset:", error);
+      res.status(500).json({ error: "Error al procesar la solicitud" });
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
+    try {
+      const { token, password } = req.body;
+      
+      if (!token || !password) {
+        return res.status(400).json({ error: "Token y contraseña requeridos" });
+      }
+
+      if (password.length < 6) {
+        return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
+      }
+
+      const resetToken = await storage.getPasswordResetToken(token);
+      
+      if (!resetToken) {
+        return res.status(400).json({ error: "Token inválido o expirado" });
+      }
+
+      if (resetToken.usedAt) {
+        return res.status(400).json({ error: "Este enlace ya ha sido utilizado" });
+      }
+
+      if (new Date() > resetToken.expiresAt) {
+        return res.status(400).json({ error: "El enlace ha expirado" });
+      }
+
+      const bcrypt = await import("bcryptjs");
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      await storage.updateUserPassword(resetToken.userId, hashedPassword);
+      await storage.markPasswordResetTokenUsed(token);
+
+      res.json({ success: true, message: "Contraseña actualizada correctamente" });
+    } catch (error) {
+      console.error("Error resetting password:", error);
+      res.status(500).json({ error: "Error al restablecer la contraseña" });
+    }
+  });
+
+  app.get("/api/auth/verify-reset-token/:token", async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      
+      const resetToken = await storage.getPasswordResetToken(token);
+      
+      if (!resetToken) {
+        return res.status(400).json({ valid: false, error: "Token inválido" });
+      }
+
+      if (resetToken.usedAt) {
+        return res.status(400).json({ valid: false, error: "Este enlace ya ha sido utilizado" });
+      }
+
+      if (new Date() > resetToken.expiresAt) {
+        return res.status(400).json({ valid: false, error: "El enlace ha expirado" });
+      }
+
+      res.json({ valid: true });
+    } catch (error) {
+      console.error("Error verifying reset token:", error);
+      res.status(500).json({ valid: false, error: "Error al verificar token" });
+    }
+  });
+
   return httpServer;
 }

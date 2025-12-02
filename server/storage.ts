@@ -33,6 +33,7 @@ import {
   type FuelRecord, type InsertFuelRecord,
   type Task, type InsertTask,
   type CalendarEvent, type InsertCalendarEvent,
+  type PasswordResetToken,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
@@ -40,7 +41,7 @@ import {
   pettyCashExpenses, pettyCashFund, pettyCashTransactions,
   purchaseOrders, purchaseOrderItems, purchaseReceptions, receptionItems,
   vehicles, fuelRecords,
-  tasks, calendarEvents
+  tasks, calendarEvents, passwordResetTokens
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc, or } from "drizzle-orm";
@@ -387,6 +388,15 @@ export interface IStorage {
   createCalendarEvent(event: InsertCalendarEvent): Promise<CalendarEvent>;
   updateCalendarEvent(id: string, data: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined>;
   deleteCalendarEvent(id: string): Promise<boolean>;
+  
+  // ==================== PASSWORD RESET ====================
+  
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createPasswordResetToken(userId: string, token: string, expiresAt: Date): Promise<PasswordResetToken>;
+  getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
+  markPasswordResetTokenUsed(token: string): Promise<boolean>;
+  updateUserPassword(userId: string, hashedPassword: string): Promise<boolean>;
+  deleteExpiredPasswordResetTokens(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3790,6 +3800,48 @@ export class DatabaseStorage implements IStorage {
   async deleteCalendarEvent(id: string): Promise<boolean> {
     await db.delete(calendarEvents).where(eq(calendarEvents.id, id));
     return true;
+  }
+
+  // ==================== PASSWORD RESET ====================
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async createPasswordResetToken(userId: string, token: string, expiresAt: Date): Promise<PasswordResetToken> {
+    const [resetToken] = await db.insert(passwordResetTokens).values({
+      userId,
+      token,
+      expiresAt,
+    }).returning();
+    return resetToken;
+  }
+
+  async getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined> {
+    const [resetToken] = await db.select().from(passwordResetTokens)
+      .where(eq(passwordResetTokens.token, token));
+    return resetToken;
+  }
+
+  async markPasswordResetTokenUsed(token: string): Promise<boolean> {
+    await db.update(passwordResetTokens)
+      .set({ usedAt: new Date() })
+      .where(eq(passwordResetTokens.token, token));
+    return true;
+  }
+
+  async updateUserPassword(userId: string, hashedPassword: string): Promise<boolean> {
+    await db.update(users)
+      .set({ password: hashedPassword })
+      .where(eq(users.id, userId));
+    return true;
+  }
+
+  async deleteExpiredPasswordResetTokens(): Promise<number> {
+    const result = await db.delete(passwordResetTokens)
+      .where(lte(passwordResetTokens.expiresAt, new Date()));
+    return 0;
   }
 }
 

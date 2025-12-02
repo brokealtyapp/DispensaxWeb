@@ -26,6 +26,7 @@ import { ReportsPage } from "@/pages/reports";
 import { TasksPage } from "@/pages/tasks";
 import { TasksTodayPage } from "@/pages/tasks-today";
 import { CalendarPage } from "@/pages/calendar";
+import { ResetPasswordPage } from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
@@ -198,6 +199,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/auth" component={AuthRoute} />
+      <Route path="/reset-password" component={ResetPasswordPage} />
       <Route>
         <ProtectedRoutes />
       </Route>
