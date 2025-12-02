@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import dispensaxLogo from "@assets/Logo_Dispensax_1764686241640.png";
+import dispensaxLogo from "@assets/LOGO-DISPENSAX_1764711476889.png";
 import {
   Sidebar,
   SidebarContent,
