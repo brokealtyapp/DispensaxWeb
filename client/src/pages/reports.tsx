@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -128,9 +128,17 @@ export function ReportsPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const { startDate, endDate } = getDateRange(dateRange);
-  const startDateStr = startDate.toISOString();
-  const endDateStr = endDate.toISOString();
+  const { startDateStr, endDateStr } = useMemo(() => {
+    const { startDate, endDate } = getDateRange(dateRange);
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    return {
+      startDateStr: start.toISOString(),
+      endDateStr: end.toISOString(),
+    };
+  }, [dateRange]);
 
   const { data: overview, isLoading: loadingOverview } = useQuery<any>({
     queryKey: ["/api/reports/overview", { startDate: startDateStr, endDate: endDateStr }],
