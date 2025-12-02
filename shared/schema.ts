@@ -1404,3 +1404,129 @@ export const fuelRecordsRelations = relations(fuelRecords, ({ one }) => ({
     references: [routes.id],
   }),
 }));
+
+// =====================
+// TAREAS (TASKS)
+// =====================
+
+export const taskPriorityEnum = pgEnum("task_priority", [
+  "baja",
+  "media",
+  "alta",
+  "urgente"
+]);
+
+export const taskStatusEnum = pgEnum("task_status", [
+  "pendiente",
+  "en_progreso",
+  "completada",
+  "cancelada"
+]);
+
+export const taskTypeEnum = pgEnum("task_type", [
+  "abastecimiento",
+  "mantenimiento",
+  "recoleccion",
+  "revision",
+  "limpieza",
+  "reparacion",
+  "reunion",
+  "otro"
+]);
+
+export const tasks = pgTable("tasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  description: text("description"),
+  type: text("type").default("otro"),
+  priority: text("priority").default("media"),
+  status: text("status").default("pendiente"),
+  dueDate: timestamp("due_date"),
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  assignedUserId: varchar("assigned_user_id").references(() => users.id),
+  machineId: varchar("machine_id").references(() => machines.id),
+  routeId: varchar("route_id").references(() => routes.id),
+  notes: text("notes"),
+  completedAt: timestamp("completed_at"),
+  completedBy: varchar("completed_by").references(() => users.id),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTaskSchema = createInsertSchema(tasks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  completedAt: true,
+  completedBy: true,
+});
+
+export type InsertTask = z.infer<typeof insertTaskSchema>;
+export type Task = typeof tasks.$inferSelect;
+
+export const tasksRelations = relations(tasks, ({ one }) => ({
+  assignedUser: one(users, {
+    fields: [tasks.assignedUserId],
+    references: [users.id],
+    relationName: "assignedTasks",
+  }),
+  machine: one(machines, {
+    fields: [tasks.machineId],
+    references: [machines.id],
+  }),
+  route: one(routes, {
+    fields: [tasks.routeId],
+    references: [routes.id],
+  }),
+  creator: one(users, {
+    fields: [tasks.createdBy],
+    references: [users.id],
+    relationName: "createdTasks",
+  }),
+  completer: one(users, {
+    fields: [tasks.completedBy],
+    references: [users.id],
+    relationName: "completedTasks",
+  }),
+}));
+
+// =====================
+// EVENTOS CALENDARIO
+// =====================
+
+export const calendarEvents = pgTable("calendar_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  description: text("description"),
+  eventType: text("event_type").default("otro"),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),
+  allDay: boolean("all_day").default(false),
+  color: text("color"),
+  userId: varchar("user_id").references(() => users.id),
+  taskId: varchar("task_id").references(() => tasks.id),
+  isRecurring: boolean("is_recurring").default(false),
+  recurringPattern: text("recurring_pattern"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
+export type CalendarEvent = typeof calendarEvents.$inferSelect;
+
+export const calendarEventsRelations = relations(calendarEvents, ({ one }) => ({
+  user: one(users, {
+    fields: [calendarEvents.userId],
+    references: [users.id],
+  }),
+  task: one(tasks, {
+    fields: [calendarEvents.taskId],
+    references: [tasks.id],
+  }),
+}));
