@@ -193,15 +193,15 @@ export function canAccessRoute(role: UserRole, route: string): boolean {
     "/caja-chica", "/rh", "/reportes", "/configuracion", "/supervisor"];
   
   const supervisorRoutes = ["/supervisor", "/maquinas", "/tareas", "/todas-tareas", "/calendario", 
-    "/almacen", "/almacen-panel", "/abastecedor", "/dinero-productos", "/combustible", "/rh"];
+    "/almacen", "/abastecedor", "/dinero-productos", "/combustible", "/rh", "/configuracion"];
   
-  const abastecedorRoutes = ["/abastecedor", "/tareas", "/calendario"];
+  const abastecedorRoutes = ["/abastecedor", "/tareas", "/calendario", "/configuracion"];
   
-  const almacenRoutes = ["/almacen", "/almacen-panel", "/compras", "/tareas", "/calendario"];
+  const almacenRoutes = ["/almacen", "/almacen-panel", "/compras", "/tareas", "/calendario", "/configuracion"];
   
-  const contabilidadRoutes = ["/contabilidad", "/contabilidad-panel", "/caja-chica", "/dinero-productos", "/tareas", "/calendario"];
+  const contabilidadRoutes = ["/contabilidad", "/contabilidad-panel", "/caja-chica", "/dinero-productos", "/tareas", "/calendario", "/configuracion"];
   
-  const rhRoutes = ["/rh", "/tareas", "/calendario"];
+  const rhRoutes = ["/rh", "/tareas", "/calendario", "/configuracion"];
 
   const routePermissions: Record<UserRole, string[]> = {
     admin: adminRoutes,

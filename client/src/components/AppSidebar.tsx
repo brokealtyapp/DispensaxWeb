@@ -50,8 +50,8 @@ interface MenuItem {
 const menuItems: MenuItem[] = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/", roles: ["admin"] },
   { icon: Eye, label: "Panel Supervisor", href: "/supervisor", roles: ["admin", "supervisor"] },
-  { icon: Package, label: "Panel Almacén", href: "/almacen-panel", roles: ["almacen"] },
-  { icon: Calculator, label: "Panel Contabilidad", href: "/contabilidad-panel", roles: ["contabilidad"] },
+  { icon: Package, label: "Panel Almacén", href: "/almacen-panel", roles: ["admin", "almacen"] },
+  { icon: Calculator, label: "Panel Contabilidad", href: "/contabilidad-panel", roles: ["admin", "contabilidad"] },
   { icon: Box, label: "Máquinas", href: "/maquinas", roles: ["admin", "supervisor"] },
   { icon: ClipboardList, label: "Tareas Hoy", href: "/tareas", roles: ["admin", "supervisor", "abastecedor", "almacen", "contabilidad", "rh"] },
   { icon: ListTodo, label: "Todas las Tareas", href: "/todas-tareas", roles: ["admin", "supervisor"] },

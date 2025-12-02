@@ -196,7 +196,7 @@ function ProtectedRoutes() {
               <Route path="/almacen-panel">{() => <ProtectedRoute path="/almacen-panel" component={AlmacenPanelPage} />}</Route>
               <Route path="/contabilidad-panel">{() => <ProtectedRoute path="/contabilidad-panel" component={ContabilidadPanelPage} />}</Route>
               <Route path="/maquinas">{() => <ProtectedRoute path="/maquinas" component={MachinesPage} />}</Route>
-              <Route path="/maquinas/:id" component={MachineDetailPage} />
+              <Route path="/maquinas/:id">{() => <ProtectedRoute path="/maquinas" component={MachineDetailPage} />}</Route>
               <Route path="/tareas">{() => <ProtectedRoute path="/tareas" component={TasksTodayPage} />}</Route>
               <Route path="/todas-tareas">{() => <ProtectedRoute path="/todas-tareas" component={TasksPage} />}</Route>
               <Route path="/calendario">{() => <ProtectedRoute path="/calendario" component={CalendarPage} />}</Route>
@@ -209,7 +209,7 @@ function ProtectedRoutes() {
               <Route path="/compras">{() => <ProtectedRoute path="/compras" component={PurchasesPage} />}</Route>
               <Route path="/rh">{() => <ProtectedRoute path="/rh" component={HRPage} />}</Route>
               <Route path="/reportes">{() => <ProtectedRoute path="/reportes" component={ReportsPage} />}</Route>
-              <Route path="/configuracion" component={SettingsPage} />
+              <Route path="/configuracion">{() => <ProtectedRoute path="/configuracion" component={SettingsPage} />}</Route>
               <Route component={NotFound} />
             </Switch>
           </main>
