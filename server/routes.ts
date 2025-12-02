@@ -1948,5 +1948,202 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== MÓDULO REPORTES ====================
+
+  const reportFiltersSchema = z.object({
+    startDate: z.string().optional(),
+    endDate: z.string().optional()
+  });
+
+  const salesBreakdownSchema = reportFiltersSchema.extend({
+    groupBy: z.enum(['machine', 'product', 'location', 'day']).optional()
+  });
+
+  const purchasesBreakdownSchema = reportFiltersSchema.extend({
+    groupBy: z.enum(['supplier', 'product', 'day']).optional()
+  });
+
+  const fuelBreakdownSchema = reportFiltersSchema.extend({
+    groupBy: z.enum(['vehicle', 'user', 'route', 'day']).optional()
+  });
+
+  const pettyCashBreakdownSchema = reportFiltersSchema.extend({
+    groupBy: z.enum(['category', 'user', 'day']).optional()
+  });
+
+  const exportDataSchema = z.object({
+    type: z.enum(['sales', 'purchases', 'fuel', 'pettycash', 'inventory']),
+    startDate: z.string().optional(),
+    endDate: z.string().optional()
+  });
+
+  // Resumen general de reportes
+  app.get("/api/reports/overview", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = reportFiltersSchema.parse(req.query);
+      const overview = await storage.getReportsOverview(
+        startDate ? new Date(startDate) : undefined,
+        endDate ? new Date(endDate) : undefined
+      );
+      res.json(overview);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error getting reports overview:", error);
+      res.status(500).json({ error: "Error al obtener resumen de reportes" });
+    }
+  });
+
+  // Desglose de ventas
+  app.get("/api/reports/sales", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate, groupBy } = salesBreakdownSchema.parse(req.query);
+      const breakdown = await storage.getSalesBreakdown({
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        groupBy: groupBy as 'machine' | 'product' | 'location' | 'day'
+      });
+      res.json(breakdown);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error getting sales breakdown:", error);
+      res.status(500).json({ error: "Error al obtener desglose de ventas" });
+    }
+  });
+
+  // Desglose de compras
+  app.get("/api/reports/purchases", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate, groupBy } = purchasesBreakdownSchema.parse(req.query);
+      const breakdown = await storage.getPurchasesBreakdown({
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        groupBy: groupBy as 'supplier' | 'product' | 'day'
+      });
+      res.json(breakdown);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error getting purchases breakdown:", error);
+      res.status(500).json({ error: "Error al obtener desglose de compras" });
+    }
+  });
+
+  // Desglose de combustible
+  app.get("/api/reports/fuel", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate, groupBy } = fuelBreakdownSchema.parse(req.query);
+      const breakdown = await storage.getFuelBreakdown({
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        groupBy: groupBy as 'vehicle' | 'user' | 'route' | 'day'
+      });
+      res.json(breakdown);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error getting fuel breakdown:", error);
+      res.status(500).json({ error: "Error al obtener desglose de combustible" });
+    }
+  });
+
+  // Desglose de caja chica
+  app.get("/api/reports/petty-cash", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate, groupBy } = pettyCashBreakdownSchema.parse(req.query);
+      const breakdown = await storage.getPettyCashBreakdown({
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        groupBy: groupBy as 'category' | 'user' | 'day'
+      });
+      res.json(breakdown);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error getting petty cash breakdown:", error);
+      res.status(500).json({ error: "Error al obtener desglose de caja chica" });
+    }
+  });
+
+  // Rendimiento de máquinas
+  app.get("/api/reports/machine-performance", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = reportFiltersSchema.parse(req.query);
+      const performance = await storage.getMachinePerformance(
+        startDate ? new Date(startDate) : undefined,
+        endDate ? new Date(endDate) : undefined
+      );
+      res.json(performance);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error getting machine performance:", error);
+      res.status(500).json({ error: "Error al obtener rendimiento de máquinas" });
+    }
+  });
+
+  // Productos más vendidos
+  app.get("/api/reports/top-products", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = reportFiltersSchema.parse(req.query);
+      const limit = parseInt(req.query.limit as string) || 10;
+      const topProducts = await storage.getTopProducts(
+        startDate ? new Date(startDate) : undefined,
+        endDate ? new Date(endDate) : undefined,
+        limit
+      );
+      res.json(topProducts);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error getting top products:", error);
+      res.status(500).json({ error: "Error al obtener productos más vendidos" });
+    }
+  });
+
+  // Ranking de proveedores
+  app.get("/api/reports/supplier-ranking", async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = reportFiltersSchema.parse(req.query);
+      const ranking = await storage.getSupplierRanking(
+        startDate ? new Date(startDate) : undefined,
+        endDate ? new Date(endDate) : undefined
+      );
+      res.json(ranking);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error getting supplier ranking:", error);
+      res.status(500).json({ error: "Error al obtener ranking de proveedores" });
+    }
+  });
+
+  // Exportar datos
+  app.get("/api/reports/export", async (req: Request, res: Response) => {
+    try {
+      const { type, startDate, endDate } = exportDataSchema.parse(req.query);
+      const data = await storage.getExportData(type, {
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined
+      });
+      res.json(data);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error exporting data:", error);
+      res.status(500).json({ error: "Error al exportar datos" });
+    }
+  });
+
   return httpServer;
 }

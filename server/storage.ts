@@ -268,6 +268,57 @@ export interface IStorage {
   getUserFuelStats(userId: string, startDate?: Date, endDate?: Date): Promise<any>;
   getFuelStatsPerRoute(startDate?: Date, endDate?: Date): Promise<any[]>;
   getLowMileageVehicles(): Promise<any[]>;
+  
+  // ==================== MÓDULO REPORTES ====================
+  
+  getReportsOverview(startDate?: Date, endDate?: Date): Promise<{
+    totalSales: number;
+    totalPurchases: number;
+    totalFuelCost: number;
+    totalPettyCash: number;
+    machineCount: number;
+    activeRoutes: number;
+    productCount: number;
+    lowStockAlerts: number;
+    pendingOrders: number;
+    pendingExpenses: number;
+    profitMargin: number;
+  }>;
+  
+  getSalesBreakdown(filters?: { 
+    startDate?: Date; 
+    endDate?: Date; 
+    groupBy?: 'machine' | 'product' | 'location' | 'day' 
+  }): Promise<any[]>;
+  
+  getPurchasesBreakdown(filters?: {
+    startDate?: Date;
+    endDate?: Date;
+    groupBy?: 'supplier' | 'product' | 'day';
+  }): Promise<any[]>;
+  
+  getFuelBreakdown(filters?: {
+    startDate?: Date;
+    endDate?: Date;
+    groupBy?: 'vehicle' | 'user' | 'route' | 'day';
+  }): Promise<any[]>;
+  
+  getPettyCashBreakdown(filters?: {
+    startDate?: Date;
+    endDate?: Date;
+    groupBy?: 'category' | 'user' | 'day';
+  }): Promise<any[]>;
+  
+  getMachinePerformance(startDate?: Date, endDate?: Date): Promise<any[]>;
+  
+  getTopProducts(startDate?: Date, endDate?: Date, limit?: number): Promise<any[]>;
+  
+  getSupplierRanking(startDate?: Date, endDate?: Date): Promise<any[]>;
+  
+  getExportData(type: 'sales' | 'purchases' | 'fuel' | 'pettycash' | 'inventory', filters?: {
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2457,6 +2508,508 @@ export class DatabaseStorage implements IStorage {
     return vehiclesWithStats
       .filter(v => v.isLowMileage)
       .sort((a, b) => a.averageMileage - b.averageMileage);
+  }
+
+  // ==================== MÓDULO REPORTES ====================
+
+  async getReportsOverview(startDate?: Date, endDate?: Date): Promise<{
+    totalSales: number;
+    totalPurchases: number;
+    totalFuelCost: number;
+    totalPettyCash: number;
+    machineCount: number;
+    activeRoutes: number;
+    productCount: number;
+    lowStockAlerts: number;
+    pendingOrders: number;
+    pendingExpenses: number;
+    profitMargin: number;
+  }> {
+    const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
+    const end = endDate || new Date();
+
+    const allMachines = await this.getMachines();
+    const allProducts = await this.getProducts();
+    const allRoutes = await this.getRoutes();
+    
+    const allSales = await db.select().from(machineSales)
+      .where(and(
+        gte(machineSales.saleDate, start),
+        lte(machineSales.saleDate, end)
+      ));
+    const totalSales = allSales.reduce((sum, s) => sum + parseFloat(s.totalAmount?.toString() || "0"), 0);
+    
+    const purchaseOrders = await db.select().from(purchaseOrdersTable)
+      .where(and(
+        gte(purchaseOrdersTable.createdAt, start),
+        lte(purchaseOrdersTable.createdAt, end)
+      ));
+    const totalPurchases = purchaseOrders
+      .filter(o => o.status === 'received' || o.status === 'partial')
+      .reduce((sum, o) => sum + parseFloat(o.totalAmount?.toString() || "0"), 0);
+    const pendingOrders = purchaseOrders.filter(o => o.status === 'pending' || o.status === 'approved').length;
+    
+    const fuelRecordsList = await db.select().from(fuelRecords)
+      .where(and(
+        gte(fuelRecords.date, start),
+        lte(fuelRecords.date, end)
+      ));
+    const totalFuelCost = fuelRecordsList.reduce((sum, r) => sum + parseFloat(r.totalAmount?.toString() || "0"), 0);
+    
+    const pettyCashList = await db.select().from(pettyCashExpenses)
+      .where(and(
+        gte(pettyCashExpenses.expenseDate, start),
+        lte(pettyCashExpenses.expenseDate, end)
+      ));
+    const totalPettyCash = pettyCashList
+      .filter(e => e.status === 'approved')
+      .reduce((sum, e) => sum + parseFloat(e.amount?.toString() || "0"), 0);
+    const pendingExpenses = pettyCashList.filter(e => e.status === 'pending').length;
+    
+    const lowStockProducts = await this.getLowStockProducts();
+    
+    const profitMargin = totalSales > 0 ? ((totalSales - totalPurchases - totalFuelCost - totalPettyCash) / totalSales * 100) : 0;
+
+    return {
+      totalSales,
+      totalPurchases,
+      totalFuelCost,
+      totalPettyCash,
+      machineCount: allMachines.length,
+      activeRoutes: allRoutes.filter(r => r.isActive).length,
+      productCount: allProducts.length,
+      lowStockAlerts: lowStockProducts.length,
+      pendingOrders,
+      pendingExpenses,
+      profitMargin: parseFloat(profitMargin.toFixed(2))
+    };
+  }
+
+  async getSalesBreakdown(filters?: { 
+    startDate?: Date; 
+    endDate?: Date; 
+    groupBy?: 'machine' | 'product' | 'location' | 'day' 
+  }): Promise<any[]> {
+    const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
+    const end = filters?.endDate || new Date();
+    const groupBy = filters?.groupBy || 'machine';
+
+    const allSales = await db.select().from(machineSales)
+      .where(and(
+        gte(machineSales.saleDate, start),
+        lte(machineSales.saleDate, end)
+      ));
+
+    if (groupBy === 'machine') {
+      const byMachine: Record<string, { machineId: string; totalAmount: number; quantity: number }> = {};
+      for (const sale of allSales) {
+        if (!byMachine[sale.machineId]) {
+          byMachine[sale.machineId] = { machineId: sale.machineId, totalAmount: 0, quantity: 0 };
+        }
+        byMachine[sale.machineId].totalAmount += parseFloat(sale.totalAmount?.toString() || "0");
+        byMachine[sale.machineId].quantity += sale.quantity || 0;
+      }
+      
+      const result = await Promise.all(Object.values(byMachine).map(async (item) => {
+        const machine = await this.getMachine(item.machineId);
+        return { ...item, machine };
+      }));
+      return result.sort((a, b) => b.totalAmount - a.totalAmount);
+    }
+
+    if (groupBy === 'product') {
+      const byProduct: Record<string, { productId: string; totalAmount: number; quantity: number }> = {};
+      for (const sale of allSales) {
+        if (!byProduct[sale.productId]) {
+          byProduct[sale.productId] = { productId: sale.productId, totalAmount: 0, quantity: 0 };
+        }
+        byProduct[sale.productId].totalAmount += parseFloat(sale.totalAmount?.toString() || "0");
+        byProduct[sale.productId].quantity += sale.quantity || 0;
+      }
+      
+      const result = await Promise.all(Object.values(byProduct).map(async (item) => {
+        const product = await this.getProduct(item.productId);
+        return { ...item, product };
+      }));
+      return result.sort((a, b) => b.totalAmount - a.totalAmount);
+    }
+
+    if (groupBy === 'day') {
+      const byDay: Record<string, { date: string; totalAmount: number; quantity: number }> = {};
+      for (const sale of allSales) {
+        const dateKey = sale.saleDate.toISOString().split('T')[0];
+        if (!byDay[dateKey]) {
+          byDay[dateKey] = { date: dateKey, totalAmount: 0, quantity: 0 };
+        }
+        byDay[dateKey].totalAmount += parseFloat(sale.totalAmount?.toString() || "0");
+        byDay[dateKey].quantity += sale.quantity || 0;
+      }
+      return Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    return allSales;
+  }
+
+  async getPurchasesBreakdown(filters?: {
+    startDate?: Date;
+    endDate?: Date;
+    groupBy?: 'supplier' | 'product' | 'day';
+  }): Promise<any[]> {
+    const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
+    const end = filters?.endDate || new Date();
+    const groupBy = filters?.groupBy || 'supplier';
+
+    const orders = await db.select().from(purchaseOrdersTable)
+      .where(and(
+        gte(purchaseOrdersTable.createdAt, start),
+        lte(purchaseOrdersTable.createdAt, end)
+      ));
+
+    if (groupBy === 'supplier') {
+      const bySupplier: Record<string, { supplierId: string; totalAmount: number; orderCount: number }> = {};
+      for (const order of orders) {
+        if (!bySupplier[order.supplierId]) {
+          bySupplier[order.supplierId] = { supplierId: order.supplierId, totalAmount: 0, orderCount: 0 };
+        }
+        bySupplier[order.supplierId].totalAmount += parseFloat(order.totalAmount?.toString() || "0");
+        bySupplier[order.supplierId].orderCount++;
+      }
+      
+      const result = await Promise.all(Object.values(bySupplier).map(async (item) => {
+        const supplier = await this.getSupplier(item.supplierId);
+        return { ...item, supplier };
+      }));
+      return result.sort((a, b) => b.totalAmount - a.totalAmount);
+    }
+
+    if (groupBy === 'day') {
+      const byDay: Record<string, { date: string; totalAmount: number; orderCount: number }> = {};
+      for (const order of orders) {
+        const dateKey = order.createdAt.toISOString().split('T')[0];
+        if (!byDay[dateKey]) {
+          byDay[dateKey] = { date: dateKey, totalAmount: 0, orderCount: 0 };
+        }
+        byDay[dateKey].totalAmount += parseFloat(order.totalAmount?.toString() || "0");
+        byDay[dateKey].orderCount++;
+      }
+      return Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    return orders;
+  }
+
+  async getFuelBreakdown(filters?: {
+    startDate?: Date;
+    endDate?: Date;
+    groupBy?: 'vehicle' | 'user' | 'route' | 'day';
+  }): Promise<any[]> {
+    const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
+    const end = filters?.endDate || new Date();
+    const groupBy = filters?.groupBy || 'vehicle';
+
+    const records = await db.select().from(fuelRecords)
+      .where(and(
+        gte(fuelRecords.date, start),
+        lte(fuelRecords.date, end)
+      ));
+
+    if (groupBy === 'vehicle') {
+      const byVehicle: Record<string, { vehicleId: string; totalAmount: number; totalLiters: number; recordCount: number }> = {};
+      for (const record of records) {
+        if (!byVehicle[record.vehicleId]) {
+          byVehicle[record.vehicleId] = { vehicleId: record.vehicleId, totalAmount: 0, totalLiters: 0, recordCount: 0 };
+        }
+        byVehicle[record.vehicleId].totalAmount += parseFloat(record.totalAmount?.toString() || "0");
+        byVehicle[record.vehicleId].totalLiters += parseFloat(record.liters?.toString() || "0");
+        byVehicle[record.vehicleId].recordCount++;
+      }
+      
+      const result = await Promise.all(Object.values(byVehicle).map(async (item) => {
+        const vehicle = await this.getVehicle(item.vehicleId);
+        return { ...item, vehicle };
+      }));
+      return result.sort((a, b) => b.totalAmount - a.totalAmount);
+    }
+
+    if (groupBy === 'user') {
+      const byUser: Record<string, { userId: string; totalAmount: number; totalLiters: number; recordCount: number }> = {};
+      for (const record of records) {
+        const userId = record.userId || 'unknown';
+        if (!byUser[userId]) {
+          byUser[userId] = { userId, totalAmount: 0, totalLiters: 0, recordCount: 0 };
+        }
+        byUser[userId].totalAmount += parseFloat(record.totalAmount?.toString() || "0");
+        byUser[userId].totalLiters += parseFloat(record.liters?.toString() || "0");
+        byUser[userId].recordCount++;
+      }
+      
+      const result = await Promise.all(Object.values(byUser).map(async (item) => {
+        const user = item.userId !== 'unknown' ? await this.getUser(item.userId) : null;
+        return { ...item, user };
+      }));
+      return result.sort((a, b) => b.totalAmount - a.totalAmount);
+    }
+
+    if (groupBy === 'day') {
+      const byDay: Record<string, { date: string; totalAmount: number; totalLiters: number; recordCount: number }> = {};
+      for (const record of records) {
+        const dateKey = record.date.toISOString().split('T')[0];
+        if (!byDay[dateKey]) {
+          byDay[dateKey] = { date: dateKey, totalAmount: 0, totalLiters: 0, recordCount: 0 };
+        }
+        byDay[dateKey].totalAmount += parseFloat(record.totalAmount?.toString() || "0");
+        byDay[dateKey].totalLiters += parseFloat(record.liters?.toString() || "0");
+        byDay[dateKey].recordCount++;
+      }
+      return Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    return records;
+  }
+
+  async getPettyCashBreakdown(filters?: {
+    startDate?: Date;
+    endDate?: Date;
+    groupBy?: 'category' | 'user' | 'day';
+  }): Promise<any[]> {
+    const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
+    const end = filters?.endDate || new Date();
+    const groupBy = filters?.groupBy || 'category';
+
+    const expenses = await db.select().from(pettyCashExpenses)
+      .where(and(
+        gte(pettyCashExpenses.expenseDate, start),
+        lte(pettyCashExpenses.expenseDate, end),
+        eq(pettyCashExpenses.status, 'approved')
+      ));
+
+    if (groupBy === 'category') {
+      const byCategory: Record<string, { category: string; totalAmount: number; expenseCount: number }> = {};
+      for (const expense of expenses) {
+        const cat = expense.category || 'otros';
+        if (!byCategory[cat]) {
+          byCategory[cat] = { category: cat, totalAmount: 0, expenseCount: 0 };
+        }
+        byCategory[cat].totalAmount += parseFloat(expense.amount?.toString() || "0");
+        byCategory[cat].expenseCount++;
+      }
+      return Object.values(byCategory).sort((a, b) => b.totalAmount - a.totalAmount);
+    }
+
+    if (groupBy === 'user') {
+      const byUser: Record<string, { userId: string; totalAmount: number; expenseCount: number }> = {};
+      for (const expense of expenses) {
+        if (!byUser[expense.requestedBy]) {
+          byUser[expense.requestedBy] = { userId: expense.requestedBy, totalAmount: 0, expenseCount: 0 };
+        }
+        byUser[expense.requestedBy].totalAmount += parseFloat(expense.amount?.toString() || "0");
+        byUser[expense.requestedBy].expenseCount++;
+      }
+      
+      const result = await Promise.all(Object.values(byUser).map(async (item) => {
+        const user = await this.getUser(item.userId);
+        return { ...item, user };
+      }));
+      return result.sort((a, b) => b.totalAmount - a.totalAmount);
+    }
+
+    if (groupBy === 'day') {
+      const byDay: Record<string, { date: string; totalAmount: number; expenseCount: number }> = {};
+      for (const expense of expenses) {
+        const dateKey = expense.expenseDate.toISOString().split('T')[0];
+        if (!byDay[dateKey]) {
+          byDay[dateKey] = { date: dateKey, totalAmount: 0, expenseCount: 0 };
+        }
+        byDay[dateKey].totalAmount += parseFloat(expense.amount?.toString() || "0");
+        byDay[dateKey].expenseCount++;
+      }
+      return Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    return expenses;
+  }
+
+  async getMachinePerformance(startDate?: Date, endDate?: Date): Promise<any[]> {
+    const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
+    const end = endDate || new Date();
+
+    const allMachines = await this.getMachines();
+    const allSales = await db.select().from(machineSales)
+      .where(and(
+        gte(machineSales.saleDate, start),
+        lte(machineSales.saleDate, end)
+      ));
+
+    const machineStats = await Promise.all(allMachines.map(async (machine) => {
+      const machineSalesData = allSales.filter(s => s.machineId === machine.id);
+      const totalSales = machineSalesData.reduce((sum, s) => sum + parseFloat(s.totalAmount?.toString() || "0"), 0);
+      const totalQuantity = machineSalesData.reduce((sum, s) => sum + (s.quantity || 0), 0);
+      
+      const alerts = await this.getMachineAlerts(machine.id);
+      const activeAlerts = alerts.filter(a => !a.isResolved).length;
+
+      return {
+        machine,
+        totalSales,
+        totalQuantity,
+        transactionCount: machineSalesData.length,
+        activeAlerts,
+        avgTransactionValue: machineSalesData.length > 0 ? totalSales / machineSalesData.length : 0
+      };
+    }));
+
+    return machineStats.sort((a, b) => b.totalSales - a.totalSales);
+  }
+
+  async getTopProducts(startDate?: Date, endDate?: Date, limit: number = 10): Promise<any[]> {
+    const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
+    const end = endDate || new Date();
+
+    const allSales = await db.select().from(machineSales)
+      .where(and(
+        gte(machineSales.saleDate, start),
+        lte(machineSales.saleDate, end)
+      ));
+
+    const byProduct: Record<string, { productId: string; totalAmount: number; quantity: number }> = {};
+    for (const sale of allSales) {
+      if (!byProduct[sale.productId]) {
+        byProduct[sale.productId] = { productId: sale.productId, totalAmount: 0, quantity: 0 };
+      }
+      byProduct[sale.productId].totalAmount += parseFloat(sale.totalAmount?.toString() || "0");
+      byProduct[sale.productId].quantity += sale.quantity || 0;
+    }
+
+    const sorted = Object.values(byProduct).sort((a, b) => b.totalAmount - a.totalAmount).slice(0, limit);
+    
+    const result = await Promise.all(sorted.map(async (item) => {
+      const product = await this.getProduct(item.productId);
+      return { ...item, product };
+    }));
+
+    return result;
+  }
+
+  async getSupplierRanking(startDate?: Date, endDate?: Date): Promise<any[]> {
+    const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
+    const end = endDate || new Date();
+
+    const orders = await db.select().from(purchaseOrdersTable)
+      .where(and(
+        gte(purchaseOrdersTable.createdAt, start),
+        lte(purchaseOrdersTable.createdAt, end)
+      ));
+
+    const bySupplier: Record<string, { supplierId: string; totalAmount: number; orderCount: number; receivedCount: number }> = {};
+    for (const order of orders) {
+      if (!bySupplier[order.supplierId]) {
+        bySupplier[order.supplierId] = { supplierId: order.supplierId, totalAmount: 0, orderCount: 0, receivedCount: 0 };
+      }
+      bySupplier[order.supplierId].totalAmount += parseFloat(order.totalAmount?.toString() || "0");
+      bySupplier[order.supplierId].orderCount++;
+      if (order.status === 'received') bySupplier[order.supplierId].receivedCount++;
+    }
+
+    const result = await Promise.all(Object.values(bySupplier).map(async (item) => {
+      const supplier = await this.getSupplier(item.supplierId);
+      const fulfillmentRate = item.orderCount > 0 ? (item.receivedCount / item.orderCount * 100) : 0;
+      return { ...item, supplier, fulfillmentRate: parseFloat(fulfillmentRate.toFixed(1)) };
+    }));
+
+    return result.sort((a, b) => b.totalAmount - a.totalAmount);
+  }
+
+  async getExportData(type: 'sales' | 'purchases' | 'fuel' | 'pettycash' | 'inventory', filters?: {
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<any[]> {
+    const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
+    const end = filters?.endDate || new Date();
+
+    switch (type) {
+      case 'sales':
+        const sales = await db.select().from(machineSales)
+          .where(and(
+            gte(machineSales.saleDate, start),
+            lte(machineSales.saleDate, end)
+          ))
+          .orderBy(machineSales.saleDate);
+        return Promise.all(sales.map(async (s) => {
+          const machine = await this.getMachine(s.machineId);
+          const product = await this.getProduct(s.productId);
+          return {
+            fecha: s.saleDate.toISOString().split('T')[0],
+            maquina: machine?.code || s.machineId,
+            producto: product?.name || s.productId,
+            cantidad: s.quantity,
+            monto: parseFloat(s.totalAmount?.toString() || "0")
+          };
+        }));
+
+      case 'purchases':
+        const purchases = await db.select().from(purchaseOrdersTable)
+          .where(and(
+            gte(purchaseOrdersTable.createdAt, start),
+            lte(purchaseOrdersTable.createdAt, end)
+          ))
+          .orderBy(purchaseOrdersTable.createdAt);
+        return Promise.all(purchases.map(async (p) => {
+          const supplier = await this.getSupplier(p.supplierId);
+          return {
+            fecha: p.createdAt.toISOString().split('T')[0],
+            orden: p.orderNumber,
+            proveedor: supplier?.name || p.supplierId,
+            estado: p.status,
+            monto: parseFloat(p.totalAmount?.toString() || "0")
+          };
+        }));
+
+      case 'fuel':
+        const fuel = await db.select().from(fuelRecords)
+          .where(and(
+            gte(fuelRecords.date, start),
+            lte(fuelRecords.date, end)
+          ))
+          .orderBy(fuelRecords.date);
+        return Promise.all(fuel.map(async (f) => {
+          const vehicle = await this.getVehicle(f.vehicleId);
+          return {
+            fecha: f.date.toISOString().split('T')[0],
+            vehiculo: vehicle?.plate || f.vehicleId,
+            litros: parseFloat(f.liters?.toString() || "0"),
+            monto: parseFloat(f.totalAmount?.toString() || "0"),
+            odometro: f.odometerReading
+          };
+        }));
+
+      case 'pettycash':
+        const pettycash = await db.select().from(pettyCashExpenses)
+          .where(and(
+            gte(pettyCashExpenses.expenseDate, start),
+            lte(pettyCashExpenses.expenseDate, end)
+          ))
+          .orderBy(pettyCashExpenses.expenseDate);
+        return pettycash.map(p => ({
+          fecha: p.expenseDate.toISOString().split('T')[0],
+          descripcion: p.description,
+          categoria: p.category,
+          estado: p.status,
+          monto: parseFloat(p.amount?.toString() || "0")
+        }));
+
+      case 'inventory':
+        const inventory = await this.getWarehouseInventory();
+        return inventory.map(i => ({
+          producto: i.product?.name || i.productId,
+          codigo: i.product?.code,
+          cantidad: i.quantity,
+          minimo: i.minimumStock,
+          ubicacion: i.location
+        }));
+
+      default:
+        return [];
+    }
   }
 }
 
