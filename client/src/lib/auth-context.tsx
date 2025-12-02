@@ -180,26 +180,26 @@ export function getRoleDefaultRoute(role: UserRole): string {
     admin: "/",
     supervisor: "/supervisor",
     abastecedor: "/abastecedor",
-    almacen: "/almacen",
-    contabilidad: "/contabilidad",
+    almacen: "/almacen-panel",
+    contabilidad: "/contabilidad-panel",
     rh: "/rh",
   };
   return routes[role] || "/";
 }
 
 export function canAccessRoute(role: UserRole, route: string): boolean {
-  const adminRoutes = ["/", "/maquinas", "/tareas", "/todas-tareas", "/calendario", "/almacen", "/abastecedor", 
-    "/dinero-productos", "/compras", "/combustible", "/contabilidad", "/caja-chica", "/rh", "/reportes", 
-    "/configuracion", "/supervisor"];
+  const adminRoutes = ["/", "/maquinas", "/tareas", "/todas-tareas", "/calendario", "/almacen", "/almacen-panel",
+    "/abastecedor", "/dinero-productos", "/compras", "/combustible", "/contabilidad", "/contabilidad-panel",
+    "/caja-chica", "/rh", "/reportes", "/configuracion", "/supervisor"];
   
   const supervisorRoutes = ["/supervisor", "/maquinas", "/tareas", "/todas-tareas", "/calendario", 
-    "/almacen", "/abastecedor", "/dinero-productos", "/combustible", "/rh"];
+    "/almacen", "/almacen-panel", "/abastecedor", "/dinero-productos", "/combustible", "/rh"];
   
   const abastecedorRoutes = ["/abastecedor", "/tareas", "/calendario"];
   
-  const almacenRoutes = ["/almacen", "/compras", "/tareas", "/calendario"];
+  const almacenRoutes = ["/almacen", "/almacen-panel", "/compras", "/tareas", "/calendario"];
   
-  const contabilidadRoutes = ["/contabilidad", "/caja-chica", "/dinero-productos", "/tareas", "/calendario"];
+  const contabilidadRoutes = ["/contabilidad", "/contabilidad-panel", "/caja-chica", "/dinero-productos", "/tareas", "/calendario"];
   
   const rhRoutes = ["/rh", "/tareas", "/calendario"];
 

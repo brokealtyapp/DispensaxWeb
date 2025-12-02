@@ -28,6 +28,8 @@ import { TasksTodayPage } from "@/pages/tasks-today";
 import { CalendarPage } from "@/pages/calendar";
 import { ResetPasswordPage } from "@/pages/reset-password";
 import { SupervisorPage } from "@/pages/supervisor";
+import { AlmacenPanelPage } from "@/pages/almacen-panel";
+import { ContabilidadPanelPage } from "@/pages/contabilidad-panel";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { format, formatDistanceToNow } from "date-fns";
@@ -169,6 +171,8 @@ function ProtectedRoutes() {
             <Switch>
               <Route path="/" component={DashboardPage} />
               <Route path="/supervisor" component={SupervisorPage} />
+              <Route path="/almacen-panel" component={AlmacenPanelPage} />
+              <Route path="/contabilidad-panel" component={ContabilidadPanelPage} />
               <Route path="/maquinas" component={MachinesPage} />
               <Route path="/maquinas/:id" component={MachineDetailPage} />
               <Route path="/tareas" component={TasksTodayPage} />
