@@ -1005,8 +1005,8 @@ export async function registerRoutes(
 
   app.post("/api/supplier/services/:id/end", async (req: Request, res: Response) => {
     try {
-      const { notes } = req.body;
-      const service = await storage.endService(req.params.id, notes);
+      const { notes, signature, responsibleName } = req.body;
+      const service = await storage.endService(req.params.id, notes, signature, responsibleName);
       if (!service) {
         return res.status(404).json({ error: "Servicio no encontrado" });
       }
@@ -1185,6 +1185,54 @@ export async function registerRoutes(
       }
       console.error("Error unloading products:", error);
       res.status(500).json({ error: "Error al descargar productos" });
+    }
+  });
+
+  // Cargar múltiples productos a máquina (desde el panel del abastecedor)
+  app.post("/api/supplier/load-products", async (req: Request, res: Response) => {
+    try {
+      const { machineId, products } = req.body;
+      if (!machineId || !products || !Array.isArray(products)) {
+        return res.status(400).json({ error: "Faltan campos requeridos" });
+      }
+      
+      const { db } = await import("./db");
+      const { machineInventory } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      
+      let totalLoaded = 0;
+      for (const product of products) {
+        if (product.quantity > 0) {
+          const [existing] = await db.select().from(machineInventory)
+            .where(and(
+              eq(machineInventory.machineId, machineId),
+              eq(machineInventory.productId, product.productId)
+            ));
+          
+          if (existing) {
+            await db.update(machineInventory)
+              .set({ 
+                currentQuantity: (existing.currentQuantity || 0) + product.quantity,
+                lastUpdated: new Date()
+              })
+              .where(eq(machineInventory.id, existing.id));
+          } else {
+            await db.insert(machineInventory).values({
+              machineId,
+              productId: product.productId,
+              currentQuantity: product.quantity,
+              maxCapacity: 20,
+              minLevel: 5,
+            });
+          }
+          totalLoaded += product.quantity;
+        }
+      }
+      
+      res.status(201).json({ message: "Productos cargados exitosamente", totalLoaded });
+    } catch (error) {
+      console.error("Error loading products to machine:", error);
+      res.status(500).json({ error: "Error al cargar productos" });
     }
   });
 

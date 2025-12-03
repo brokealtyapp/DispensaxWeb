@@ -137,7 +137,7 @@ export interface IStorage {
   getServiceRecord(id: string): Promise<any>;
   getActiveService(userId: string): Promise<ServiceRecord | undefined>;
   startService(data: InsertServiceRecord): Promise<ServiceRecord>;
-  endService(id: string, notes?: string): Promise<ServiceRecord | undefined>;
+  endService(id: string, notes?: string, signature?: string, responsibleName?: string): Promise<ServiceRecord | undefined>;
   
   // Recolección de Efectivo
   getCashCollections(userId?: string, machineId?: string, startDate?: Date, endDate?: Date): Promise<any[]>;
@@ -1123,7 +1123,7 @@ export class DatabaseStorage implements IStorage {
     return record;
   }
 
-  async endService(id: string, notes?: string): Promise<ServiceRecord | undefined> {
+  async endService(id: string, notes?: string, signature?: string, responsibleName?: string): Promise<ServiceRecord | undefined> {
     const [record] = await db.select().from(serviceRecords).where(eq(serviceRecords.id, id));
     if (!record) return undefined;
     
@@ -1135,7 +1135,9 @@ export class DatabaseStorage implements IStorage {
         endTime, 
         durationMinutes, 
         status: "completado",
-        notes: notes || record.notes 
+        notes: notes || record.notes,
+        signature: signature || null,
+        responsibleName: responsibleName || null,
       })
       .where(eq(serviceRecords.id, id))
       .returning();

@@ -524,6 +524,8 @@ export const serviceRecords = pgTable("service_records", {
   durationMinutes: integer("duration_minutes"),
   status: text("status").default("en_progreso"),
   notes: text("notes"),
+  signature: text("signature"),
+  responsibleName: text("responsible_name"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

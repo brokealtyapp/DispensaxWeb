@@ -1,17 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ServiceTimer } from "@/components/ServiceTimer";
 import { ProductCard } from "@/components/ProductCard";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,11 +28,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth-context";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   MapPin,
@@ -42,7 +52,58 @@ import {
   Square,
   Loader2,
   ChevronRight,
+  ChevronDown,
+  Phone,
+  User,
+  ExternalLink,
+  Wifi,
+  WifiOff,
+  History,
+  ClipboardCheck,
+  Truck,
+  Plus,
+  Minus,
+  FileText,
+  PenTool,
+  X,
+  Image,
+  AlertCircle,
+  Check,
+  Thermometer,
+  Sparkles,
+  Eye,
+  ShoppingCart,
 } from "lucide-react";
+
+interface MachineLocation {
+  id: string;
+  name: string;
+  address?: string;
+  city?: string;
+  zone?: string;
+  latitude?: string;
+  longitude?: string;
+  contactName?: string;
+  contactPhone?: string;
+  notes?: string;
+}
+
+interface MachineDetails {
+  id: string;
+  name: string;
+  code: string;
+  type?: string;
+  status?: string;
+  lastVisit?: string;
+  notes?: string;
+  location?: MachineLocation;
+  inventory?: any[];
+  alerts?: any[];
+  salesSummary?: {
+    totalSales: number;
+    totalRevenue: number;
+  };
+}
 
 interface RouteStop {
   id: string;
@@ -52,15 +113,7 @@ interface RouteStop {
   actualArrival?: string;
   actualDeparture?: string;
   notes?: string;
-  machine: {
-    id: string;
-    name: string;
-    code: string;
-    location?: {
-      name: string;
-      address: string;
-    };
-  };
+  machine: MachineDetails;
 }
 
 interface Route {
@@ -76,6 +129,31 @@ interface Route {
   stops: RouteStop[];
 }
 
+interface ServiceChecklist {
+  id: string;
+  label: string;
+  checked: boolean;
+  required: boolean;
+}
+
+const defaultChecklist: ServiceChecklist[] = [
+  { id: "clean_exterior", label: "Limpiar exterior de la máquina", checked: false, required: true },
+  { id: "check_temp", label: "Verificar temperatura (refrigeración)", checked: false, required: true },
+  { id: "check_display", label: "Revisar display/pantalla", checked: false, required: false },
+  { id: "check_coin", label: "Revisar receptor de monedas", checked: false, required: true },
+  { id: "check_products", label: "Acomodar productos visibles", checked: false, required: true },
+  { id: "check_expiry", label: "Revisar fechas de caducidad", checked: false, required: true },
+  { id: "remove_trash", label: "Retirar basura del área", checked: false, required: false },
+];
+
+interface ProductToLoad {
+  productId: string;
+  name: string;
+  quantity: number;
+  currentInMachine: number;
+  maxCapacity: number;
+}
+
 export function SupplierPage() {
   const [activeTab, setActiveTab] = useState("ruta");
   const [isServiceActive, setIsServiceActive] = useState(false);
@@ -84,29 +162,45 @@ export function SupplierPage() {
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
   const [isCashDialogOpen, setIsCashDialogOpen] = useState(false);
   const [isLoadDialogOpen, setIsLoadDialogOpen] = useState(false);
+  const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
+  const [isSignatureDialogOpen, setIsSignatureDialogOpen] = useState(false);
   const [cashAmount, setCashAmount] = useState("");
   const [expectedAmount, setExpectedAmount] = useState("");
   const [issueType, setIssueType] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
   const [issuePriority, setIssuePriority] = useState("media");
+  const [issuePhotoUrl, setIssuePhotoUrl] = useState<string | null>(null);
+  const [checklist, setChecklist] = useState<ServiceChecklist[]>(defaultChecklist);
+  const [productsToLoad, setProductsToLoad] = useState<ProductToLoad[]>([]);
+  const [expandedStop, setExpandedStop] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [signatureData, setSignatureData] = useState<string | null>(null);
+  const [responsibleName, setResponsibleName] = useState("");
+  const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
+  const isDrawing = useRef(false);
   const { toast } = useToast();
   const { user, isLoading: isAuthLoading } = useAuth();
 
   const supplierId = user?.id;
 
-  if (isAuthLoading) {
-    return (
-      <div className="p-6 space-y-6">
-        <Skeleton className="h-10 w-48" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24 w-full" />
-          ))}
-        </div>
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      toast({ title: "Conexión restaurada", description: "Los datos se sincronizarán automáticamente" });
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      toast({ title: "Sin conexión", description: "Los cambios se guardarán localmente", variant: "destructive" });
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [toast]);
 
   const { data: todayRoute, isLoading: isLoadingRoute, refetch: refetchRoute } = useQuery<Route>({
     queryKey: ["/api/supplier/today-route", supplierId],
@@ -123,8 +217,23 @@ export function SupplierPage() {
     enabled: !!currentStop?.machine?.id && isServiceActive,
   });
 
+  const { data: supplierInventory } = useQuery<any[]>({
+    queryKey: ["/api/supplier/inventory", supplierId],
+    enabled: !!supplierId,
+  });
+
   const { data: products } = useQuery<any[]>({
     queryKey: ["/api/products"],
+  });
+
+  const { data: machineHistory } = useQuery<any[]>({
+    queryKey: ["/api/machines", currentStop?.machine?.id, "history"],
+    enabled: !!currentStop?.machine?.id && isHistoryDialogOpen,
+  });
+
+  const { data: pendingAlerts } = useQuery<any[]>({
+    queryKey: ["/api/alerts", { resolved: false }],
+    enabled: !!supplierId,
   });
 
   const startRouteMutation = useMutation({
@@ -166,8 +275,8 @@ export function SupplierPage() {
   });
 
   const endServiceMutation = useMutation({
-    mutationFn: async ({ serviceId, notes }: { serviceId: string; notes?: string }) => {
-      return apiRequest("POST", `/api/supplier/services/${serviceId}/end`, { notes });
+    mutationFn: async ({ serviceId, notes, signature, responsibleName }: { serviceId: string; notes?: string; signature?: string; responsibleName?: string }) => {
+      return apiRequest("POST", `/api/supplier/services/${serviceId}/end`, { notes, signature, responsibleName });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/services"] });
@@ -200,7 +309,21 @@ export function SupplierPage() {
       setIssueType("");
       setIssueDescription("");
       setIssuePriority("media");
+      setIssuePhotoUrl(null);
       setIsReportDialogOpen(false);
+    },
+  });
+
+  const loadProductsMutation = useMutation({
+    mutationFn: async (data: { machineId: string; products: { productId: string; quantity: number }[] }) => {
+      return apiRequest("POST", "/api/supplier/load-products", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/machines", currentStop?.machine?.id, "inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/stats", supplierId] });
+      toast({ title: "Productos cargados", description: "El inventario ha sido actualizado" });
+      setProductsToLoad([]);
+      setIsLoadDialogOpen(false);
     },
   });
 
@@ -216,9 +339,10 @@ export function SupplierPage() {
     setCurrentStop(stop);
     setIsServiceActive(true);
     setActiveTab("servicio");
+    setChecklist(defaultChecklist.map(item => ({ ...item, checked: false })));
     
     await startStopMutation.mutateAsync(stop.id);
-    const service = await startServiceMutation.mutateAsync({
+    await startServiceMutation.mutateAsync({
       userId: supplierId,
       machineId: stop.machine.id,
       routeStopId: stop.id,
@@ -226,21 +350,41 @@ export function SupplierPage() {
   };
 
   const handleStopService = async (duration: number) => {
+    const requiredUnchecked = checklist.filter(item => item.required && !item.checked);
+    if (requiredUnchecked.length > 0) {
+      toast({
+        title: "Checklist incompleto",
+        description: `Debes completar: ${requiredUnchecked.map(i => i.label).join(", ")}`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setIsSignatureDialogOpen(true);
+  };
+
+  const handleConfirmServiceEnd = async () => {
     if (!activeServiceId || !currentStop) return;
     
-    const minutes = Math.floor(duration / 60);
-    await endServiceMutation.mutateAsync({ serviceId: activeServiceId });
+    await endServiceMutation.mutateAsync({ 
+      serviceId: activeServiceId,
+      signature: signatureData || undefined,
+      responsibleName: responsibleName || undefined,
+    });
     await completeStopMutation.mutateAsync(currentStop.id);
     
     toast({
       title: "Servicio finalizado",
-      description: `Tiempo total: ${minutes} minutos`,
+      description: "El servicio ha sido registrado correctamente",
     });
     
     setIsServiceActive(false);
     setCurrentStop(null);
     setActiveServiceId(null);
     setActiveTab("ruta");
+    setSignatureData(null);
+    setResponsibleName("");
+    setIsSignatureDialogOpen(false);
     refetchRoute();
   };
 
@@ -254,6 +398,7 @@ export function SupplierPage() {
       issueType: issueType || "otro",
       description: issueDescription,
       priority: issuePriority,
+      photoUrl: issuePhotoUrl || undefined,
     });
   };
 
@@ -269,9 +414,175 @@ export function SupplierPage() {
     });
   };
 
+  const handleLoadProducts = () => {
+    if (!currentStop || productsToLoad.length === 0) return;
+    
+    const productsWithQuantity = productsToLoad.filter(p => p.quantity > 0);
+    if (productsWithQuantity.length === 0) {
+      toast({ title: "Sin productos", description: "Agrega al menos un producto para cargar", variant: "destructive" });
+      return;
+    }
+
+    loadProductsMutation.mutate({
+      machineId: currentStop.machine.id,
+      products: productsWithQuantity.map(p => ({ productId: p.productId, quantity: p.quantity })),
+    });
+  };
+
+  const openNavigator = (stop: RouteStop) => {
+    const location = stop.machine?.location;
+    if (location?.latitude && location?.longitude) {
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${location.latitude},${location.longitude}`;
+      window.open(url, "_blank");
+    } else if (location?.address) {
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.address)}`;
+      window.open(url, "_blank");
+    } else {
+      toast({ title: "Sin ubicación", description: "Esta máquina no tiene dirección registrada", variant: "destructive" });
+    }
+  };
+
+  const callContact = (phone: string) => {
+    window.open(`tel:${phone}`, "_self");
+  };
+
+  const handlePhotoCapture = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.capture = "environment";
+    input.onchange = (e: any) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setIssuePhotoUrl(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    input.click();
+  };
+
+  const initSignatureCanvas = () => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+  };
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    isDrawing.current = true;
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    let x, y;
+    
+    if ("touches" in e) {
+      x = e.touches[0].clientX - rect.left;
+      y = e.touches[0].clientY - rect.top;
+    } else {
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+    }
+    
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing.current) return;
+    
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    let x, y;
+    
+    if ("touches" in e) {
+      e.preventDefault();
+      x = e.touches[0].clientX - rect.left;
+      y = e.touches[0].clientY - rect.top;
+    } else {
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+    }
+    
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    isDrawing.current = false;
+    const canvas = signatureCanvasRef.current;
+    if (canvas) {
+      setSignatureData(canvas.toDataURL());
+    }
+  };
+
+  const clearSignature = () => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    setSignatureData(null);
+  };
+
+  const openLoadDialog = () => {
+    const machineInv = currentStop?.machine?.inventory || [];
+    const initialProducts: ProductToLoad[] = (products || []).map(p => {
+      const invItem = machineInv.find((i: any) => i.productId === p.id);
+      return {
+        productId: p.id,
+        name: p.name,
+        quantity: 0,
+        currentInMachine: invItem?.currentQuantity || 0,
+        maxCapacity: invItem?.maxCapacity || 20,
+      };
+    });
+    setProductsToLoad(initialProducts);
+    setIsLoadDialogOpen(true);
+  };
+
+  const updateProductQuantity = (productId: string, delta: number) => {
+    setProductsToLoad(prev => prev.map(p => {
+      if (p.productId === productId) {
+        const newQty = Math.max(0, Math.min(p.maxCapacity - p.currentInMachine, p.quantity + delta));
+        return { ...p, quantity: newQty };
+      }
+      return p;
+    }));
+  };
+
+  const toggleChecklistItem = (id: string) => {
+    setChecklist(prev => prev.map(item => 
+      item.id === id ? { ...item, checked: !item.checked } : item
+    ));
+  };
+
   const completedStops = todayRoute?.completedStops || 0;
   const totalStops = todayRoute?.totalStops || 0;
   const estimatedDuration = todayRoute?.estimatedDuration || 0;
+  const checklistProgress = Math.round((checklist.filter(i => i.checked).length / checklist.length) * 100);
+  const urgentAlerts = (pendingAlerts || []).filter((a: any) => a.priority === "critica" || a.priority === "alta");
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -284,11 +595,11 @@ export function SupplierPage() {
     }
   };
 
-  if (isLoadingRoute) {
+  if (isAuthLoading || isLoadingRoute) {
     return (
       <div className="p-6 space-y-6">
         <Skeleton className="h-10 w-64" />
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-24" />
           ))}
@@ -299,90 +610,105 @@ export function SupplierPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+      {/* Header con indicador de conexión */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">Panel de Abastecedor</h1>
-          <p className="text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl md:text-2xl font-bold" data-testid="text-page-title">Panel de Abastecedor</h1>
+            <Badge variant={isOnline ? "outline" : "destructive"} className="gap-1">
+              {isOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+              {isOnline ? "En línea" : "Sin conexión"}
+            </Badge>
+          </div>
+          <p className="text-muted-foreground text-sm md:text-base">
             {todayRoute ? format(new Date(todayRoute.date), "EEEE d 'de' MMMM, yyyy", { locale: es }) : "Sin ruta asignada"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {urgentAlerts.length > 0 && (
+            <Badge variant="destructive" className="gap-1">
+              <AlertCircle className="h-3 w-3" />
+              {urgentAlerts.length} alertas urgentes
+            </Badge>
+          )}
           {todayRoute && todayRoute.status === "pendiente" && (
-            <Button onClick={handleStartRoute} disabled={startRouteMutation.isPending} data-testid="button-start-route">
+            <Button onClick={handleStartRoute} disabled={startRouteMutation.isPending} data-testid="button-start-route" size="lg">
               {startRouteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
               Iniciar Ruta
             </Button>
           )}
-          <Badge variant="outline" className="gap-1" data-testid="badge-progress">
+          <Badge variant="outline" className="gap-1 text-sm md:text-base py-1 px-3" data-testid="badge-progress">
             <CheckCircle2 className="h-3 w-3 text-emerald-500" />
             {completedStops}/{totalStops} completadas
           </Badge>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Stats Cards - Más compactas en móvil */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <Card data-testid="card-stat-stops">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-lg bg-primary/10 text-primary">
-              <Navigation className="h-5 w-5" />
+          <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
+            <div className="p-2 md:p-3 rounded-lg bg-primary/10 text-primary">
+              <Navigation className="h-4 w-4 md:h-5 md:w-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{totalStops}</p>
-              <p className="text-sm text-muted-foreground">Paradas hoy</p>
+              <p className="text-xl md:text-2xl font-bold">{totalStops}</p>
+              <p className="text-xs md:text-sm text-muted-foreground">Paradas hoy</p>
             </div>
           </CardContent>
         </Card>
         <Card data-testid="card-stat-time">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-lg bg-emerald-500/10 text-emerald-500">
-              <Clock className="h-5 w-5" />
+          <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
+            <div className="p-2 md:p-3 rounded-lg bg-emerald-500/10 text-emerald-500">
+              <Clock className="h-4 w-4 md:h-5 md:w-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{Math.round(estimatedDuration / 60)}h</p>
-              <p className="text-sm text-muted-foreground">Tiempo estimado</p>
+              <p className="text-xl md:text-2xl font-bold">{Math.round(estimatedDuration / 60)}h</p>
+              <p className="text-xs md:text-sm text-muted-foreground">Tiempo estimado</p>
             </div>
           </CardContent>
         </Card>
         <Card data-testid="card-stat-products">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-lg bg-purple-500/10 text-purple-500">
-              <Package className="h-5 w-5" />
+          <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
+            <div className="p-2 md:p-3 rounded-lg bg-purple-500/10 text-purple-500">
+              <Package className="h-4 w-4 md:h-5 md:w-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{(supplierStats as any)?.productsLoaded || 0}</p>
-              <p className="text-sm text-muted-foreground">Productos cargados</p>
+              <p className="text-xl md:text-2xl font-bold">{(supplierStats as any)?.productsLoaded || 0}</p>
+              <p className="text-xs md:text-sm text-muted-foreground">Productos cargados</p>
             </div>
           </CardContent>
         </Card>
         <Card data-testid="card-stat-cash">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-lg bg-amber-500/10 text-amber-500">
-              <DollarSign className="h-5 w-5" />
+          <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
+            <div className="p-2 md:p-3 rounded-lg bg-amber-500/10 text-amber-500">
+              <DollarSign className="h-4 w-4 md:h-5 md:w-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold">${((supplierStats as any)?.cashCollected || 0).toFixed(0)}</p>
-              <p className="text-sm text-muted-foreground">Efectivo recolectado</p>
+              <p className="text-xl md:text-2xl font-bold">${((supplierStats as any)?.cashCollected || 0).toFixed(0)}</p>
+              <p className="text-xs md:text-sm text-muted-foreground">Efectivo recolectado</p>
             </div>
           </CardContent>
         </Card>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList data-testid="tabs-list">
-          <TabsTrigger value="ruta" data-testid="tab-route">Mi Ruta</TabsTrigger>
-          <TabsTrigger value="servicio" disabled={!isServiceActive} data-testid="tab-service">
+        <TabsList data-testid="tabs-list" className="w-full md:w-auto">
+          <TabsTrigger value="ruta" data-testid="tab-route" className="flex-1 md:flex-none">Mi Ruta</TabsTrigger>
+          <TabsTrigger value="servicio" disabled={!isServiceActive} data-testid="tab-service" className="flex-1 md:flex-none">
             Servicio Activo
           </TabsTrigger>
-          <TabsTrigger value="inventario" data-testid="tab-inventory">Inventario</TabsTrigger>
+          <TabsTrigger value="inventario" data-testid="tab-inventory" className="flex-1 md:flex-none">Mi Vehículo</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="ruta" className="mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-4">
+        {/* TAB: Mi Ruta */}
+        <TabsContent value="ruta" className="mt-4 md:mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+            <div className="lg:col-span-2 space-y-3 md:space-y-4">
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                <CardHeader className="pb-2 md:pb-4">
+                  <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
                     <Navigation className="h-5 w-5" />
                     Ruta del Día
                   </CardTitle>
@@ -394,81 +720,160 @@ export function SupplierPage() {
                       <p>No tienes una ruta asignada para hoy</p>
                     </div>
                   ) : (
-                    todayRoute.stops?.map((stop, index) => (
-                      <div 
+                    todayRoute.stops?.map((stop) => (
+                      <Collapsible 
                         key={stop.id} 
-                        className={`p-4 rounded-lg border transition-colors ${
-                          stop.status === "en_progreso" ? "border-primary bg-primary/5" : 
-                          stop.status === "completada" ? "bg-muted/50" : ""
-                        }`}
-                        data-testid={`card-stop-${stop.id}`}
+                        open={expandedStop === stop.id}
+                        onOpenChange={() => setExpandedStop(expandedStop === stop.id ? null : stop.id)}
                       >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex items-start gap-4">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
-                              stop.status === "completada" ? "bg-emerald-500 text-white" :
-                              stop.status === "en_progreso" ? "bg-primary text-white" :
-                              "bg-muted text-muted-foreground"
-                            }`}>
-                              {stop.status === "completada" ? <CheckCircle2 className="h-4 w-4" /> : stop.order}
-                            </div>
-                            <div>
-                              <h4 className="font-medium">{stop.machine?.name || "Máquina"}</h4>
-                              <p className="text-sm text-muted-foreground">
-                                {stop.machine?.location?.name || stop.machine?.code || ""}
-                              </p>
-                              <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                                <span className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {stop.estimatedArrival ? format(new Date(stop.estimatedArrival), "HH:mm") : "--:--"}
-                                </span>
+                        <div 
+                          className={`p-3 md:p-4 rounded-lg border transition-colors ${
+                            stop.status === "en_progreso" ? "border-primary bg-primary/5" : 
+                            stop.status === "completada" ? "bg-muted/50" : ""
+                          }`}
+                          data-testid={`card-stop-${stop.id}`}
+                        >
+                          <div className="flex items-start justify-between gap-2 md:gap-4">
+                            <div className="flex items-start gap-3 md:gap-4 flex-1 min-w-0">
+                              <div className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center font-bold text-xs md:text-sm shrink-0 ${
+                                stop.status === "completada" ? "bg-emerald-500 text-white" :
+                                stop.status === "en_progreso" ? "bg-primary text-white" :
+                                "bg-muted text-muted-foreground"
+                              }`}>
+                                {stop.status === "completada" ? <CheckCircle2 className="h-4 w-4" /> : stop.order}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <h4 className="font-medium text-sm md:text-base truncate">{stop.machine?.name || "Máquina"}</h4>
+                                <p className="text-xs md:text-sm text-muted-foreground truncate">
+                                  {stop.machine?.location?.name || stop.machine?.code || ""}
+                                </p>
+                                <div className="flex items-center gap-2 md:gap-4 mt-1 md:mt-2 text-xs md:text-sm text-muted-foreground flex-wrap">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {stop.estimatedArrival ? format(new Date(stop.estimatedArrival), "HH:mm") : "--:--"}
+                                  </span>
+                                  {stop.machine?.location?.address && (
+                                    <span className="flex items-center gap-1 truncate">
+                                      <MapPin className="h-3 w-3 shrink-0" />
+                                      <span className="truncate">{stop.machine.location.address}</span>
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
+                            <div className="flex items-center gap-1 md:gap-2 shrink-0">
+                              {getStatusBadge(stop.status)}
+                              <CollapsibleTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <ChevronDown className={`h-4 w-4 transition-transform ${expandedStop === stop.id ? "rotate-180" : ""}`} />
+                                </Button>
+                              </CollapsibleTrigger>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            {getStatusBadge(stop.status)}
-                            {stop.status === "pendiente" && todayRoute.status === "en_progreso" && (
-                              <Button 
-                                size="sm" 
-                                onClick={() => handleStartService(stop)}
-                                disabled={startServiceMutation.isPending}
-                                data-testid={`button-start-service-${stop.id}`}
-                              >
-                                {startServiceMutation.isPending ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <>
-                                    <Play className="h-4 w-4 mr-1" />
-                                    Iniciar
-                                  </>
+                          
+                          <CollapsibleContent className="mt-3 pt-3 border-t space-y-3">
+                            {/* Información de contacto */}
+                            {stop.machine?.location && (
+                              <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                                <div className="flex items-center gap-2 text-sm font-medium">
+                                  <User className="h-4 w-4" />
+                                  Contacto del local
+                                </div>
+                                {stop.machine.location.contactName && (
+                                  <p className="text-sm">{stop.machine.location.contactName}</p>
                                 )}
-                              </Button>
+                                {stop.machine.location.contactPhone && (
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="gap-2"
+                                    onClick={() => callContact(stop.machine.location!.contactPhone!)}
+                                    data-testid={`button-call-${stop.id}`}
+                                  >
+                                    <Phone className="h-4 w-4" />
+                                    {stop.machine.location.contactPhone}
+                                  </Button>
+                                )}
+                                {stop.machine.location.notes && (
+                                  <p className="text-xs text-muted-foreground">{stop.machine.location.notes}</p>
+                                )}
+                              </div>
                             )}
-                          </div>
+
+                            {/* Última visita e historial */}
+                            {stop.machine?.lastVisit && (
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <History className="h-4 w-4" />
+                                Última visita: {formatDistanceToNow(new Date(stop.machine.lastVisit), { addSuffix: true, locale: es })}
+                              </div>
+                            )}
+
+                            {/* Alertas de la máquina */}
+                            {stop.machine?.alerts && stop.machine.alerts.length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {stop.machine.alerts.slice(0, 3).map((alert: any) => (
+                                  <Badge key={alert.id} variant={alert.priority === "critica" ? "destructive" : "secondary"} className="gap-1">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    {alert.message}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Botones de acción */}
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                onClick={() => openNavigator(stop)}
+                                data-testid={`button-navigate-${stop.id}`}
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                                Navegar
+                              </Button>
+                              
+                              {stop.status === "pendiente" && todayRoute.status === "en_progreso" && (
+                                <Button 
+                                  size="sm"
+                                  className="gap-2"
+                                  onClick={() => handleStartService(stop)}
+                                  disabled={startServiceMutation.isPending}
+                                  data-testid={`button-start-service-${stop.id}`}
+                                >
+                                  {startServiceMutation.isPending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <Play className="h-4 w-4" />
+                                      Iniciar Servicio
+                                    </>
+                                  )}
+                                </Button>
+                              )}
+                            </div>
+                          </CollapsibleContent>
                         </div>
-                      </div>
+                      </Collapsible>
                     ))
                   )}
                 </CardContent>
               </Card>
             </div>
+
+            {/* Sidebar de progreso */}
             <div className="space-y-4">
               <Card className="bg-muted/50">
-                <CardHeader>
+                <CardHeader className="pb-2">
                   <CardTitle className="text-base">Estado de la Ruta</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span>Progreso</span>
-                      <span className="font-medium">{Math.round((completedStops / totalStops) * 100) || 0}%</span>
+                      <span className="font-medium">{totalStops > 0 ? Math.round((completedStops / totalStops) * 100) : 0}%</span>
                     </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-primary transition-all" 
-                        style={{ width: `${(completedStops / totalStops) * 100 || 0}%` }}
-                      />
-                    </div>
+                    <Progress value={totalStops > 0 ? (completedStops / totalStops) * 100 : 0} />
                   </div>
                   {todayRoute && (
                     <div className="space-y-2 text-sm">
@@ -490,10 +895,11 @@ export function SupplierPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="servicio" className="mt-6">
+        {/* TAB: Servicio Activo */}
+        <TabsContent value="servicio" className="mt-4 md:mt-6">
           {isServiceActive && currentStop && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+              <div className="lg:col-span-2 space-y-4 md:space-y-6">
                 <ServiceTimer
                   machineName={currentStop.machine?.name || "Máquina"}
                   onStart={() => {}}
@@ -501,14 +907,49 @@ export function SupplierPage() {
                   onStop={handleStopService}
                 />
 
+                {/* Checklist de servicio */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2">
+                        <ClipboardCheck className="h-5 w-5" />
+                        Checklist de Servicio
+                      </CardTitle>
+                      <Badge variant="outline">{checklistProgress}%</Badge>
+                    </div>
+                    <Progress value={checklistProgress} className="mt-2" />
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {checklist.map((item) => (
+                      <div 
+                        key={item.id} 
+                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                        onClick={() => toggleChecklistItem(item.id)}
+                      >
+                        <Checkbox 
+                          checked={item.checked} 
+                          onCheckedChange={() => toggleChecklistItem(item.id)}
+                          data-testid={`checkbox-${item.id}`}
+                        />
+                        <span className={`text-sm flex-1 ${item.checked ? "line-through text-muted-foreground" : ""}`}>
+                          {item.label}
+                          {item.required && <span className="text-destructive ml-1">*</span>}
+                        </span>
+                        {item.checked && <Check className="h-4 w-4 text-emerald-500" />}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {/* Productos en máquina */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Productos en Máquina</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {machineInventory && Array.isArray(machineInventory) ? (
+                    {currentStop.machine?.inventory && currentStop.machine.inventory.length > 0 ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {(machineInventory as any[]).map((item: any) => (
+                        {currentStop.machine.inventory.map((item: any) => (
                           <ProductCard
                             key={item.id}
                             id={item.productId}
@@ -528,16 +969,17 @@ export function SupplierPage() {
                 </Card>
               </div>
 
+              {/* Acciones del servicio */}
               <div className="space-y-4">
                 <Card>
-                  <CardHeader>
+                  <CardHeader className="pb-2">
                     <CardTitle className="text-base">Acciones de Servicio</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <Button 
                       className="w-full justify-start gap-2" 
                       variant="outline"
-                      onClick={() => setIsLoadDialogOpen(true)}
+                      onClick={openLoadDialog}
                       data-testid="button-load-products"
                     >
                       <Package className="h-4 w-4" />
@@ -561,29 +1003,106 @@ export function SupplierPage() {
                       <AlertTriangle className="h-4 w-4" />
                       Reportar Problema
                     </Button>
+                    <Separator />
+                    <Button
+                      className="w-full justify-start gap-2"
+                      variant="ghost"
+                      onClick={() => setIsHistoryDialogOpen(true)}
+                      data-testid="button-view-history"
+                    >
+                      <History className="h-4 w-4" />
+                      Ver Historial
+                    </Button>
                   </CardContent>
                 </Card>
+
+                {/* Info del contacto durante servicio */}
+                {currentStop.machine?.location?.contactPhone && (
+                  <Card className="bg-blue-500/10 border-blue-500/20">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-full bg-blue-500/20">
+                          <Phone className="h-4 w-4 text-blue-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {currentStop.machine.location.contactName || "Contacto"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {currentStop.machine.location.contactPhone}
+                          </p>
+                        </div>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => callContact(currentStop.machine.location!.contactPhone!)}
+                        >
+                          Llamar
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             </div>
           )}
         </TabsContent>
 
-        <TabsContent value="inventario" className="mt-6">
+        {/* TAB: Inventario del Vehículo */}
+        <TabsContent value="inventario" className="mt-4 md:mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>Inventario del Vehículo</CardTitle>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Truck className="h-5 w-5" />
+                    Inventario del Vehículo
+                  </CardTitle>
+                  <CardDescription>Productos disponibles para cargar en máquinas</CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground text-center py-8">
-                Funcionalidad de inventario del vehículo disponible próximamente
-              </p>
+              {supplierInventory && supplierInventory.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {supplierInventory.map((item: any) => (
+                    <Card key={item.id} className="bg-muted/30">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium">{item.product?.name || "Producto"}</p>
+                            <p className="text-sm text-muted-foreground">{item.product?.code}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-2xl font-bold">{item.quantity}</p>
+                            <p className="text-xs text-muted-foreground">unidades</p>
+                          </div>
+                        </div>
+                        {item.quantity <= 10 && (
+                          <Badge variant="destructive" className="mt-2 gap-1">
+                            <AlertTriangle className="h-3 w-3" />
+                            Stock bajo
+                          </Badge>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Truck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium">Sin productos cargados</p>
+                  <p className="text-sm">Visita el almacén para cargar productos en tu vehículo</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
+      {/* DIALOGO: Reportar Problema con fotos */}
       <Dialog open={isReportDialogOpen} onOpenChange={setIsReportDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Reportar Problema</DialogTitle>
             <DialogDescription>
@@ -630,6 +1149,37 @@ export function SupplierPage() {
                 data-testid="input-issue-description"
               />
             </div>
+            
+            {/* Foto de evidencia (solo una) */}
+            <div className="space-y-2">
+              <Label>Evidencia fotográfica (opcional)</Label>
+              <div className="flex gap-2">
+                {issuePhotoUrl ? (
+                  <div className="relative w-20 h-20 rounded-lg overflow-hidden border">
+                    <img src={issuePhotoUrl} alt="Evidencia" className="w-full h-full object-cover" />
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-0 right-0 h-5 w-5 rounded-full"
+                      onClick={() => setIssuePhotoUrl(null)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-20 h-20 flex-col gap-1"
+                    onClick={handlePhotoCapture}
+                    data-testid="button-add-photo"
+                  >
+                    <Camera className="h-5 w-5" />
+                    <span className="text-[10px]">Agregar foto</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setIsReportDialogOpen(false)} data-testid="button-cancel-issue">
                 Cancelar
@@ -647,6 +1197,7 @@ export function SupplierPage() {
         </DialogContent>
       </Dialog>
 
+      {/* DIALOGO: Recolección de Efectivo */}
       <Dialog open={isCashDialogOpen} onOpenChange={setIsCashDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -676,6 +1227,13 @@ export function SupplierPage() {
                 data-testid="input-actual-amount"
               />
             </div>
+            {expectedAmount && cashAmount && (
+              <div className={`p-3 rounded-lg ${parseFloat(cashAmount) >= parseFloat(expectedAmount) ? "bg-emerald-500/10" : "bg-amber-500/10"}`}>
+                <p className="text-sm">
+                  Diferencia: <span className="font-bold">${(parseFloat(cashAmount) - parseFloat(expectedAmount)).toFixed(2)}</span>
+                </p>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setIsCashDialogOpen(false)} data-testid="button-cancel-cash">
                 Cancelar
@@ -687,6 +1245,204 @@ export function SupplierPage() {
               >
                 {createCashCollectionMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Registrar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOGO: Cargar Productos */}
+      <Dialog open={isLoadDialogOpen} onOpenChange={setIsLoadDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Cargar Productos
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona los productos y cantidades a cargar en la máquina
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 pr-4">
+            <div className="space-y-3">
+              {productsToLoad.map((product) => (
+                <div key={product.productId} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{product.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      En máquina: {product.currentInMachine}/{product.maxCapacity}
+                    </p>
+                    <Progress 
+                      value={(product.currentInMachine / product.maxCapacity) * 100} 
+                      className="h-1.5 mt-1"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 ml-4">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => updateProductQuantity(product.productId, -1)}
+                      disabled={product.quantity === 0}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    <span className="w-8 text-center font-bold">{product.quantity}</span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => updateProductQuantity(product.productId, 1)}
+                      disabled={product.quantity >= product.maxCapacity - product.currentInMachine}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+          <DialogFooter className="mt-4">
+            <div className="flex items-center justify-between w-full">
+              <p className="text-sm text-muted-foreground">
+                Total a cargar: <span className="font-bold">{productsToLoad.reduce((sum, p) => sum + p.quantity, 0)} unidades</span>
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setIsLoadDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleLoadProducts}
+                  disabled={productsToLoad.every(p => p.quantity === 0) || loadProductsMutation.isPending}
+                >
+                  {loadProductsMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Confirmar Carga
+                </Button>
+              </div>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOGO: Historial de la máquina */}
+      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Historial de {currentStop?.machine?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {currentStop?.machine?.lastVisit && (
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="text-sm text-muted-foreground">Última visita</p>
+                <p className="font-medium">
+                  {format(new Date(currentStop.machine.lastVisit), "d 'de' MMMM, yyyy 'a las' HH:mm", { locale: es })}
+                </p>
+              </div>
+            )}
+            
+            {currentStop?.machine?.salesSummary && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-lg bg-emerald-500/10">
+                  <p className="text-xs text-muted-foreground">Ventas recientes</p>
+                  <p className="text-xl font-bold">{currentStop.machine.salesSummary.totalSales}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-amber-500/10">
+                  <p className="text-xs text-muted-foreground">Ingresos</p>
+                  <p className="text-xl font-bold">${currentStop.machine.salesSummary.totalRevenue?.toFixed(0) || 0}</p>
+                </div>
+              </div>
+            )}
+
+            {currentStop?.machine?.alerts && currentStop.machine.alerts.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Alertas activas</p>
+                {currentStop.machine.alerts.map((alert: any) => (
+                  <div key={alert.id} className="flex items-start gap-2 p-2 rounded-lg border">
+                    <AlertTriangle className={`h-4 w-4 mt-0.5 ${alert.priority === "critica" ? "text-destructive" : "text-amber-500"}`} />
+                    <div>
+                      <p className="text-sm">{alert.message}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(alert.createdAt), { addSuffix: true, locale: es })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {currentStop?.machine?.notes && (
+              <div className="p-3 rounded-lg bg-blue-500/10">
+                <p className="text-sm text-muted-foreground">Notas</p>
+                <p className="text-sm">{currentStop.machine.notes}</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOGO: Firma digital */}
+      <Dialog open={isSignatureDialogOpen} onOpenChange={setIsSignatureDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <PenTool className="h-5 w-5" />
+              Firma del Responsable
+            </DialogTitle>
+            <DialogDescription>
+              Solicita la firma del encargado del local para confirmar el servicio
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nombre del responsable</Label>
+              <Input
+                placeholder="Nombre completo"
+                value={responsibleName}
+                onChange={(e) => setResponsibleName(e.target.value)}
+                data-testid="input-responsible-name"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Firma</Label>
+              <div className="border rounded-lg overflow-hidden bg-white">
+                <canvas
+                  ref={signatureCanvasRef}
+                  width={350}
+                  height={150}
+                  className="w-full touch-none"
+                  onMouseDown={startDrawing}
+                  onMouseMove={draw}
+                  onMouseUp={stopDrawing}
+                  onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing}
+                  onTouchMove={draw}
+                  onTouchEnd={stopDrawing}
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button variant="ghost" size="sm" onClick={clearSignature}>
+                  Limpiar firma
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => {
+                setIsSignatureDialogOpen(false);
+                handleConfirmServiceEnd();
+              }}>
+                Omitir firma
+              </Button>
+              <Button 
+                onClick={handleConfirmServiceEnd}
+                disabled={endServiceMutation.isPending}
+              >
+                {endServiceMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Finalizar Servicio
               </Button>
             </div>
           </div>
