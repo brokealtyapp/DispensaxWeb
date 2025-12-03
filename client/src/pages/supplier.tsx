@@ -26,6 +26,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/lib/auth-context";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -42,8 +43,6 @@ import {
   Loader2,
   ChevronRight,
 } from "lucide-react";
-
-const DEMO_USER_ID = "abastecedor1";
 
 interface RouteStop {
   id: string;
@@ -91,12 +90,23 @@ export function SupplierPage() {
   const [issueDescription, setIssueDescription] = useState("");
   const [issuePriority, setIssuePriority] = useState("media");
   const { toast } = useToast();
+  const { user, isLoading: isAuthLoading } = useAuth();
 
-  const { data: users } = useQuery<any[]>({
-    queryKey: ["/api/users"],
-  });
+  const supplierId = user?.id;
 
-  const supplierId = users?.find((u: any) => u.username === DEMO_USER_ID)?.id;
+  if (isAuthLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <Skeleton className="h-10 w-48" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
 
   const { data: todayRoute, isLoading: isLoadingRoute, refetch: refetchRoute } = useQuery<Route>({
     queryKey: ["/api/supplier/today-route", supplierId],
