@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useLocation } from "wouter";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useSearch, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -159,16 +159,19 @@ interface ProductToLoad {
 }
 
 export function SupplierPage() {
-  const [location] = useLocation();
+  // useSearch retorna el query string sin el "?" y se re-renderiza cuando cambia
+  const searchString = useSearch();
+  // useLocation retorna [path, navigate] - usamos navigate para actualizar la URL
+  const [, navigate] = useLocation();
   
-  // Función para extraer tab de la URL
-  const getTabFromUrl = useCallback(() => {
-    const params = new URLSearchParams(window.location.search);
+  // Extraer tab del query string (se recalcula cuando searchString cambia)
+  const tabFromUrl = useMemo(() => {
+    const params = new URLSearchParams(searchString);
     const tab = params.get("tab");
     return tab && ["ruta", "servicio", "inventario", "rendimiento"].includes(tab) ? tab : "ruta";
-  }, []);
+  }, [searchString]);
   
-  const [activeTab, setActiveTab] = useState(getTabFromUrl);
+  const [activeTab, setActiveTab] = useState(tabFromUrl);
   const [isServiceActive, setIsServiceActive] = useState(false);
   const [currentStop, setCurrentStop] = useState<RouteStop | null>(null);
   const [activeServiceId, setActiveServiceId] = useState<string | null>(null);
@@ -196,22 +199,20 @@ export function SupplierPage() {
 
   const supplierId = user?.id;
 
-  // Sincronizar activeTab cuando cambie la URL (navegación del sidebar con wouter)
+  // Sincronizar activeTab cuando cambie tabFromUrl (navegación del sidebar)
   useEffect(() => {
-    const tabFromUrl = getTabFromUrl();
     if (tabFromUrl !== activeTab) {
       setActiveTab(tabFromUrl);
     }
-  }, [location, getTabFromUrl]);
+  }, [tabFromUrl]);
 
   // Actualizar URL cuando cambie el tab manualmente (click en pestañas internas)
+  // Usa navigate de wouter para que useSearch se actualice correctamente
   const handleTabChange = useCallback((newTab: string) => {
     setActiveTab(newTab);
-    const params = new URLSearchParams(window.location.search);
-    params.set("tab", newTab);
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.replaceState({}, "", newUrl);
-  }, []);
+    // Usar navigate de wouter para notificar el cambio de URL
+    navigate(`/abastecedor?tab=${newTab}`, { replace: true });
+  }, [navigate]);
 
   useEffect(() => {
     const handleOnline = () => {
