@@ -1434,13 +1434,23 @@ export class DatabaseStorage implements IStorage {
         lte(issueReports.createdAt, end)
       ));
     
+    // Máquinas visitadas (únicas)
+    const machinesVisited = await db.select({ count: sql<number>`COUNT(DISTINCT ${serviceRecords.machineId})` })
+      .from(serviceRecords)
+      .where(and(
+        eq(serviceRecords.userId, userId),
+        gte(serviceRecords.startTime, start),
+        lte(serviceRecords.startTime, end)
+      ));
+    
     return {
-      totalServices: services[0]?.count || 0,
-      totalMinutesWorked: timeWorked[0]?.total || 0,
+      servicesCompleted: services[0]?.count || 0,
+      totalTimeMinutes: timeWorked[0]?.total || 0,
       cashCollected: cashSummary.total,
       cashDifference: cashSummary.difference,
       productsLoaded: productsLoaded[0]?.total || 0,
       issuesReported: issuesReported[0]?.count || 0,
+      machinesVisited: machinesVisited[0]?.count || 0,
     };
   }
 

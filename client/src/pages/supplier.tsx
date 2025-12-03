@@ -73,6 +73,9 @@ import {
   Sparkles,
   Eye,
   ShoppingCart,
+  TrendingUp,
+  Target,
+  Award,
 } from "lucide-react";
 
 interface MachineLocation {
@@ -209,6 +212,32 @@ export function SupplierPage() {
 
   const { data: supplierStats } = useQuery({
     queryKey: ["/api/supplier/stats", supplierId],
+    enabled: !!supplierId,
+  });
+
+  const getWeekDates = () => {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    startOfWeek.setHours(0, 0, 0, 0);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    endOfWeek.setHours(23, 59, 59, 999);
+    return { startOfWeek, endOfWeek };
+  };
+
+  const weekDates = getWeekDates();
+
+  const { data: weeklyStats, isLoading: isLoadingWeeklyStats } = useQuery<any>({
+    queryKey: ["/api/supplier/stats", supplierId, "weekly", weekDates.startOfWeek.toISOString(), weekDates.endOfWeek.toISOString()],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/supplier/stats/${supplierId}?startDate=${weekDates.startOfWeek.toISOString()}&endDate=${weekDates.endOfWeek.toISOString()}`
+      );
+      if (!response.ok) throw new Error("Error fetching weekly stats");
+      return response.json();
+    },
     enabled: !!supplierId,
   });
 
@@ -700,6 +729,7 @@ export function SupplierPage() {
             Servicio Activo
           </TabsTrigger>
           <TabsTrigger value="inventario" data-testid="tab-inventory" className="flex-1 md:flex-none">Mi Vehículo</TabsTrigger>
+          <TabsTrigger value="rendimiento" data-testid="tab-performance" className="flex-1 md:flex-none">Mi Rendimiento</TabsTrigger>
         </TabsList>
 
         {/* TAB: Mi Ruta */}
@@ -1097,6 +1127,168 @@ export function SupplierPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* TAB: Mi Rendimiento */}
+        <TabsContent value="rendimiento" className="mt-4 md:mt-6">
+          <div className="space-y-6">
+            {/* Resumen semanal */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5" />
+                      Rendimiento Semanal
+                    </CardTitle>
+                    <CardDescription>
+                      Semana del {format(weekDates.startOfWeek, "d 'de' MMMM", { locale: es })} al {format(weekDates.endOfWeek, "d 'de' MMMM, yyyy", { locale: es })}
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline" className="gap-1">
+                    <Award className="h-3 w-3" />
+                    Esta semana
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {isLoadingWeeklyStats ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {[1, 2, 3, 4].map((i) => (
+                      <Skeleton key={i} className="h-24" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/20 rounded-xl p-4 text-center">
+                      <div className="flex items-center justify-center mb-2">
+                        <div className="p-2 bg-blue-500/20 rounded-full">
+                          <ClipboardCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        </div>
+                      </div>
+                      <p className="text-2xl md:text-3xl font-bold text-blue-700 dark:text-blue-300">
+                        {weeklyStats?.servicesCompleted || 0}
+                      </p>
+                      <p className="text-xs md:text-sm text-blue-600/80 dark:text-blue-400/80">Servicios completados</p>
+                    </div>
+                    
+                    <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/20 rounded-xl p-4 text-center">
+                      <div className="flex items-center justify-center mb-2">
+                        <div className="p-2 bg-emerald-500/20 rounded-full">
+                          <Target className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                      </div>
+                      <p className="text-2xl md:text-3xl font-bold text-emerald-700 dark:text-emerald-300">
+                        {weeklyStats?.machinesVisited || 0}
+                      </p>
+                      <p className="text-xs md:text-sm text-emerald-600/80 dark:text-emerald-400/80">Máquinas atendidas</p>
+                    </div>
+                    
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/30 dark:to-purple-900/20 rounded-xl p-4 text-center">
+                      <div className="flex items-center justify-center mb-2">
+                        <div className="p-2 bg-purple-500/20 rounded-full">
+                          <Package className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                        </div>
+                      </div>
+                      <p className="text-2xl md:text-3xl font-bold text-purple-700 dark:text-purple-300">
+                        {weeklyStats?.productsLoaded || 0}
+                      </p>
+                      <p className="text-xs md:text-sm text-purple-600/80 dark:text-purple-400/80">Productos cargados</p>
+                    </div>
+                    
+                    <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/20 rounded-xl p-4 text-center">
+                      <div className="flex items-center justify-center mb-2">
+                        <div className="p-2 bg-amber-500/20 rounded-full">
+                          <DollarSign className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                        </div>
+                      </div>
+                      <p className="text-2xl md:text-3xl font-bold text-amber-700 dark:text-amber-300">
+                        ${(weeklyStats?.cashCollected || 0).toLocaleString()}
+                      </p>
+                      <p className="text-xs md:text-sm text-amber-600/80 dark:text-amber-400/80">Efectivo recolectado</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Detalles adicionales */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Tiempo trabajado
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold">
+                      {Math.round((weeklyStats?.totalTimeMinutes || 0) / 60)}
+                    </span>
+                    <span className="text-muted-foreground">horas esta semana</span>
+                  </div>
+                  <div className="mt-4">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Promedio diario</span>
+                      <span className="font-medium">
+                        {Math.round((weeklyStats?.totalTimeMinutes || 0) / 60 / 5)}h
+                      </span>
+                    </div>
+                    <Progress 
+                      value={Math.min(100, ((weeklyStats?.totalTimeMinutes || 0) / 60 / 40) * 100)} 
+                      className="h-2"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Meta: 40 horas semanales
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4" />
+                    Eficiencia
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>Servicios por día</span>
+                        <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                          {((weeklyStats?.servicesCompleted || 0) / 5).toFixed(1)}
+                        </span>
+                      </div>
+                      <Progress 
+                        value={Math.min(100, ((weeklyStats?.servicesCompleted || 0) / 5 / 10) * 100)} 
+                        className="h-2"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>Tiempo promedio por servicio</span>
+                        <span className="font-medium">
+                          {weeklyStats?.servicesCompleted 
+                            ? Math.round((weeklyStats?.totalTimeMinutes || 0) / (weeklyStats?.servicesCompleted || 1))
+                            : 0} min
+                        </span>
+                      </div>
+                    </div>
+                    <Separator />
+                    <div className="flex items-center gap-2 text-sm">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      <span className="text-muted-foreground">
+                        {weeklyStats?.issuesReported || 0} problemas reportados esta semana
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 

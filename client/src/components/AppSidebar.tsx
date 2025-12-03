@@ -53,9 +53,9 @@ const menuItems: MenuItem[] = [
   { icon: Package, label: "Panel Almacén", href: "/almacen-panel", roles: ["admin", "almacen"] },
   { icon: Calculator, label: "Panel Contabilidad", href: "/contabilidad-panel", roles: ["admin", "contabilidad"] },
   { icon: Box, label: "Máquinas", href: "/maquinas", roles: ["admin", "supervisor"] },
-  { icon: ClipboardList, label: "Tareas Hoy", href: "/tareas", roles: ["admin", "supervisor", "abastecedor", "almacen", "contabilidad", "rh"] },
+  { icon: ClipboardList, label: "Tareas Hoy", href: "/tareas", roles: ["admin", "supervisor", "almacen", "contabilidad", "rh"] },
   { icon: ListTodo, label: "Todas las Tareas", href: "/todas-tareas", roles: ["admin", "supervisor"] },
-  { icon: Calendar, label: "Calendario", href: "/calendario", roles: ["admin", "supervisor", "abastecedor", "almacen", "contabilidad", "rh"] },
+  { icon: Calendar, label: "Calendario", href: "/calendario", roles: ["admin", "supervisor", "almacen", "contabilidad", "rh"] },
 ];
 
 const operacionItems: MenuItem[] = [
