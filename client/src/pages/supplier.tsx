@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -158,7 +159,16 @@ interface ProductToLoad {
 }
 
 export function SupplierPage() {
-  const [activeTab, setActiveTab] = useState("ruta");
+  const [location] = useLocation();
+  
+  // Función para extraer tab de la URL
+  const getTabFromUrl = useCallback(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    return tab && ["ruta", "servicio", "inventario", "rendimiento"].includes(tab) ? tab : "ruta";
+  }, []);
+  
+  const [activeTab, setActiveTab] = useState(getTabFromUrl);
   const [isServiceActive, setIsServiceActive] = useState(false);
   const [currentStop, setCurrentStop] = useState<RouteStop | null>(null);
   const [activeServiceId, setActiveServiceId] = useState<string | null>(null);
@@ -185,6 +195,23 @@ export function SupplierPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
 
   const supplierId = user?.id;
+
+  // Sincronizar activeTab cuando cambie la URL (navegación del sidebar con wouter)
+  useEffect(() => {
+    const tabFromUrl = getTabFromUrl();
+    if (tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [location, getTabFromUrl]);
+
+  // Actualizar URL cuando cambie el tab manualmente (click en pestañas internas)
+  const handleTabChange = useCallback((newTab: string) => {
+    setActiveTab(newTab);
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", newTab);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({}, "", newUrl);
+  }, []);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -722,7 +749,7 @@ export function SupplierPage() {
         </Card>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList data-testid="tabs-list" className="w-full md:w-auto">
           <TabsTrigger value="ruta" data-testid="tab-route" className="flex-1 md:flex-none">Mi Ruta</TabsTrigger>
           <TabsTrigger value="servicio" disabled={!isServiceActive} data-testid="tab-service" className="flex-1 md:flex-none">

@@ -38,6 +38,9 @@ import {
   FileText,
   ArrowDownUp,
   Eye,
+  Navigation,
+  Wrench,
+  TrendingUp,
 } from "lucide-react";
 
 interface MenuItem {
@@ -60,10 +63,18 @@ const menuItems: MenuItem[] = [
 
 const operacionItems: MenuItem[] = [
   { icon: Package, label: "Almacén", href: "/almacen", roles: ["admin", "supervisor", "almacen"] },
-  { icon: Truck, label: "Abastecedor", href: "/abastecedor", roles: ["admin", "supervisor", "abastecedor"] },
+  { icon: Truck, label: "Abastecedor", href: "/abastecedor", roles: ["admin", "supervisor"] },
   { icon: ArrowDownUp, label: "Dinero y Productos", href: "/dinero-productos", roles: ["admin", "supervisor", "contabilidad"] },
   { icon: ShoppingCart, label: "Compras", href: "/compras", roles: ["admin", "almacen"] },
   { icon: Fuel, label: "Combustible", href: "/combustible", roles: ["admin", "supervisor"] },
+];
+
+// Items específicos para el rol de abastecedor (menú expandido)
+const abastecedorItems: MenuItem[] = [
+  { icon: Navigation, label: "Mi Ruta", href: "/abastecedor?tab=ruta", roles: ["abastecedor"] },
+  { icon: Wrench, label: "Servicio Activo", href: "/abastecedor?tab=servicio", roles: ["abastecedor"] },
+  { icon: Truck, label: "Mi Vehículo", href: "/abastecedor?tab=inventario", roles: ["abastecedor"] },
+  { icon: TrendingUp, label: "Mi Rendimiento", href: "/abastecedor?tab=rendimiento", roles: ["abastecedor"] },
 ];
 
 const finanzasItems: MenuItem[] = [
@@ -90,8 +101,21 @@ export function AppSidebar() {
   
   const visibleMenuItems = filterByRole(menuItems, userRole);
   const visibleOperacionItems = filterByRole(operacionItems, userRole);
+  const visibleAbastecedorItems = filterByRole(abastecedorItems, userRole);
   const visibleFinanzasItems = filterByRole(finanzasItems, userRole);
   const visibleAdminItems = filterByRole(adminItems, userRole);
+  
+  // Función para verificar si una ruta está activa (incluyendo parámetros de query)
+  const isRouteActive = (href: string) => {
+    const [path, queryString] = href.split("?");
+    const currentPath = location.split("?")[0];
+    
+    if (queryString) {
+      const currentSearch = window.location.search;
+      return currentPath === path && currentSearch.includes(queryString);
+    }
+    return currentPath === path;
+  };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -197,6 +221,37 @@ export function AppSidebar() {
             <SidebarMenu>
               {visibleOperacionItems.map((item) => {
                 const isActive = location === item.href;
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      asChild
+                      className={cn(
+                        "h-10 px-4 rounded-xl transition-all duration-200",
+                        isActive
+                          ? "bg-primary text-primary-foreground shadow-md"
+                          : "hover:bg-muted"
+                      )}
+                    >
+                      <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                        <item.icon className="h-4 w-4" />
+                        <span className="text-sm font-medium">{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
+
+        {visibleAbastecedorItems.length > 0 && (
+          <SidebarGroup className="mt-4">
+            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+              MI TRABAJO
+            </SidebarGroupLabel>
+            <SidebarMenu>
+              {visibleAbastecedorItems.map((item) => {
+                const isActive = isRouteActive(item.href);
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
