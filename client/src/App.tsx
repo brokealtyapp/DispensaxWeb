@@ -235,11 +235,7 @@ function AuthRoute() {
     return <Redirect to={defaultRoute} />;
   }
 
-  const handleSuccess = () => {
-    window.location.reload();
-  };
-
-  return <AuthPage onSuccess={handleSuccess} />;
+  return <AuthPage />;
 }
 
 function Router() {

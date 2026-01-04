@@ -4,11 +4,7 @@ import { ForgotPasswordForm } from "@/components/ForgotPasswordForm";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
 
-interface AuthPageProps {
-  onSuccess?: () => void;
-}
-
-export function AuthPage({ onSuccess }: AuthPageProps) {
+export function AuthPage() {
   const [mode, setMode] = useState<"login" | "forgot-password">("login");
 
   return (
@@ -30,7 +26,6 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
           />
         ) : (
           <LoginForm
-            onSuccess={onSuccess}
             onForgotPassword={() => setMode("forgot-password")}
           />
         )}

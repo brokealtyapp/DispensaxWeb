@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
+import { queryClient } from "./queryClient";
 
 export type UserRole = "admin" | "supervisor" | "abastecedor" | "almacen" | "contabilidad" | "rh";
 
@@ -135,7 +136,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ username, password }),
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error("Error parsing login response:", jsonError);
+        return { success: false, error: "Error en la respuesta del servidor" };
+      }
 
       if (!response.ok) {
         return { success: false, error: data.error || "Error al iniciar sesión" };
@@ -145,7 +152,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(data.accessToken);
       return { success: true };
     } catch (error) {
-      console.error("Login error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Error desconocido";
+      console.error("Login error:", errorMessage, error);
       return { success: false, error: "Error de conexión. Intenta de nuevo." };
     }
   };
@@ -188,6 +196,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     setUser(null);
     setToken(null);
+    
+    queryClient.clear();
+    
+    isInitializedRef.current = false;
   };
 
   return (
