@@ -124,16 +124,16 @@ export function formatCurrentDate(): string {
   return formatDate(new Date());
 }
 
-// Formatear hora con segundos (ej: "14:30:45") - para relojes en tiempo real
+// Formatear hora con segundos en formato 12 horas (ej: "5:30:45 p. m.") - para relojes en tiempo real
 export function formatTimeWithSeconds(date: Date | string | null | undefined): string {
   if (!date) return "";
   try {
     return new Date(date).toLocaleTimeString(LOCALE, { 
       timeZone: TIMEZONE, 
-      hour: '2-digit', 
+      hour: 'numeric', 
       minute: '2-digit',
       second: '2-digit',
-      hour12: false
+      hour12: true
     });
   } catch {
     return "";
