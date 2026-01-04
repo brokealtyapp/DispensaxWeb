@@ -6,8 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
+import { formatDate, formatTime } from "@/lib/utils";
 import { Link } from "wouter";
 import {
   Route, Box, AlertTriangle, Users, CheckCircle2, Clock, 
@@ -88,7 +87,7 @@ export function SupervisorPage() {
         <div>
           <h1 className="text-2xl font-bold">Panel de Supervisor</h1>
           <p className="text-muted-foreground">
-            {format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })}
+            {formatDate(new Date())}
           </p>
         </div>
         <div className="flex gap-2">
@@ -399,7 +398,7 @@ export function SupervisorPage() {
                           {alert.message}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {alert.type} - {format(new Date(alert.createdAt), "HH:mm")}
+                          {alert.type} - {formatTime(alert.createdAt)}
                         </p>
                       </div>
                       <Badge variant="secondary" className={`text-[10px] ${

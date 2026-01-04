@@ -39,8 +39,9 @@ import {
   TrendingUp,
   User,
 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import { formatDateTime } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -161,10 +162,10 @@ export function MachineDetailPage() {
     }).format(amount);
   };
 
-  const formatDate = (date: string | Date | null | undefined) => {
+  const formatMachineDate = (date: string | Date | null | undefined) => {
     if (!date) return "N/A";
     try {
-      return format(new Date(date), "d MMM yyyy, HH:mm", { locale: es });
+      return formatDateTime(date);
     } catch {
       return "N/A";
     }
@@ -525,7 +526,7 @@ export function MachineDetailPage() {
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">{alert.message}</p>
                         <p className="text-xs text-muted-foreground mt-2">
-                          {formatDate(alert.createdAt)}
+                          {formatMachineDate(alert.createdAt)}
                         </p>
                       </div>
                       {!alert.isResolved && (
@@ -576,7 +577,7 @@ export function MachineDetailPage() {
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          {formatDate(visit.startTime)}
+                          {formatMachineDate(visit.startTime)}
                         </p>
                         {visit.notes && (
                           <p className="text-sm mt-1">{visit.notes}</p>

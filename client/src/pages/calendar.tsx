@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, startOfWeek, endOfWeek, parseISO } from "date-fns";
+import { startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, startOfWeek, endOfWeek, parseISO, format } from "date-fns";
 import { es } from "date-fns/locale";
+import { formatDate, formatWeekday } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -371,7 +372,7 @@ export function CalendarPage() {
             <DialogHeader>
               <DialogTitle className="flex items-center justify-between">
                 <span>
-                  {selectedDate && format(selectedDate, "EEEE, d 'de' MMMM", { locale: es })}
+                  {selectedDate && formatDate(selectedDate)}
                 </span>
                 <Button
                   variant="ghost"
@@ -561,7 +562,7 @@ export function CalendarPage() {
                                 data-testid="button-event-start-date"
                               >
                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                {field.value ? format(field.value, "d MMM yyyy", { locale: es }) : "Seleccionar"}
+                                {field.value ? formatDate(field.value) : "Seleccionar"}
                               </Button>
                             </FormControl>
                           </PopoverTrigger>
@@ -594,7 +595,7 @@ export function CalendarPage() {
                                 data-testid="button-event-end-date"
                               >
                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                {field.value ? format(field.value, "d MMM yyyy", { locale: es }) : "Seleccionar"}
+                                {field.value ? formatDate(field.value) : "Seleccionar"}
                               </Button>
                             </FormControl>
                           </PopoverTrigger>

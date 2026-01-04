@@ -16,8 +16,9 @@ import {
   Boxes,
   Clock,
 } from "lucide-react";
-import { format, formatDistanceToNow, differenceInDays } from "date-fns";
+import { formatDistanceToNow, differenceInDays } from "date-fns";
 import { es } from "date-fns/locale";
+import { formatDateShort } from "@/lib/utils";
 import type { Product, WarehouseInventory, WarehouseMovement, ProductLot, PurchaseReception } from "@shared/schema";
 
 interface WarehouseStats {
@@ -291,7 +292,7 @@ export function AlmacenPanelPage() {
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
                             <span>{lot.quantity} unidades</span>
                             {lot.expirationDate && (
-                              <span>{format(new Date(lot.expirationDate), "dd/MM/yyyy")}</span>
+                              <span>{formatDateShort(lot.expirationDate)}</span>
                             )}
                           </div>
                         </div>

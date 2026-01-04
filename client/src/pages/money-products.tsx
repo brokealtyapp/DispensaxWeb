@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
+import { formatDateTime } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -342,7 +341,7 @@ export function MoneyProductsPage() {
                           <div>
                             <p className="font-medium capitalize" data-testid={`text-movement-type-${movement.id}`}>{movement.type.replace(/_/g, " ")}</p>
                             <p className="text-sm text-muted-foreground">
-                              {movement.user?.fullName || movement.user?.username} · {format(new Date(movement.createdAt), "dd MMM HH:mm", { locale: es })}
+                              {movement.user?.fullName || movement.user?.username} · {formatDateTime(movement.createdAt)}
                             </p>
                           </div>
                         </div>
@@ -404,7 +403,7 @@ export function MoneyProductsPage() {
                           <div className="text-right">
                             <p className="font-bold" data-testid={`text-transfer-qty-${transfer.id}`}>{transfer.quantity} unidades</p>
                             <p className="text-sm text-muted-foreground">
-                              {format(new Date(transfer.createdAt), "dd MMM HH:mm", { locale: es })}
+                              {formatDateTime(transfer.createdAt)}
                             </p>
                           </div>
                           {getStatusBadge(transfer.status)}

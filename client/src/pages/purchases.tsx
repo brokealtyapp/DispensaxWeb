@@ -3,8 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
+import { formatDateShort } from "@/lib/utils";
 import { 
   Package, Building2, FileText, Truck, History, Plus, Search, Filter,
   Edit2, Trash2, Eye, Send, X, Check, AlertTriangle, DollarSign,
@@ -605,7 +604,7 @@ export default function PurchasesPage() {
                     <TableRow key={order.id} data-testid={`row-order-${order.id}`}>
                       <TableCell className="font-mono font-medium">{order.orderNumber}</TableCell>
                       <TableCell>{order.supplier?.name}</TableCell>
-                      <TableCell>{format(new Date(order.issueDate), "dd/MM/yyyy", { locale: es })}</TableCell>
+                      <TableCell>{formatDateShort(order.issueDate)}</TableCell>
                       <TableCell>{order.itemCount} productos</TableCell>
                       <TableCell className="font-medium">
                         ${parseFloat(order.total || "0").toLocaleString("es-MX", { minimumFractionDigits: 2 })}
@@ -1138,11 +1137,11 @@ export default function PurchasesPage() {
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="text-muted-foreground">Fecha de Emisión</p>
-                <p className="font-medium">{selectedOrder?.issueDate ? format(new Date(selectedOrder.issueDate), "dd/MM/yyyy", { locale: es }) : "-"}</p>
+                <p className="font-medium">{selectedOrder?.issueDate ? formatDateShort(selectedOrder.issueDate) : "-"}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Fecha Esperada</p>
-                <p className="font-medium">{selectedOrder?.expectedDeliveryDate ? format(new Date(selectedOrder.expectedDeliveryDate), "dd/MM/yyyy", { locale: es }) : "-"}</p>
+                <p className="font-medium">{selectedOrder?.expectedDeliveryDate ? formatDateShort(selectedOrder.expectedDeliveryDate) : "-"}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Creado por</p>
@@ -1382,7 +1381,7 @@ export default function PurchasesPage() {
                   {supplierHistory?.map((order: any) => (
                     <TableRow key={order.id}>
                       <TableCell className="font-mono">{order.orderNumber}</TableCell>
-                      <TableCell>{format(new Date(order.issueDate), "dd/MM/yyyy", { locale: es })}</TableCell>
+                      <TableCell>{formatDateShort(order.issueDate)}</TableCell>
                       <TableCell>{order.itemCount}</TableCell>
                       <TableCell>${parseFloat(order.total || "0").toFixed(2)}</TableCell>
                       <TableCell>{getStatusBadge(order.status)}</TableCell>

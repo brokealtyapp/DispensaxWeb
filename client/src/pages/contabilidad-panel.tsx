@@ -20,8 +20,8 @@ import {
   CheckCircle2,
   AlertCircle,
 } from "lucide-react";
-import { format, formatDistanceToNow, startOfMonth, endOfMonth } from "date-fns";
-import { es } from "date-fns/locale";
+import { startOfMonth, endOfMonth } from "date-fns";
+import { formatDateShort } from "@/lib/utils";
 import type { CashMovement, BankDeposit, PettyCashExpense, MachineSale } from "@shared/schema";
 
 interface SalesStats {
@@ -47,8 +47,8 @@ interface PettyCashStats {
 
 export function ContabilidadPanelPage() {
   const currentMonth = {
-    start: format(startOfMonth(new Date()), "yyyy-MM-dd"),
-    end: format(endOfMonth(new Date()), "yyyy-MM-dd"),
+    start: startOfMonth(new Date()).toISOString().split('T')[0],
+    end: endOfMonth(new Date()).toISOString().split('T')[0],
   };
 
   const { data: salesStats, isLoading: salesLoading } = useQuery<SalesStats>({
@@ -356,7 +356,7 @@ export function ContabilidadPanelPage() {
                       <div>
                         <p className="font-medium">{deposit.bankName}</p>
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(deposit.depositDate), "dd/MM/yyyy")}
+                          {formatDateShort(deposit.depositDate)}
                         </p>
                       </div>
                       <div className="text-right">

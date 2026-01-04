@@ -40,8 +40,7 @@ import { z } from "zod";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Machine, Location } from "@shared/schema";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
+import { formatDate as formatDateUtil } from "@/lib/utils";
 
 const statusLabels: Record<string, string> = {
   operando: "Operando",
@@ -142,10 +141,10 @@ export function MachinesPage() {
     createMachineMutation.mutate(data);
   };
 
-  const formatDate = (date: string | Date | null | undefined) => {
+  const formatMachineDate = (date: string | Date | null | undefined) => {
     if (!date) return "Sin visitas";
     try {
-      return format(new Date(date), "d MMM yyyy", { locale: es });
+      return formatDateUtil(date);
     } catch {
       return "Sin visitas";
     }
@@ -414,7 +413,7 @@ export function MachinesPage() {
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-1 text-white/70">
                       <Clock className="h-4 w-4" />
-                      <span>{formatDate(machine.lastVisit)}</span>
+                      <span>{formatMachineDate(machine.lastVisit)}</span>
                     </div>
                     {(machine.alerts?.length || 0) > 0 && (
                       <div className="flex items-center gap-1 text-amber-300">
@@ -484,7 +483,7 @@ export function MachinesPage() {
                           <span className="text-sm tabular-nums w-10 text-right">{machine.inventoryPercentage || 0}%</span>
                         </div>
                       </td>
-                      <td className="p-4 text-muted-foreground">{formatDate(machine.lastVisit)}</td>
+                      <td className="p-4 text-muted-foreground">{formatMachineDate(machine.lastVisit)}</td>
                       <td className="p-4">
                         <Link href={`/maquinas/${machine.id}`}>
                           <Button variant="ghost" size="sm" data-testid={`button-details-${machine.id}`}>

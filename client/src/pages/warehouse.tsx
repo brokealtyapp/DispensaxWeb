@@ -48,8 +48,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Product, Supplier, WarehouseInventory, WarehouseMovement, ProductLot } from "@shared/schema";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
+import { formatDateShort, formatTime } from "@/lib/utils";
 
 interface WarehouseStats {
   totalProducts: number;
@@ -594,10 +593,10 @@ export function WarehousePage() {
                           <TableCell className="whitespace-nowrap">
                             <div>
                               <p className="font-medium">
-                                {mov.createdAt ? format(new Date(mov.createdAt), "dd/MM/yyyy", { locale: es }) : "-"}
+                                {mov.createdAt ? formatDateShort(mov.createdAt) : "-"}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {mov.createdAt ? format(new Date(mov.createdAt), "HH:mm", { locale: es }) : ""}
+                                {mov.createdAt ? formatTime(mov.createdAt) : ""}
                               </p>
                             </div>
                           </TableCell>

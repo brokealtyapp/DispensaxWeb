@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { format, addDays, startOfWeek, isSameDay } from "date-fns";
-import { es } from "date-fns/locale";
+import { addDays, startOfWeek, isSameDay, format } from "date-fns";
+import { formatWeekdayShort } from "@/lib/utils";
 
 interface CalendarStripProps {
   selectedDate?: Date;
@@ -39,7 +39,7 @@ export function CalendarStrip({ selectedDate, onDateSelect }: CalendarStripProps
             data-testid={`button-date-${format(day, "yyyy-MM-dd")}`}
           >
             <span className="text-xs font-medium uppercase">
-              {format(day, "EEE", { locale: es })}
+              {formatWeekdayShort(day)}
             </span>
             <span className={`text-xl font-semibold ${isSelected ? "" : "text-foreground"}`}>
               {format(day, "d")}

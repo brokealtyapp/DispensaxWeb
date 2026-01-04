@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
+import { formatDate } from "@/lib/utils";
 import { 
   CheckSquare,
   Clock,
@@ -234,7 +233,7 @@ export function TasksTodayPage() {
               Tareas de Hoy
             </h1>
             <p className="text-muted-foreground mt-1">
-              {format(today, "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })}
+              {formatDate(today)}
             </p>
           </div>
           <Link href="/todas-tareas">

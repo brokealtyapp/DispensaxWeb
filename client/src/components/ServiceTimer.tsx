@@ -77,7 +77,7 @@ export function ServiceTimer({ machineName, onStart, onPause, onStop }: ServiceT
         {startTime && (
           <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground">
             <Clock className="h-4 w-4" />
-            <span>Inicio: {startTime.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</span>
+            <span>Inicio: {startTime.toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit", timeZone: "America/Santo_Domingo" })}</span>
           </div>
         )}
 

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { format, isToday, isTomorrow, isPast, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
+import { isToday, isTomorrow, isPast, parseISO } from "date-fns";
+import { formatDate } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -263,7 +263,7 @@ export function TasksPage() {
     if (isToday(d)) return "Hoy";
     if (isTomorrow(d)) return "Mañana";
     if (isPast(d)) return "Vencida";
-    return format(d, "d MMM", { locale: es });
+    return formatDate(d);
   };
 
   const filteredTasks = tasks?.filter(task => {
@@ -666,7 +666,7 @@ export function TasksPage() {
                                 data-testid="button-task-date"
                               >
                                 <Calendar className="mr-2 h-4 w-4" />
-                                {field.value ? format(field.value, "d MMM yyyy", { locale: es }) : "Seleccionar"}
+                                {field.value ? formatDate(field.value) : "Seleccionar"}
                               </Button>
                             </FormControl>
                           </PopoverTrigger>

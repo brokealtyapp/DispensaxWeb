@@ -9,8 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { format, startOfWeek, addDays, isToday } from "date-fns";
-import { es } from "date-fns/locale";
+import { startOfWeek, addDays, isToday } from "date-fns";
+import { formatTime, TIMEZONE, LOCALE } from "@/lib/utils";
 import { 
   Plus, MoreHorizontal, Check, Box, AlertTriangle, TrendingUp, Users, Loader2,
   Route, Warehouse, DollarSign, Wallet, ShoppingCart, Fuel, UserCheck, FileText,
@@ -211,8 +211,8 @@ export function DashboardPage() {
     return Array.from({ length: 7 }, (_, i) => {
       const date = addDays(start, i);
       return {
-        day: format(date, "d"),
-        label: format(date, "EEE", { locale: es }),
+        day: date.toLocaleDateString(LOCALE, { timeZone: TIMEZONE, day: 'numeric' }),
+        label: date.toLocaleDateString(LOCALE, { timeZone: TIMEZONE, weekday: 'short' }),
         isToday: isToday(date),
         date,
       };
@@ -233,7 +233,7 @@ export function DashboardPage() {
       return `${task.startTime} - ${task.endTime}`;
     }
     if (task.dueDate) {
-      return format(new Date(task.dueDate), "HH:mm");
+      return formatTime(task.dueDate);
     }
     return "Sin hora";
   };
@@ -773,7 +773,7 @@ export function DashboardPage() {
               <div>
                 <h2 className="text-lg font-bold">Tareas de Hoy</h2>
                 <p className="text-xs text-muted-foreground">
-                  {format(new Date(), "EEEE, d MMMM", { locale: es })}
+                  {new Date().toLocaleDateString(LOCALE, { timeZone: TIMEZONE, weekday: 'long', day: 'numeric', month: 'long' })}
                 </p>
               </div>
               <Link href="/tareas">

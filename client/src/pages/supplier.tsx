@@ -38,8 +38,9 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth-context";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import { formatDate, formatTime } from "@/lib/utils";
 import {
   MapPin,
   Navigation,
@@ -679,7 +680,7 @@ export function SupplierPage() {
             </Badge>
           </div>
           <p className="text-muted-foreground text-sm md:text-base">
-            {todayRoute ? format(new Date(todayRoute.date), "EEEE d 'de' MMMM, yyyy", { locale: es }) : "Sin ruta asignada"}
+            {todayRoute ? formatDate(todayRoute.date) : "Sin ruta asignada"}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -808,7 +809,7 @@ export function SupplierPage() {
                                 <div className="flex items-center gap-2 md:gap-4 mt-1 md:mt-2 text-xs md:text-sm text-muted-foreground flex-wrap">
                                   <span className="flex items-center gap-1">
                                     <Clock className="h-3 w-3" />
-                                    {stop.estimatedArrival ? format(new Date(stop.estimatedArrival), "HH:mm") : "--:--"}
+                                    {stop.estimatedArrival ? formatTime(stop.estimatedArrival) : "--:--"}
                                   </span>
                                   {stop.machine?.location?.address && (
                                     <span className="flex items-center gap-1 truncate">
@@ -942,7 +943,7 @@ export function SupplierPage() {
                       {todayRoute.startTime && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Inicio:</span>
-                          <span>{format(new Date(todayRoute.startTime), "HH:mm")}</span>
+                          <span>{formatTime(todayRoute.startTime)}</span>
                         </div>
                       )}
                     </div>
@@ -1170,7 +1171,7 @@ export function SupplierPage() {
                       Rendimiento Semanal
                     </CardTitle>
                     <CardDescription>
-                      Semana del {format(weekDates.startOfWeek, "d 'de' MMMM", { locale: es })} al {format(weekDates.endOfWeek, "d 'de' MMMM, yyyy", { locale: es })}
+                      Semana del {formatDate(weekDates.startOfWeek)} al {formatDate(weekDates.endOfWeek)}
                     </CardDescription>
                   </div>
                   <Badge variant="outline" className="gap-1">
@@ -1558,7 +1559,7 @@ export function SupplierPage() {
               <div className="p-3 rounded-lg bg-muted/50">
                 <p className="text-sm text-muted-foreground">Última visita</p>
                 <p className="font-medium">
-                  {format(new Date(currentStop.machine.lastVisit), "d 'de' MMMM, yyyy 'a las' HH:mm", { locale: es })}
+                  {formatDate(currentStop.machine.lastVisit)} a las {formatTime(currentStop.machine.lastVisit)}
                 </p>
               </div>
             )}

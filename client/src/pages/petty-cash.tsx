@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
+import { formatDate, formatTime, formatDateTime } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -522,7 +521,7 @@ export function PettyCashPage() {
                           <div className="text-right">
                             <p className="font-bold text-lg" data-testid={`text-expense-amount-${expense.id}`}>${parseFloat(expense.amount).toLocaleString()}</p>
                             <p className="text-sm text-muted-foreground">
-                              {format(new Date(expense.createdAt), "dd MMM", { locale: es })}
+                              {formatDate(expense.createdAt)}
                             </p>
                           </div>
                           {getStatusBadge(expense.status)}
@@ -681,7 +680,7 @@ export function PettyCashPage() {
                             </p>
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {format(new Date(transaction.createdAt), "dd MMM HH:mm", { locale: es })}
+                            {formatDateTime(transaction.createdAt)}
                           </div>
                         </div>
                       </div>

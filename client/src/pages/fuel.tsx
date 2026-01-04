@@ -18,8 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { StatsCard } from "@/components/StatsCard";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
+import { formatDateShort } from "@/lib/utils";
 import {
   Car,
   Fuel,
@@ -221,7 +220,7 @@ export function FuelPage() {
     .slice(0, 10)
     .reverse()
     .map((r: any, idx: number) => ({
-      name: format(new Date(r.recordDate), "dd/MM"),
+      name: formatDateShort(r.recordDate).split('/').slice(0, 2).join('/'),
       rendimiento: parseFloat(r.calculatedMileage || 0),
       vehiculo: r.vehicle?.plate || "",
     }));

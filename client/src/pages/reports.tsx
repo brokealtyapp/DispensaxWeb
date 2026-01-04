@@ -10,8 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { StatsCard } from "@/components/StatsCard";
-import { format, subDays, subMonths, startOfMonth, endOfMonth } from "date-fns";
-import { es } from "date-fns/locale";
+import { subDays, subMonths, startOfMonth, endOfMonth } from "date-fns";
+import { formatDateShort } from "@/lib/utils";
 import {
   BarChart3,
   TrendingUp,
@@ -238,7 +238,7 @@ export function ReportsPage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `reporte_${type}_${format(new Date(), "yyyy-MM-dd")}.csv`;
+      link.download = `reporte_${type}_${new Date().toISOString().split('T')[0]}.csv`;
       link.click();
       URL.revokeObjectURL(url);
       
@@ -628,7 +628,7 @@ export function ReportsPage() {
                             <p className="text-xs text-muted-foreground">{item.product?.code}</p>
                           </div>
                         ) : (
-                          <p className="font-medium">{format(new Date(item.date), "dd/MM/yyyy")}</p>
+                          <p className="font-medium">{formatDateShort(item.date)}</p>
                         )}
                       </td>
                       <td className="text-right py-3 px-2">{item.quantity}</td>
@@ -735,7 +735,7 @@ export function ReportsPage() {
                             <p className="text-xs text-muted-foreground">{item.supplier?.code}</p>
                           </div>
                         ) : (
-                          <p className="font-medium">{format(new Date(item.date), "dd/MM/yyyy")}</p>
+                          <p className="font-medium">{formatDateShort(item.date)}</p>
                         )}
                       </td>
                       <td className="text-right py-3 px-2">{item.orderCount}</td>
@@ -853,7 +853,7 @@ export function ReportsPage() {
                         ) : fuelGroupBy === 'user' ? (
                           <p className="font-medium">{item.user?.fullName || item.user?.username || 'N/A'}</p>
                         ) : (
-                          <p className="font-medium">{format(new Date(item.date), "dd/MM/yyyy")}</p>
+                          <p className="font-medium">{formatDateShort(item.date)}</p>
                         )}
                       </td>
                       <td className="text-right py-3 px-2">{item.recordCount}</td>
@@ -969,7 +969,7 @@ export function ReportsPage() {
                         ) : pettyCashGroupBy === 'user' ? (
                           <p className="font-medium">{item.user?.fullName || item.user?.username || 'N/A'}</p>
                         ) : (
-                          <p className="font-medium">{format(new Date(item.date), "dd/MM/yyyy")}</p>
+                          <p className="font-medium">{formatDateShort(item.date)}</p>
                         )}
                       </td>
                       <td className="text-right py-3 px-2">{item.expenseCount}</td>
