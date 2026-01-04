@@ -22,7 +22,8 @@ interface LoginFormProps {
 
 export function LoginForm({ onForgotPassword }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
-  const { login, isLoading } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { login } = useAuth();
   const [error, setError] = useState<string | null>(null);
 
   const form = useForm<LoginFormData>({
@@ -35,9 +36,14 @@ export function LoginForm({ onForgotPassword }: LoginFormProps) {
 
   const onSubmit = async (data: LoginFormData) => {
     setError(null);
-    const result = await login(data.username, data.password);
-    if (!result.success) {
-      setError(result.error || "Credenciales inválidas. Intente de nuevo.");
+    setIsSubmitting(true);
+    try {
+      const result = await login(data.username, data.password);
+      if (!result.success) {
+        setError(result.error || "Credenciales inválidas. Intente de nuevo.");
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -111,10 +117,10 @@ export function LoginForm({ onForgotPassword }: LoginFormProps) {
             <Button
               type="submit"
               className="w-full"
-              disabled={isLoading}
+              disabled={isSubmitting}
               data-testid="button-login"
             >
-              {isLoading ? (
+              {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Ingresando...

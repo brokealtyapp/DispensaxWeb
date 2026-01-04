@@ -199,7 +199,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     queryClient.clear();
     
+    // Reset initialization state and loading to allow re-login
     isInitializedRef.current = false;
+    setIsLoading(false);
   };
 
   return (
