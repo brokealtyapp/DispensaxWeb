@@ -163,6 +163,7 @@ export function MachinesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       setIsLocationDialogOpen(false);
       setEditingLocation(null);
       locationForm.reset();
@@ -175,6 +176,7 @@ export function MachinesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       setDeletingLocationId(null);
     },
   });
