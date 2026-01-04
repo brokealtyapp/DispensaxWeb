@@ -117,6 +117,8 @@ export function MachinesPage() {
   const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [deletingLocationId, setDeletingLocationId] = useState<string | null>(null);
+  const [editingMachine, setEditingMachine] = useState<MachineWithDetails | null>(null);
+  const [deletingMachineId, setDeletingMachineId] = useState<string | null>(null);
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
@@ -151,6 +153,43 @@ export function MachinesPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo crear la máquina", variant: "destructive" });
+    },
+  });
+
+  const updateMachineMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: MachineFormData }) => {
+      const cleanData = {
+        ...data,
+        code: data.code || undefined,
+        locationId: data.locationId || undefined,
+        notes: data.notes || undefined,
+      };
+      const response = await apiRequest("PATCH", `/api/machines/${id}`, cleanData);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+      setIsAddDialogOpen(false);
+      setEditingMachine(null);
+      form.reset();
+      toast({ title: "Máquina actualizada", description: "Los cambios se han guardado correctamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo actualizar la máquina", variant: "destructive" });
+    },
+  });
+
+  const deleteMachineMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/machines/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+      setDeletingMachineId(null);
+      toast({ title: "Máquina eliminada", description: "La máquina se ha eliminado correctamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo eliminar la máquina. Puede tener datos asociados.", variant: "destructive" });
     },
   });
 
@@ -288,7 +327,36 @@ export function MachinesPage() {
   const allZones = Array.from(new Set([...zones, ...machines.map(m => m.zone).filter(Boolean)]));
 
   const onSubmit = (data: MachineFormData) => {
-    createMachineMutation.mutate(data);
+    if (editingMachine) {
+      updateMachineMutation.mutate({ id: editingMachine.id, data });
+    } else {
+      createMachineMutation.mutate(data);
+    }
+  };
+
+  const handleOpenMachineDialog = (machine?: MachineWithDetails) => {
+    if (machine) {
+      setEditingMachine(machine);
+      form.reset({
+        name: machine.name || "",
+        code: machine.code || "",
+        type: machine.type || "mixta",
+        zone: machine.zone || "",
+        locationId: machine.locationId || "",
+        notes: machine.notes || "",
+      });
+    } else {
+      setEditingMachine(null);
+      form.reset({
+        name: "",
+        code: "",
+        type: "mixta",
+        zone: "",
+        locationId: "",
+        notes: "",
+      });
+    }
+    setIsAddDialogOpen(true);
   };
 
   const formatMachineDate = (date: string | Date | null | undefined) => {
@@ -333,18 +401,21 @@ export function MachinesPage() {
             <Settings2 className="h-4 w-4 mr-2" />
             Ubicaciones
           </Button>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <Dialog open={isAddDialogOpen} onOpenChange={(open) => { 
+            setIsAddDialogOpen(open); 
+            if (!open) setEditingMachine(null); 
+          }}>
             <DialogTrigger asChild>
-              <Button data-testid="button-add-machine">
+              <Button data-testid="button-add-machine" onClick={() => handleOpenMachineDialog()}>
                 <Plus className="h-4 w-4 mr-2" />
                 Nueva Máquina
               </Button>
             </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Agregar Nueva Máquina</DialogTitle>
+              <DialogTitle>{editingMachine ? "Editar Máquina" : "Agregar Nueva Máquina"}</DialogTitle>
               <DialogDescription>
-                Completa la información para registrar una nueva máquina
+                {editingMachine ? "Modifica la información de la máquina" : "Completa la información para registrar una nueva máquina"}
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
@@ -790,6 +861,24 @@ export function MachinesPage() {
                     <Wrench className="h-4 w-4 mr-1" />
                     Servicio
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-white hover:bg-white/10"
+                    onClick={(e) => { e.stopPropagation(); handleOpenMachineDialog(machine); }}
+                    data-testid={`button-edit-machine-${machine.id}`}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-white hover:bg-red-500/20 hover:text-red-300"
+                    onClick={(e) => { e.stopPropagation(); setDeletingMachineId(machine.id); }}
+                    data-testid={`button-delete-machine-${machine.id}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -830,12 +919,31 @@ export function MachinesPage() {
                       </td>
                       <td className="p-4 text-muted-foreground">{formatMachineDate(machine.lastVisit)}</td>
                       <td className="p-4">
-                        <Link href={`/maquinas/${machine.id}`}>
-                          <Button variant="ghost" size="sm" data-testid={`button-details-${machine.id}`}>
-                            <Eye className="h-4 w-4 mr-1" />
-                            Ver
+                        <div className="flex items-center gap-1">
+                          <Link href={`/maquinas/${machine.id}`}>
+                            <Button variant="ghost" size="sm" data-testid={`button-details-${machine.id}`}>
+                              <Eye className="h-4 w-4 mr-1" />
+                              Ver
+                            </Button>
+                          </Link>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleOpenMachineDialog(machine)}
+                            data-testid={`button-edit-list-${machine.id}`}
+                          >
+                            <Edit className="h-4 w-4" />
                           </Button>
-                        </Link>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => setDeletingMachineId(machine.id)}
+                            data-testid={`button-delete-list-${machine.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -855,7 +963,7 @@ export function MachinesPage() {
                 : "No se encontraron máquinas con los filtros seleccionados"}
             </p>
             {machines.length === 0 && (
-              <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-first-machine">
+              <Button onClick={() => handleOpenMachineDialog()} data-testid="button-add-first-machine">
                 <Plus className="h-4 w-4 mr-2" />
                 Agregar primera máquina
               </Button>
@@ -863,6 +971,27 @@ export function MachinesPage() {
           </CardContent>
         </Card>
       )}
+
+      <AlertDialog open={!!deletingMachineId} onOpenChange={(open) => !open && setDeletingMachineId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar máquina?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Se eliminará la máquina y toda su información asociada.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-machine">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deletingMachineId && deleteMachineMutation.mutate(deletingMachineId)}
+              data-testid="button-confirm-delete-machine"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute, Link, useSearch } from "wouter";
+import { useRoute, Link, useSearch, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -163,6 +163,7 @@ export function MachineDetailPage() {
   const [, params] = useRoute("/maquinas/:id");
   const machineId = params?.id;
   const searchString = useSearch();
+  const [, navigate] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false);
@@ -173,8 +174,8 @@ export function MachineDetailPage() {
   
   const searchParams = new URLSearchParams(searchString);
   const tabFromUrl = searchParams.get("tab");
-  const validTabs = ["inventario", "alertas", "visitas", "ventas", "servicio"];
-  const initialTab = tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : "inventario";
+  const validTabs = ["servicio", "inventario", "alertas", "visitas", "ventas"];
+  const initialTab = tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : "servicio";
   const [activeTab, setActiveTab] = useState(initialTab);
   
   const [isServiceActive, setIsServiceActive] = useState(false);
@@ -182,6 +183,11 @@ export function MachineDetailPage() {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [loadedProducts, setLoadedProducts] = useState<{ productId: string; productName: string; quantity: number }[]>([]);
   const [collectedCash, setCollectedCash] = useState<number | null>(null);
+  
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    navigate(`/maquinas/${machineId}?tab=${tab}`, { replace: true });
+  };
   
   useEffect(() => {
     if (tabFromUrl && validTabs.includes(tabFromUrl)) {
@@ -979,7 +985,7 @@ export function MachineDetailPage() {
         </Card>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="servicio" data-testid="tab-service">
             <Wrench className="h-4 w-4 mr-2" />
