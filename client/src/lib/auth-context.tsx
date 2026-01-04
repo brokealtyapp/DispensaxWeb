@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
 
 export type UserRole = "admin" | "supervisor" | "abastecedor" | "almacen" | "contabilidad" | "rh";
 
@@ -40,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const isInitializedRef = useRef(false);
 
   const setToken = (token: string | null) => {
     accessTokenInMemory = token;
@@ -78,6 +79,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isInitializedRef.current) return;
+    isInitializedRef.current = true;
+
     const initAuth = async () => {
       const newToken = await refreshAccessToken();
       
@@ -121,8 +125,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [accessToken, refreshAccessToken]);
 
   const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
-    
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST",
@@ -136,24 +138,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
 
       if (!response.ok) {
-        setIsLoading(false);
         return { success: false, error: data.error || "Error al iniciar sesión" };
       }
 
       setUser(data.user);
       setToken(data.accessToken);
-      setIsLoading(false);
       return { success: true };
     } catch (error) {
       console.error("Login error:", error);
-      setIsLoading(false);
       return { success: false, error: "Error de conexión. Intenta de nuevo." };
     }
   };
 
   const register = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
-    
     try {
       const response = await fetch("/api/auth/register", {
         method: "POST",
@@ -167,17 +164,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await response.json();
 
       if (!response.ok) {
-        setIsLoading(false);
         return { success: false, error: result.error || "Error al registrar usuario" };
       }
 
       setUser(result.user);
       setToken(result.accessToken);
-      setIsLoading(false);
       return { success: true };
     } catch (error) {
       console.error("Register error:", error);
-      setIsLoading(false);
       return { success: false, error: "Error de conexión. Intenta de nuevo." };
     }
   };
