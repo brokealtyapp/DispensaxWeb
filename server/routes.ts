@@ -1264,6 +1264,109 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/users/:id", async (req: Request, res: Response) => {
+    try {
+      const user = await storage.getUser(req.params.id);
+      if (!user) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+      }
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener usuario" });
+    }
+  });
+
+  // Schema para validar campos actualizables del perfil (excluye password, role, isActive)
+  // NOTA: En producción, estos endpoints deberían estar protegidos por middleware de autenticación JWT
+  const updateProfileSchema = z.object({
+    fullName: z.string().min(1).optional(),
+    email: z.string().email().optional(),
+    username: z.string().min(3).optional(),
+    phone: z.string().optional(),
+    requestingUserId: z.string().uuid().optional(), // Para verificación básica
+  }).strict();
+
+  app.patch("/api/users/:id", async (req: Request, res: Response) => {
+    try {
+      // Validar que solo se actualicen campos permitidos
+      const validatedData = updateProfileSchema.parse(req.body);
+      
+      // Verificación básica: el requestingUserId debe coincidir con el id del path
+      // NOTA: En producción, esto se reemplazaría con verificación de sesión/JWT
+      if (validatedData.requestingUserId && validatedData.requestingUserId !== req.params.id) {
+        return res.status(403).json({ error: "No tienes permiso para modificar este usuario" });
+      }
+      
+      // Solo actualizar campos que fueron proporcionados (excluyendo requestingUserId)
+      const updateData: { fullName?: string; email?: string; username?: string; phone?: string } = {};
+      if (validatedData.fullName !== undefined) updateData.fullName = validatedData.fullName;
+      if (validatedData.email !== undefined) updateData.email = validatedData.email;
+      if (validatedData.username !== undefined) updateData.username = validatedData.username;
+      if (validatedData.phone !== undefined) updateData.phone = validatedData.phone;
+      
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ error: "No se proporcionaron campos válidos para actualizar" });
+      }
+      
+      const user = await storage.updateUser(req.params.id, updateData);
+      if (!user) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+      }
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error updating user:", error);
+      res.status(500).json({ error: "Error al actualizar usuario" });
+    }
+  });
+
+  // Schema para cambio de contraseña
+  const changePasswordSchema = z.object({
+    userId: z.string().uuid(),
+    currentPassword: z.string().min(1),
+    newPassword: z.string().min(6, "La nueva contraseña debe tener al menos 6 caracteres"),
+  });
+
+  app.post("/api/auth/change-password", async (req: Request, res: Response) => {
+    try {
+      // Validar con Zod
+      const validatedData = changePasswordSchema.parse(req.body);
+      const { userId, currentPassword, newPassword } = validatedData;
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+      }
+      
+      // IMPORTANTE: Siempre verificamos la contraseña actual antes de permitir el cambio
+      // Esto previene cambios no autorizados incluso si alguien conoce el userId
+      const bcrypt = await import("bcryptjs");
+      const isMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!isMatch) {
+        return res.status(401).json({ error: "Contraseña actual incorrecta" });
+      }
+      
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      const updated = await storage.updateUserPassword(userId, hashedPassword);
+      
+      if (!updated) {
+        return res.status(500).json({ error: "Error al actualizar contraseña" });
+      }
+      
+      res.json({ message: "Contraseña actualizada correctamente" });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0]?.message || "Datos inválidos" });
+      }
+      console.error("Error changing password:", error);
+      res.status(500).json({ error: "Error al cambiar contraseña" });
+    }
+  });
+
   // ==================== MÓDULO PRODUCTOS Y DINERO ====================
 
   // Movimientos de Efectivo

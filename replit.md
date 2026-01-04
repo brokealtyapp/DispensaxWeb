@@ -157,7 +157,15 @@ client/src/
 - [x] Notificaciones basadas en alertas reales
 - [ ] Autenticación JWT completa (parcialmente implementada)
 
-## Cambios Recientes (Diciembre 2025)
+## Cambios Recientes (Enero 2026)
+- Corregidos roles RBAC en página de Configuración (ahora usa 'contabilidad', 'almacen', 'rh' correctos)
+- Nuevos endpoints: GET/PATCH /api/users/:id con validación Zod estricta
+- Nuevo endpoint POST /api/auth/change-password con verificación de contraseña actual
+- Formularios de perfil y seguridad conectados a APIs reales
+- Todos los usuarios pueden cambiar su contraseña desde Configuración > Seguridad
+- Icono de ojo para mostrar/ocultar contraseña ahora posicionado correctamente
+
+## Cambios Anteriores (Diciembre 2025)
 - Dashboard modernizado con datos reales de APIs
 - Estadísticas en tiempo real (máquinas activas, alertas, tareas del día)
 - Búsqueda global que busca en máquinas, productos, empleados y tareas

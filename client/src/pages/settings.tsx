@@ -17,6 +17,8 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
 import { useToast } from "@/hooks/use-toast";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   User,
   Bell,
@@ -25,6 +27,9 @@ import {
   Building,
   Globe,
   Save,
+  Loader2,
+  Eye,
+  EyeOff,
   type LucideIcon,
 } from "lucide-react";
 
@@ -36,17 +41,33 @@ interface TabConfig {
 }
 
 const tabsConfig: TabConfig[] = [
-  { value: "perfil", label: "Perfil", icon: User, allowedRoles: ["admin", "supervisor", "abastecedor", "contador", "almacenista", "rrhh"] },
-  { value: "notificaciones", label: "Notificaciones", icon: Bell, allowedRoles: ["admin", "supervisor", "abastecedor", "contador", "almacenista", "rrhh"] },
-  { value: "apariencia", label: "Apariencia", icon: Palette, allowedRoles: ["admin", "supervisor", "abastecedor", "contador", "almacenista", "rrhh"] },
+  { value: "perfil", label: "Perfil", icon: User, allowedRoles: ["admin", "supervisor", "abastecedor", "contabilidad", "almacen", "rh"] },
+  { value: "notificaciones", label: "Notificaciones", icon: Bell, allowedRoles: ["admin", "supervisor", "abastecedor", "contabilidad", "almacen", "rh"] },
+  { value: "apariencia", label: "Apariencia", icon: Palette, allowedRoles: ["admin", "supervisor", "abastecedor", "contabilidad", "almacen", "rh"] },
   { value: "empresa", label: "Empresa", icon: Building, allowedRoles: ["admin"] },
-  { value: "seguridad", label: "Seguridad", icon: Shield, allowedRoles: ["admin"] },
+  { value: "seguridad", label: "Seguridad", icon: Shield, allowedRoles: ["admin", "supervisor", "abastecedor", "contabilidad", "almacen", "rh"] },
 ];
 
 export function SettingsPage() {
   const { user } = useAuth();
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
+
+  const [profileData, setProfileData] = useState({
+    fullName: user?.fullName || "",
+    username: user?.username || "",
+    email: user?.email || "",
+    phone: "",
+  });
+
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   const [notifications, setNotifications] = useState({
     email: true,
@@ -64,10 +85,84 @@ export function SettingsPage() {
 
   const defaultTab = allowedTabs[0]?.value || "perfil";
 
-  const handleSave = () => {
+  const updateProfileMutation = useMutation({
+    mutationFn: async (data: typeof profileData) => {
+      return apiRequest("PATCH", `/api/users/${user?.id}`, {
+        ...data,
+        requestingUserId: user?.id, // Para verificación del lado del servidor
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Perfil actualizado",
+        description: "Los cambios se han guardado correctamente",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo actualizar el perfil",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const changePasswordMutation = useMutation({
+    mutationFn: async (data: { userId: string; currentPassword: string; newPassword: string }) => {
+      return apiRequest("POST", "/api/auth/change-password", data);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Contraseña actualizada",
+        description: "Tu contraseña ha sido cambiada correctamente",
+      });
+      setPasswordData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo cambiar la contraseña",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSaveProfile = () => {
+    updateProfileMutation.mutate(profileData);
+  };
+
+  const handleChangePassword = () => {
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast({
+        title: "Error",
+        description: "Las contraseñas no coinciden",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (passwordData.newPassword.length < 6) {
+      toast({
+        title: "Error",
+        description: "La nueva contraseña debe tener al menos 6 caracteres",
+        variant: "destructive",
+      });
+      return;
+    }
+    changePasswordMutation.mutate({
+      userId: user?.id || "",
+      currentPassword: passwordData.currentPassword,
+      newPassword: passwordData.newPassword,
+    });
+  };
+
+  const handleSaveNotifications = () => {
     toast({
-      title: "Configuración guardada",
-      description: "Los cambios se han guardado correctamente",
+      title: "Notificaciones guardadas",
+      description: "Las preferencias se han guardado correctamente",
     });
   };
 
@@ -107,7 +202,7 @@ export function SettingsPage() {
                 <div className="flex items-center gap-6">
                   <Avatar className="h-20 w-20">
                     <AvatarFallback className="text-xl bg-primary text-primary-foreground">
-                      {user?.fullName
+                      {profileData.fullName
                         ?.split(" ")
                         .map((n) => n[0])
                         .join("")
@@ -129,7 +224,8 @@ export function SettingsPage() {
                     <Label htmlFor="fullName">Nombre Completo</Label>
                     <Input
                       id="fullName"
-                      defaultValue={user?.fullName || ""}
+                      value={profileData.fullName}
+                      onChange={(e) => setProfileData({ ...profileData, fullName: e.target.value })}
                       placeholder="Tu nombre"
                       data-testid="input-full-name"
                     />
@@ -138,7 +234,8 @@ export function SettingsPage() {
                     <Label htmlFor="username">Usuario</Label>
                     <Input
                       id="username"
-                      defaultValue={user?.username || ""}
+                      value={profileData.username}
+                      onChange={(e) => setProfileData({ ...profileData, username: e.target.value })}
                       placeholder="Tu usuario"
                       data-testid="input-username"
                     />
@@ -148,7 +245,8 @@ export function SettingsPage() {
                     <Input
                       id="email"
                       type="email"
-                      defaultValue={user?.email || ""}
+                      value={profileData.email}
+                      onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
                       placeholder="tu@email.com"
                       data-testid="input-email"
                     />
@@ -157,6 +255,8 @@ export function SettingsPage() {
                     <Label htmlFor="phone">Teléfono</Label>
                     <Input
                       id="phone"
+                      value={profileData.phone}
+                      onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
                       placeholder="+52 555 123 4567"
                       data-testid="input-phone"
                     />
@@ -164,8 +264,17 @@ export function SettingsPage() {
                 </div>
 
                 <div className="flex justify-end">
-                  <Button onClick={handleSave} className="gap-2" data-testid="button-save-profile">
-                    <Save className="h-4 w-4" />
+                  <Button 
+                    onClick={handleSaveProfile} 
+                    className="gap-2" 
+                    disabled={updateProfileMutation.isPending}
+                    data-testid="button-save-profile"
+                  >
+                    {updateProfileMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
                     Guardar Cambios
                   </Button>
                 </div>
@@ -267,7 +376,7 @@ export function SettingsPage() {
                 </div>
 
                 <div className="flex justify-end">
-                  <Button onClick={handleSave} className="gap-2" data-testid="button-save-notifications">
+                  <Button onClick={handleSaveNotifications} className="gap-2" data-testid="button-save-notifications">
                     <Save className="h-4 w-4" />
                     Guardar Cambios
                   </Button>
@@ -317,7 +426,7 @@ export function SettingsPage() {
                 </div>
 
                 <div className="flex justify-end">
-                  <Button onClick={handleSave} className="gap-2" data-testid="button-save-appearance">
+                  <Button className="gap-2" data-testid="button-save-appearance">
                     <Save className="h-4 w-4" />
                     Guardar Cambios
                   </Button>
@@ -365,7 +474,7 @@ export function SettingsPage() {
                 </div>
 
                 <div className="flex justify-end">
-                  <Button onClick={handleSave} className="gap-2" data-testid="button-save-company">
+                  <Button className="gap-2" data-testid="button-save-company">
                     <Save className="h-4 w-4" />
                     Guardar Cambios
                   </Button>
@@ -388,11 +497,60 @@ export function SettingsPage() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label>Cambiar Contraseña</Label>
-                    <div className="space-y-2">
-                      <Input type="password" placeholder="Contraseña actual" data-testid="input-current-password" />
-                      <Input type="password" placeholder="Nueva contraseña" data-testid="input-new-password" />
-                      <Input type="password" placeholder="Confirmar nueva contraseña" data-testid="input-confirm-password" />
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <Input 
+                          type={showCurrentPassword ? "text" : "password"} 
+                          placeholder="Contraseña actual" 
+                          value={passwordData.currentPassword}
+                          onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                          className="pr-10"
+                          data-testid="input-current-password" 
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                          onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                        >
+                          {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <Input 
+                          type={showNewPassword ? "text" : "password"} 
+                          placeholder="Nueva contraseña" 
+                          value={passwordData.newPassword}
+                          onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                          className="pr-10"
+                          data-testid="input-new-password" 
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                        >
+                          {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                      <Input 
+                        type="password" 
+                        placeholder="Confirmar nueva contraseña" 
+                        value={passwordData.confirmPassword}
+                        onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                        data-testid="input-confirm-password" 
+                      />
                     </div>
+                    <Button 
+                      onClick={handleChangePassword}
+                      disabled={changePasswordMutation.isPending || !passwordData.currentPassword || !passwordData.newPassword}
+                      className="mt-3"
+                      data-testid="button-change-password"
+                    >
+                      {changePasswordMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : null}
+                      Cambiar Contraseña
+                    </Button>
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between">
@@ -414,13 +572,6 @@ export function SettingsPage() {
                     </div>
                     <Button variant="outline" data-testid="button-view-sessions">Ver Sesiones</Button>
                   </div>
-                </div>
-
-                <div className="flex justify-end">
-                  <Button onClick={handleSave} className="gap-2" data-testid="button-save-security">
-                    <Save className="h-4 w-4" />
-                    Guardar Cambios
-                  </Button>
                 </div>
               </CardContent>
             </Card>
