@@ -204,7 +204,6 @@ export const insertMachineVisitSchema = createInsertSchema(machineVisits).omit({
   id: true,
   createdAt: true,
   endTime: true,
-  durationMinutes: true,
 });
 
 export type InsertMachineVisit = z.infer<typeof insertMachineVisitSchema>;

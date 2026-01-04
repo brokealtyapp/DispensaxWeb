@@ -66,6 +66,7 @@ import { z } from "zod";
 import { useState, useEffect } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 import type { Machine, Location, MachineInventory, MachineAlert, MachineVisit, Product } from "@shared/schema";
 
 const statusLabels: Record<string, string> = {
@@ -163,6 +164,7 @@ export function MachineDetailPage() {
   const machineId = params?.id;
   const searchString = useSearch();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isInventoryDialogOpen, setIsInventoryDialogOpen] = useState(false);
@@ -373,7 +375,7 @@ export function MachineDetailPage() {
   };
 
   const createVisitMutation = useMutation({
-    mutationFn: async (data: { visitType: string; durationMinutes: number; notes?: string; cashCollected?: string }) => {
+    mutationFn: async (data: { userId: string; visitType: string; startTime: string; durationMinutes: number; notes?: string; cashCollected?: string }) => {
       const response = await apiRequest("POST", `/api/machines/${machineId}/visits`, data);
       return response.json();
     },
@@ -388,6 +390,10 @@ export function MachineDetailPage() {
 
   const handleFinishService = async (notes?: string) => {
     if (!serviceStartTime) return;
+    if (!user?.id) {
+      toast({ title: "Error", description: "Debe iniciar sesión para registrar servicios", variant: "destructive" });
+      return;
+    }
     
     const durationMinutes = Math.ceil((Date.now() - serviceStartTime.getTime()) / 60000);
     
@@ -403,7 +409,9 @@ export function MachineDetailPage() {
     }
     
     createVisitMutation.mutate({
+      userId: user.id,
       visitType: "abastecimiento",
+      startTime: serviceStartTime.toISOString(),
       durationMinutes,
       notes,
       cashCollected: collectedCash ? collectedCash.toString() : undefined,
