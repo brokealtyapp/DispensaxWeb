@@ -1,5 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { apiRequest } from "./queryClient";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 
 export type UserRole = "admin" | "supervisor" | "abastecedor" | "almacen" | "contabilidad" | "rh";
 
@@ -17,9 +16,12 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  accessToken: string | null;
   login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  refreshAccessToken: () => Promise<string | null>;
+  getAuthHeaders: () => { Authorization: string } | {};
 }
 
 interface RegisterData {
@@ -32,44 +34,91 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+let accessTokenInMemory: string | null = null;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+
+  const setToken = (token: string | null) => {
+    accessTokenInMemory = token;
+    setAccessToken(token);
+  };
+
+  const refreshAccessToken = useCallback(async (): Promise<string | null> => {
+    try {
+      const response = await fetch("/api/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setToken(data.accessToken);
+        return data.accessToken;
+      } else {
+        setToken(null);
+        setUser(null);
+        return null;
+      }
+    } catch (error) {
+      console.error("Error refreshing token:", error);
+      setToken(null);
+      setUser(null);
+      return null;
+    }
+  }, []);
+
+  const getAuthHeaders = useCallback(() => {
+    if (accessTokenInMemory) {
+      return { Authorization: `Bearer ${accessTokenInMemory}` };
+    }
+    return {};
+  }, []);
 
   useEffect(() => {
-    const validateToken = async () => {
-      const token = localStorage.getItem("dispensax_token");
+    const initAuth = async () => {
+      const newToken = await refreshAccessToken();
       
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
+      if (newToken) {
+        try {
+          const response = await fetch("/api/auth/me", {
+            headers: {
+              Authorization: `Bearer ${newToken}`,
+            },
+          });
 
-      try {
-        const response = await fetch("/api/auth/me", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setUser(data.user);
-        } else {
-          localStorage.removeItem("dispensax_token");
-          localStorage.removeItem("dispensax_user");
+          if (response.ok) {
+            const data = await response.json();
+            setUser(data.user);
+          } else {
+            setToken(null);
+            setUser(null);
+          }
+        } catch (error) {
+          console.error("Error fetching user:", error);
+          setToken(null);
+          setUser(null);
         }
-      } catch (error) {
-        console.error("Error validating token:", error);
-        localStorage.removeItem("dispensax_token");
-        localStorage.removeItem("dispensax_user");
       }
       
       setIsLoading(false);
     };
 
-    validateToken();
-  }, []);
+    initAuth();
+  }, [refreshAccessToken]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+
+    const REFRESH_INTERVAL = 13 * 60 * 1000;
+    const intervalId = setInterval(() => {
+      refreshAccessToken();
+    }, REFRESH_INTERVAL);
+
+    return () => clearInterval(intervalId);
+  }, [accessToken, refreshAccessToken]);
 
   const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
@@ -80,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({ username, password }),
       });
 
@@ -91,8 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setUser(data.user);
-      localStorage.setItem("dispensax_token", data.token);
-      localStorage.setItem("dispensax_user", JSON.stringify(data.user));
+      setToken(data.accessToken);
       setIsLoading(false);
       return { success: true };
     } catch (error) {
@@ -111,6 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify(data),
       });
 
@@ -122,8 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setUser(result.user);
-      localStorage.setItem("dispensax_token", result.token);
-      localStorage.setItem("dispensax_user", JSON.stringify(result.user));
+      setToken(result.accessToken);
       setIsLoading(false);
       return { success: true };
     } catch (error) {
@@ -133,10 +182,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+    
     setUser(null);
-    localStorage.removeItem("dispensax_user");
-    localStorage.removeItem("dispensax_token");
+    setToken(null);
   };
 
   return (
@@ -145,9 +202,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isAuthenticated: !!user,
         isLoading,
+        accessToken,
         login,
         register,
         logout,
+        refreshAccessToken,
+        getAuthHeaders,
       }}
     >
       {children}
@@ -161,6 +221,10 @@ export function useAuth() {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
+}
+
+export function getAccessToken(): string | null {
+  return accessTokenInMemory;
 }
 
 export function getRoleDisplayName(role: UserRole): string {

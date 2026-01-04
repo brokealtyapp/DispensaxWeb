@@ -87,10 +87,7 @@ export function SettingsPage() {
 
   const updateProfileMutation = useMutation({
     mutationFn: async (data: typeof profileData) => {
-      return apiRequest("PATCH", `/api/users/${user?.id}`, {
-        ...data,
-        requestingUserId: user?.id, // Para verificación del lado del servidor
-      });
+      return apiRequest("PATCH", `/api/users/${user?.id}`, data);
     },
     onSuccess: () => {
       toast({
@@ -108,7 +105,7 @@ export function SettingsPage() {
   });
 
   const changePasswordMutation = useMutation({
-    mutationFn: async (data: { userId: string; currentPassword: string; newPassword: string }) => {
+    mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
       return apiRequest("POST", "/api/auth/change-password", data);
     },
     onSuccess: () => {
@@ -153,7 +150,6 @@ export function SettingsPage() {
       return;
     }
     changePasswordMutation.mutate({
-      userId: user?.id || "",
       currentPassword: passwordData.currentPassword,
       newPassword: passwordData.newPassword,
     });

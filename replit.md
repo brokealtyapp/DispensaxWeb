@@ -155,15 +155,25 @@ client/src/
 - [x] Dashboard conectado a APIs reales (sin datos mock)
 - [x] Búsqueda global funcional (/api/search)
 - [x] Notificaciones basadas en alertas reales
-- [ ] Autenticación JWT completa (parcialmente implementada)
+- [x] **Autenticación JWT completa implementada**
 
 ## Cambios Recientes (Enero 2026)
-- Corregidos roles RBAC en página de Configuración (ahora usa 'contabilidad', 'almacen', 'rh' correctos)
-- Nuevos endpoints: GET/PATCH /api/users/:id con validación Zod estricta
-- Nuevo endpoint POST /api/auth/change-password con verificación de contraseña actual
-- Formularios de perfil y seguridad conectados a APIs reales
-- Todos los usuarios pueden cambiar su contraseña desde Configuración > Seguridad
-- Icono de ojo para mostrar/ocultar contraseña ahora posicionado correctamente
+
+### Sistema de Autenticación JWT Completo
+- Nueva tabla `refresh_tokens` para gestión de sesiones
+- Access tokens (15 min) + Refresh tokens (7 días) en cookies HttpOnly
+- Middleware `authenticateJWT` para proteger rutas
+- Middleware `authorizeRoles` para verificar permisos por rol
+- Endpoints protegidos: /api/auth/me, PATCH /api/users/:id, POST /api/auth/change-password
+- Renovación automática de tokens desde el frontend
+- Logout revoca refresh tokens en servidor
+- Cambio de contraseña revoca todas las sesiones activas
+
+### Seguridad Mejorada
+- Corregidos roles RBAC en página de Configuración
+- Endpoints de perfil y contraseña ahora requieren autenticación JWT
+- El userId se obtiene del token (no del body) para prevenir suplantación
+- Administradores pueden editar perfiles de otros usuarios
 
 ## Cambios Anteriores (Diciembre 2025)
 - Dashboard modernizado con datos reales de APIs

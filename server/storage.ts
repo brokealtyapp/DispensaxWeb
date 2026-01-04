@@ -34,6 +34,7 @@ import {
   type Task, type InsertTask,
   type CalendarEvent, type InsertCalendarEvent,
   type PasswordResetToken,
+  type RefreshToken, type InsertRefreshToken,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
@@ -41,7 +42,7 @@ import {
   pettyCashExpenses, pettyCashFund, pettyCashTransactions,
   purchaseOrders, purchaseOrderItems, purchaseReceptions, receptionItems,
   vehicles, fuelRecords,
-  tasks, calendarEvents, passwordResetTokens
+  tasks, calendarEvents, passwordResetTokens, refreshTokens
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc, or } from "drizzle-orm";
@@ -398,6 +399,14 @@ export interface IStorage {
   markPasswordResetTokenUsed(token: string): Promise<boolean>;
   updateUserPassword(userId: string, hashedPassword: string): Promise<boolean>;
   deleteExpiredPasswordResetTokens(): Promise<number>;
+  
+  // ==================== REFRESH TOKENS (JWT) ====================
+  
+  createRefreshToken(data: { userId: string; tokenHash: string; expiresAt: Date; userAgent?: string; ipAddress?: string }): Promise<RefreshToken>;
+  getRefreshTokenByHash(tokenHash: string): Promise<RefreshToken | undefined>;
+  revokeRefreshToken(tokenHash: string): Promise<boolean>;
+  revokeAllUserRefreshTokens(userId: string): Promise<number>;
+  deleteExpiredRefreshTokens(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3859,6 +3868,52 @@ export class DatabaseStorage implements IStorage {
   async deleteExpiredPasswordResetTokens(): Promise<number> {
     const result = await db.delete(passwordResetTokens)
       .where(lte(passwordResetTokens.expiresAt, new Date()));
+    return 0;
+  }
+
+  // ==================== REFRESH TOKENS (JWT) ====================
+
+  async createRefreshToken(data: { userId: string; tokenHash: string; expiresAt: Date; userAgent?: string; ipAddress?: string }): Promise<RefreshToken> {
+    const [token] = await db.insert(refreshTokens).values({
+      userId: data.userId,
+      tokenHash: data.tokenHash,
+      expiresAt: data.expiresAt,
+      userAgent: data.userAgent,
+      ipAddress: data.ipAddress,
+    }).returning();
+    return token;
+  }
+
+  async getRefreshTokenByHash(tokenHash: string): Promise<RefreshToken | undefined> {
+    const [token] = await db.select().from(refreshTokens)
+      .where(and(
+        eq(refreshTokens.tokenHash, tokenHash),
+        sql`${refreshTokens.revokedAt} IS NULL`,
+        gte(refreshTokens.expiresAt, new Date())
+      ));
+    return token;
+  }
+
+  async revokeRefreshToken(tokenHash: string): Promise<boolean> {
+    await db.update(refreshTokens)
+      .set({ revokedAt: new Date() })
+      .where(eq(refreshTokens.tokenHash, tokenHash));
+    return true;
+  }
+
+  async revokeAllUserRefreshTokens(userId: string): Promise<number> {
+    await db.update(refreshTokens)
+      .set({ revokedAt: new Date() })
+      .where(and(
+        eq(refreshTokens.userId, userId),
+        sql`${refreshTokens.revokedAt} IS NULL`
+      ));
+    return 0;
+  }
+
+  async deleteExpiredRefreshTokens(): Promise<number> {
+    await db.delete(refreshTokens)
+      .where(lte(refreshTokens.expiresAt, new Date()));
     return 0;
   }
 }

@@ -2,7 +2,17 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import { 
+  signAccessToken, 
+  signRefreshToken, 
+  hashRefreshToken, 
+  authenticateJWT, 
+  authorizeRoles,
+  optionalAuth,
+  REFRESH_TOKEN_COOKIE,
+  REFRESH_TOKEN_COOKIE_OPTIONS,
+  type AuthenticatedRequest 
+} from "./auth";
 import { 
   insertLocationSchema, 
   insertProductSchema, 
@@ -36,8 +46,6 @@ import {
   insertCalendarEventSchema
 } from "@shared/schema";
 import { z } from "zod";
-
-const JWT_SECRET = process.env.SESSION_SECRET || "dispensax-secret-key-2024";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -81,20 +89,28 @@ export async function registerRoutes(
         return res.status(401).json({ error: "Usuario desactivado. Contacta al administrador." });
       }
 
-      const token = jwt.sign(
-        { 
-          userId: user.id, 
-          username: user.username, 
-          role: user.role 
-        },
-        JWT_SECRET,
-        { expiresIn: "7d" }
-      );
+      const accessToken = signAccessToken({
+        userId: user.id,
+        username: user.username,
+        role: user.role || "abastecedor"
+      });
+
+      const { token: refreshToken, hash: refreshTokenHash, expiresAt } = signRefreshToken();
+
+      await storage.createRefreshToken({
+        userId: user.id,
+        tokenHash: refreshTokenHash,
+        expiresAt,
+        userAgent: req.headers["user-agent"],
+        ipAddress: req.ip || req.socket.remoteAddress,
+      });
+
+      res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, REFRESH_TOKEN_COOKIE_OPTIONS);
 
       const { password: _, ...userWithoutPassword } = user;
 
       res.json({
-        token,
+        accessToken,
         user: userWithoutPassword,
       });
     } catch (error) {
@@ -103,6 +119,73 @@ export async function registerRoutes(
       }
       console.error("Login error:", error);
       res.status(500).json({ error: "Error al iniciar sesión" });
+    }
+  });
+
+  app.post("/api/auth/refresh", async (req: Request, res: Response) => {
+    try {
+      const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE];
+      
+      if (!refreshToken) {
+        return res.status(401).json({ error: "Refresh token requerido" });
+      }
+
+      const tokenHash = hashRefreshToken(refreshToken);
+      const storedToken = await storage.getRefreshTokenByHash(tokenHash);
+
+      if (!storedToken) {
+        res.clearCookie(REFRESH_TOKEN_COOKIE, { path: "/api/auth" });
+        return res.status(401).json({ error: "Token inválido o expirado" });
+      }
+
+      const user = await storage.getUser(storedToken.userId);
+      if (!user || !user.isActive) {
+        await storage.revokeRefreshToken(tokenHash);
+        res.clearCookie(REFRESH_TOKEN_COOKIE, { path: "/api/auth" });
+        return res.status(401).json({ error: "Usuario no encontrado o desactivado" });
+      }
+
+      await storage.revokeRefreshToken(tokenHash);
+
+      const accessToken = signAccessToken({
+        userId: user.id,
+        username: user.username,
+        role: user.role || "abastecedor"
+      });
+
+      const { token: newRefreshToken, hash: newRefreshTokenHash, expiresAt } = signRefreshToken();
+
+      await storage.createRefreshToken({
+        userId: user.id,
+        tokenHash: newRefreshTokenHash,
+        expiresAt,
+        userAgent: req.headers["user-agent"],
+        ipAddress: req.ip || req.socket.remoteAddress,
+      });
+
+      res.cookie(REFRESH_TOKEN_COOKIE, newRefreshToken, REFRESH_TOKEN_COOKIE_OPTIONS);
+
+      res.json({ accessToken });
+    } catch (error) {
+      console.error("Refresh token error:", error);
+      res.status(500).json({ error: "Error al renovar sesión" });
+    }
+  });
+
+  app.post("/api/auth/logout", async (req: Request, res: Response) => {
+    try {
+      const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE];
+      
+      if (refreshToken) {
+        const tokenHash = hashRefreshToken(refreshToken);
+        await storage.revokeRefreshToken(tokenHash);
+      }
+
+      res.clearCookie(REFRESH_TOKEN_COOKIE, { path: "/api/auth" });
+      res.json({ message: "Sesión cerrada correctamente" });
+    } catch (error) {
+      console.error("Logout error:", error);
+      res.status(500).json({ error: "Error al cerrar sesión" });
     }
   });
 
@@ -131,20 +214,28 @@ export async function registerRoutes(
         isActive: true,
       });
 
-      const token = jwt.sign(
-        { 
-          userId: newUser.id, 
-          username: newUser.username, 
-          role: newUser.role 
-        },
-        JWT_SECRET,
-        { expiresIn: "7d" }
-      );
+      const accessToken = signAccessToken({
+        userId: newUser.id,
+        username: newUser.username,
+        role: newUser.role || "abastecedor"
+      });
+
+      const { token: refreshToken, hash: refreshTokenHash, expiresAt } = signRefreshToken();
+
+      await storage.createRefreshToken({
+        userId: newUser.id,
+        tokenHash: refreshTokenHash,
+        expiresAt,
+        userAgent: req.headers["user-agent"],
+        ipAddress: req.ip || req.socket.remoteAddress,
+      });
+
+      res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, REFRESH_TOKEN_COOKIE_OPTIONS);
 
       const { password: _, ...userWithoutPassword } = newUser;
 
       res.status(201).json({
-        token,
+        accessToken,
         user: userWithoutPassword,
       });
     } catch (error) {
@@ -156,19 +247,13 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/auth/me", async (req: Request, res: Response) => {
+  app.get("/api/auth/me", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const authHeader = req.headers.authorization;
-      
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      if (!req.user) {
         return res.status(401).json({ error: "No autorizado" });
       }
 
-      const token = authHeader.split(" ")[1];
-      
-      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
-      
-      const user = await storage.getEmployee(decoded.userId);
+      const user = await storage.getEmployee(req.user.userId);
       
       if (!user) {
         return res.status(401).json({ error: "Usuario no encontrado" });
@@ -1278,27 +1363,27 @@ export async function registerRoutes(
   });
 
   // Schema para validar campos actualizables del perfil (excluye password, role, isActive)
-  // NOTA: En producción, estos endpoints deberían estar protegidos por middleware de autenticación JWT
   const updateProfileSchema = z.object({
     fullName: z.string().min(1).optional(),
     email: z.string().email().optional(),
     username: z.string().min(3).optional(),
     phone: z.string().optional(),
-    requestingUserId: z.string().uuid().optional(), // Para verificación básica
   }).strict();
 
-  app.patch("/api/users/:id", async (req: Request, res: Response) => {
+  app.patch("/api/users/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // Validar que solo se actualicen campos permitidos
-      const validatedData = updateProfileSchema.parse(req.body);
-      
-      // Verificación básica: el requestingUserId debe coincidir con el id del path
-      // NOTA: En producción, esto se reemplazaría con verificación de sesión/JWT
-      if (validatedData.requestingUserId && validatedData.requestingUserId !== req.params.id) {
+      if (!req.user) {
+        return res.status(401).json({ error: "No autenticado" });
+      }
+
+      // Verificar que el usuario solo pueda modificar su propio perfil (o admin para otros)
+      if (req.user.userId !== req.params.id && req.user.role !== "admin") {
         return res.status(403).json({ error: "No tienes permiso para modificar este usuario" });
       }
       
-      // Solo actualizar campos que fueron proporcionados (excluyendo requestingUserId)
+      // Validar que solo se actualicen campos permitidos
+      const validatedData = updateProfileSchema.parse(req.body);
+      
       const updateData: { fullName?: string; email?: string; username?: string; phone?: string } = {};
       if (validatedData.fullName !== undefined) updateData.fullName = validatedData.fullName;
       if (validatedData.email !== undefined) updateData.email = validatedData.email;
@@ -1326,24 +1411,24 @@ export async function registerRoutes(
 
   // Schema para cambio de contraseña
   const changePasswordSchema = z.object({
-    userId: z.string().uuid(),
     currentPassword: z.string().min(1),
     newPassword: z.string().min(6, "La nueva contraseña debe tener al menos 6 caracteres"),
   });
 
-  app.post("/api/auth/change-password", async (req: Request, res: Response) => {
+  app.post("/api/auth/change-password", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // Validar con Zod
+      if (!req.user) {
+        return res.status(401).json({ error: "No autenticado" });
+      }
+
       const validatedData = changePasswordSchema.parse(req.body);
-      const { userId, currentPassword, newPassword } = validatedData;
+      const { currentPassword, newPassword } = validatedData;
       
-      const user = await storage.getUser(userId);
+      const user = await storage.getUser(req.user.userId);
       if (!user) {
         return res.status(404).json({ error: "Usuario no encontrado" });
       }
       
-      // IMPORTANTE: Siempre verificamos la contraseña actual antes de permitir el cambio
-      // Esto previene cambios no autorizados incluso si alguien conoce el userId
       const bcrypt = await import("bcryptjs");
       const isMatch = await bcrypt.compare(currentPassword, user.password);
       if (!isMatch) {
@@ -1351,11 +1436,14 @@ export async function registerRoutes(
       }
       
       const hashedPassword = await bcrypt.hash(newPassword, 10);
-      const updated = await storage.updateUserPassword(userId, hashedPassword);
+      const updated = await storage.updateUserPassword(req.user.userId, hashedPassword);
       
       if (!updated) {
         return res.status(500).json({ error: "Error al actualizar contraseña" });
       }
+
+      // Revocar todos los refresh tokens excepto el actual (forzar re-login en otros dispositivos)
+      await storage.revokeAllUserRefreshTokens(req.user.userId);
       
       res.json({ message: "Contraseña actualizada correctamente" });
     } catch (error) {
