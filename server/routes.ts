@@ -604,10 +604,12 @@ export async function registerRoutes(
 
   app.post("/api/machines/:id/visits", async (req: Request, res: Response) => {
     try {
-      const data = insertMachineVisitSchema.parse({
+      const body = {
         ...req.body,
         machineId: req.params.id,
-      });
+        startTime: req.body.startTime ? new Date(req.body.startTime) : undefined,
+      };
+      const data = insertMachineVisitSchema.parse(body);
       const visit = await storage.createMachineVisit(data);
       res.status(201).json(visit);
     } catch (error) {
