@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { cn } from "@/lib/utils";
+import { cn, getCurrentHour } from "@/lib/utils";
 import { useAuth, UserRole, getRoleDisplayName } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -123,7 +123,7 @@ export function AppSidebar() {
   };
 
   const getGreeting = () => {
-    const hour = new Date().getHours();
+    const hour = getCurrentHour();
     if (hour < 12) return "Buenos días";
     if (hour < 18) return "Buenas tardes";
     return "Buenas noches";

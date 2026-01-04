@@ -69,6 +69,20 @@ export function formatDateTime(date: Date | string | null | undefined): string {
   }
 }
 
+// Obtener la hora actual en la zona horaria configurada (para saludos, etc.)
+// Usa Intl.DateTimeFormat.formatToParts para extraer la hora numéricamente
+// de forma independiente de la zona horaria del navegador del cliente
+export function getCurrentHour(): number {
+  const formatter = new Intl.DateTimeFormat(LOCALE, {
+    timeZone: TIMEZONE,
+    hour: 'numeric',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(new Date());
+  const hourPart = parts.find(part => part.type === 'hour');
+  return hourPart ? parseInt(hourPart.value, 10) : 0;
+}
+
 // Formatear día de la semana largo (ej: "lunes")
 export function formatWeekday(date: Date | string | null | undefined): string {
   if (!date) return "";
