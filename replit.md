@@ -159,6 +159,27 @@ client/src/
 
 ## Cambios Recientes (Enero 2026)
 
+### Sistema de Zona Horaria Centralizado (4 Enero 2026)
+**Zona horaria fija**: América/Santo_Domingo (GMT-4) - República Dominicana
+
+**Implementación en `client/src/lib/utils.ts`**:
+- `TIMEZONE = 'America/Santo_Domingo'` - Constante de zona horaria
+- `LOCALE = 'es-DO'` - Locale para formato dominicano
+- `formatTime(date)` - Hora en formato HH:mm (ej: "14:30")
+- `formatDate(date)` - Fecha completa (ej: "4 ene 2026")
+- `formatDateShort(date)` - Fecha corta (ej: "4/1/2026")
+- `formatDateTime(date)` - Fecha y hora (ej: "4 ene 2026, 14:30")
+- `formatWeekday(date)` - Día de la semana largo (ej: "lunes")
+- `formatWeekdayShort(date)` - Día de la semana corto (ej: "lun")
+
+**Archivos actualizados** (~18 componentes):
+- Todos los páginas y componentes ahora usan las funciones centralizadas
+- Garantiza consistencia en toda la aplicación
+- Un solo punto de configuración para cambiar zona horaria
+
+**Variable de entorno servidor**:
+- `TZ=America/Santo_Domingo` configurada en entorno compartido
+
 ### Sistema de Cache In-Memory (4 Enero 2026)
 **CRÍTICO**: Resuelto bloqueo del servidor que causaba login de 67+ segundos.
 
