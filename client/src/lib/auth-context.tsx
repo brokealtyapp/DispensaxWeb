@@ -189,8 +189,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // La UI responde instantáneamente sin esperar al servidor
     setUser(null);
     setToken(null);
-    queryClient.clear();
     setIsLoading(false);
+    
+    // CRÍTICO: Cancelar TODAS las peticiones pendientes de React Query
+    // Esto libera el servidor inmediatamente y evita que nuevas peticiones queden en cola
+    queryClient.cancelQueries();
+    queryClient.clear();
     
     // Fire-and-forget: revocar refresh token en el servidor en segundo plano
     // No bloqueamos el UI - el access token expira en 15 min de todas formas

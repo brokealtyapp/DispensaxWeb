@@ -76,7 +76,7 @@ export interface IStorage {
   updateMachineInventory(machineId: string, productId: string, quantity: number): Promise<MachineInventory | undefined>;
   setMachineInventory(inventory: InsertMachineInventory): Promise<MachineInventory>;
   
-  getMachineAlerts(machineId?: string, resolved?: boolean): Promise<MachineAlert[]>;
+  getMachineAlerts(machineId?: string, resolved?: boolean, limit?: number): Promise<MachineAlert[]>;
   createMachineAlert(alert: InsertMachineAlert): Promise<MachineAlert>;
   resolveAlert(id: string, userId: string): Promise<MachineAlert | undefined>;
   resolveAlertSimple(id: string): Promise<MachineAlert | undefined>;
@@ -107,7 +107,7 @@ export interface IStorage {
   getProductLot(id: string): Promise<ProductLot | undefined>;
   createProductLot(lot: InsertProductLot): Promise<ProductLot>;
   updateProductLot(id: string, lot: Partial<InsertProductLot>): Promise<ProductLot | undefined>;
-  getExpiringLots(days: number): Promise<(ProductLot & { product: Product })[]>;
+  getExpiringLots(days: number, limit?: number): Promise<(ProductLot & { product: Product })[]>;
   
   // Almacén - Movimientos (Kardex)
   getWarehouseMovements(productId?: string, limit?: number): Promise<(WarehouseMovement & { product: Product })[]>;
@@ -142,7 +142,7 @@ export interface IStorage {
   endService(id: string, notes?: string, signature?: string, responsibleName?: string): Promise<ServiceRecord | undefined>;
   
   // Recolección de Efectivo
-  getCashCollections(userId?: string, machineId?: string, startDate?: Date, endDate?: Date): Promise<any[]>;
+  getCashCollections(userId?: string, machineId?: string, startDate?: Date, endDate?: Date, limit?: number): Promise<any[]>;
   createCashCollection(collection: InsertCashCollection): Promise<CashCollection>;
   getCashCollectionsSummary(userId: string, startDate?: Date, endDate?: Date): Promise<{ total: number; count: number; difference: number }>;
   
@@ -182,12 +182,12 @@ export interface IStorage {
   reconcileBankDeposit(id: string, reconciledAmount: number): Promise<BankDeposit | undefined>;
   
   // Transferencias de Productos
-  getProductTransfers(filters?: { type?: string; productId?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getProductTransfers(filters?: { type?: string; productId?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]>;
   getProductTransfer(id: string): Promise<any>;
   createProductTransfer(transfer: InsertProductTransfer): Promise<ProductTransfer>;
   
   // Mermas
-  getShrinkageRecords(filters?: { type?: string; productId?: string; status?: string }): Promise<any[]>;
+  getShrinkageRecords(filters?: { type?: string; productId?: string; status?: string; limit?: number }): Promise<any[]>;
   getShrinkageRecord(id: string): Promise<any>;
   createShrinkageRecord(record: InsertShrinkageRecord): Promise<ShrinkageRecord>;
   approveShrinkage(id: string, approvedBy: string): Promise<ShrinkageRecord | undefined>;
@@ -577,23 +577,26 @@ export class DatabaseStorage implements IStorage {
     return newInventory;
   }
 
-  async getMachineAlerts(machineId?: string, resolved?: boolean): Promise<MachineAlert[]> {
+  async getMachineAlerts(machineId?: string, resolved?: boolean, limit: number = 50): Promise<MachineAlert[]> {
     if (machineId && resolved !== undefined) {
       return db.select().from(machineAlerts)
         .where(and(eq(machineAlerts.machineId, machineId), eq(machineAlerts.isResolved, resolved)))
-        .orderBy(desc(machineAlerts.createdAt));
+        .orderBy(desc(machineAlerts.createdAt))
+        .limit(limit);
     }
     if (machineId) {
       return db.select().from(machineAlerts)
         .where(eq(machineAlerts.machineId, machineId))
-        .orderBy(desc(machineAlerts.createdAt));
+        .orderBy(desc(machineAlerts.createdAt))
+        .limit(limit);
     }
     if (resolved !== undefined) {
       return db.select().from(machineAlerts)
         .where(eq(machineAlerts.isResolved, resolved))
-        .orderBy(desc(machineAlerts.createdAt));
+        .orderBy(desc(machineAlerts.createdAt))
+        .limit(limit);
     }
-    return db.select().from(machineAlerts).orderBy(desc(machineAlerts.createdAt));
+    return db.select().from(machineAlerts).orderBy(desc(machineAlerts.createdAt)).limit(limit);
   }
 
   async createMachineAlert(alert: InsertMachineAlert): Promise<MachineAlert> {
@@ -751,32 +754,45 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getLowStockAlerts(): Promise<(WarehouseInventory & { product: Product })[]> {
-    const inventory = await db.select().from(warehouseInventory);
-    const lowStock = inventory.filter(inv => (inv.currentStock || 0) <= (inv.reorderPoint || 20));
+    // Usar JOIN para evitar N+1 queries
+    const results = await db.select({
+        inventory: warehouseInventory,
+        product: products
+      })
+      .from(warehouseInventory)
+      .leftJoin(products, eq(warehouseInventory.productId, products.id))
+      .limit(50);
     
-    const result = await Promise.all(lowStock.map(async (inv) => {
-      const product = await this.getProduct(inv.productId);
-      return { ...inv, product: product! };
-    }));
-    
-    return result.filter(inv => inv.product);
+    return results
+      .filter(r => r.product && (r.inventory.currentStock || 0) <= (r.inventory.reorderPoint || 20))
+      .map(r => ({ ...r.inventory, product: r.product! }));
   }
 
   // Lotes de Productos
-  async getProductLots(productId?: string): Promise<(ProductLot & { product: Product; supplier?: Supplier })[]> {
-    let lotsQuery = productId 
-      ? db.select().from(productLots).where(and(eq(productLots.productId, productId), eq(productLots.isActive, true)))
-      : db.select().from(productLots).where(eq(productLots.isActive, true));
+  async getProductLots(productId?: string, limit: number = 50): Promise<(ProductLot & { product: Product; supplier?: Supplier })[]> {
+    // Usar JOIN para evitar N+1 queries
+    const baseQuery = db.select({
+        lot: productLots,
+        product: products,
+        supplier: suppliers
+      })
+      .from(productLots)
+      .leftJoin(products, eq(productLots.productId, products.id))
+      .leftJoin(suppliers, eq(productLots.supplierId, suppliers.id));
     
-    const lots = await lotsQuery.orderBy(asc(productLots.expirationDate));
+    const results = productId
+      ? await baseQuery
+          .where(and(eq(productLots.productId, productId), eq(productLots.isActive, true)))
+          .orderBy(asc(productLots.expirationDate))
+          .limit(limit)
+      : await baseQuery
+          .where(eq(productLots.isActive, true))
+          .orderBy(asc(productLots.expirationDate))
+          .limit(limit);
     
-    const result = await Promise.all(lots.map(async (lot) => {
-      const product = await this.getProduct(lot.productId);
-      const supplier = lot.supplierId ? await this.getSupplier(lot.supplierId) : undefined;
-      return { ...lot, product: product!, supplier };
-    }));
-    
-    return result.filter(lot => lot.product);
+    return results
+      .filter(r => r.product)
+      .map(r => ({ ...r.lot, product: r.product!, supplier: r.supplier || undefined }));
   }
 
   async getProductLot(id: string): Promise<ProductLot | undefined> {
@@ -796,40 +812,57 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getExpiringLots(days: number): Promise<(ProductLot & { product: Product })[]> {
+  async getExpiringLots(days: number, limit: number = 30): Promise<(ProductLot & { product: Product })[]> {
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + days);
     
-    const lots = await db.select().from(productLots)
+    // Usar JOIN para evitar N+1 queries
+    const results = await db.select({
+        lot: productLots,
+        product: products
+      })
+      .from(productLots)
+      .leftJoin(products, eq(productLots.productId, products.id))
       .where(and(
         eq(productLots.isActive, true),
         lte(productLots.expirationDate, futureDate),
         gte(productLots.remainingQuantity, 1)
       ))
-      .orderBy(asc(productLots.expirationDate));
+      .orderBy(asc(productLots.expirationDate))
+      .limit(limit);
     
-    const result = await Promise.all(lots.map(async (lot) => {
-      const product = await this.getProduct(lot.productId);
-      return { ...lot, product: product! };
-    }));
-    
-    return result.filter(lot => lot.product);
+    return results
+      .filter(r => r.product)
+      .map(r => ({ ...r.lot, product: r.product! }));
   }
 
   // Movimientos de Almacén (Kardex)
-  async getWarehouseMovements(productId?: string, limit?: number): Promise<(WarehouseMovement & { product: Product })[]> {
-    let query = productId
-      ? db.select().from(warehouseMovements).where(eq(warehouseMovements.productId, productId))
-      : db.select().from(warehouseMovements);
+  async getWarehouseMovements(productId?: string, limit: number = 20): Promise<(WarehouseMovement & { product: Product })[]> {
+    // Usar JOIN en lugar de Promise.all para evitar N+1 queries
+    const query = productId
+      ? db.select({
+          movement: warehouseMovements,
+          product: products
+        })
+        .from(warehouseMovements)
+        .leftJoin(products, eq(warehouseMovements.productId, products.id))
+        .where(eq(warehouseMovements.productId, productId))
+        .orderBy(desc(warehouseMovements.createdAt))
+        .limit(limit)
+      : db.select({
+          movement: warehouseMovements,
+          product: products
+        })
+        .from(warehouseMovements)
+        .leftJoin(products, eq(warehouseMovements.productId, products.id))
+        .orderBy(desc(warehouseMovements.createdAt))
+        .limit(limit);
     
-    const movements = await query.orderBy(desc(warehouseMovements.createdAt)).limit(limit || 100);
+    const results = await query;
     
-    const result = await Promise.all(movements.map(async (mov) => {
-      const product = await this.getProduct(mov.productId);
-      return { ...mov, product: product! };
-    }));
-    
-    return result.filter(mov => mov.product);
+    return results
+      .filter(r => r.product)
+      .map(r => ({ ...r.movement, product: r.product! }));
   }
 
   async createWarehouseMovement(movement: InsertWarehouseMovement): Promise<WarehouseMovement> {
@@ -1161,7 +1194,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Recolección de Efectivo
-  async getCashCollections(userId?: string, machineId?: string, startDate?: Date, endDate?: Date): Promise<any[]> {
+  async getCashCollections(userId?: string, machineId?: string, startDate?: Date, endDate?: Date, limit: number = 30): Promise<any[]> {
     let conditions: any[] = [];
     
     if (userId) conditions.push(eq(cashCollections.userId, userId));
@@ -1169,19 +1202,32 @@ export class DatabaseStorage implements IStorage {
     if (startDate) conditions.push(gte(cashCollections.createdAt, startDate));
     if (endDate) conditions.push(lte(cashCollections.createdAt, endDate));
     
+    // Usar JOIN para evitar N+1 queries
     const query = conditions.length > 0
-      ? db.select().from(cashCollections).where(and(...conditions))
-      : db.select().from(cashCollections);
+      ? db.select({
+          collection: cashCollections,
+          machine: machines
+        })
+        .from(cashCollections)
+        .leftJoin(machines, eq(cashCollections.machineId, machines.id))
+        .where(and(...conditions))
+        .orderBy(desc(cashCollections.createdAt))
+        .limit(limit)
+      : db.select({
+          collection: cashCollections,
+          machine: machines
+        })
+        .from(cashCollections)
+        .leftJoin(machines, eq(cashCollections.machineId, machines.id))
+        .orderBy(desc(cashCollections.createdAt))
+        .limit(limit);
     
-    const collections = await query.orderBy(desc(cashCollections.createdAt));
+    const results = await query;
     
-    const collectionsWithDetails = await Promise.all(collections.map(async (collection) => {
-      const machine = await this.getMachine(collection.machineId);
-      const user = await this.getUser(collection.userId);
-      return { ...collection, machine, user };
+    return results.map(r => ({
+      ...r.collection,
+      machine: r.machine
     }));
-    
-    return collectionsWithDetails;
   }
 
   async createCashCollection(collection: InsertCashCollection): Promise<CashCollection> {
@@ -1600,7 +1646,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Transferencias de Productos
-  async getProductTransfers(filters?: { type?: string; productId?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+  async getProductTransfers(filters?: { type?: string; productId?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]> {
     let conditions: any[] = [];
     
     if (filters?.type) conditions.push(eq(productTransfers.transferType, filters.type));
@@ -1608,22 +1654,34 @@ export class DatabaseStorage implements IStorage {
     if (filters?.startDate) conditions.push(gte(productTransfers.createdAt, filters.startDate));
     if (filters?.endDate) conditions.push(lte(productTransfers.createdAt, filters.endDate));
     
+    const limit = filters?.limit || 30;
+    
+    // Usar JOIN para productos en lugar de N+1 queries
     const query = conditions.length > 0
-      ? db.select().from(productTransfers).where(and(...conditions))
-      : db.select().from(productTransfers);
+      ? db.select({
+          transfer: productTransfers,
+          product: products
+        })
+        .from(productTransfers)
+        .leftJoin(products, eq(productTransfers.productId, products.id))
+        .where(and(...conditions))
+        .orderBy(desc(productTransfers.createdAt))
+        .limit(limit)
+      : db.select({
+          transfer: productTransfers,
+          product: products
+        })
+        .from(productTransfers)
+        .leftJoin(products, eq(productTransfers.productId, products.id))
+        .orderBy(desc(productTransfers.createdAt))
+        .limit(limit);
     
-    const transfers = await query.orderBy(desc(productTransfers.createdAt));
+    const results = await query;
     
-    const transfersWithDetails = await Promise.all(transfers.map(async (t) => {
-      const product = await this.getProduct(t.productId);
-      const sourceUser = t.sourceUserId ? await this.getUser(t.sourceUserId) : undefined;
-      const destinationUser = t.destinationUserId ? await this.getUser(t.destinationUserId) : undefined;
-      const sourceMachine = t.sourceMachineId ? await this.getMachine(t.sourceMachineId) : undefined;
-      const destinationMachine = t.destinationMachineId ? await this.getMachine(t.destinationMachineId) : undefined;
-      return { ...t, product, sourceUser, destinationUser, sourceMachine, destinationMachine };
+    return results.map(r => ({
+      ...r.transfer,
+      product: r.product
     }));
-    
-    return transfersWithDetails;
   }
 
   async getProductTransfer(id: string): Promise<any> {
@@ -1643,28 +1701,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Mermas
-  async getShrinkageRecords(filters?: { type?: string; productId?: string; status?: string }): Promise<any[]> {
+  async getShrinkageRecords(filters?: { type?: string; productId?: string; status?: string; limit?: number }): Promise<any[]> {
     let conditions: any[] = [];
     
     if (filters?.type) conditions.push(eq(shrinkageRecords.shrinkageType, filters.type));
     if (filters?.productId) conditions.push(eq(shrinkageRecords.productId, filters.productId));
     if (filters?.status) conditions.push(eq(shrinkageRecords.status, filters.status));
     
+    const limit = filters?.limit || 30;
+    
+    // Usar JOIN para productos en lugar de N+1 queries
     const query = conditions.length > 0
-      ? db.select().from(shrinkageRecords).where(and(...conditions))
-      : db.select().from(shrinkageRecords);
+      ? db.select({
+          record: shrinkageRecords,
+          product: products
+        })
+        .from(shrinkageRecords)
+        .leftJoin(products, eq(shrinkageRecords.productId, products.id))
+        .where(and(...conditions))
+        .orderBy(desc(shrinkageRecords.createdAt))
+        .limit(limit)
+      : db.select({
+          record: shrinkageRecords,
+          product: products
+        })
+        .from(shrinkageRecords)
+        .leftJoin(products, eq(shrinkageRecords.productId, products.id))
+        .orderBy(desc(shrinkageRecords.createdAt))
+        .limit(limit);
     
-    const records = await query.orderBy(desc(shrinkageRecords.createdAt));
+    const results = await query;
     
-    const recordsWithDetails = await Promise.all(records.map(async (r) => {
-      const product = await this.getProduct(r.productId);
-      const user = await this.getUser(r.userId);
-      const machine = r.machineId ? await this.getMachine(r.machineId) : undefined;
-      const approvedByUser = r.approvedBy ? await this.getUser(r.approvedBy) : undefined;
-      return { ...r, product, user, machine, approvedByUser };
+    return results.map(r => ({
+      ...r.record,
+      product: r.product
     }));
-    
-    return recordsWithDetails;
   }
 
   async getShrinkageRecord(id: string): Promise<any> {
@@ -1778,7 +1849,7 @@ export class DatabaseStorage implements IStorage {
   // ==================== MÓDULO CAJA CHICA ====================
 
   // Gastos de Caja Chica
-  async getPettyCashExpenses(filters?: { userId?: string; category?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+  async getPettyCashExpenses(filters?: { userId?: string; category?: string; status?: string; startDate?: Date; endDate?: Date }, limit: number = 30): Promise<any[]> {
     let conditions: any[] = [];
     
     if (filters?.userId) conditions.push(eq(pettyCashExpenses.userId, filters.userId));
@@ -1787,20 +1858,25 @@ export class DatabaseStorage implements IStorage {
     if (filters?.startDate) conditions.push(gte(pettyCashExpenses.createdAt, filters.startDate));
     if (filters?.endDate) conditions.push(lte(pettyCashExpenses.createdAt, filters.endDate));
     
-    const query = conditions.length > 0
-      ? db.select().from(pettyCashExpenses).where(and(...conditions))
-      : db.select().from(pettyCashExpenses);
+    // Usar JOIN para evitar N+1 queries (antes hacía 3 queries por cada gasto)
+    const baseQuery = db.select({
+        expense: pettyCashExpenses,
+        user: users,
+        machine: machines
+      })
+      .from(pettyCashExpenses)
+      .leftJoin(users, eq(pettyCashExpenses.userId, users.id))
+      .leftJoin(machines, eq(pettyCashExpenses.machineId, machines.id));
     
-    const expenses = await query.orderBy(desc(pettyCashExpenses.createdAt));
+    const results = conditions.length > 0
+      ? await baseQuery.where(and(...conditions)).orderBy(desc(pettyCashExpenses.createdAt)).limit(limit)
+      : await baseQuery.orderBy(desc(pettyCashExpenses.createdAt)).limit(limit);
     
-    const expensesWithDetails = await Promise.all(expenses.map(async (exp) => {
-      const user = await this.getUser(exp.userId);
-      const machine = exp.machineId ? await this.getMachine(exp.machineId) : undefined;
-      const approvedByUser = exp.approvedBy ? await this.getUser(exp.approvedBy) : undefined;
-      return { ...exp, user, machine, approvedByUser };
+    return results.map(r => ({
+      ...r.expense,
+      user: r.user || undefined,
+      machine: r.machine || undefined
     }));
-    
-    return expensesWithDetails;
   }
 
   async getPettyCashExpense(id: string): Promise<any> {

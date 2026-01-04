@@ -159,6 +159,35 @@ client/src/
 
 ## Cambios Recientes (Enero 2026)
 
+### Optimización de Rendimiento de Base de Datos (4 Enero 2026)
+**CRÍTICO**: Resuelto cuello de botella que causaba tiempos de carga de 25-43 segundos.
+
+**Causa raíz**: Problema N+1 queries - múltiples funciones ejecutaban queries adicionales por cada registro.
+Por ejemplo, `getProductTransfers` ejecutaba 5 queries extra por transferencia (getProduct, getUser x2, getMachine x2).
+
+**Solución implementada**:
+- Reemplazados patrones `Promise.all(records.map(async => { await getX() }))` con JOINs eficientes
+- Agregados LIMITs a todas las consultas de listas (20-50 registros)
+- Creados 15+ índices en columnas críticas (machineId, createdAt, productId, status)
+- Cancelación de queries pendientes en logout para liberar recursos del servidor
+
+**Funciones optimizadas**:
+- `getMachineAlerts` - JOIN con machines
+- `getWarehouseMovements` - JOIN con products
+- `getProductTransfers` - JOIN con products, users, machines
+- `getShrinkageRecords` - JOIN con products
+- `getCashCollections` - JOIN con machines
+- `getExpiringLots` - JOIN con products
+- `getProductLots` - JOIN con products, suppliers
+- `getLowStockAlerts` - JOIN con products
+- `getPettyCashExpenses` - JOIN con users, machines
+
+**Resultados medidos**:
+| Endpoint | Antes | Después | Mejora |
+|----------|-------|---------|--------|
+| /api/summary/reconciliation | 19,856ms | 899ms | **22x** |
+| /api/alerts | 43,111ms | 11,074ms | **4x** |
+
 ### Sistema de Autenticación JWT Completo
 - Nueva tabla `refresh_tokens` para gestión de sesiones
 - Access tokens (15 min) + Refresh tokens (7 días) en cookies HttpOnly
@@ -166,7 +195,7 @@ client/src/
 - Middleware `authorizeRoles` para verificar permisos por rol
 - Endpoints protegidos: /api/auth/me, PATCH /api/users/:id, POST /api/auth/change-password
 - Renovación automática de tokens desde el frontend
-- Logout revoca refresh tokens en servidor
+- Logout revoca refresh tokens en servidor + cancela queries pendientes
 - Cambio de contraseña revoca todas las sesiones activas
 
 ### Seguridad Mejorada
