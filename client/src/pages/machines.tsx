@@ -47,14 +47,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Machine, Location } from "@shared/schema";
 import { formatDate as formatDateUtil } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 const statusLabels: Record<string, string> = {
   operando: "Operando",
@@ -103,10 +103,9 @@ const locationSchema = z.object({
 type LocationFormData = z.infer<typeof locationSchema>;
 
 interface MachineWithDetails extends Machine {
-  location?: Location;
+  locationName?: string;
   inventoryPercentage?: number;
-  alerts?: any[];
-  salesSummary?: { today: number; week: number; month: number };
+  alertCount?: number;
 }
 
 export function MachinesPage() {
@@ -115,16 +114,17 @@ export function MachinesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [zoneFilter, setZoneFilter] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState("machines");
   const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [deletingLocationId, setDeletingLocationId] = useState<string | null>(null);
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
 
   const { data: machines = [], isLoading } = useQuery<MachineWithDetails[]>({
     queryKey: ["/api/machines"],
   });
 
-  const { data: locations = [], isLoading: locationsLoading } = useQuery<Location[]>({
+  const { data: locations = [] } = useQuery<Location[]>({
     queryKey: ["/api/locations"],
   });
 
@@ -134,31 +134,61 @@ export function MachinesPage() {
 
   const createMachineMutation = useMutation({
     mutationFn: async (data: MachineFormData) => {
-      const response = await apiRequest("POST", "/api/machines", data);
+      const cleanData = {
+        ...data,
+        code: data.code || undefined,
+        locationId: data.locationId || undefined,
+        notes: data.notes || undefined,
+      };
+      const response = await apiRequest("POST", "/api/machines", cleanData);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       setIsAddDialogOpen(false);
       form.reset();
+      toast({ title: "Máquina creada", description: "La máquina se ha registrado correctamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo crear la máquina", variant: "destructive" });
     },
   });
 
   const createLocationMutation = useMutation({
     mutationFn: async (data: LocationFormData) => {
-      const response = await apiRequest("POST", "/api/locations", data);
+      const cleanData = {
+        name: data.name,
+        address: data.address || undefined,
+        zone: data.zone || undefined,
+        contactName: data.contactName || undefined,
+        contactPhone: data.contactPhone || undefined,
+        notes: data.notes || undefined,
+      };
+      const response = await apiRequest("POST", "/api/locations", cleanData);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
       setIsLocationDialogOpen(false);
       locationForm.reset();
+      toast({ title: "Ubicación creada", description: "La ubicación se ha registrado correctamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo crear la ubicación", variant: "destructive" });
     },
   });
 
   const updateLocationMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: LocationFormData }) => {
-      const response = await apiRequest("PATCH", `/api/locations/${id}`, data);
+      const cleanData = {
+        name: data.name,
+        address: data.address || undefined,
+        zone: data.zone || undefined,
+        contactName: data.contactName || undefined,
+        contactPhone: data.contactPhone || undefined,
+        notes: data.notes || undefined,
+      };
+      const response = await apiRequest("PATCH", `/api/locations/${id}`, cleanData);
       return response.json();
     },
     onSuccess: () => {
@@ -167,6 +197,10 @@ export function MachinesPage() {
       setIsLocationDialogOpen(false);
       setEditingLocation(null);
       locationForm.reset();
+      toast({ title: "Ubicación actualizada", description: "Los cambios se han guardado" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo actualizar la ubicación", variant: "destructive" });
     },
   });
 
@@ -178,6 +212,10 @@ export function MachinesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       setDeletingLocationId(null);
+      toast({ title: "Ubicación eliminada", description: "La ubicación se ha eliminado correctamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo eliminar la ubicación", variant: "destructive" });
     },
   });
 
@@ -240,7 +278,8 @@ export function MachinesPage() {
   const filteredMachines = machines.filter((machine) => {
     const matchesSearch =
       machine.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (machine.location?.name || "").toLowerCase().includes(searchQuery.toLowerCase());
+      (machine.locationName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (machine.zone || "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "all" || machine.status === statusFilter;
     const matchesZone = zoneFilter === "all" || machine.zone === zoneFilter;
     return matchesSearch && matchesStatus && matchesZone;
@@ -685,76 +724,74 @@ export function MachinesPage() {
           {filteredMachines.map((machine, index) => (
             <Card
               key={machine.id}
-              className={`${colorVariants[index % colorVariants.length]} text-white border-0 overflow-hidden hover-elevate cursor-pointer`}
+              className={`${colorVariants[index % colorVariants.length]} text-white border-0 overflow-hidden`}
               data-testid={`card-machine-${machine.id}`}
             >
-              <Link href={`/maquinas/${machine.id}`}>
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between mb-4 gap-2">
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-lg font-bold truncate">{machine.name}</h3>
-                      <p className="text-sm text-white/70 truncate">
-                        {machine.location?.name || machine.zone || "Sin ubicación"}
-                      </p>
-                    </div>
-                    <Badge
-                      variant="secondary"
-                      className="bg-white/20 text-white border-0 shrink-0"
-                    >
-                      {statusLabels[machine.status || "operando"]}
-                    </Badge>
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between mb-4 gap-2">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-lg font-bold truncate">{machine.name}</h3>
+                    <p className="text-sm text-white/70 truncate">
+                      {machine.locationName || machine.zone || "Sin ubicación"}
+                    </p>
                   </div>
+                  <Badge
+                    variant="secondary"
+                    className="bg-white/20 text-white border-0 shrink-0"
+                  >
+                    {statusLabels[machine.status || "operando"]}
+                  </Badge>
+                </div>
 
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-white/70">Inventario</span>
-                      <span className="text-sm font-medium">{machine.inventoryPercentage || 0}%</span>
-                    </div>
-                    <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-white rounded-full transition-all"
-                        style={{ width: `${machine.inventoryPercentage || 0}%` }}
-                      />
-                    </div>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-white/70">Inventario</span>
+                    <span className="text-sm font-medium">{machine.inventoryPercentage || 0}%</span>
                   </div>
+                  <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-white rounded-full transition-all"
+                      style={{ width: `${machine.inventoryPercentage || 0}%` }}
+                    />
+                  </div>
+                </div>
 
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-1 text-white/70">
-                      <Clock className="h-4 w-4" />
-                      <span>{formatMachineDate(machine.lastVisit)}</span>
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-1 text-white/70">
+                    <Clock className="h-4 w-4" />
+                    <span>{formatMachineDate(machine.lastVisit)}</span>
+                  </div>
+                  {(machine.alertCount || 0) > 0 && (
+                    <div className="flex items-center gap-1 text-amber-300">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span>{machine.alertCount} alertas</span>
                     </div>
-                    {(machine.alerts?.length || 0) > 0 && (
-                      <div className="flex items-center gap-1 text-amber-300">
-                        <AlertTriangle className="h-4 w-4" />
-                        <span>{machine.alerts?.length} alertas</span>
-                      </div>
-                    )}
-                  </div>
+                  )}
+                </div>
 
-                  <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/20">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="flex-1 text-white hover:bg-white/10"
-                      onClick={(e) => { e.preventDefault(); }}
-                      data-testid={`button-view-machine-${machine.id}`}
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      Ver
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="flex-1 text-white hover:bg-white/10"
-                      onClick={(e) => { e.preventDefault(); }}
-                      data-testid={`button-service-machine-${machine.id}`}
-                    >
-                      <Wrench className="h-4 w-4 mr-1" />
-                      Servicio
-                    </Button>
-                  </div>
-                </CardContent>
-              </Link>
+                <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/20">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-1 text-white hover:bg-white/10"
+                    onClick={() => navigate(`/maquinas/${machine.id}`)}
+                    data-testid={`button-view-machine-${machine.id}`}
+                  >
+                    <Eye className="h-4 w-4 mr-1" />
+                    Ver
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-1 text-white hover:bg-white/10"
+                    onClick={() => navigate(`/maquinas/${machine.id}?tab=servicio`)}
+                    data-testid={`button-service-machine-${machine.id}`}
+                  >
+                    <Wrench className="h-4 w-4 mr-1" />
+                    Servicio
+                  </Button>
+                </div>
+              </CardContent>
             </Card>
           ))}
         </div>
@@ -778,7 +815,7 @@ export function MachinesPage() {
                   {filteredMachines.map((machine) => (
                     <tr key={machine.id} className="border-b hover:bg-muted/50" data-testid={`row-machine-${machine.id}`}>
                       <td className="p-4 font-medium">{machine.name}</td>
-                      <td className="p-4 text-muted-foreground">{machine.location?.name || "-"}</td>
+                      <td className="p-4 text-muted-foreground">{machine.locationName || "-"}</td>
                       <td className="p-4">{machine.zone || "-"}</td>
                       <td className="p-4">
                         <Badge className={statusColors[machine.status || "operando"]} variant="secondary">
