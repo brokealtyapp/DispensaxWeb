@@ -123,3 +123,34 @@ export function formatCurrentTime(): string {
 export function formatCurrentDate(): string {
   return formatDate(new Date());
 }
+
+// Formatear hora con segundos (ej: "14:30:45") - para relojes en tiempo real
+export function formatTimeWithSeconds(date: Date | string | null | undefined): string {
+  if (!date) return "";
+  try {
+    return new Date(date).toLocaleTimeString(LOCALE, { 
+      timeZone: TIMEZONE, 
+      hour: '2-digit', 
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+  } catch {
+    return "";
+  }
+}
+
+// Formatear fecha completa con día de la semana (ej: "domingo, 4 enero")
+export function formatFullDateWithWeekday(date: Date | string | null | undefined): string {
+  if (!date) return "";
+  try {
+    return new Date(date).toLocaleDateString(LOCALE, { 
+      timeZone: TIMEZONE,
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long'
+    });
+  } catch {
+    return "";
+  }
+}

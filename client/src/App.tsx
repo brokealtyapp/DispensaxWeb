@@ -32,8 +32,9 @@ import { AlmacenPanelPage } from "@/pages/almacen-panel";
 import { ContabilidadPanelPage } from "@/pages/contabilidad-panel";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import { formatTimeWithSeconds, formatFullDateWithWeekday } from "@/lib/utils";
 import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -178,10 +179,10 @@ function ProtectedRoutes() {
             <div className="flex items-center gap-6">
               <div className="text-right">
                 <p className="text-xl sm:text-2xl font-bold tabular-nums tracking-tight" data-testid="text-current-time">
-                  {format(currentTime, "HH:mm:ss")}
+                  {formatTimeWithSeconds(currentTime)}
                 </p>
                 <p className="text-[10px] sm:text-xs text-muted-foreground capitalize hidden sm:block">
-                  {format(currentTime, "EEEE, d MMMM", { locale: es })}
+                  {formatFullDateWithWeekday(currentTime)}
                 </p>
               </div>
               <div className="flex items-center gap-2">
