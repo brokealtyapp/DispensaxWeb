@@ -154,3 +154,75 @@ export function formatFullDateWithWeekday(date: Date | string | null | undefined
     return "";
   }
 }
+
+// Obtener la fecha en formato YYYY-MM-DD en la zona horaria de RD
+export function getDateKeyInTimezone(date: Date | string | null | undefined): string {
+  if (!date) return "";
+  try {
+    const d = new Date(date);
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    return formatter.format(d); // Returns YYYY-MM-DD
+  } catch {
+    return "";
+  }
+}
+
+// Comparar si dos fechas son el mismo día en la zona horaria de RD
+export function isSameDayInTimezone(date1: Date | string | null | undefined, date2: Date | string | null | undefined): boolean {
+  if (!date1 || !date2) return false;
+  return getDateKeyInTimezone(date1) === getDateKeyInTimezone(date2);
+}
+
+// Verificar si una fecha es hoy en la zona horaria de RD
+export function isTodayInTimezone(date: Date | string | null | undefined): boolean {
+  if (!date) return false;
+  return getDateKeyInTimezone(date) === getDateKeyInTimezone(new Date());
+}
+
+// Obtener el día de la semana en la zona horaria de RD (0=domingo, 1=lunes, etc.)
+export function getDayOfWeekInTimezone(date: Date | string | null | undefined): number {
+  if (!date) return 0;
+  try {
+    const d = new Date(date);
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: TIMEZONE,
+      weekday: 'short'
+    });
+    const weekdayName = formatter.format(d);
+    const weekdayMap: Record<string, number> = {
+      'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6
+    };
+    return weekdayMap[weekdayName] ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+// Obtener la fecha actual como Date object normalizado a mediodía GMT-4
+// Esto crea una Date que representa "hoy" en República Dominicana
+export function getTodayInTimezone(): Date {
+  const dateKey = getDateKeyInTimezone(new Date()); // YYYY-MM-DD en GMT-4
+  // Crear fecha a mediodía para evitar problemas con cambios de día
+  return new Date(`${dateKey}T12:00:00-04:00`);
+}
+
+// Obtener el inicio de la semana (lunes) anclado a la zona horaria GMT-4
+export function getStartOfWeekInTimezone(): Date {
+  const now = new Date();
+  const dateKey = getDateKeyInTimezone(now); // YYYY-MM-DD en GMT-4
+  const dayOfWeek = getDayOfWeekInTimezone(now); // 0=domingo, 1=lunes en GMT-4
+  
+  // Calcular días para retroceder al lunes (weekStartsOn: 1)
+  const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  
+  // Parsear la fecha actual en GMT-4 y restar días
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const mondayDate = new Date(Date.UTC(year, month - 1, day - daysToMonday, 16, 0, 0)); // 16:00 UTC = 12:00 GMT-4
+  
+  return mondayDate;
+}

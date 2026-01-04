@@ -9,8 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { startOfWeek, addDays, isToday } from "date-fns";
-import { formatTime, TIMEZONE, LOCALE } from "@/lib/utils";
+import { addDays } from "date-fns";
+import { formatTime, TIMEZONE, LOCALE, isSameDayInTimezone, isTodayInTimezone, getStartOfWeekInTimezone } from "@/lib/utils";
 import { 
   Plus, MoreHorizontal, Check, Box, AlertTriangle, TrendingUp, Users, Loader2,
   Route, Warehouse, DollarSign, Wallet, ShoppingCart, Fuel, UserCheck, FileText,
@@ -108,6 +108,7 @@ export function DashboardPage() {
   const { user } = useAuth();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeTab, setActiveTab] = useState("today");
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -130,6 +131,10 @@ export function DashboardPage() {
 
   const { data: calendarEvents = [] } = useQuery<any[]>({
     queryKey: ["/api/calendar/events"],
+  });
+
+  const { data: allTasks = [] } = useQuery<Task[]>({
+    queryKey: ["/api/tasks"],
   });
 
   const { data: routesSummary } = useQuery<SummaryRoutes>({
@@ -206,18 +211,35 @@ export function DashboardPage() {
   }, [machines]);
 
   const weekDays = useMemo(() => {
-    const today = new Date();
-    const start = startOfWeek(today, { weekStartsOn: 1 });
+    const start = getStartOfWeekInTimezone(); // Lunes en GMT-4
     return Array.from({ length: 7 }, (_, i) => {
       const date = addDays(start, i);
+      const dayTasks = allTasks.filter((task) => {
+        if (!task.dueDate) return false;
+        return isSameDayInTimezone(task.dueDate, date);
+      });
+      const dayEvents = calendarEvents.filter((event: any) => {
+        if (!event.startDate) return false;
+        return isSameDayInTimezone(event.startDate, date);
+      });
       return {
         day: date.toLocaleDateString(LOCALE, { timeZone: TIMEZONE, day: 'numeric' }),
         label: date.toLocaleDateString(LOCALE, { timeZone: TIMEZONE, weekday: 'short' }),
-        isToday: isToday(date),
+        isToday: isTodayInTimezone(date),
         date,
+        taskCount: dayTasks.length,
+        eventCount: dayEvents.length,
+        totalCount: dayTasks.length + dayEvents.length,
+        tasks: dayTasks,
+        events: dayEvents,
       };
     });
-  }, []);
+  }, [allTasks, calendarEvents]);
+
+  const selectedDayData = useMemo(() => {
+    if (!selectedDay) return null;
+    return weekDays.find(d => isSameDayInTimezone(d.date, selectedDay)) || null;
+  }, [selectedDay, weekDays]);
 
   const completedCount = todayTasks.filter((t) => t.status === "completada").length;
   const openCount = todayTasks.filter((t) => t.status !== "completada" && t.status !== "cancelada").length;
@@ -629,22 +651,99 @@ export function DashboardPage() {
                   Calendario Semanal
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <div className="grid grid-cols-7 gap-1">
                   {weekDays.map((day, idx) => (
-                    <div
+                    <button
                       key={idx}
-                      className={`text-center p-2 rounded-lg ${
+                      onClick={() => setSelectedDay(selectedDay && isSameDayInTimezone(selectedDay, day.date) ? null : day.date)}
+                      className={`text-center p-2 rounded-lg transition-all relative ${
                         day.isToday
                           ? "bg-primary text-primary-foreground"
+                          : selectedDay && isSameDayInTimezone(selectedDay, day.date)
+                          ? "bg-primary/20 ring-2 ring-primary"
                           : "hover:bg-muted"
                       }`}
+                      data-testid={`calendar-day-${idx}`}
                     >
                       <p className="text-lg font-bold">{day.day}</p>
                       <p className="text-[10px] capitalize">{day.label}</p>
-                    </div>
+                      {day.totalCount > 0 && (
+                        <div className="flex justify-center gap-0.5 mt-1">
+                          {day.taskCount > 0 && (
+                            <span className={`w-1.5 h-1.5 rounded-full ${day.isToday ? "bg-white" : "bg-blue-500"}`} />
+                          )}
+                          {day.eventCount > 0 && (
+                            <span className={`w-1.5 h-1.5 rounded-full ${day.isToday ? "bg-white" : "bg-green-500"}`} />
+                          )}
+                        </div>
+                      )}
+                    </button>
                   ))}
                 </div>
+                
+                {selectedDayData && (
+                  <div className="border-t pt-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold">
+                        {selectedDayData.date.toLocaleDateString(LOCALE, { timeZone: TIMEZONE, weekday: 'long', day: 'numeric', month: 'long' })}
+                      </h4>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {selectedDayData.totalCount} actividades
+                      </Badge>
+                    </div>
+                    
+                    {selectedDayData.tasks.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-blue-500" />
+                          Tareas ({selectedDayData.taskCount})
+                        </p>
+                        {selectedDayData.tasks.slice(0, 3).map((task: Task) => (
+                          <div key={task.id} className="text-xs p-2 rounded bg-muted/50 flex items-center justify-between">
+                            <span className="truncate">{task.title}</span>
+                            <Badge variant={task.status === "completada" ? "default" : "secondary"} className="text-[9px] ml-2">
+                              {task.status}
+                            </Badge>
+                          </div>
+                        ))}
+                        {selectedDayData.tasks.length > 3 && (
+                          <Link href="/tareas">
+                            <p className="text-xs text-primary hover:underline cursor-pointer">
+                              +{selectedDayData.tasks.length - 3} más...
+                            </p>
+                          </Link>
+                        )}
+                      </div>
+                    )}
+                    
+                    {selectedDayData.events.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-green-500" />
+                          Eventos ({selectedDayData.eventCount})
+                        </p>
+                        {selectedDayData.events.slice(0, 3).map((event: any) => (
+                          <div key={event.id} className="text-xs p-2 rounded bg-muted/50">
+                            <span className="truncate">{event.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {selectedDayData.totalCount === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-2">
+                        No hay actividades programadas
+                      </p>
+                    )}
+                  </div>
+                )}
+                
+                {!selectedDay && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Haz clic en un día para ver las actividades
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>
