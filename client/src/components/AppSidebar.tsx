@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useAuth, UserRole, getRoleDisplayName } from "@/lib/auth-context";
@@ -97,10 +98,13 @@ export function AppSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = async () => {
+    if (isLoggingOut) return; // Prevenir clics múltiples
+    setIsLoggingOut(true);
     await logout();
-    // La redirección se maneja automáticamente en ProtectedRoutes
+    setLocation("/auth");
   };
   const { theme, setTheme } = useTheme();
 
@@ -402,10 +406,11 @@ export function AppSidebar() {
           variant="ghost"
           className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
           onClick={handleLogout}
+          disabled={isLoggingOut}
           data-testid="button-logout"
         >
           <LogOut className="h-4 w-4" />
-          <span>Cerrar Sesión</span>
+          <span>{isLoggingOut ? "Cerrando..." : "Cerrar Sesión"}</span>
         </Button>
       </SidebarFooter>
     </Sidebar>
