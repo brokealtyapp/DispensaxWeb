@@ -166,11 +166,18 @@ client/src/
 - `TIMEZONE = 'America/Santo_Domingo'` - Constante de zona horaria
 - `LOCALE = 'es-DO'` - Locale para formato dominicano
 - `formatTime(date)` - Hora en formato HH:mm (ej: "14:30")
+- `formatTimeWithSeconds(date)` - Hora con segundos en formato 12h (ej: "5:58:22 PM")
 - `formatDate(date)` - Fecha completa (ej: "4 ene 2026")
 - `formatDateShort(date)` - Fecha corta (ej: "4/1/2026")
 - `formatDateTime(date)` - Fecha y hora (ej: "4 ene 2026, 14:30")
 - `formatWeekday(date)` - Día de la semana largo (ej: "lunes")
 - `formatWeekdayShort(date)` - Día de la semana corto (ej: "lun")
+- `getDateKeyInTimezone(date)` - Clave de fecha YYYY-MM-DD en GMT-4
+- `isSameDayInTimezone(date1, date2)` - Compara si dos fechas son el mismo día en GMT-4
+- `isTodayInTimezone(date)` - Verifica si una fecha es hoy en GMT-4
+- `getDayOfWeekInTimezone(date)` - Día de la semana (0-6) en GMT-4 usando Intl
+- `getTodayInTimezone()` - Obtiene "hoy" como Date normalizado a mediodía GMT-4
+- `getStartOfWeekInTimezone()` - Obtiene el lunes de la semana actual en GMT-4
 
 **Archivos actualizados** (~18 componentes):
 - Todos los páginas y componentes ahora usan las funciones centralizadas
