@@ -184,24 +184,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = async () => {
-    try {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
-    } catch (error) {
-      console.error("Logout error:", error);
-    }
-    
+  const logout = async (): Promise<void> => {
+    // JWT Best Practice: Limpiar estado del cliente PRIMERO (síncrono e inmediato)
+    // La UI responde instantáneamente sin esperar al servidor
     setUser(null);
     setToken(null);
-    
     queryClient.clear();
-    
-    // Reset initialization state and loading to allow re-login
-    isInitializedRef.current = false;
     setIsLoading(false);
+    
+    // Fire-and-forget: revocar refresh token en el servidor en segundo plano
+    // No bloqueamos el UI - el access token expira en 15 min de todas formas
+    fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    }).catch((error) => {
+      console.error("Logout server revocation failed (non-blocking):", error);
+    });
+    
+    // Retorna inmediatamente - no esperamos la respuesta del servidor
+    return Promise.resolve();
   };
 
   return (

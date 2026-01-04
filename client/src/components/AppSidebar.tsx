@@ -1,9 +1,7 @@
-import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useAuth, UserRole, getRoleDisplayName } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
-import { queryClient } from "@/lib/queryClient";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,18 +93,14 @@ function filterByRole(items: MenuItem[], userRole: UserRole | undefined): MenuIt
 }
 
 export function AppSidebar() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
-  const [, setLocation] = useLocation();
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const { theme, setTheme } = useTheme();
 
-  const handleLogout = async () => {
-    if (isLoggingOut) return; // Prevenir clics múltiples
-    setIsLoggingOut(true);
-    await logout();
+  const handleLogout = () => {
+    logout();
     setLocation("/auth");
   };
-  const { theme, setTheme } = useTheme();
 
   const userRole = user?.role as UserRole | undefined;
   
@@ -406,11 +400,10 @@ export function AppSidebar() {
           variant="ghost"
           className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
           onClick={handleLogout}
-          disabled={isLoggingOut}
           data-testid="button-logout"
         >
           <LogOut className="h-4 w-4" />
-          <span>{isLoggingOut ? "Cerrando..." : "Cerrar Sesión"}</span>
+          <span>Cerrar Sesión</span>
         </Button>
       </SidebarFooter>
     </Sidebar>
