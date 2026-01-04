@@ -33,7 +33,21 @@ import {
   Clock,
   Eye,
   Wrench,
+  Settings2,
+  Edit,
+  Trash2,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -77,6 +91,17 @@ const machineSchema = z.object({
 
 type MachineFormData = z.infer<typeof machineSchema>;
 
+const locationSchema = z.object({
+  name: z.string().min(3, "El nombre debe tener al menos 3 caracteres"),
+  address: z.string().optional(),
+  zone: z.string().optional(),
+  contactName: z.string().optional(),
+  contactPhone: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+type LocationFormData = z.infer<typeof locationSchema>;
+
 interface MachineWithDetails extends Machine {
   location?: Location;
   inventoryPercentage?: number;
@@ -90,12 +115,16 @@ export function MachinesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [zoneFilter, setZoneFilter] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [activeMainTab, setActiveMainTab] = useState("machines");
+  const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+  const [deletingLocationId, setDeletingLocationId] = useState<string | null>(null);
 
   const { data: machines = [], isLoading } = useQuery<MachineWithDetails[]>({
     queryKey: ["/api/machines"],
   });
 
-  const { data: locations = [] } = useQuery<Location[]>({
+  const { data: locations = [], isLoading: locationsLoading } = useQuery<Location[]>({
     queryKey: ["/api/locations"],
   });
 
@@ -115,6 +144,41 @@ export function MachinesPage() {
     },
   });
 
+  const createLocationMutation = useMutation({
+    mutationFn: async (data: LocationFormData) => {
+      const response = await apiRequest("POST", "/api/locations", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
+      setIsLocationDialogOpen(false);
+      locationForm.reset();
+    },
+  });
+
+  const updateLocationMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: LocationFormData }) => {
+      const response = await apiRequest("PATCH", `/api/locations/${id}`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
+      setIsLocationDialogOpen(false);
+      setEditingLocation(null);
+      locationForm.reset();
+    },
+  });
+
+  const deleteLocationMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/locations/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
+      setDeletingLocationId(null);
+    },
+  });
+
   const form = useForm<MachineFormData>({
     resolver: zodResolver(machineSchema),
     defaultValues: {
@@ -125,6 +189,51 @@ export function MachinesPage() {
       notes: "",
     },
   });
+
+  const locationForm = useForm<LocationFormData>({
+    resolver: zodResolver(locationSchema),
+    defaultValues: {
+      name: "",
+      address: "",
+      zone: "",
+      contactName: "",
+      contactPhone: "",
+      notes: "",
+    },
+  });
+
+  const handleOpenLocationDialog = (location?: Location) => {
+    if (location) {
+      setEditingLocation(location);
+      locationForm.reset({
+        name: location.name || "",
+        address: location.address || "",
+        zone: location.zone || "",
+        contactName: location.contactName || "",
+        contactPhone: location.contactPhone || "",
+        notes: location.notes || "",
+      });
+    } else {
+      setEditingLocation(null);
+      locationForm.reset({
+        name: "",
+        address: "",
+        zone: "",
+        contactName: "",
+        contactPhone: "",
+        notes: "",
+      });
+    }
+    setIsLocationDialogOpen(true);
+  };
+
+  const handleSaveLocation = (data: LocationFormData) => {
+    if (editingLocation) {
+      updateLocationMutation.mutate({ id: editingLocation.id, data });
+    } else {
+      createLocationMutation.mutate(data);
+    }
+  };
 
   const filteredMachines = machines.filter((machine) => {
     const matchesSearch =
@@ -175,16 +284,21 @@ export function MachinesPage() {
         <div>
           <h1 className="text-2xl font-bold">Máquinas</h1>
           <p className="text-muted-foreground">
-            {machines.length} máquinas registradas
+            {machines.length} máquinas registradas • {locations.length} ubicaciones
           </p>
         </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-machine">
-              <Plus className="h-4 w-4 mr-2" />
-              Nueva Máquina
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => handleOpenLocationDialog()} data-testid="button-manage-locations">
+            <Settings2 className="h-4 w-4 mr-2" />
+            Ubicaciones
+          </Button>
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-machine">
+                <Plus className="h-4 w-4 mr-2" />
+                Nueva Máquina
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Agregar Nueva Máquina</DialogTitle>
@@ -309,7 +423,199 @@ export function MachinesPage() {
             </Form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
+
+      {/* Location Dialog */}
+      <Dialog open={isLocationDialogOpen} onOpenChange={(open) => {
+        setIsLocationDialogOpen(open);
+        if (!open) {
+          setEditingLocation(null);
+          locationForm.reset();
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingLocation ? "Editar Ubicación" : "Nueva Ubicación"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingLocation 
+                ? "Modifica la información de la ubicación"
+                : "Completa la información para registrar una nueva ubicación"}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...locationForm}>
+            <form onSubmit={locationForm.handleSubmit(handleSaveLocation)} className="space-y-4">
+              <FormField
+                control={locationForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ej: Plaza Central" {...field} data-testid="input-location-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={locationForm.control}
+                name="address"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dirección</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ej: Av. 27 de Febrero #123" {...field} data-testid="input-location-address" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={locationForm.control}
+                name="zone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Zona</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ej: Zona Norte" {...field} data-testid="input-location-zone" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField
+                  control={locationForm.control}
+                  name="contactName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nombre de Contacto</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ej: Juan Pérez" {...field} data-testid="input-location-contact-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={locationForm.control}
+                  name="contactPhone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Teléfono de Contacto</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ej: 809-555-1234" {...field} data-testid="input-location-contact-phone" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormField
+                control={locationForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notas</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Notas adicionales..." {...field} data-testid="input-location-notes" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="flex justify-end gap-2 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsLocationDialogOpen(false);
+                    setEditingLocation(null);
+                    locationForm.reset();
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={createLocationMutation.isPending || updateLocationMutation.isPending}
+                  data-testid="button-submit-location"
+                >
+                  {(createLocationMutation.isPending || updateLocationMutation.isPending) 
+                    ? "Guardando..." 
+                    : editingLocation ? "Guardar Cambios" : "Crear Ubicación"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+
+          {/* Existing Locations List */}
+          {!editingLocation && locations.length > 0 && (
+            <div className="mt-6 border-t pt-4">
+              <h4 className="text-sm font-medium mb-3">Ubicaciones Existentes ({locations.length})</h4>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {locations.map((loc) => (
+                  <div 
+                    key={loc.id} 
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50 gap-2"
+                    data-testid={`location-item-${loc.id}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">{loc.name}</p>
+                      <p className="text-sm text-muted-foreground truncate">
+                        {loc.address || loc.zone || "Sin dirección"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenLocationDialog(loc)}
+                        data-testid={`button-edit-location-${loc.id}`}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeletingLocationId(loc.id)}
+                        data-testid={`button-delete-location-${loc.id}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Location Confirmation */}
+      <AlertDialog open={!!deletingLocationId} onOpenChange={(open) => !open && setDeletingLocationId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Ubicación</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que deseas eliminar esta ubicación? Las máquinas asociadas perderán esta referencia.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deletingLocationId && deleteLocationMutation.mutate(deletingLocationId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete-location"
+            >
+              {deleteLocationMutation.isPending ? "Eliminando..." : "Eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
         <div className="relative flex-1 max-w-sm">

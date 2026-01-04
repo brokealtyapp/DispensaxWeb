@@ -25,6 +25,17 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   ArrowLeft,
   MapPin,
   Clock,
@@ -38,6 +49,10 @@ import {
   Plus,
   TrendingUp,
   User,
+  Edit,
+  Trash2,
+  Power,
+  Save,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -89,6 +104,26 @@ const alertSchema = z.object({
 
 type AlertFormData = z.infer<typeof alertSchema>;
 
+const machineEditSchema = z.object({
+  name: z.string().min(3, "El nombre debe tener al menos 3 caracteres"),
+  code: z.string().optional(),
+  type: z.string().default("mixta"),
+  zone: z.string().optional(),
+  locationId: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+type MachineEditFormData = z.infer<typeof machineEditSchema>;
+
+const inventorySchema = z.object({
+  productId: z.string().min(1, "Selecciona un producto"),
+  maxCapacity: z.number().min(1, "La capacidad debe ser mayor a 0"),
+  currentQuantity: z.number().min(0, "La cantidad no puede ser negativa"),
+  minLevel: z.number().min(0, "El nivel mínimo no puede ser negativo"),
+});
+
+type InventoryFormData = z.infer<typeof inventorySchema>;
+
 interface MachineWithDetails extends Machine {
   location?: Location;
   inventory?: (MachineInventory & { product: Product })[];
@@ -102,6 +137,10 @@ export function MachineDetailPage() {
   const [, params] = useRoute("/maquinas/:id");
   const machineId = params?.id;
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isInventoryDialogOpen, setIsInventoryDialogOpen] = useState(false);
+  const [editingInventoryId, setEditingInventoryId] = useState<string | null>(null);
+  const [editingQuantity, setEditingQuantity] = useState<number>(0);
   const [activeTab, setActiveTab] = useState("inventario");
 
   const { data: machine, isLoading } = useQuery<MachineWithDetails>({
@@ -112,6 +151,18 @@ export function MachineDetailPage() {
       return response.json();
     },
     enabled: !!machineId,
+  });
+
+  const { data: locations = [] } = useQuery<Location[]>({
+    queryKey: ["/api/locations"],
+  });
+
+  const { data: zones = [] } = useQuery<string[]>({
+    queryKey: ["/api/stats/zones"],
+  });
+
+  const { data: products = [] } = useQuery<Product[]>({
+    queryKey: ["/api/products"],
   });
 
   const createAlertMutation = useMutation({
@@ -146,6 +197,52 @@ export function MachineDetailPage() {
     },
   });
 
+  const updateMachineMutation = useMutation({
+    mutationFn: async (data: MachineEditFormData) => {
+      const response = await apiRequest("PATCH", `/api/machines/${machineId}`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/machines", machineId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+      setIsEditDialogOpen(false);
+    },
+  });
+
+  const deactivateMachineMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("PATCH", `/api/machines/${machineId}`, { isActive: false, status: "fuera_de_linea" });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/machines", machineId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+    },
+  });
+
+  const addInventoryMutation = useMutation({
+    mutationFn: async (data: InventoryFormData) => {
+      const response = await apiRequest("POST", `/api/machines/${machineId}/inventory`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/machines", machineId] });
+      setIsInventoryDialogOpen(false);
+      inventoryForm.reset();
+    },
+  });
+
+  const updateInventoryMutation = useMutation({
+    mutationFn: async ({ productId, currentQuantity }: { productId: string; currentQuantity: number }) => {
+      const response = await apiRequest("PATCH", `/api/machines/${machineId}/inventory/${productId}`, { currentQuantity });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/machines", machineId] });
+      setEditingInventoryId(null);
+    },
+  });
+
   const alertForm = useForm<AlertFormData>({
     resolver: zodResolver(alertSchema),
     defaultValues: {
@@ -154,6 +251,46 @@ export function MachineDetailPage() {
       message: "",
     },
   });
+
+  const editForm = useForm<MachineEditFormData>({
+    resolver: zodResolver(machineEditSchema),
+    defaultValues: {
+      name: machine?.name || "",
+      code: machine?.code || "",
+      type: machine?.type || "mixta",
+      zone: machine?.zone || "",
+      locationId: machine?.locationId || "",
+      notes: machine?.notes || "",
+    },
+  });
+
+  const inventoryForm = useForm<InventoryFormData>({
+    resolver: zodResolver(inventorySchema),
+    defaultValues: {
+      productId: "",
+      maxCapacity: 20,
+      currentQuantity: 0,
+      minLevel: 5,
+    },
+  });
+
+  const allZones = Array.from(new Set([...zones, ...locations.map(l => l.zone).filter(Boolean)]));
+
+  const handleOpenEditDialog = () => {
+    editForm.reset({
+      name: machine?.name || "",
+      code: machine?.code || "",
+      type: machine?.type || "mixta",
+      zone: machine?.zone || "",
+      locationId: machine?.locationId || "",
+      notes: machine?.notes || "",
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveInventoryQuantity = (productId: string) => {
+    updateInventoryMutation.mutate({ productId, currentQuantity: editingQuantity });
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("es-MX", {
@@ -248,7 +385,7 @@ export function MachineDetailPage() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Select 
             value={machine.status || "operando"} 
             onValueChange={(status) => updateStatusMutation.mutate(status)}
@@ -264,6 +401,36 @@ export function MachineDetailPage() {
               <SelectItem value="mantenimiento">Mantenimiento</SelectItem>
             </SelectContent>
           </Select>
+          <Button variant="outline" onClick={handleOpenEditDialog} data-testid="button-edit-machine">
+            <Edit className="h-4 w-4 mr-2" />
+            Editar
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="text-destructive hover:text-destructive" data-testid="button-deactivate-machine">
+                <Power className="h-4 w-4 mr-2" />
+                Desactivar
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Desactivar esta máquina?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta acción marcará la máquina como fuera de línea y no aparecerá en las rutas activas. 
+                  Puedes reactivarla cambiando su estado posteriormente.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={() => deactivateMachineMutation.mutate()}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Desactivar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <Dialog open={isAlertDialogOpen} onOpenChange={setIsAlertDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" data-testid="button-add-alert">
@@ -360,6 +527,244 @@ export function MachineDetailPage() {
         </div>
       </div>
 
+      {/* Diálogo de Editar Máquina */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Máquina</DialogTitle>
+            <DialogDescription>
+              Modifica la información de la máquina
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit((data) => updateMachineMutation.mutate(data))} className="space-y-4">
+              <FormField
+                control={editForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ej: Plaza Central" {...field} data-testid="input-edit-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="code"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Código (opcional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ej: MAQ-001" {...field} data-testid="input-edit-code" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipo</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-type">
+                          <SelectValue placeholder="Selecciona el tipo" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="mixta">Mixta</SelectItem>
+                        <SelectItem value="bebidas">Bebidas</SelectItem>
+                        <SelectItem value="snacks">Snacks</SelectItem>
+                        <SelectItem value="cafe">Café</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="zone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Zona</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-zone">
+                          <SelectValue placeholder="Selecciona una zona" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {allZones.map((zone) => (
+                          <SelectItem key={zone} value={zone as string}>
+                            {zone}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="locationId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Ubicación</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-location">
+                          <SelectValue placeholder="Selecciona una ubicación" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {locations.map((location) => (
+                          <SelectItem key={location.id} value={location.id}>
+                            {location.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notas (opcional)</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Notas adicionales..." {...field} data-testid="textarea-edit-notes" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={updateMachineMutation.isPending} data-testid="button-save-edit">
+                  {updateMachineMutation.isPending ? "Guardando..." : "Guardar Cambios"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Agregar Producto al Inventario */}
+      <Dialog open={isInventoryDialogOpen} onOpenChange={setIsInventoryDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Agregar Producto al Inventario</DialogTitle>
+            <DialogDescription>
+              Configura un producto para esta máquina
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...inventoryForm}>
+            <form onSubmit={inventoryForm.handleSubmit((data) => addInventoryMutation.mutate(data))} className="space-y-4">
+              <FormField
+                control={inventoryForm.control}
+                name="productId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Producto</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-inventory-product">
+                          <SelectValue placeholder="Selecciona un producto" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {products.map((product) => (
+                          <SelectItem key={product.id} value={product.id}>
+                            {product.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={inventoryForm.control}
+                  name="maxCapacity"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Capacidad Máxima</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          {...field} 
+                          onChange={e => field.onChange(parseInt(e.target.value) || 0)}
+                          data-testid="input-inventory-capacity" 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={inventoryForm.control}
+                  name="currentQuantity"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Cantidad Actual</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          {...field} 
+                          onChange={e => field.onChange(parseInt(e.target.value) || 0)}
+                          data-testid="input-inventory-quantity" 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormField
+                control={inventoryForm.control}
+                name="minLevel"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nivel Mínimo (para alerta)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="number" 
+                        {...field} 
+                        onChange={e => field.onChange(parseInt(e.target.value) || 0)}
+                        data-testid="input-inventory-min" 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={() => setIsInventoryDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={addInventoryMutation.isPending} data-testid="button-save-inventory">
+                  {addInventoryMutation.isPending ? "Guardando..." : "Agregar Producto"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
@@ -450,7 +855,12 @@ export function MachineDetailPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle>Inventario Actual</CardTitle>
-              <Button variant="outline" size="sm" data-testid="button-edit-inventory">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setIsInventoryDialogOpen(true)}
+                data-testid="button-edit-inventory"
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Agregar Producto
               </Button>
@@ -463,10 +873,59 @@ export function MachineDetailPage() {
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{item.product?.name || "Producto"}</p>
                         <p className="text-sm text-muted-foreground">
-                          {item.currentQuantity} / {item.maxCapacity} unidades
+                          Capacidad: {item.maxCapacity} unidades • Mínimo: {item.minLevel}
                         </p>
                       </div>
-                      <div className="w-32">
+                      {editingInventoryId === item.productId ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            value={editingQuantity}
+                            onChange={(e) => setEditingQuantity(parseInt(e.target.value) || 0)}
+                            className="w-20 h-8"
+                            data-testid={`input-quantity-${item.id}`}
+                          />
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            className="h-8 w-8"
+                            onClick={() => handleSaveInventoryQuantity(item.productId)}
+                            disabled={updateInventoryMutation.isPending}
+                            data-testid={`button-save-quantity-${item.id}`}
+                          >
+                            <Save className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            className="h-8 w-8"
+                            onClick={() => setEditingInventoryId(null)}
+                            data-testid={`button-cancel-quantity-${item.id}`}
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 text-right">
+                            <span className="font-medium">{item.currentQuantity}</span>
+                            <span className="text-muted-foreground">/{item.maxCapacity}</span>
+                          </div>
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            className="h-8 w-8"
+                            onClick={() => {
+                              setEditingInventoryId(item.productId);
+                              setEditingQuantity(item.currentQuantity || 0);
+                            }}
+                            data-testid={`button-edit-quantity-${item.id}`}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                      <div className="w-24">
                         <Progress 
                           value={((item.currentQuantity || 0) / (item.maxCapacity || 1)) * 100} 
                           className="h-2" 
@@ -484,7 +943,12 @@ export function MachineDetailPage() {
                 <div className="text-center py-8">
                   <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                   <p className="text-muted-foreground">No hay productos en inventario</p>
-                  <Button className="mt-4" variant="outline" data-testid="button-add-first-product">
+                  <Button 
+                    className="mt-4" 
+                    variant="outline" 
+                    onClick={() => setIsInventoryDialogOpen(true)}
+                    data-testid="button-add-first-product"
+                  >
                     <Plus className="h-4 w-4 mr-2" />
                     Agregar productos
                   </Button>
