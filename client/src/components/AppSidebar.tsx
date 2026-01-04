@@ -100,8 +100,7 @@ export function AppSidebar() {
 
   const handleLogout = async () => {
     await logout();
-    queryClient.clear();
-    setLocation("/auth");
+    // La redirección se maneja automáticamente en ProtectedRoutes
   };
   const { theme, setTheme } = useTheme();
 

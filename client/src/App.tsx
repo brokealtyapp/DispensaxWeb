@@ -137,6 +137,13 @@ function ProtectedRoutes() {
     setReadAlerts(new Set(notifications.map(n => n.id)));
   }, [notifications]);
 
+  // Redirigir a auth cuando no está autenticado
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      navigate("/auth");
+    }
+  }, [isLoading, isAuthenticated, navigate]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -146,7 +153,7 @@ function ProtectedRoutes() {
   }
 
   if (!isAuthenticated) {
-    return <Redirect to="/auth" />;
+    return null;
   }
 
   const sidebarStyle = {
