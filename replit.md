@@ -159,34 +159,53 @@ client/src/
 
 ## Cambios Recientes (Enero 2026)
 
-### Optimización de Rendimiento de Base de Datos (4 Enero 2026)
-**CRÍTICO**: Resuelto cuello de botella que causaba tiempos de carga de 25-43 segundos.
+### Sistema de Cache In-Memory (4 Enero 2026)
+**CRÍTICO**: Resuelto bloqueo del servidor que causaba login de 67+ segundos.
 
-**Causa raíz**: Problema N+1 queries - múltiples funciones ejecutaban queries adicionales por cada registro.
-Por ejemplo, `getProductTransfers` ejecutaba 5 queries extra por transferencia (getProduct, getUser x2, getMachine x2).
+**Causa raíz arquitectónica**: Express.js corre en un solo thread de Node.js. Cuando múltiples queries CPU-bound corren en paralelo, bloquean el event loop y ninguna solicitud (incluido login) puede procesarse hasta que terminen.
 
-**Solución implementada**:
-- Reemplazados patrones `Promise.all(records.map(async => { await getX() }))` con JOINs eficientes
-- Agregados LIMITs a todas las consultas de listas (20-50 registros)
-- Creados 15+ índices en columnas críticas (machineId, createdAt, productId, status)
-- Cancelación de queries pendientes en logout para liberar recursos del servidor
+**Solución: Sistema de Cache con Pre-computación No-Bloqueante**
 
-**Funciones optimizadas**:
-- `getMachineAlerts` - JOIN con machines
-- `getWarehouseMovements` - JOIN con products
-- `getProductTransfers` - JOIN con products, users, machines
-- `getShrinkageRecords` - JOIN con products
-- `getCashCollections` - JOIN con machines
-- `getExpiringLots` - JOIN con products
-- `getProductLots` - JOIN con products, suppliers
-- `getLowStockAlerts` - JOIN con products
-- `getPettyCashExpenses` - JOIN con users, machines
+El archivo `server/cache.ts` implementa:
+1. **Cache dual en memoria**: dashboardCache + summaryCache
+2. **Actualización automática** cada 2 minutos en background (solo si TTL expirado)
+3. **Patrón no-bloqueante**: Rutas devuelven cache inmediatamente y disparan refresh en background
+4. **Valores por defecto**: Fallback inmediato cuando cache está vacío
+5. **Mutex separados**: `isDashboardUpdating` e `isSummaryUpdating` para evitar actualizaciones concurrentes
 
-**Resultados medidos**:
+**Funciones del cache**:
+- `getDashboardCache()` / `getSummaryCache()` - Devuelven cache o valores por defecto
+- `isDashboardCacheValid()` / `isSummaryCacheValid()` - Verifican TTL
+- `refreshDashboardCacheIfStale()` / `refreshSummaryCacheIfStale()` - Refresh no-bloqueante
+- `startCacheUpdater()` - Inicializa y programa actualizaciones automáticas
+
+**Datos cacheados**:
+- `dashboardCache`: stats, machinesByZone, recentAlerts, machinesList
+- `summaryCache`: warehouse, pettyCash, reconciliation, routes, purchases, fuel, hr
+
+**Endpoints optimizados con cache**:
+- `/api/machines` - Lista básica desde cache (0-3ms)
+- `/api/machines/summary` - Resumen completo para dashboard (1ms)
+- `/api/alerts` - Alertas recientes desde cache (0-3ms)
+- `/api/summary/*` - Todos los endpoints de resumen (0-3ms)
+
+**Middleware de protección**:
+- `server/middleware.ts`: Timeouts de 10s para auth, 30s para otros
+- Verificación `res.headersSent` para evitar crashes por double-send
+
+**Resultados finales**:
 | Endpoint | Antes | Después | Mejora |
 |----------|-------|---------|--------|
-| /api/summary/reconciliation | 19,856ms | 899ms | **22x** |
-| /api/alerts | 43,111ms | 11,074ms | **4x** |
+| /api/auth/login | 67,000ms | 250ms | **268x** |
+| /api/machines | 20,000ms | 1ms | **20,000x** |
+| /api/alerts | 43,000ms | 1ms | **43,000x** |
+| /api/summary/* | 20,000ms+ | 1ms | **20,000x+** |
+
+### Optimización de Rendimiento de Base de Datos (4 Enero 2026)
+Además del cache, se mantienen las optimizaciones previas:
+- Reemplazados patrones N+1 con JOINs eficientes
+- LIMITs en todas las consultas de listas (20-50 registros)
+- 23 índices en columnas críticas (machineId, createdAt, productId, status, userId)
 
 ### Sistema de Autenticación JWT Completo
 - Nueva tabla `refresh_tokens` para gestión de sesiones

@@ -13,6 +13,7 @@ import {
   REFRESH_TOKEN_COOKIE_OPTIONS,
   type AuthenticatedRequest 
 } from "./auth";
+import { getSummaryCache, getDashboardCache, isCacheValid, isSummaryCacheValid, isDashboardCacheValid, refreshSummaryCacheIfStale, refreshDashboardCacheIfStale } from "./cache";
 import { 
   insertLocationSchema, 
   insertProductSchema, 
@@ -75,11 +76,15 @@ export async function registerRoutes(
       
       const user = await storage.getUserByUsername(username);
       
+      if (res.headersSent) return;
+      
       if (!user) {
         return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
       }
 
       const isValidPassword = await bcrypt.compare(password, user.password);
+      
+      if (res.headersSent) return;
       
       if (!isValidPassword) {
         return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
@@ -105,6 +110,8 @@ export async function registerRoutes(
         ipAddress: req.ip || req.socket.remoteAddress,
       });
 
+      if (res.headersSent) return;
+
       res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, REFRESH_TOKEN_COOKIE_OPTIONS);
 
       const { password: _, ...userWithoutPassword } = user;
@@ -114,6 +121,7 @@ export async function registerRoutes(
         user: userWithoutPassword,
       });
     } catch (error) {
+      if (res.headersSent) return;
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors[0].message });
       }
@@ -390,23 +398,38 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/machines/summary", async (req: Request, res: Response) => {
+    try {
+      const cache = getDashboardCache();
+      res.json({
+        stats: cache.stats,
+        machinesByZone: cache.machinesByZone,
+        machines: cache.machinesList,
+      });
+      if (!isDashboardCacheValid()) {
+        refreshDashboardCacheIfStale().catch(err => console.error("[Cache] Error refresh dashboard:", err));
+      }
+    } catch (error) {
+      console.error("Error getting machines summary:", error);
+      res.status(500).json({ error: "Error al obtener resumen de máquinas" });
+    }
+  });
+
   app.get("/api/machines", async (req: Request, res: Response) => {
     try {
       const { status, zone } = req.query;
+      
+      const cache = getDashboardCache();
+      if (cache && isCacheValid() && !status && !zone) {
+        return res.json(cache.machinesList);
+      }
+      
       const filters = {
         status: status as string | undefined,
         zone: zone as string | undefined,
       };
       const machines = await storage.getMachines(filters);
-      
-      const machinesWithDetails = await Promise.all(
-        machines.map(async (machine) => {
-          const details = await storage.getMachineWithDetails(machine.id);
-          return details;
-        })
-      );
-      
-      res.json(machinesWithDetails);
+      res.json(machines);
     } catch (error) {
       console.error("Error getting machines:", error);
       res.status(500).json({ error: "Error al obtener máquinas" });
@@ -522,12 +545,22 @@ export async function registerRoutes(
   app.get("/api/alerts", async (req: Request, res: Response) => {
     try {
       const { resolved } = req.query;
+      
+      if (!resolved || resolved === "false") {
+        const cache = getDashboardCache();
+        if (cache && isCacheValid()) {
+          return res.json(cache.recentAlerts);
+        }
+      }
+      
       const alerts = await storage.getMachineAlerts(
         undefined,
         resolved === "true" ? true : resolved === "false" ? false : undefined
       );
+      if (res.headersSent) return;
       res.json(alerts);
     } catch (error) {
+      if (res.headersSent) return;
       res.status(500).json({ error: "Error al obtener alertas" });
     }
   });
@@ -2984,59 +3017,16 @@ export async function registerRoutes(
 
   // ============ SUMMARY ENDPOINTS FOR DASHBOARD ============
 
-  // Routes/Supplier Summary
+  // Routes/Supplier Summary (con cache)
   app.get("/api/summary/routes", async (req: Request, res: Response) => {
     try {
-      const routes = await storage.getRoutes();
-      const serviceRecords = await storage.getServiceRecords();
-      
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const activeRoutes = routes.filter(r => r.status === "en_progreso" || r.status === "activa");
-      
-      let totalStops = 0;
-      let completedStops = 0;
-      for (const route of routes) {
-        const routeDate = route.date ? new Date(route.date) : null;
-        if (routeDate) {
-          routeDate.setHours(0, 0, 0, 0);
-          if (routeDate.getTime() === today.getTime()) {
-            const stops = await storage.getRouteStops(route.id);
-            totalStops += stops.length;
-            completedStops += stops.filter((s: any) => s.status === "completada").length;
-          }
-        }
+      const cache = getSummaryCache();
+      res.json(cache.routes);
+      if (!isSummaryCacheValid()) {
+        refreshSummaryCacheIfStale().catch(err => console.error("[Cache] Error refresh routes:", err));
       }
-      
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      const weekRecords = serviceRecords.filter(r => new Date(r.createdAt || 0) >= weekAgo);
-      const avgServiceTime = weekRecords.length > 0 
-        ? Math.round(weekRecords.reduce((sum, r) => sum + (r.durationMinutes || 0), 0) / weekRecords.length)
-        : 0;
-
-      const recentRoutesData = await Promise.all(routes.slice(0, 5).map(async r => {
-        const stops = await storage.getRouteStops(r.id);
-        return {
-          id: r.id,
-          name: r.name,
-          date: r.date,
-          status: r.status,
-          stopsCount: stops.length
-        };
-      }));
-
-      res.json({
-        activeRoutes: activeRoutes.length,
-        totalRoutes: routes.length,
-        todayStops: totalStops,
-        completedStops: completedStops,
-        pendingStops: totalStops - completedStops,
-        avgServiceTimeMinutes: avgServiceTime,
-        recentRoutes: recentRoutesData
-      });
     } catch (error) {
+      if (res.headersSent) return;
       console.error("Error in routes summary:", error);
       res.status(500).json({ error: "Error al obtener resumen de rutas" });
     }
@@ -3149,221 +3139,73 @@ export async function registerRoutes(
     }
   });
 
-  // Petty Cash Summary
+  // Petty Cash Summary (con cache)
   app.get("/api/summary/petty-cash", async (req: Request, res: Response) => {
     try {
-      const fund = await storage.getPettyCashFund();
-      const expenses = await storage.getPettyCashExpenses();
-      const transactions = await storage.getPettyCashTransactions();
-      
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      
-      const weekExpenses = expenses.filter(e => new Date(e.createdAt || 0) >= weekAgo);
-      const weekTotal = weekExpenses.reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
-      
-      const pendingExpenses = expenses.filter(e => e.status === "pendiente");
-      const approvedExpenses = expenses.filter(e => e.status === "aprobado");
-      
-      res.json({
-        currentBalance: fund?.currentBalance || "0",
-        initialAmount: fund?.initialBalance || "0",
-        weekExpenses: weekTotal,
-        pendingCount: pendingExpenses.length,
-        approvedCount: approvedExpenses.length,
-        recentExpenses: expenses.slice(0, 5).map(e => ({
-          id: e.id,
-          description: e.description,
-          amount: e.amount,
-          category: e.category,
-          status: e.status,
-          date: e.expenseDate
-        }))
-      });
+      const cache = getSummaryCache();
+      res.json(cache.pettyCash);
+      if (!isSummaryCacheValid()) {
+        refreshSummaryCacheIfStale().catch(err => console.error("[Cache] Error refresh petty-cash:", err));
+      }
     } catch (error) {
       console.error("Error in petty cash summary:", error);
       res.status(500).json({ error: "Error al obtener resumen de caja chica" });
     }
   });
 
-  // Purchases Summary
+  // Purchases Summary (con cache)
   app.get("/api/summary/purchases", async (req: Request, res: Response) => {
     try {
-      const orders = await storage.getPurchaseOrders();
-      const receptions = await storage.getPurchaseReceptions();
-      
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      
-      const openOrders = orders.filter(o => o.status === "pendiente" || o.status === "aprobada");
-      const weekOrders = orders.filter(o => new Date(o.createdAt || 0) >= weekAgo);
-      const weekTotal = weekOrders.reduce((s, o) => s + parseFloat(o.total || "0"), 0);
-      
-      const pendingReceptions = orders.filter(o => o.status === "aprobada" && 
-        !receptions.some(r => r.orderId === o.id && r.status === "completa"));
-      
-      res.json({
-        openOrders: openOrders.length,
-        totalOrders: orders.length,
-        weekSpending: weekTotal,
-        pendingReceptions: pendingReceptions.length,
-        recentOrders: orders.slice(0, 5).map(o => ({
-          id: o.id,
-          orderNumber: o.orderNumber,
-          supplierName: o.supplierId,
-          total: o.total,
-          status: o.status,
-          date: o.orderDate
-        }))
-      });
+      const cache = getSummaryCache();
+      res.json(cache.purchases);
+      if (!isSummaryCacheValid()) {
+        refreshSummaryCacheIfStale().catch(err => console.error("[Cache] Error refresh purchases:", err));
+      }
     } catch (error) {
+      if (res.headersSent) return;
       console.error("Error in purchases summary:", error);
       res.status(500).json({ error: "Error al obtener resumen de compras" });
     }
   });
 
-  // Fuel Summary
+  // Fuel Summary (con cache)
   app.get("/api/summary/fuel", async (req: Request, res: Response) => {
     try {
-      const vehicles = await storage.getVehicles();
-      const fuelRecords = await storage.getFuelRecords();
-      
-      const monthAgo = new Date();
-      monthAgo.setDate(monthAgo.getDate() - 30);
-      
-      const monthRecords = fuelRecords.filter(r => new Date(r.fuelDate || 0) >= monthAgo);
-      const monthCost = monthRecords.reduce((s, r) => s + parseFloat(r.totalCost || "0"), 0);
-      const monthLiters = monthRecords.reduce((s, r) => s + parseFloat(r.liters || "0"), 0);
-      
-      const efficiencies: number[] = [];
-      monthRecords.forEach(r => {
-        if (r.efficiency && parseFloat(r.efficiency) > 0) {
-          efficiencies.push(parseFloat(r.efficiency));
-        }
-      });
-      const avgEfficiency = efficiencies.length > 0 
-        ? (efficiencies.reduce((a, b) => a + b, 0) / efficiencies.length).toFixed(2)
-        : "0";
-      
-      const lowEfficiencyVehicles = vehicles.filter(v => {
-        const vRecords = fuelRecords.filter(r => r.vehicleId === v.id);
-        if (vRecords.length === 0) return false;
-        const lastRecord = vRecords[vRecords.length - 1];
-        return lastRecord.efficiency && parseFloat(lastRecord.efficiency) < 8;
-      });
-      
-      res.json({
-        totalVehicles: vehicles.length,
-        activeVehicles: vehicles.filter(v => v.isActive).length,
-        monthCost,
-        monthLiters,
-        avgEfficiency,
-        lowEfficiencyAlerts: lowEfficiencyVehicles.length,
-        recentRecords: fuelRecords.slice(0, 5).map(r => ({
-          id: r.id,
-          vehicleId: r.vehicleId,
-          liters: r.liters,
-          totalCost: r.totalCost,
-          efficiency: r.efficiency,
-          date: r.fuelDate
-        }))
-      });
+      const cache = getSummaryCache();
+      res.json(cache.fuel);
+      if (!isSummaryCacheValid()) {
+        refreshSummaryCacheIfStale().catch(err => console.error("[Cache] Error refresh fuel:", err));
+      }
     } catch (error) {
+      if (res.headersSent) return;
       console.error("Error in fuel summary:", error);
       res.status(500).json({ error: "Error al obtener resumen de combustible" });
     }
   });
 
-  // HR Summary
+  // HR Summary (con cache)
   app.get("/api/summary/hr", async (req: Request, res: Response) => {
     try {
-      const employees = await storage.getEmployees();
-      const tasks = await storage.getTasks();
-      const machines = await storage.getMachines();
-      
-      const allVisits: any[] = [];
-      for (const machine of machines) {
-        const visits = await storage.getMachineVisits(machine.id);
-        allVisits.push(...visits);
+      const cache = getSummaryCache();
+      res.json(cache.hr);
+      if (!isSummaryCacheValid()) {
+        refreshSummaryCacheIfStale().catch(err => console.error("[Cache] Error refresh hr:", err));
       }
-      const visits = allVisits;
-      
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      
-      const activeEmployees = employees.filter(e => e.isActive);
-      const weekVisits = visits.filter(v => new Date(v.createdAt || 0) >= weekAgo);
-      const weekTasks = tasks.filter(t => new Date(t.createdAt || 0) >= weekAgo);
-      
-      const technicianStats: any[] = [];
-      activeEmployees.forEach(emp => {
-        const empVisits = weekVisits.filter(v => v.userId === emp.id);
-        const empTasks = weekTasks.filter(t => t.assignedUserId === emp.id);
-        const completedTasks = empTasks.filter(t => t.status === "completada");
-        
-        technicianStats.push({
-          id: emp.id,
-          name: emp.fullName || emp.username || "Sin nombre",
-          role: emp.role,
-          visitsThisWeek: empVisits.length,
-          tasksCompleted: completedTasks.length,
-          tasksTotal: empTasks.length
-        });
-      });
-      
-      technicianStats.sort((a, b) => b.visitsThisWeek - a.visitsThisWeek);
-      
-      res.json({
-        totalEmployees: employees.length,
-        activeEmployees: activeEmployees.length,
-        weekVisits: weekVisits.length,
-        weekTasksCompleted: weekTasks.filter(t => t.status === "completada").length,
-        topPerformers: technicianStats.slice(0, 5),
-        byRole: {
-          technicians: employees.filter(e => e.role === "tecnico" || e.role === "abastecedor").length,
-          admins: employees.filter(e => e.role === "admin" || e.role === "administrador").length,
-          supervisors: employees.filter(e => e.role === "supervisor").length
-        }
-      });
     } catch (error) {
+      if (res.headersSent) return;
       console.error("Error in HR summary:", error);
       res.status(500).json({ error: "Error al obtener resumen de RH" });
     }
   });
 
-  // Money & Products Reconciliation Summary
+  // Money & Products Reconciliation Summary (con cache)
   app.get("/api/summary/reconciliation", async (req: Request, res: Response) => {
     try {
-      const productTransfers = await storage.getProductTransfers();
-      const shrinkageRecords = await storage.getShrinkageRecords();
-      const cashCollections = await storage.getCashCollections();
-      
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      
-      const weekTransfers = productTransfers.filter(t => new Date(t.createdAt || 0) >= weekAgo);
-      const weekShrinkage = shrinkageRecords.filter(s => new Date(s.createdAt || 0) >= weekAgo);
-      const weekCollections = cashCollections.filter(c => new Date(c.createdAt || 0) >= weekAgo);
-      
-      const pendingTransfers = productTransfers.filter(t => t.status === "pendiente");
-      const shrinkageTotal = weekShrinkage.reduce((s, r) => s + (r.quantity || 0), 0);
-      const collectionsTotal = weekCollections.reduce((s, c) => s + parseFloat(c.amount || "0"), 0);
-      
-      res.json({
-        weekTransfers: weekTransfers.length,
-        pendingTransfers: pendingTransfers.length,
-        weekShrinkage: shrinkageTotal,
-        shrinkageRecords: weekShrinkage.length,
-        weekCollections: collectionsTotal,
-        collectionsCount: weekCollections.length,
-        recentDiscrepancies: shrinkageRecords.slice(0, 5).map(s => ({
-          id: s.id,
-          productId: s.productId,
-          quantity: s.quantity,
-          reason: s.reason,
-          date: s.recordDate
-        }))
-      });
+      const cache = getSummaryCache();
+      res.json(cache.reconciliation);
+      if (!isSummaryCacheValid()) {
+        refreshSummaryCacheIfStale().catch(err => console.error("[Cache] Error refresh reconciliation:", err));
+      }
     } catch (error) {
       console.error("Error in reconciliation summary:", error);
       res.status(500).json({ error: "Error al obtener resumen de conciliación" });

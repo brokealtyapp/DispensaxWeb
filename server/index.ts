@@ -3,6 +3,8 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import cookieParser from "cookie-parser";
+import { requestTimeout } from "./middleware";
+import { startCacheUpdater } from "./cache";
 
 const app = express();
 const httpServer = createServer(app);
@@ -23,6 +25,8 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
+
+app.use(requestTimeout);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -62,6 +66,8 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  startCacheUpdater();
+  
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
