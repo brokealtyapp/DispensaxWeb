@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { DataPagination } from "@/components/DataPagination";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -158,6 +159,8 @@ export function WarehousePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [supplierSearchQuery, setSupplierSearchQuery] = useState("");
   const [supplierStatusFilter, setSupplierStatusFilter] = useState<string>("all");
+  const [supplierPage, setSupplierPage] = useState(1);
+  const SUPPLIERS_PER_PAGE = 10;
   const [isEntryDialogOpen, setIsEntryDialogOpen] = useState(false);
   const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
   const [isSupplierDialogOpen, setIsSupplierDialogOpen] = useState(false);
@@ -349,15 +352,39 @@ export function WarehousePage() {
     }
   };
 
-  const filteredSuppliers = suppliers.filter((supplier) => {
-    const matchesSearch = supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase()) ||
-      supplier.code?.toLowerCase().includes(supplierSearchQuery.toLowerCase()) ||
-      supplier.contactName?.toLowerCase().includes(supplierSearchQuery.toLowerCase());
-    const matchesStatus = supplierStatusFilter === "all" || 
-      (supplierStatusFilter === "active" && supplier.isActive) ||
-      (supplierStatusFilter === "inactive" && !supplier.isActive);
-    return matchesSearch && matchesStatus;
-  });
+  const filteredSuppliers = useMemo(() => {
+    return suppliers.filter((supplier) => {
+      const matchesSearch = supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase()) ||
+        supplier.code?.toLowerCase().includes(supplierSearchQuery.toLowerCase()) ||
+        supplier.contactName?.toLowerCase().includes(supplierSearchQuery.toLowerCase());
+      const matchesStatus = supplierStatusFilter === "all" || 
+        (supplierStatusFilter === "active" && supplier.isActive) ||
+        (supplierStatusFilter === "inactive" && !supplier.isActive);
+      return matchesSearch && matchesStatus;
+    });
+  }, [suppliers, supplierSearchQuery, supplierStatusFilter]);
+
+  const paginatedSuppliers = useMemo(() => {
+    const startIndex = (supplierPage - 1) * SUPPLIERS_PER_PAGE;
+    return filteredSuppliers.slice(startIndex, startIndex + SUPPLIERS_PER_PAGE);
+  }, [filteredSuppliers, supplierPage]);
+
+  useEffect(() => {
+    const totalPages = Math.ceil(filteredSuppliers.length / SUPPLIERS_PER_PAGE);
+    if (supplierPage > totalPages && totalPages > 0) {
+      setSupplierPage(totalPages);
+    }
+  }, [filteredSuppliers.length, supplierPage]);
+
+  const handleSupplierSearchChange = (value: string) => {
+    setSupplierSearchQuery(value);
+    setSupplierPage(1);
+  };
+
+  const handleSupplierFilterChange = (value: string) => {
+    setSupplierStatusFilter(value);
+    setSupplierPage(1);
+  };
 
   const filteredInventory = inventory.filter((item) =>
     item.product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -862,12 +889,12 @@ export function WarehousePage() {
                   <Input
                     placeholder="Buscar proveedor..."
                     value={supplierSearchQuery}
-                    onChange={(e) => setSupplierSearchQuery(e.target.value)}
+                    onChange={(e) => handleSupplierSearchChange(e.target.value)}
                     className="pl-9 w-64"
                     data-testid="input-search-supplier"
                   />
                 </div>
-                <Select value={supplierStatusFilter} onValueChange={setSupplierStatusFilter}>
+                <Select value={supplierStatusFilter} onValueChange={handleSupplierFilterChange}>
                   <SelectTrigger className="w-36" data-testid="select-supplier-status">
                     <SelectValue placeholder="Estado" />
                   </SelectTrigger>
@@ -925,7 +952,7 @@ export function WarehousePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredSuppliers.map((supplier) => (
+                    {paginatedSuppliers.map((supplier) => (
                       <TableRow key={supplier.id} data-testid={`row-supplier-${supplier.id}`}>
                         <TableCell className="font-medium">{supplier.name}</TableCell>
                         <TableCell className="text-muted-foreground font-mono text-sm">
@@ -971,6 +998,16 @@ export function WarehousePage() {
                     ))}
                   </TableBody>
                 </Table>
+              )}
+
+              {filteredSuppliers.length > SUPPLIERS_PER_PAGE && (
+                <DataPagination
+                  currentPage={supplierPage}
+                  totalItems={filteredSuppliers.length}
+                  itemsPerPage={SUPPLIERS_PER_PAGE}
+                  onPageChange={setSupplierPage}
+                  className="mt-4"
+                />
               )}
             </CardContent>
           </Card>
