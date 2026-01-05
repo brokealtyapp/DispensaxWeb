@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,7 @@ import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatDateShort, formatTime } from "@/lib/utils";
+import { DataPagination } from "@/components/DataPagination";
 import type { Product, WarehouseMovement } from "@shared/schema";
 
 const productSchema = z.object({
@@ -121,6 +122,8 @@ export function ProductsPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [currentPage, setCurrentPage] = useState(1);
+  const PRODUCTS_PER_PAGE = 12;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
@@ -261,17 +264,46 @@ export function ProductsPage() {
     }).format(num);
   };
 
-  const filteredProducts = products.filter((product) => {
-    const matchesSearch =
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.code?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = categoryFilter === "all" || product.category === categoryFilter;
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "active" && product.isActive) ||
-      (statusFilter === "inactive" && !product.isActive);
-    return matchesSearch && matchesCategory && matchesStatus;
-  });
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
+      const matchesSearch =
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.code?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = categoryFilter === "all" || product.category === categoryFilter;
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" && product.isActive) ||
+        (statusFilter === "inactive" && !product.isActive);
+      return matchesSearch && matchesCategory && matchesStatus;
+    });
+  }, [products, searchQuery, categoryFilter, statusFilter]);
+
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
+    return filteredProducts.slice(startIndex, startIndex + PRODUCTS_PER_PAGE);
+  }, [filteredProducts, currentPage]);
+
+  useEffect(() => {
+    const totalPages = Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE);
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages);
+    }
+  }, [filteredProducts.length, currentPage]);
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setCurrentPage(1);
+  };
+
+  const handleCategoryChange = (value: string) => {
+    setCategoryFilter(value);
+    setCurrentPage(1);
+  };
+
+  const handleStatusChange = (value: string) => {
+    setStatusFilter(value);
+    setCurrentPage(1);
+  };
 
   const stats = {
     total: products.length,
@@ -387,12 +419,12 @@ export function ProductsPage() {
           <Input
             placeholder="Buscar por nombre o código..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-10"
             data-testid="input-search-products"
           />
         </div>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+        <Select value={categoryFilter} onValueChange={handleCategoryChange}>
           <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-category-filter">
             <SelectValue placeholder="Categoría" />
           </SelectTrigger>
@@ -405,7 +437,7 @@ export function ProductsPage() {
             <SelectItem value="otros">Otros</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={handleStatusChange}>
           <SelectTrigger className="w-full sm:w-[140px]" data-testid="select-status-filter">
             <SelectValue placeholder="Estado" />
           </SelectTrigger>
@@ -437,7 +469,7 @@ export function ProductsPage() {
 
       {viewMode === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filteredProducts.map((product) => (
+          {paginatedProducts.map((product) => (
             <Card
               key={product.id}
               className={`hover-elevate cursor-pointer ${!product.isActive ? "opacity-60" : ""}`}
@@ -552,7 +584,7 @@ export function ProductsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredProducts.map((product) => (
+              {paginatedProducts.map((product) => (
                 <TableRow key={product.id} data-testid={`row-product-${product.id}`}>
                   <TableCell className="font-medium">{product.name}</TableCell>
                   <TableCell>{product.code || "-"}</TableCell>
@@ -617,6 +649,15 @@ export function ProductsPage() {
             </TableBody>
           </Table>
         </Card>
+      )}
+
+      {filteredProducts.length > PRODUCTS_PER_PAGE && (
+        <DataPagination
+          currentPage={currentPage}
+          totalItems={filteredProducts.length}
+          itemsPerPage={PRODUCTS_PER_PAGE}
+          onPageChange={setCurrentPage}
+        />
       )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
