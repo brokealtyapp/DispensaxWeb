@@ -29,6 +29,7 @@ import { CalendarPage } from "@/pages/calendar";
 import { ResetPasswordPage } from "@/pages/reset-password";
 import { SupervisorPage } from "@/pages/supervisor";
 import { SupervisorsPage } from "@/pages/supervisors";
+import UsersPage from "@/pages/users";
 import { AlmacenPanelPage } from "@/pages/almacen-panel";
 import { ContabilidadPanelPage } from "@/pages/contabilidad-panel";
 import { ProductsPage } from "@/pages/products";
@@ -221,6 +222,7 @@ function ProtectedRoutes() {
               <Route path="/rh">{() => <ProtectedRoute path="/rh" component={HRPage} />}</Route>
               <Route path="/reportes">{() => <ProtectedRoute path="/reportes" component={ReportsPage} />}</Route>
               <Route path="/supervisores">{() => <ProtectedRoute path="/supervisores" component={SupervisorsPage} />}</Route>
+              <Route path="/usuarios">{() => <ProtectedRoute path="/usuarios" component={UsersPage} />}</Route>
               <Route path="/configuracion">{() => <ProtectedRoute path="/configuracion" component={SettingsPage} />}</Route>
               <Route component={NotFound} />
             </Switch>

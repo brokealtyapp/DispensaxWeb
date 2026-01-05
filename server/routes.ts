@@ -1378,7 +1378,9 @@ export async function registerRoutes(
       const { db } = await import("./db");
       const { users } = await import("@shared/schema");
       const allUsers = await db.select().from(users);
-      res.json(allUsers);
+      // Omitir password de la respuesta por seguridad
+      const usersWithoutPassword = allUsers.map(({ password, ...user }) => user);
+      res.json(usersWithoutPassword);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener usuarios" });
     }
@@ -1487,6 +1489,112 @@ export async function registerRoutes(
       }
       console.error("Error changing password:", error);
       res.status(500).json({ error: "Error al cambiar contraseña" });
+    }
+  });
+
+  // ==================== GESTIÓN DE USUARIOS (ADMIN) ====================
+
+  const adminUserSchema = z.object({
+    username: z.string().min(3),
+    password: z.string().min(6).optional(),
+    fullName: z.string().min(2),
+    email: z.string().email().or(z.literal("")).optional(),
+    phone: z.string().optional(),
+    role: z.string().min(1),
+    assignedZone: z.string().optional(),
+    isActive: z.boolean().optional(),
+  });
+
+  // Crear usuario (solo admin)
+  app.post("/api/admin/users", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const validatedData = adminUserSchema.parse(req.body);
+      
+      if (!validatedData.password) {
+        return res.status(400).json({ error: "La contraseña es requerida" });
+      }
+
+      const { db } = await import("./db");
+      const { users } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      // Verificar que el username no exista
+      const existing = await db.select().from(users).where(eq(users.username, validatedData.username)).limit(1);
+      if (existing.length > 0) {
+        return res.status(400).json({ error: "El nombre de usuario ya existe" });
+      }
+      
+      const bcrypt = await import("bcryptjs");
+      const hashedPassword = await bcrypt.hash(validatedData.password, 10);
+      
+      const [newUser] = await db.insert(users).values({
+        username: validatedData.username,
+        password: hashedPassword,
+        fullName: validatedData.fullName,
+        email: validatedData.email || null,
+        phone: validatedData.phone || null,
+        role: validatedData.role,
+        assignedZone: validatedData.assignedZone || null,
+        isActive: validatedData.isActive ?? true,
+      }).returning();
+      
+      const { password, ...userWithoutPassword } = newUser;
+      res.status(201).json(userWithoutPassword);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error creating user:", error);
+      res.status(500).json({ error: "Error al crear usuario" });
+    }
+  });
+
+  // Actualizar usuario (solo admin - todos los campos)
+  app.patch("/api/admin/users/:id", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const validatedData = adminUserSchema.partial().parse(req.body);
+      
+      const { db } = await import("./db");
+      const { users } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      const updateData: Record<string, any> = {};
+      
+      if (validatedData.username !== undefined) updateData.username = validatedData.username;
+      if (validatedData.fullName !== undefined) updateData.fullName = validatedData.fullName;
+      if (validatedData.email !== undefined) updateData.email = validatedData.email || null;
+      if (validatedData.phone !== undefined) updateData.phone = validatedData.phone || null;
+      if (validatedData.role !== undefined) updateData.role = validatedData.role;
+      if (validatedData.assignedZone !== undefined) updateData.assignedZone = validatedData.assignedZone || null;
+      if (validatedData.isActive !== undefined) updateData.isActive = validatedData.isActive;
+      
+      // Si se proporciona contraseña, hashearla
+      if (validatedData.password) {
+        const bcrypt = await import("bcryptjs");
+        updateData.password = await bcrypt.hash(validatedData.password, 10);
+      }
+      
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ error: "No se proporcionaron campos para actualizar" });
+      }
+      
+      const [updatedUser] = await db.update(users)
+        .set(updateData)
+        .where(eq(users.id, req.params.id))
+        .returning();
+      
+      if (!updatedUser) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+      }
+      
+      const { password, ...userWithoutPassword } = updatedUser;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error updating user:", error);
+      res.status(500).json({ error: "Error al actualizar usuario" });
     }
   });
 

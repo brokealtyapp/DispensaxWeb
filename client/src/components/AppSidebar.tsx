@@ -86,6 +86,7 @@ const finanzasItems: MenuItem[] = [
 ];
 
 const adminItems: MenuItem[] = [
+  { icon: Users, label: "Gestión Usuarios", href: "/usuarios", roles: ["admin"] },
   { icon: UserCog, label: "Gestión Supervisores", href: "/supervisores", roles: ["admin"] },
   { icon: Users, label: "Recursos Humanos", href: "/rh", roles: ["admin", "rh"] },
   { icon: FileText, label: "Reportes", href: "/reportes", roles: ["admin"] },
