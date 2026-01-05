@@ -84,11 +84,18 @@ client/src/
 - Recolección de efectivo
 - Reporte de problemas
 
-### 4. Almacén
-- Inventario general
-- Movimientos (Kardex)
-- Alertas de stock bajo
-- Gestión de productos
+### 4. Almacén (100% COMPLETO - 5 Enero 2026)
+- Inventario general con valorización de costo promedio ponderado
+- Movimientos (Kardex) con filtros por tipo y paginación
+- Alertas de stock bajo configurables por producto
+- Gestión de productos y proveedores
+- Integración automática con Compras (recepciones crean entradas)
+- Validación FEFO (First Expired, First Out) para salidas
+- Ajustes de inventario físico vs sistema
+- Registro de mermas con categorías (caducidad, daño, robo, otros)
+- Trazabilidad de lotes en movimientos
+- Exportación CSV de inventario, movimientos y lotes
+- Sincronización automática con máquinas (salida_maquina)
 
 ### 5. Contabilidad
 - Ventas por máquina
