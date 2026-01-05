@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,12 +12,15 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatsCard } from "@/components/StatsCard";
+import { DataPagination } from "@/components/DataPagination";
 import { formatDateShort } from "@/lib/utils";
 import {
   Car,
@@ -33,9 +36,14 @@ import {
   AlertTriangle,
   ArrowUp,
   ArrowDown,
+  ArrowUpDown,
   Receipt,
   User,
-  Route
+  Route,
+  Pencil,
+  Trash2,
+  Filter,
+  X
 } from "lucide-react";
 import {
   LineChart,
@@ -62,11 +70,13 @@ const vehicleFormSchema = insertVehicleSchema.extend({
   expectedMileage: z.preprocess((val) => val ? parseFloat(val as string) : undefined, z.number().optional()),
   currentOdometer: z.preprocess((val) => val ? parseInt(val as string) : 0, z.number().default(0)),
   nextServiceOdometer: z.preprocess((val) => val ? parseInt(val as string) : undefined, z.number().optional()),
+  assignedUserId: z.string().optional().nullable(),
 });
 
 const fuelRecordFormSchema = insertFuelRecordSchema.extend({
   vehicleId: z.string().min(1, "Selecciona un vehículo"),
   userId: z.string().min(1, "El usuario es requerido"),
+  routeId: z.string().optional().nullable(),
   liters: z.preprocess((val) => parseFloat(val as string), z.number().positive("Los litros deben ser positivos")),
   pricePerLiter: z.preprocess((val) => parseFloat(val as string), z.number().positive("El precio debe ser positivo")),
   totalAmount: z.preprocess((val) => parseFloat(val as string), z.number().positive("El total debe ser positivo")),
@@ -99,11 +109,31 @@ const vehicleStatuses = [
   { value: "inactivo", label: "Inactivo", color: "bg-gray-500" },
 ];
 
+type SortField = "recordDate" | "liters" | "totalAmount" | "odometerReading" | "calculatedMileage";
+type SortDirection = "asc" | "desc";
+
 export function FuelPage() {
   const [activeTab, setActiveTab] = useState("vehicles");
   const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false);
   const [fuelDialogOpen, setFuelDialogOpen] = useState(false);
-  const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
+  const [editingVehicle, setEditingVehicle] = useState<any | null>(null);
+  const [vehicleToDelete, setVehicleToDelete] = useState<string | null>(null);
+  const [fuelRecordToDelete, setFuelRecordToDelete] = useState<string | null>(null);
+  
+  const [vehiclePage, setVehiclePage] = useState(1);
+  const [recordsPage, setRecordsPage] = useState(1);
+  const itemsPerPage = 9;
+  const recordsPerPage = 10;
+  
+  const [filterVehicleId, setFilterVehicleId] = useState<string>("");
+  const [filterUserId, setFilterUserId] = useState<string>("");
+  const [filterStartDate, setFilterStartDate] = useState<string>("");
+  const [filterEndDate, setFilterEndDate] = useState<string>("");
+  const [showFilters, setShowFilters] = useState(false);
+  
+  const [sortField, setSortField] = useState<SortField>("recordDate");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  
   const { toast } = useToast();
 
   const { data: vehicles = [], isLoading: loadingVehicles } = useQuery<any[]>({
@@ -138,6 +168,7 @@ export function FuelPage() {
       color: "",
       notes: "",
       currentOdometer: 0,
+      assignedUserId: null,
     },
   });
 
@@ -146,6 +177,7 @@ export function FuelPage() {
     defaultValues: {
       vehicleId: "",
       userId: "",
+      routeId: null,
       fuelType: "gasolina_regular",
       liters: 0,
       pricePerLiter: 0,
@@ -171,6 +203,33 @@ export function FuelPage() {
     },
   });
 
+  const updateVehicleMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<VehicleFormData> }) =>
+      apiRequest("PATCH", `/api/vehicles/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
+      setVehicleDialogOpen(false);
+      setEditingVehicle(null);
+      vehicleForm.reset();
+      toast({ title: "Vehículo actualizado", description: "Los cambios se han guardado correctamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo actualizar el vehículo", variant: "destructive" });
+    },
+  });
+
+  const deleteVehicleMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/vehicles/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
+      setVehicleToDelete(null);
+      toast({ title: "Vehículo eliminado", description: "El vehículo se ha eliminado correctamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo eliminar el vehículo", variant: "destructive" });
+    },
+  });
+
   const createFuelRecordMutation = useMutation({
     mutationFn: (data: FuelRecordFormData) => apiRequest("POST", "/api/fuel-records", data),
     onSuccess: () => {
@@ -186,8 +245,52 @@ export function FuelPage() {
     },
   });
 
+  const deleteFuelRecordMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/fuel-records/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/fuel-records"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/fuel-stats"] });
+      setFuelRecordToDelete(null);
+      toast({ title: "Registro eliminado", description: "El registro de combustible se ha eliminado correctamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo eliminar el registro", variant: "destructive" });
+    },
+  });
+
+  const openEditVehicle = (vehicle: any) => {
+    setEditingVehicle(vehicle);
+    vehicleForm.reset({
+      plate: vehicle.plate || "",
+      brand: vehicle.brand || "",
+      model: vehicle.model || "",
+      type: vehicle.type || "camioneta",
+      status: vehicle.status || "activo",
+      fuelType: vehicle.fuelType || "gasolina_regular",
+      color: vehicle.color || "",
+      notes: vehicle.notes || "",
+      year: vehicle.year,
+      tankCapacity: vehicle.tankCapacity,
+      expectedMileage: vehicle.expectedMileage,
+      currentOdometer: vehicle.currentOdometer || 0,
+      nextServiceOdometer: vehicle.nextServiceOdometer,
+      assignedUserId: vehicle.assignedUserId || null,
+    });
+    setVehicleDialogOpen(true);
+  };
+
+  const closeVehicleDialog = () => {
+    setVehicleDialogOpen(false);
+    setEditingVehicle(null);
+    vehicleForm.reset();
+  };
+
   const onSubmitVehicle = (data: VehicleFormData) => {
-    createVehicleMutation.mutate(data);
+    if (editingVehicle) {
+      updateVehicleMutation.mutate({ id: editingVehicle.id, data });
+    } else {
+      createVehicleMutation.mutate(data);
+    }
   };
 
   const onSubmitFuelRecord = (data: FuelRecordFormData) => {
@@ -215,11 +318,104 @@ export function FuelPage() {
     );
   };
 
+  const filteredRecords = useMemo(() => {
+    let records = [...fuelRecords];
+    
+    if (filterVehicleId) {
+      records = records.filter((r: any) => r.vehicleId === filterVehicleId);
+    }
+    if (filterUserId) {
+      records = records.filter((r: any) => r.userId === filterUserId);
+    }
+    if (filterStartDate) {
+      const start = new Date(filterStartDate);
+      records = records.filter((r: any) => new Date(r.recordDate) >= start);
+    }
+    if (filterEndDate) {
+      const end = new Date(filterEndDate);
+      end.setHours(23, 59, 59, 999);
+      records = records.filter((r: any) => new Date(r.recordDate) <= end);
+    }
+    
+    records.sort((a: any, b: any) => {
+      let aVal: any, bVal: any;
+      
+      switch (sortField) {
+        case "recordDate":
+          aVal = new Date(a.recordDate).getTime();
+          bVal = new Date(b.recordDate).getTime();
+          break;
+        case "liters":
+          aVal = parseFloat(a.liters) || 0;
+          bVal = parseFloat(b.liters) || 0;
+          break;
+        case "totalAmount":
+          aVal = parseFloat(a.totalAmount) || 0;
+          bVal = parseFloat(b.totalAmount) || 0;
+          break;
+        case "odometerReading":
+          aVal = parseInt(a.odometerReading) || 0;
+          bVal = parseInt(b.odometerReading) || 0;
+          break;
+        case "calculatedMileage":
+          aVal = parseFloat(a.calculatedMileage) || 0;
+          bVal = parseFloat(b.calculatedMileage) || 0;
+          break;
+        default:
+          aVal = 0;
+          bVal = 0;
+      }
+      
+      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+    });
+    
+    return records;
+  }, [fuelRecords, filterVehicleId, filterUserId, filterStartDate, filterEndDate, sortField, sortDirection]);
+
+  const clearFilters = () => {
+    setFilterVehicleId("");
+    setFilterUserId("");
+    setFilterStartDate("");
+    setFilterEndDate("");
+    setRecordsPage(1);
+  };
+
+  const hasActiveFilters = filterVehicleId || filterUserId || filterStartDate || filterEndDate;
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("desc");
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) return <ArrowUpDown className="h-4 w-4 ml-1" />;
+    return sortDirection === "asc" ? 
+      <ArrowUp className="h-4 w-4 ml-1" /> : 
+      <ArrowDown className="h-4 w-4 ml-1" />;
+  };
+
+  const paginatedVehicles = vehicles.slice(
+    (vehiclePage - 1) * itemsPerPage,
+    vehiclePage * itemsPerPage
+  );
+
+  const paginatedRecords = filteredRecords.slice(
+    (recordsPage - 1) * recordsPerPage,
+    recordsPage * recordsPerPage
+  );
+
+  const totalVehiclePages = Math.ceil(vehicles.length / itemsPerPage);
+  const totalRecordPages = Math.ceil(filteredRecords.length / recordsPerPage);
+
   const performanceData = fuelRecords
     .filter((r: any) => r.calculatedMileage)
     .slice(0, 10)
     .reverse()
-    .map((r: any, idx: number) => ({
+    .map((r: any) => ({
       name: formatDateShort(r.recordDate).split('/').slice(0, 2).join('/'),
       rendimiento: parseFloat(r.calculatedMileage || 0),
       vehiculo: r.vehicle?.plate || "",
@@ -249,25 +445,30 @@ export function FuelPage() {
     return acc;
   }, []);
 
+  const activeRoutes = routes.filter((r: any) => r.status === "active" || r.status === "in_progress");
+
   return (
     <ScrollArea className="h-full">
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-page-title">Combustible</h1>
             <p className="text-muted-foreground">Gestión de vehículos y control de combustible</p>
           </div>
           <div className="flex gap-2">
-            <Dialog open={vehicleDialogOpen} onOpenChange={setVehicleDialogOpen}>
+            <Dialog open={vehicleDialogOpen} onOpenChange={(open) => {
+              if (!open) closeVehicleDialog();
+              else setVehicleDialogOpen(true);
+            }}>
               <DialogTrigger asChild>
                 <Button variant="outline" data-testid="button-add-vehicle">
                   <Car className="mr-2 h-4 w-4" />
                   Agregar Vehículo
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl">
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Nuevo Vehículo</DialogTitle>
+                  <DialogTitle>{editingVehicle ? "Editar Vehículo" : "Nuevo Vehículo"}</DialogTitle>
                 </DialogHeader>
                 <Form {...vehicleForm}>
                   <form onSubmit={vehicleForm.handleSubmit(onSubmitVehicle)} className="space-y-4">
@@ -339,6 +540,28 @@ export function FuelPage() {
                               <SelectContent>
                                 {vehicleTypes.map((t) => (
                                   <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={vehicleForm.control}
+                        name="status"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Estado</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value || "activo"}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-vehicle-status">
+                                  <SelectValue placeholder="Seleccionar estado" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {vehicleStatuses.map((s) => (
+                                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
@@ -420,13 +643,73 @@ export function FuelPage() {
                           </FormItem>
                         )}
                       />
+                      <FormField
+                        control={vehicleForm.control}
+                        name="nextServiceOdometer"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Próximo Servicio (km)</FormLabel>
+                            <FormControl>
+                              <Input type="number" placeholder="55000" {...field} data-testid="input-vehicle-next-service" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={vehicleForm.control}
+                        name="assignedUserId"
+                        render={({ field }) => (
+                          <FormItem className="col-span-2">
+                            <FormLabel>Usuario Asignado</FormLabel>
+                            <Select 
+                              onValueChange={(val) => field.onChange(val === "none" ? null : val)} 
+                              value={field.value || "none"}
+                            >
+                              <FormControl>
+                                <SelectTrigger data-testid="select-vehicle-assigned-user">
+                                  <SelectValue placeholder="Seleccionar usuario (opcional)" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="none">Sin asignar</SelectItem>
+                                {users.map((u: any) => (
+                                  <SelectItem key={u.id} value={u.id}>
+                                    {u.fullName || u.username}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     </div>
+                    <FormField
+                      control={vehicleForm.control}
+                      name="notes"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Notas</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Observaciones..." {...field} value={field.value || ""} data-testid="input-vehicle-notes" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <div className="flex justify-end gap-2 pt-4">
-                      <Button type="button" variant="outline" onClick={() => setVehicleDialogOpen(false)}>
+                      <Button type="button" variant="outline" onClick={closeVehicleDialog} data-testid="button-cancel-vehicle">
                         Cancelar
                       </Button>
-                      <Button type="submit" disabled={createVehicleMutation.isPending} data-testid="button-submit-vehicle">
-                        {createVehicleMutation.isPending ? "Guardando..." : "Guardar Vehículo"}
+                      <Button 
+                        type="submit" 
+                        disabled={createVehicleMutation.isPending || updateVehicleMutation.isPending} 
+                        data-testid="button-submit-vehicle"
+                      >
+                        {(createVehicleMutation.isPending || updateVehicleMutation.isPending) 
+                          ? "Guardando..." 
+                          : editingVehicle ? "Actualizar" : "Guardar Vehículo"}
                       </Button>
                     </div>
                   </form>
@@ -441,7 +724,7 @@ export function FuelPage() {
                   Registrar Carga
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl">
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Nueva Carga de Combustible</DialogTitle>
                 </DialogHeader>
@@ -498,6 +781,34 @@ export function FuelPage() {
                       />
                       <FormField
                         control={fuelForm.control}
+                        name="routeId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Ruta (opcional)</FormLabel>
+                            <Select 
+                              onValueChange={(val) => field.onChange(val === "none" ? null : val)} 
+                              value={field.value || "none"}
+                            >
+                              <FormControl>
+                                <SelectTrigger data-testid="select-fuel-route">
+                                  <SelectValue placeholder="Seleccionar ruta" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="none">Sin ruta asociada</SelectItem>
+                                {activeRoutes.map((r: any) => (
+                                  <SelectItem key={r.id} value={r.id}>
+                                    {r.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={fuelForm.control}
                         name="fuelType"
                         render={({ field }) => (
                           <FormItem>
@@ -525,7 +836,7 @@ export function FuelPage() {
                           <FormItem>
                             <FormLabel>Gasolinera</FormLabel>
                             <FormControl>
-                              <Input placeholder="Pemex Norte" {...field} value={field.value || ""} data-testid="input-fuel-station" />
+                              <Input placeholder="Shell Norte" {...field} value={field.value || ""} data-testid="input-fuel-station" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -561,7 +872,7 @@ export function FuelPage() {
                               <Input
                                 type="number"
                                 step="0.01"
-                                placeholder="23.50"
+                                placeholder="290.50"
                                 {...field}
                                 onBlur={calculateTotal}
                                 data-testid="input-fuel-price"
@@ -581,7 +892,7 @@ export function FuelPage() {
                               <Input
                                 type="number"
                                 step="0.01"
-                                placeholder="1069.25"
+                                placeholder="13222.75"
                                 {...field}
                                 data-testid="input-fuel-total"
                               />
@@ -647,7 +958,7 @@ export function FuelPage() {
                       )}
                     />
                     <div className="flex justify-end gap-2 pt-4">
-                      <Button type="button" variant="outline" onClick={() => setFuelDialogOpen(false)}>
+                      <Button type="button" variant="outline" onClick={() => setFuelDialogOpen(false)} data-testid="button-cancel-fuel">
                         Cancelar
                       </Button>
                       <Button type="submit" disabled={createFuelRecordMutation.isPending} data-testid="button-submit-fuel">
@@ -743,120 +1054,369 @@ export function FuelPage() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {vehicles.map((vehicle: any) => (
-                  <Card key={vehicle.id} className="hover-elevate" data-testid={`card-vehicle-${vehicle.id}`}>
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg" data-testid={`text-vehicle-plate-${vehicle.id}`}>{vehicle.plate}</CardTitle>
-                        {getStatusBadge(vehicle.status)}
-                      </div>
-                      <CardDescription data-testid={`text-vehicle-model-${vehicle.id}`}>
-                        {vehicle.brand} {vehicle.model} {vehicle.year && `(${vehicle.year})`}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div className="flex items-center gap-2">
-                          <Fuel className="h-4 w-4 text-muted-foreground" />
-                          <span data-testid={`text-vehicle-fuel-type-${vehicle.id}`}>{fuelTypes.find((f) => f.value === vehicle.fuelType)?.label || vehicle.fuelType}</span>
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {paginatedVehicles.map((vehicle: any) => (
+                    <Card key={vehicle.id} className="hover-elevate" data-testid={`card-vehicle-${vehicle.id}`}>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <CardTitle className="text-lg" data-testid={`text-vehicle-plate-${vehicle.id}`}>{vehicle.plate}</CardTitle>
+                          <div className="flex items-center gap-1">
+                            {getStatusBadge(vehicle.status)}
+                            <Button 
+                              size="icon" 
+                              variant="ghost" 
+                              onClick={() => openEditVehicle(vehicle)}
+                              data-testid={`button-edit-vehicle-${vehicle.id}`}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog open={vehicleToDelete === vehicle.id} onOpenChange={(open) => !open && setVehicleToDelete(null)}>
+                              <AlertDialogTrigger asChild>
+                                <Button 
+                                  size="icon" 
+                                  variant="ghost" 
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => setVehicleToDelete(vehicle.id)}
+                                  data-testid={`button-delete-vehicle-${vehicle.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>¿Eliminar vehículo?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Esta acción no se puede deshacer. Se eliminará el vehículo {vehicle.plate} permanentemente.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel data-testid="button-cancel-delete-vehicle">Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => deleteVehicleMutation.mutate(vehicle.id)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    data-testid="button-confirm-delete-vehicle"
+                                  >
+                                    {deleteVehicleMutation.isPending ? "Eliminando..." : "Eliminar"}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Gauge className="h-4 w-4 text-muted-foreground" />
-                          <span data-testid={`text-vehicle-odometer-${vehicle.id}`}>{vehicle.currentOdometer?.toLocaleString() || 0} km</span>
+                        <CardDescription data-testid={`text-vehicle-model-${vehicle.id}`}>
+                          {vehicle.brand} {vehicle.model} {vehicle.year && `(${vehicle.year})`}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Fuel className="h-4 w-4 text-muted-foreground" />
+                            <span data-testid={`text-vehicle-fuel-type-${vehicle.id}`}>{fuelTypes.find((f) => f.value === vehicle.fuelType)?.label || vehicle.fuelType}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Gauge className="h-4 w-4 text-muted-foreground" />
+                            <span data-testid={`text-vehicle-odometer-${vehicle.id}`}>{vehicle.currentOdometer?.toLocaleString() || 0} km</span>
+                          </div>
                         </div>
-                      </div>
-                      {vehicle.expectedMileage && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                          <span data-testid={`text-vehicle-expected-mileage-${vehicle.id}`}>Rendimiento esperado: {vehicle.expectedMileage} km/L</span>
+                        {vehicle.expectedMileage && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                            <span data-testid={`text-vehicle-expected-mileage-${vehicle.id}`}>Rendimiento esperado: {vehicle.expectedMileage} km/L</span>
+                          </div>
+                        )}
+                        {vehicle.assignedUser && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <User className="h-4 w-4 text-muted-foreground" />
+                            <span data-testid={`text-vehicle-user-${vehicle.id}`}>{vehicle.assignedUser.fullName || vehicle.assignedUser.username}</span>
+                          </div>
+                        )}
+                        <div className="pt-2 border-t flex items-center justify-between">
+                          <Badge variant="outline" className="text-xs" data-testid={`badge-vehicle-type-${vehicle.id}`}>
+                            {vehicleTypes.find((t) => t.value === vehicle.type)?.label || vehicle.type}
+                          </Badge>
+                          {vehicle.color && (
+                            <span className="text-xs text-muted-foreground">{vehicle.color}</span>
+                          )}
                         </div>
-                      )}
-                      {vehicle.assignedUser && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <User className="h-4 w-4 text-muted-foreground" />
-                          <span data-testid={`text-vehicle-user-${vehicle.id}`}>{vehicle.assignedUser.fullName || vehicle.assignedUser.username}</span>
-                        </div>
-                      )}
-                      <div className="pt-2 border-t">
-                        <Badge variant="outline" className="text-xs" data-testid={`badge-vehicle-type-${vehicle.id}`}>
-                          {vehicleTypes.find((t) => t.value === vehicle.type)?.label || vehicle.type}
-                        </Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+                
+                {totalVehiclePages > 1 && (
+                  <DataPagination
+                    currentPage={vehiclePage}
+                    onPageChange={setVehiclePage}
+                    totalItems={vehicles.length}
+                    itemsPerPage={itemsPerPage}
+                  />
+                )}
+              </>
             )}
           </TabsContent>
 
           <TabsContent value="records" className="space-y-4">
-            {loadingRecords ? (
-              <div className="space-y-2">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <Skeleton key={i} className="h-20" />
-                ))}
-              </div>
-            ) : fuelRecords.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <Fuel className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-lg font-medium">No hay cargas registradas</p>
-                  <p className="text-muted-foreground mb-4">Registra la primera carga de combustible</p>
-                  <Button onClick={() => setFuelDialogOpen(true)} data-testid="button-add-first-fuel">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Registrar Carga
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="text-lg">Registros de Cargas</CardTitle>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setShowFilters(!showFilters)}
+                    data-testid="button-toggle-filters"
+                  >
+                    <Filter className="h-4 w-4 mr-2" />
+                    Filtros
+                    {hasActiveFilters && (
+                      <Badge variant="secondary" className="ml-2">{
+                        [filterVehicleId, filterUserId, filterStartDate, filterEndDate].filter(Boolean).length
+                      }</Badge>
+                    )}
                   </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-2">
-                {fuelRecords.map((record: any) => (
-                  <Card key={record.id} className="hover-elevate" data-testid={`card-fuel-record-${record.id}`}>
-                    <CardContent className="py-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                            <Fuel className="h-5 w-5 text-primary" />
-                          </div>
-                          <div>
-                            <p className="font-medium" data-testid={`text-record-liters-${record.id}`}>
-                              {record.vehicle?.plate || "Vehículo"} - {parseFloat(record.liters).toFixed(2)} L
-                            </p>
-                            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                              <span data-testid={`text-record-date-${record.id}`}>{formatDateShort(new Date(record.recordDate))}</span>
-                              {record.gasStation && (
-                                <>
-                                  <span>•</span>
-                                  <span data-testid={`text-record-station-${record.id}`}>{record.gasStation}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-lg" data-testid={`text-record-amount-${record.id}`}>
-                            ${parseFloat(record.totalAmount).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
-                          </p>
-                          <div className="flex items-center gap-2 text-sm">
-                            {record.calculatedMileage && (
-                              <Badge variant="outline" className="text-xs" data-testid={`badge-record-mileage-${record.id}`}>
-                                {parseFloat(record.calculatedMileage).toFixed(1)} km/L
-                              </Badge>
-                            )}
-                            {record.distanceTraveled && (
-                              <span className="text-muted-foreground" data-testid={`text-record-distance-${record.id}`}>
-                                {parseFloat(record.distanceTraveled).toLocaleString()} km
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                </div>
+                
+                {showFilters && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t mt-4">
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">Vehículo</label>
+                      <Select 
+                        value={filterVehicleId || "all"} 
+                        onValueChange={(val) => {
+                          setFilterVehicleId(val === "all" ? "" : val);
+                          setRecordsPage(1);
+                        }}
+                      >
+                        <SelectTrigger data-testid="filter-vehicle">
+                          <SelectValue placeholder="Todos los vehículos" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos los vehículos</SelectItem>
+                          {vehicles.map((v: any) => (
+                            <SelectItem key={v.id} value={v.id}>{v.plate}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">Conductor</label>
+                      <Select 
+                        value={filterUserId || "all"} 
+                        onValueChange={(val) => {
+                          setFilterUserId(val === "all" ? "" : val);
+                          setRecordsPage(1);
+                        }}
+                      >
+                        <SelectTrigger data-testid="filter-user">
+                          <SelectValue placeholder="Todos los conductores" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos los conductores</SelectItem>
+                          {users.map((u: any) => (
+                            <SelectItem key={u.id} value={u.id}>{u.fullName || u.username}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">Fecha Desde</label>
+                      <Input
+                        type="date"
+                        value={filterStartDate}
+                        onChange={(e) => {
+                          setFilterStartDate(e.target.value);
+                          setRecordsPage(1);
+                        }}
+                        data-testid="filter-start-date"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">Fecha Hasta</label>
+                      <Input
+                        type="date"
+                        value={filterEndDate}
+                        onChange={(e) => {
+                          setFilterEndDate(e.target.value);
+                          setRecordsPage(1);
+                        }}
+                        data-testid="filter-end-date"
+                      />
+                    </div>
+                    {hasActiveFilters && (
+                      <div className="col-span-full">
+                        <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
+                          <X className="h-4 w-4 mr-2" />
+                          Limpiar filtros
+                        </Button>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+                    )}
+                  </div>
+                )}
+              </CardHeader>
+              <CardContent>
+                {loadingRecords ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <Skeleton key={i} className="h-12" />
+                    ))}
+                  </div>
+                ) : filteredRecords.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Fuel className="h-12 w-12 text-muted-foreground mb-4" />
+                    <p className="text-lg font-medium">No hay cargas registradas</p>
+                    <p className="text-muted-foreground mb-4">
+                      {hasActiveFilters ? "No se encontraron registros con los filtros aplicados" : "Registra la primera carga de combustible"}
+                    </p>
+                    {!hasActiveFilters && (
+                      <Button onClick={() => setFuelDialogOpen(true)} data-testid="button-add-first-fuel">
+                        <Plus className="mr-2 h-4 w-4" />
+                        Registrar Carga
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="rounded-md border overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead 
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => toggleSort("recordDate")}
+                              data-testid="sort-date"
+                            >
+                              <div className="flex items-center">
+                                Fecha {getSortIcon("recordDate")}
+                              </div>
+                            </TableHead>
+                            <TableHead>Vehículo</TableHead>
+                            <TableHead>Conductor</TableHead>
+                            <TableHead 
+                              className="cursor-pointer hover:bg-muted/50 text-right"
+                              onClick={() => toggleSort("liters")}
+                              data-testid="sort-liters"
+                            >
+                              <div className="flex items-center justify-end">
+                                Litros {getSortIcon("liters")}
+                              </div>
+                            </TableHead>
+                            <TableHead 
+                              className="cursor-pointer hover:bg-muted/50 text-right"
+                              onClick={() => toggleSort("totalAmount")}
+                              data-testid="sort-total"
+                            >
+                              <div className="flex items-center justify-end">
+                                Total {getSortIcon("totalAmount")}
+                              </div>
+                            </TableHead>
+                            <TableHead 
+                              className="cursor-pointer hover:bg-muted/50 text-right"
+                              onClick={() => toggleSort("odometerReading")}
+                              data-testid="sort-odometer"
+                            >
+                              <div className="flex items-center justify-end">
+                                Odómetro {getSortIcon("odometerReading")}
+                              </div>
+                            </TableHead>
+                            <TableHead 
+                              className="cursor-pointer hover:bg-muted/50 text-right"
+                              onClick={() => toggleSort("calculatedMileage")}
+                              data-testid="sort-mileage"
+                            >
+                              <div className="flex items-center justify-end">
+                                Rendimiento {getSortIcon("calculatedMileage")}
+                              </div>
+                            </TableHead>
+                            <TableHead className="text-right">Acciones</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {paginatedRecords.map((record: any) => (
+                            <TableRow key={record.id} data-testid={`row-fuel-record-${record.id}`}>
+                              <TableCell data-testid={`text-record-date-${record.id}`}>
+                                {formatDateShort(new Date(record.recordDate))}
+                              </TableCell>
+                              <TableCell data-testid={`text-record-vehicle-${record.id}`}>
+                                {record.vehicle?.plate || "—"}
+                              </TableCell>
+                              <TableCell data-testid={`text-record-user-${record.id}`}>
+                                {record.user?.fullName || record.user?.username || "—"}
+                              </TableCell>
+                              <TableCell className="text-right" data-testid={`text-record-liters-${record.id}`}>
+                                {parseFloat(record.liters).toFixed(2)} L
+                              </TableCell>
+                              <TableCell className="text-right font-medium" data-testid={`text-record-amount-${record.id}`}>
+                                ${parseFloat(record.totalAmount).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                              </TableCell>
+                              <TableCell className="text-right" data-testid={`text-record-odometer-${record.id}`}>
+                                {parseInt(record.odometerReading).toLocaleString()} km
+                              </TableCell>
+                              <TableCell className="text-right" data-testid={`text-record-mileage-${record.id}`}>
+                                {record.calculatedMileage ? (
+                                  <Badge variant="outline" className="text-xs">
+                                    {parseFloat(record.calculatedMileage).toFixed(1)} km/L
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <AlertDialog 
+                                  open={fuelRecordToDelete === record.id} 
+                                  onOpenChange={(open) => !open && setFuelRecordToDelete(null)}
+                                >
+                                  <AlertDialogTrigger asChild>
+                                    <Button 
+                                      size="icon" 
+                                      variant="ghost" 
+                                      className="text-destructive hover:text-destructive"
+                                      onClick={() => setFuelRecordToDelete(record.id)}
+                                      data-testid={`button-delete-fuel-${record.id}`}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>¿Eliminar registro?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Esta acción no se puede deshacer. Se eliminará el registro de carga permanentemente.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel data-testid="button-cancel-delete-fuel">Cancelar</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => deleteFuelRecordMutation.mutate(record.id)}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                        data-testid="button-confirm-delete-fuel"
+                                      >
+                                        {deleteFuelRecordMutation.isPending ? "Eliminando..." : "Eliminar"}
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    
+                    {totalRecordPages > 1 && (
+                      <div className="mt-4">
+                        <DataPagination
+                          currentPage={recordsPage}
+                          onPageChange={setRecordsPage}
+                          totalItems={filteredRecords.length}
+                          itemsPerPage={recordsPerPage}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="performance" className="space-y-4">
@@ -949,6 +1509,7 @@ export function FuelPage() {
                           <div
                             key={v.id}
                             className={`flex items-center justify-between p-3 rounded-lg ${isLow ? "bg-red-50 dark:bg-red-950" : "bg-muted/50"}`}
+                            data-testid={`alert-vehicle-${v.id}`}
                           >
                             <div className="flex items-center gap-3">
                               <Car className={`h-5 w-5 ${isLow ? "text-red-500" : "text-muted-foreground"}`} />
@@ -1025,23 +1586,23 @@ export function FuelPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 rounded-lg bg-muted/50">
                       <p className="text-sm text-muted-foreground">Total Registros</p>
-                      <p className="text-2xl font-bold">{fuelStats?.recordCount || 0}</p>
+                      <p className="text-2xl font-bold" data-testid="text-total-records">{fuelStats?.recordCount || 0}</p>
                     </div>
                     <div className="p-4 rounded-lg bg-muted/50">
                       <p className="text-sm text-muted-foreground">Promedio por Carga</p>
-                      <p className="text-2xl font-bold">
+                      <p className="text-2xl font-bold" data-testid="text-avg-per-charge">
                         ${(fuelStats?.recordCount ? (fuelStats?.totalAmount || 0) / fuelStats.recordCount : 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
                       </p>
                     </div>
                     <div className="p-4 rounded-lg bg-muted/50">
                       <p className="text-sm text-muted-foreground">Litros Promedio</p>
-                      <p className="text-2xl font-bold">
+                      <p className="text-2xl font-bold" data-testid="text-avg-liters">
                         {(fuelStats?.recordCount ? (fuelStats?.totalLiters || 0) / fuelStats.recordCount : 0).toFixed(1)} L
                       </p>
                     </div>
                     <div className="p-4 rounded-lg bg-muted/50">
                       <p className="text-sm text-muted-foreground">Vehículos Activos</p>
-                      <p className="text-2xl font-bold">{vehicles.filter((v: any) => v.status === "activo").length}</p>
+                      <p className="text-2xl font-bold" data-testid="text-active-vehicles">{vehicles.filter((v: any) => v.status === "activo").length}</p>
                     </div>
                   </div>
 
@@ -1052,7 +1613,7 @@ export function FuelPage() {
                         .sort((a: any, b: any) => b.gasto - a.gasto)
                         .slice(0, 5)
                         .map((v: any, idx: number) => (
-                          <div key={v.name} className="flex items-center justify-between">
+                          <div key={v.name} className="flex items-center justify-between" data-testid={`top-vehicle-${idx}`}>
                             <div className="flex items-center gap-2">
                               <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0">
                                 {idx + 1}
