@@ -699,14 +699,17 @@ export default function UsersPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Zona</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <Select 
+                        onValueChange={(value) => field.onChange(value === "none" ? "" : value)} 
+                        value={field.value || "none"}
+                      >
                         <FormControl>
                           <SelectTrigger data-testid="select-create-zone">
                             <SelectValue placeholder="Opcional" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">Sin zona</SelectItem>
+                          <SelectItem value="none">Sin zona</SelectItem>
                           {ZONES.map(zone => (
                             <SelectItem key={zone} value={zone}>{zone}</SelectItem>
                           ))}
@@ -838,14 +841,17 @@ export default function UsersPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Zona</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <Select 
+                        onValueChange={(value) => field.onChange(value === "none" ? "" : value)} 
+                        value={field.value || "none"}
+                      >
                         <FormControl>
                           <SelectTrigger data-testid="select-edit-zone">
                             <SelectValue placeholder="Opcional" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">Sin zona</SelectItem>
+                          <SelectItem value="none">Sin zona</SelectItem>
                           {ZONES.map(zone => (
                             <SelectItem key={zone} value={zone}>{zone}</SelectItem>
                           ))}
