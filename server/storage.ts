@@ -114,7 +114,8 @@ export interface IStorage {
   getWarehouseMovements(productId?: string, limit?: number): Promise<(WarehouseMovement & { product: Product })[]>;
   createWarehouseMovement(movement: InsertWarehouseMovement): Promise<WarehouseMovement>;
   registerPurchaseEntry(data: { productId: string; quantity: number; unitCost: number; supplierId?: string; lotNumber: string; expirationDate?: Date; notes?: string; userId?: string }): Promise<WarehouseMovement>;
-  registerSupplierExit(data: { productId: string; quantity: number; destinationUserId: string; notes?: string; userId?: string }): Promise<WarehouseMovement>;
+  registerSupplierExit(data: { productId: string; quantity: number; destinationUserId?: string; notes?: string; userId?: string; movementType?: "salida_abastecedor" | "salida_maquina" }): Promise<WarehouseMovement>;
+  registerInventoryAdjustment(data: { productId: string; physicalCount: number; reason: string; notes?: string; userId?: string }): Promise<WarehouseMovement>;
 
   // ==================== MÓDULO ABASTECEDOR ====================
   
@@ -240,7 +241,7 @@ export interface IStorage {
   // Recepciones de Mercancía
   getPurchaseReceptions(filters?: { orderId?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
   getPurchaseReception(id: string): Promise<any>;
-  createPurchaseReception(reception: InsertPurchaseReception, items: Omit<InsertReceptionItem, 'receptionId'>[]): Promise<PurchaseReception>;
+  createPurchaseReception(reception: InsertPurchaseReception, items: Omit<InsertReceptionItem, 'receptionId'>[], userId?: string): Promise<PurchaseReception>;
   getNextReceptionNumber(): Promise<string>;
   
   // Estadísticas de Compras
@@ -949,9 +950,10 @@ export class DatabaseStorage implements IStorage {
   async registerSupplierExit(data: { 
     productId: string; 
     quantity: number; 
-    destinationUserId: string; 
+    destinationUserId?: string; 
     notes?: string;
     userId?: string;
+    movementType?: "salida_abastecedor" | "salida_maquina";
   }): Promise<WarehouseMovement> {
     const currentInventory = await this.getWarehouseInventoryItem(data.productId);
     const previousStock = currentInventory?.currentStock || 0;
@@ -968,6 +970,8 @@ export class DatabaseStorage implements IStorage {
     // Descontar de lotes (FEFO - primero los más próximos a caducar, ya ordenados por expirationDate)
     const lots = await this.getProductLots(data.productId);
     let remaining = data.quantity;
+    let runningStock = previousStock;
+    const lotDeductions: { lotId: string; lotNumber: string; quantity: number; unitCost: string | null }[] = [];
     
     for (const lot of lots) {
       if (remaining <= 0) break;
@@ -976,19 +980,63 @@ export class DatabaseStorage implements IStorage {
       await db.update(productLots)
         .set({ remainingQuantity: lot.remainingQuantity - toDeduct })
         .where(eq(productLots.id, lot.id));
+      
+      lotDeductions.push({
+        lotId: lot.id,
+        lotNumber: lot.lotNumber,
+        quantity: toDeduct,
+        unitCost: lot.costPrice,
+      });
       remaining -= toDeduct;
     }
 
-    // Registrar movimiento con userId para auditoría
+    // Registrar movimiento con trazabilidad de lotes usados
+    // Creamos UN movimiento principal con los detalles de todos los lotes en notes
+    const lotDetails = lotDeductions.map(l => `Lote ${l.lotNumber}: ${l.quantity} uds`).join(", ");
     const movement = await this.createWarehouseMovement({
       productId: data.productId,
-      movementType: "salida_abastecedor",
+      lotId: lotDeductions.length === 1 ? lotDeductions[0].lotId : undefined,
+      movementType: data.movementType || "salida_abastecedor",
       quantity: data.quantity,
       previousStock,
       newStock,
       destinationUserId: data.destinationUserId,
       userId: data.userId,
-      notes: data.notes,
+      notes: data.notes ? `${data.notes} | Lotes: ${lotDetails}` : `Lotes: ${lotDetails}`,
+    });
+
+    // NOTA: La actualización del inventario del abastecedor se hace en loadProductsFromWarehouse
+    // para evitar duplicación cuando se llama directamente a registerSupplierExit
+
+    return movement;
+  }
+
+  async registerInventoryAdjustment(data: { 
+    productId: string; 
+    physicalCount: number; 
+    reason: string;
+    notes?: string;
+    userId?: string;
+  }): Promise<WarehouseMovement> {
+    const currentInventory = await this.getWarehouseInventoryItem(data.productId);
+    const previousStock = currentInventory?.currentStock || 0;
+    const newStock = data.physicalCount;
+    const difference = newStock - previousStock;
+    
+    // Actualizar inventario con el conteo físico
+    await this.updateWarehouseStock(data.productId, newStock);
+
+    // Registrar movimiento de ajuste con información detallada
+    const movement = await this.createWarehouseMovement({
+      productId: data.productId,
+      movementType: "ajuste_inventario",
+      quantity: Math.abs(difference),
+      previousStock,
+      newStock,
+      userId: data.userId,
+      reference: data.reason,
+      notes: `${difference >= 0 ? "Ajuste positivo" : "Ajuste negativo"} (${difference > 0 ? "+" : ""}${difference} unidades)` + 
+             (data.notes ? ` - ${data.notes}` : ""),
     });
 
     return movement;
@@ -1335,6 +1383,26 @@ export class DatabaseStorage implements IStorage {
         maxCapacity: 20,
         minLevel: 5,
       });
+    }
+    
+    // Sincronizar con inventario de almacén (restar del almacén cuando se carga a máquina)
+    if (load.loadType === "cargado" && load.quantity > 0) {
+      try {
+        const machine = await this.getMachine(load.machineId);
+        const machineName = machine?.name || load.machineId;
+        
+        // Registrar salida del almacén usando FEFO
+        await this.registerSupplierExit({
+          productId: load.productId,
+          quantity: load.quantity,
+          userId: load.userId,
+          movementType: "salida_maquina",
+          notes: `Carga a máquina: ${machineName}` + (load.notes ? ` - ${load.notes}` : ""),
+        });
+      } catch (error) {
+        console.error("Error syncing warehouse inventory on product load:", error);
+        // No lanzar error - la carga a máquina ya se registró, el sync de almacén puede fallar
+      }
     }
     
     return newLoad;
@@ -2294,8 +2362,11 @@ export class DatabaseStorage implements IStorage {
     return { ...reception, order, receivedByUser, items: itemsWithProducts };
   }
 
-  async createPurchaseReception(reception: InsertPurchaseReception, items: Omit<InsertReceptionItem, 'receptionId'>[]): Promise<PurchaseReception> {
+  async createPurchaseReception(reception: InsertPurchaseReception, items: Omit<InsertReceptionItem, 'receptionId'>[], userId?: string): Promise<PurchaseReception> {
     const [newReception] = await db.insert(purchaseReceptions).values(reception).returning();
+    
+    // Obtener datos de la orden para supplierId
+    const order = await this.getPurchaseOrder(reception.orderId);
     
     for (const item of items) {
       await db.insert(receptionItems).values({
@@ -2312,36 +2383,39 @@ export class DatabaseStorage implements IStorage {
           .where(eq(purchaseOrderItems.id, item.orderItemId));
       }
       
-      // Crear lote de producto si tiene número de lote
-      if (item.lotNumber) {
-        const order = await this.getPurchaseOrder(reception.orderId);
-        await this.createProductLot({
-          productId: item.productId,
-          lotNumber: item.lotNumber,
-          quantity: item.quantityReceived,
-          costPrice: item.unitCost?.toString(),
-          expirationDate: item.expirationDate,
-          supplierId: order?.supplierId,
-          purchaseDate: new Date(),
-          notes: item.notes
-        });
-      }
-      
       // Leer stock ANTES de actualizar para registrar correctamente el movimiento
       const currentInventory = await this.getWarehouseInventoryItem(item.productId);
       const previousStock = currentInventory?.currentStock || 0;
       const newStock = previousStock + item.quantityReceived;
       
+      // Crear lote de producto automáticamente (generar número de lote si no existe)
+      const lotNumber = item.lotNumber || `REC-${newReception.receptionNumber}-${item.productId.slice(-4)}`;
+      const lot = await this.createProductLot({
+        productId: item.productId,
+        lotNumber,
+        quantity: item.quantityReceived,
+        costPrice: item.unitCost?.toString(),
+        expirationDate: item.expirationDate,
+        supplierId: order?.supplierId,
+        purchaseDate: new Date(),
+        notes: `Recepción ${newReception.receptionNumber}` + (item.notes ? ` - ${item.notes}` : "")
+      });
+      
       // Actualizar inventario del almacén con el nuevo stock total
       await this.updateWarehouseStock(item.productId, newStock);
       
-      // Registrar movimiento de almacén con valores correctos
+      // Registrar movimiento de almacén con trazabilidad completa
       await this.createWarehouseMovement({
         productId: item.productId,
+        lotId: lot.id,
         movementType: "entrada_compra",
         quantity: item.quantityReceived,
         previousStock,
         newStock,
+        unitCost: item.unitCost?.toString(),
+        totalCost: item.unitCost ? String(item.quantityReceived * parseFloat(item.unitCost.toString())) : undefined,
+        supplierId: order?.supplierId,
+        userId,
         reference: `Recepción ${newReception.receptionNumber}`,
         notes: item.notes
       });

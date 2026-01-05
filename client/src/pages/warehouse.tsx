@@ -59,6 +59,7 @@ import {
   Eye,
   FileText,
   Building2,
+  Download,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -91,8 +92,8 @@ interface MovementItem extends WarehouseMovement {
 
 const entrySchema = z.object({
   productId: z.string().min(1, "Selecciona un producto"),
-  quantity: z.string().min(1, "La cantidad es requerida"),
-  unitCost: z.string().min(1, "El costo es requerido"),
+  quantity: z.coerce.number().min(1, "La cantidad debe ser al menos 1"),
+  unitCost: z.coerce.number().min(0, "El costo no puede ser negativo"),
   supplierId: z.string().optional(),
   lotNumber: z.string().min(1, "El número de lote es requerido"),
   expirationDate: z.string().optional(),
@@ -101,8 +102,15 @@ const entrySchema = z.object({
 
 const exitSchema = z.object({
   productId: z.string().min(1, "Selecciona un producto"),
-  quantity: z.string().min(1, "La cantidad es requerida"),
+  quantity: z.coerce.number().min(1, "La cantidad debe ser al menos 1"),
   destinationUserId: z.string().min(1, "Selecciona un abastecedor"),
+  notes: z.string().optional(),
+});
+
+const adjustmentSchema = z.object({
+  productId: z.string().min(1, "Selecciona un producto"),
+  physicalCount: z.coerce.number().min(0, "El conteo físico no puede ser negativo"),
+  reason: z.string().min(1, "El motivo es requerido"),
   notes: z.string().optional(),
 });
 
@@ -121,12 +129,14 @@ const supplierSchema = z.object({
 
 type EntryFormData = z.infer<typeof entrySchema>;
 type ExitFormData = z.infer<typeof exitSchema>;
+type AdjustmentFormData = z.infer<typeof adjustmentSchema>;
 type SupplierFormData = z.infer<typeof supplierSchema>;
 
 const movementTypeLabels: Record<string, string> = {
   entrada_compra: "Entrada (Compra)",
   entrada_devolucion: "Entrada (Devolución)",
   salida_abastecedor: "Salida (Abastecedor)",
+  salida_maquina: "Salida (Máquina)",
   salida_merma: "Salida (Merma)",
   salida_caducidad: "Salida (Caducidad)",
   salida_danio: "Salida (Daño)",
@@ -138,6 +148,7 @@ const movementTypeColors: Record<string, string> = {
   entrada_compra: "bg-emerald-500 text-white",
   entrada_devolucion: "bg-blue-500 text-white",
   salida_abastecedor: "bg-amber-500 text-white",
+  salida_maquina: "bg-cyan-600 text-white",
   salida_merma: "bg-destructive text-destructive-foreground",
   salida_caducidad: "bg-orange-500 text-white",
   salida_danio: "bg-red-600 text-white",
@@ -163,8 +174,12 @@ export function WarehousePage() {
   const SUPPLIERS_PER_PAGE = 10;
   const [isEntryDialogOpen, setIsEntryDialogOpen] = useState(false);
   const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
+  const [isAdjustmentDialogOpen, setIsAdjustmentDialogOpen] = useState(false);
   const [isSupplierDialogOpen, setIsSupplierDialogOpen] = useState(false);
   const [selectedProductFilter, setSelectedProductFilter] = useState<string>("all");
+  const [selectedMovementTypeFilter, setSelectedMovementTypeFilter] = useState<string>("all");
+  const [movementsPage, setMovementsPage] = useState(1);
+  const MOVEMENTS_PER_PAGE = 20;
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
   const [viewingSupplier, setViewingSupplier] = useState<Supplier | null>(null);
@@ -219,8 +234,8 @@ export function WarehousePage() {
     resolver: zodResolver(entrySchema),
     defaultValues: {
       productId: "",
-      quantity: "",
-      unitCost: "",
+      quantity: 0,
+      unitCost: 0,
       supplierId: "",
       lotNumber: "",
       expirationDate: "",
@@ -232,8 +247,18 @@ export function WarehousePage() {
     resolver: zodResolver(exitSchema),
     defaultValues: {
       productId: "",
-      quantity: "",
+      quantity: 0,
       destinationUserId: "",
+      notes: "",
+    },
+  });
+
+  const adjustmentForm = useForm<AdjustmentFormData>({
+    resolver: zodResolver(adjustmentSchema),
+    defaultValues: {
+      productId: "",
+      physicalCount: 0,
+      reason: "",
       notes: "",
     },
   });
@@ -283,6 +308,21 @@ export function WarehousePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse/lots"] });
       setIsExitDialogOpen(false);
       exitForm.reset();
+    },
+  });
+
+  const adjustmentMutation = useMutation({
+    mutationFn: async (data: AdjustmentFormData) => {
+      const response = await apiRequest("POST", "/api/warehouse/adjustment", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse/inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse/movements"] });
+      setIsAdjustmentDialogOpen(false);
+      adjustmentForm.reset();
     },
   });
 
@@ -391,9 +431,24 @@ export function WarehousePage() {
     item.product.code?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredMovements = movements.filter((mov) =>
-    mov.product.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredMovements = useMemo(() => {
+    let filtered = movements.filter((mov) =>
+      mov.product.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    
+    if (selectedMovementTypeFilter !== "all") {
+      filtered = filtered.filter((mov) => mov.movementType === selectedMovementTypeFilter);
+    }
+    
+    return filtered;
+  }, [movements, searchQuery, selectedMovementTypeFilter]);
+
+  const paginatedMovements = useMemo(() => {
+    const startIndex = (movementsPage - 1) * MOVEMENTS_PER_PAGE;
+    return filteredMovements.slice(startIndex, startIndex + MOVEMENTS_PER_PAGE);
+  }, [filteredMovements, movementsPage]);
+
+  const totalMovementsPages = Math.ceil(filteredMovements.length / MOVEMENTS_PER_PAGE);
 
   const generateLotNumber = () => {
     const date = new Date();
@@ -454,6 +509,20 @@ export function WarehousePage() {
             <Truck className="w-4 h-4 mr-2" />
             Proveedor
           </Button>
+          <Select onValueChange={(type) => {
+            const url = `/api/warehouse/export/${type}`;
+            window.open(url, "_blank");
+          }}>
+            <SelectTrigger className="w-36" data-testid="select-export">
+              <Download className="w-4 h-4 mr-2" />
+              <SelectValue placeholder="Exportar" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="inventory">Inventario</SelectItem>
+              <SelectItem value="movements">Kardex</SelectItem>
+              <SelectItem value="lots">Lotes</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -666,24 +735,45 @@ export function WarehousePage() {
 
         <TabsContent value="movimientos" className="mt-6">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4">
               <CardTitle className="flex items-center gap-2">
                 <RotateCcw className="w-5 h-5" />
                 Historial de Movimientos (Kardex)
               </CardTitle>
-              <Select value={selectedProductFilter} onValueChange={setSelectedProductFilter}>
-                <SelectTrigger className="w-64" data-testid="select-product-filter">
-                  <SelectValue placeholder="Filtrar por producto" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los productos</SelectItem>
-                  {products.map((product) => (
-                    <SelectItem key={product.id} value={product.id}>
-                      {product.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={selectedMovementTypeFilter} onValueChange={(v) => { setSelectedMovementTypeFilter(v); setMovementsPage(1); }}>
+                  <SelectTrigger className="w-48" data-testid="select-movement-type-filter">
+                    <SelectValue placeholder="Tipo de movimiento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los tipos</SelectItem>
+                    {Object.entries(movementTypeLabels).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={selectedProductFilter} onValueChange={(v) => { setSelectedProductFilter(v); setMovementsPage(1); }}>
+                  <SelectTrigger className="w-56" data-testid="select-product-filter">
+                    <SelectValue placeholder="Filtrar por producto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los productos</SelectItem>
+                    {products.map((product) => (
+                      <SelectItem key={product.id} value={product.id}>
+                        {product.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsAdjustmentDialogOpen(true)}
+                  data-testid="button-adjustment"
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Ajuste
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {filteredMovements.length === 0 ? (
@@ -694,61 +784,73 @@ export function WarehousePage() {
                   </p>
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Producto</TableHead>
-                      <TableHead className="text-right">Cantidad</TableHead>
-                      <TableHead className="text-right">Stock Ant.</TableHead>
-                      <TableHead className="text-right">Stock Nuevo</TableHead>
-                      <TableHead>Notas</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredMovements.map((mov) => {
-                      const isEntry = mov.movementType.startsWith("entrada");
-                      
-                      return (
-                        <TableRow key={mov.id} data-testid={`row-movement-${mov.id}`}>
-                          <TableCell className="whitespace-nowrap">
-                            <div>
-                              <p className="font-medium">
-                                {mov.createdAt ? formatDateShort(mov.createdAt) : "-"}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {mov.createdAt ? formatTime(mov.createdAt) : ""}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={movementTypeColors[mov.movementType] || "bg-muted"}>
-                              {movementTypeLabels[mov.movementType] || mov.movementType}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {mov.product.name}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <span className={`font-mono font-medium ${isEntry ? "text-emerald-600" : "text-destructive"}`}>
-                              {isEntry ? "+" : "-"}{mov.quantity}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-muted-foreground">
-                            {mov.previousStock}
-                          </TableCell>
-                          <TableCell className="text-right font-mono">
-                            {mov.newStock}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground max-w-xs truncate">
-                            {mov.notes || "-"}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Producto</TableHead>
+                        <TableHead className="text-right">Cantidad</TableHead>
+                        <TableHead className="text-right">Stock Ant.</TableHead>
+                        <TableHead className="text-right">Stock Nuevo</TableHead>
+                        <TableHead>Notas</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedMovements.map((mov) => {
+                        const isEntry = mov.movementType.startsWith("entrada");
+                        const isAdjustment = mov.movementType === "ajuste_inventario";
+                        
+                        return (
+                          <TableRow key={mov.id} data-testid={`row-movement-${mov.id}`}>
+                            <TableCell className="whitespace-nowrap">
+                              <div>
+                                <p className="font-medium">
+                                  {mov.createdAt ? formatDateShort(mov.createdAt) : "-"}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {mov.createdAt ? formatTime(mov.createdAt) : ""}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={movementTypeColors[mov.movementType] || "bg-muted"}>
+                                {movementTypeLabels[mov.movementType] || mov.movementType}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {mov.product.name}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className={`font-mono font-medium ${isAdjustment ? "text-muted-foreground" : isEntry ? "text-emerald-600" : "text-destructive"}`}>
+                                {isAdjustment ? "±" : isEntry ? "+" : "-"}{mov.quantity}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-muted-foreground">
+                              {mov.previousStock}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {mov.newStock}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground max-w-xs truncate">
+                              {mov.notes || "-"}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                  {totalMovementsPages > 1 && (
+                    <div className="mt-4">
+                      <DataPagination
+                        currentPage={movementsPage}
+                        totalPages={totalMovementsPages}
+                        onPageChange={setMovementsPage}
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
@@ -1231,6 +1333,103 @@ export function WarehousePage() {
                 </Button>
                 <Button type="submit" disabled={exitMutation.isPending} data-testid="button-submit-exit">
                   {exitMutation.isPending ? "Registrando..." : "Registrar Salida"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isAdjustmentDialogOpen} onOpenChange={setIsAdjustmentDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ajuste de Inventario</DialogTitle>
+            <DialogDescription>
+              Ajusta el stock de un producto basándote en el conteo físico
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...adjustmentForm}>
+            <form onSubmit={adjustmentForm.handleSubmit((data) => adjustmentMutation.mutate(data))} className="space-y-4">
+              <FormField
+                control={adjustmentForm.control}
+                name="productId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Producto</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-adjustment-product">
+                          <SelectValue placeholder="Selecciona un producto" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {inventory.map((item) => (
+                          <SelectItem key={item.productId} value={item.productId}>
+                            {item.product.name} (Stock actual: {item.currentStock || 0})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={adjustmentForm.control}
+                name="physicalCount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Conteo Físico</FormLabel>
+                    <FormControl>
+                      <Input type="number" min="0" placeholder="Cantidad real en almacén" {...field} data-testid="input-adjustment-count" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={adjustmentForm.control}
+                name="reason"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Motivo del Ajuste</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-adjustment-reason">
+                          <SelectValue placeholder="Selecciona un motivo" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Conteo físico">Conteo físico</SelectItem>
+                        <SelectItem value="Corrección de error">Corrección de error</SelectItem>
+                        <SelectItem value="Inventario inicial">Inventario inicial</SelectItem>
+                        <SelectItem value="Faltante detectado">Faltante detectado</SelectItem>
+                        <SelectItem value="Sobrante detectado">Sobrante detectado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={adjustmentForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notas (opcional)</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Observaciones adicionales..." {...field} data-testid="input-adjustment-notes" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={() => setIsAdjustmentDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={adjustmentMutation.isPending} data-testid="button-submit-adjustment">
+                  {adjustmentMutation.isPending ? "Ajustando..." : "Registrar Ajuste"}
                 </Button>
               </div>
             </form>

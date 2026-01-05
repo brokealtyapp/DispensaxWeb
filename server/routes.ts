@@ -885,6 +885,30 @@ export async function registerRoutes(
     }
   });
 
+  // Ajuste de inventario - solo admin y almacen pueden ajustar
+  app.post("/api/warehouse/adjustment", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { productId, physicalCount, notes, reason } = req.body;
+      
+      if (!productId || physicalCount === undefined) {
+        return res.status(400).json({ error: "Faltan campos requeridos: productId y physicalCount" });
+      }
+      
+      const movement = await storage.registerInventoryAdjustment({
+        productId,
+        physicalCount: parseInt(physicalCount),
+        reason: reason || "Ajuste de inventario físico",
+        notes,
+        userId: req.user!.userId,
+      });
+      
+      res.status(201).json(movement);
+    } catch (error) {
+      console.error("Error registering adjustment:", error);
+      res.status(500).json({ error: "Error al registrar ajuste de inventario" });
+    }
+  });
+
   // Estadísticas del almacén (protegido con JWT)
   app.get("/api/warehouse/stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -910,6 +934,198 @@ export async function registerRoutes(
       });
     } catch (error) {
       res.status(500).json({ error: "Error al obtener estadísticas" });
+    }
+  });
+
+  // Valorización del inventario con costo promedio ponderado
+  app.get("/api/warehouse/valuation", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const inventory = await storage.getWarehouseInventory();
+      const lots = await storage.getProductLots();
+      
+      // Calcular valorización por producto usando costo promedio ponderado de lotes
+      const valuation = inventory.map(inv => {
+        const productLots = lots.filter(l => l.productId === inv.productId && l.remainingQuantity > 0);
+        
+        // Costo promedio ponderado = Σ(cantidad * costo) / Σ(cantidad)
+        let totalCost = 0;
+        let totalQty = 0;
+        
+        for (const lot of productLots) {
+          const lotCost = parseFloat(lot.costPrice || "0");
+          const lotQty = lot.remainingQuantity;
+          totalCost += lotCost * lotQty;
+          totalQty += lotQty;
+        }
+        
+        const weightedAvgCost = totalQty > 0 ? totalCost / totalQty : parseFloat(inv.product.costPrice || "0");
+        const stockValue = (inv.currentStock || 0) * weightedAvgCost;
+        
+        return {
+          productId: inv.productId,
+          productName: inv.product.name,
+          productCode: inv.product.code,
+          currentStock: inv.currentStock || 0,
+          unitCost: weightedAvgCost.toFixed(2),
+          totalValue: stockValue.toFixed(2),
+          lotCount: productLots.length,
+        };
+      });
+      
+      const grandTotal = valuation.reduce((sum, v) => sum + parseFloat(v.totalValue), 0);
+      
+      res.json({
+        items: valuation,
+        grandTotal: grandTotal.toFixed(2),
+        productCount: valuation.length,
+        calculatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Error calculating valuation:", error);
+      res.status(500).json({ error: "Error al calcular valorización" });
+    }
+  });
+
+  // Configurar alertas de inventario por producto
+  app.patch("/api/warehouse/inventory/:productId/alerts", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { productId } = req.params;
+      const { minStock, maxStock, reorderPoint } = req.body;
+      
+      // Validar que al menos un campo esté presente
+      if (minStock === undefined && maxStock === undefined && reorderPoint === undefined) {
+        return res.status(400).json({ error: "Debe proporcionar al menos un campo: minStock, maxStock, o reorderPoint" });
+      }
+      
+      // Validar valores numéricos
+      const updateData: { minStock?: number; maxStock?: number; reorderPoint?: number } = {};
+      if (minStock !== undefined) {
+        const min = parseInt(minStock);
+        if (isNaN(min) || min < 0) return res.status(400).json({ error: "minStock debe ser un número positivo" });
+        updateData.minStock = min;
+      }
+      if (maxStock !== undefined) {
+        const max = parseInt(maxStock);
+        if (isNaN(max) || max < 0) return res.status(400).json({ error: "maxStock debe ser un número positivo" });
+        updateData.maxStock = max;
+      }
+      if (reorderPoint !== undefined) {
+        const reorder = parseInt(reorderPoint);
+        if (isNaN(reorder) || reorder < 0) return res.status(400).json({ error: "reorderPoint debe ser un número positivo" });
+        updateData.reorderPoint = reorder;
+      }
+      
+      const updated = await storage.updateWarehouseInventory(productId, updateData);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating inventory alerts:", error);
+      res.status(500).json({ error: "Error al actualizar configuración de alertas" });
+    }
+  });
+
+  // Exportar inventario a CSV
+  app.get("/api/warehouse/export/inventory", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const inventory = await storage.getWarehouseInventory();
+      
+      const headers = ["Código", "Producto", "Categoría", "Stock Actual", "Stock Mínimo", "Stock Máximo", "Punto Reorden", "Costo Unitario", "Valor Total"];
+      const rows = inventory.map(inv => [
+        inv.product.code || "",
+        inv.product.name,
+        inv.product.category || "",
+        inv.currentStock || 0,
+        inv.minStock || 10,
+        inv.maxStock || 100,
+        inv.reorderPoint || 20,
+        inv.product.costPrice || "0",
+        ((inv.currentStock || 0) * parseFloat(inv.product.costPrice || "0")).toFixed(2)
+      ]);
+      
+      const csv = [headers.join(","), ...rows.map(r => r.map(v => `"${v}"`).join(","))].join("\n");
+      
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="inventario_${new Date().toISOString().split("T")[0]}.csv"`);
+      res.send("\uFEFF" + csv); // BOM for Excel UTF-8
+    } catch (error) {
+      console.error("Error exporting inventory:", error);
+      res.status(500).json({ error: "Error al exportar inventario" });
+    }
+  });
+
+  // Exportar movimientos/Kardex a CSV
+  app.get("/api/warehouse/export/movements", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { limit } = req.query;
+      const movements = await storage.getWarehouseMovements(undefined, limit ? parseInt(limit as string) : 500);
+      
+      const typeLabels: Record<string, string> = {
+        entrada_compra: "Entrada (Compra)",
+        entrada_devolucion: "Entrada (Devolución)",
+        salida_abastecedor: "Salida (Abastecedor)",
+        salida_merma: "Salida (Merma)",
+        salida_caducidad: "Salida (Caducidad)",
+        salida_danio: "Salida (Daño)",
+        ajuste_inventario: "Ajuste",
+        transferencia: "Transferencia",
+      };
+      
+      const headers = ["Fecha", "Tipo", "Producto", "Cantidad", "Stock Anterior", "Stock Nuevo", "Costo Unitario", "Costo Total", "Referencia", "Notas"];
+      const rows = movements.map(mov => [
+        mov.createdAt ? new Date(mov.createdAt).toLocaleString("es-DO") : "",
+        typeLabels[mov.movementType] || mov.movementType,
+        mov.product.name,
+        mov.quantity,
+        mov.previousStock,
+        mov.newStock,
+        mov.unitCost || "",
+        mov.totalCost || "",
+        mov.reference || "",
+        mov.notes || ""
+      ]);
+      
+      const csv = [headers.join(","), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))].join("\n");
+      
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="kardex_${new Date().toISOString().split("T")[0]}.csv"`);
+      res.send("\uFEFF" + csv);
+    } catch (error) {
+      console.error("Error exporting movements:", error);
+      res.status(500).json({ error: "Error al exportar movimientos" });
+    }
+  });
+
+  // Exportar lotes a CSV
+  app.get("/api/warehouse/export/lots", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const lots = await storage.getProductLots();
+      
+      const headers = ["Número Lote", "Producto", "Cantidad Original", "Cantidad Restante", "Fecha Vencimiento", "Costo Unitario", "Proveedor", "Fecha Compra", "Estado"];
+      const rows = lots.map(lot => {
+        const isExpired = lot.expirationDate && new Date(lot.expirationDate) < new Date();
+        const isLow = lot.remainingQuantity <= 0;
+        const status = isExpired ? "Vencido" : isLow ? "Agotado" : "Activo";
+        
+        return [
+          lot.lotNumber,
+          lot.product.name,
+          lot.quantity,
+          lot.remainingQuantity,
+          lot.expirationDate ? new Date(lot.expirationDate).toLocaleDateString("es-DO") : "",
+          lot.costPrice || "",
+          lot.supplier?.name || "",
+          lot.purchaseDate ? new Date(lot.purchaseDate).toLocaleDateString("es-DO") : "",
+          status
+        ];
+      });
+      
+      const csv = [headers.join(","), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))].join("\n");
+      
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="lotes_${new Date().toISOString().split("T")[0]}.csv"`);
+      res.send("\uFEFF" + csv);
+    } catch (error) {
+      console.error("Error exporting lots:", error);
+      res.status(500).json({ error: "Error al exportar lotes" });
     }
   });
 
@@ -1795,8 +2011,8 @@ export async function registerRoutes(
     }
   });
 
-  // Mermas
-  app.get("/api/shrinkage", async (req: Request, res: Response) => {
+  // Mermas (protegido con JWT)
+  app.get("/api/shrinkage", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { type, productId, status } = req.query;
       const filters = {
@@ -1811,7 +2027,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/shrinkage/summary", async (req: Request, res: Response) => {
+  app.get("/api/shrinkage/summary", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const summary = await storage.getShrinkageSummary(
@@ -1824,7 +2040,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/shrinkage/:id", async (req: Request, res: Response) => {
+  app.get("/api/shrinkage/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const record = await storage.getShrinkageRecord(req.params.id);
       if (!record) {
@@ -1836,10 +2052,41 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/shrinkage", async (req: Request, res: Response) => {
+  app.post("/api/shrinkage", authenticateJWT, authorizeRoles("admin", "almacen", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertShrinkageRecordSchema.parse(req.body);
+      const data = insertShrinkageRecordSchema.parse({
+        ...req.body,
+        userId: req.user!.userId,
+      });
+      
+      // Crear registro de merma
       const record = await storage.createShrinkageRecord(data);
+      
+      // Registrar salida en el inventario del almacén
+      const movementType = data.shrinkageType === "caducidad" ? "salida_caducidad" : 
+                          data.shrinkageType === "danio" ? "salida_danio" : "salida_merma";
+      
+      const currentInventory = await storage.getWarehouseInventoryItem(data.productId);
+      const previousStock = currentInventory?.currentStock || 0;
+      const newStock = Math.max(0, previousStock - data.quantity);
+      
+      // Solo actualizar inventario si hay stock
+      if (previousStock > 0) {
+        await storage.updateWarehouseStock(data.productId, newStock);
+        
+        await storage.createWarehouseMovement({
+          productId: data.productId,
+          lotId: data.lotId,
+          movementType,
+          quantity: data.quantity,
+          previousStock,
+          newStock,
+          userId: req.user!.userId,
+          reference: `Merma #${record.id.slice(-8)}`,
+          notes: data.reason,
+        });
+      }
+      
       res.status(201).json(record);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1849,13 +2096,9 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/shrinkage/:id/approve", async (req: Request, res: Response) => {
+  app.post("/api/shrinkage/:id/approve", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId } = req.body;
-      if (!userId) {
-        return res.status(400).json({ error: "Falta el usuario que aprueba" });
-      }
-      const record = await storage.approveShrinkage(req.params.id, userId);
+      const record = await storage.approveShrinkage(req.params.id, req.user!.userId);
       if (!record) {
         return res.status(404).json({ error: "Merma no encontrada" });
       }
@@ -2271,7 +2514,8 @@ export async function registerRoutes(
       
       const newReception = await storage.createPurchaseReception(
         { ...reception, receptionNumber, receivedBy: req.user!.userId },
-        items
+        items,
+        req.user!.userId
       );
       res.status(201).json(newReception);
     } catch (error) {
