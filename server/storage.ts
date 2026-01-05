@@ -331,12 +331,16 @@ export interface IStorage {
   // ==================== MÓDULO CONTABILIDAD ====================
   
   getAccountingOverview(startDate?: Date, endDate?: Date): Promise<{
-    ingresosTotales: number;
-    egresosTotales: number;
+    totalIngresos: number;
+    totalGastos: number;
     utilidadNeta: number;
+    margen: number;
     transacciones: number;
+    promedioTicket: number;
     tendenciaIngresos: number;
-    tendenciaEgresos: number;
+    tendenciaGastos: number;
+    monthlyData: { month: string; ventas: number; gastos: number }[];
+    categoryData: { name: string; value: number }[];
   }>;
   
   getMachineSalesReport(startDate?: Date, endDate?: Date): Promise<any[]>;
@@ -3547,7 +3551,7 @@ export class DatabaseStorage implements IStorage {
 
     const locationMap = new Map(allLocations.map(l => [l.id, l.name]));
 
-    const salesByMachine = new Map<number, {
+    const salesByMachine = new Map<string, {
       today: number; week: number; month: number; period: number;
       prevWeek: number; periodCount: number;
     }>();
