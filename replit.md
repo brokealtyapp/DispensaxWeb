@@ -166,6 +166,28 @@ client/src/
 
 ## Cambios Recientes (Enero 2026)
 
+### Optimización Módulo de Reportes (5 Enero 2026)
+**Mejoras de rendimiento críticas**:
+- Eliminado patrón N+1 en 8 funciones de storage: getSalesBreakdown, getPurchasesBreakdown, getFuelBreakdown, getPettyCashBreakdown, getMachinePerformance, getTopProducts, getSupplierRanking, getExportData
+- Todas las funciones ahora usan Promise.all para precargar entidades relacionadas y Map<string> para lookups O(1)
+- Normalización de fechas a GMT-4 usando getTodayInTimezone() en getDateRange
+
+**Nuevas funcionalidades**:
+- Tab de Productos con gráfico Top 10 (Recharts) y tabla de detalle completa
+- Exportación de inventario CSV con botón en UI
+- Filas de totales (tfoot) en tablas de Ventas, Productos y Máquinas
+- handleRefresh ahora usa predicate para invalidar todas las queries de reportes
+
+**Patrón establecido para reportes**:
+```typescript
+const [machines, products, suppliers] = await Promise.all([
+  db.select().from(machinesTable),
+  db.select().from(productsTable),
+  db.select().from(suppliersTable)
+]);
+const machineMap = new Map(machines.map(m => [m.id, m]));
+```
+
 ### Sistema de Zona Horaria Centralizado (4 Enero 2026)
 **Zona horaria fija**: América/Santo_Domingo (GMT-4) - República Dominicana
 
