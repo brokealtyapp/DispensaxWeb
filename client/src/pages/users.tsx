@@ -82,6 +82,18 @@ const ROLES = [
 
 const ZONES = ["Zona Norte", "Zona Sur", "Zona Este", "Zona Oeste", "Centro", "Industrial"];
 
+// Configuración de campos por rol
+const ROLE_FORM_CONFIG: Record<string, { showZone: boolean; zoneRequired: boolean }> = {
+  admin: { showZone: false, zoneRequired: false },
+  supervisor: { showZone: true, zoneRequired: true },
+  abastecedor: { showZone: true, zoneRequired: true },
+  almacen: { showZone: false, zoneRequired: false },
+  contabilidad: { showZone: false, zoneRequired: false },
+  rh: { showZone: false, zoneRequired: false },
+};
+
+const ROLES_REQUIRING_ZONE = ["supervisor", "abastecedor"];
+
 const createUserSchema = z.object({
   username: z.string().min(3, "El usuario debe tener al menos 3 caracteres"),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
@@ -91,6 +103,14 @@ const createUserSchema = z.object({
   role: z.string().min(1, "Selecciona un rol"),
   assignedZone: z.string().optional(),
   isActive: z.boolean().default(true),
+}).superRefine((data, ctx) => {
+  if (ROLES_REQUIRING_ZONE.includes(data.role) && !data.assignedZone) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "La zona es requerida para este rol",
+      path: ["assignedZone"],
+    });
+  }
 });
 
 const editUserSchema = z.object({
@@ -102,6 +122,14 @@ const editUserSchema = z.object({
   role: z.string().min(1, "Selecciona un rol"),
   assignedZone: z.string().optional(),
   isActive: z.boolean().default(true),
+}).superRefine((data, ctx) => {
+  if (ROLES_REQUIRING_ZONE.includes(data.role) && !data.assignedZone) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "La zona es requerida para este rol",
+      path: ["assignedZone"],
+    });
+  }
 });
 
 type CreateUserFormData = z.infer<typeof createUserSchema>;
@@ -673,14 +701,24 @@ export default function UsersPage() {
                   )}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={createForm.control}
-                  name="role"
-                  render={({ field }) => (
+              <FormField
+                control={createForm.control}
+                name="role"
+                render={({ field }) => {
+                  const roleConfig = ROLE_FORM_CONFIG[field.value] || ROLE_FORM_CONFIG.admin;
+                  return (
                     <FormItem>
                       <FormLabel>Rol</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select 
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          const config = ROLE_FORM_CONFIG[value];
+                          if (!config?.showZone) {
+                            createForm.setValue("assignedZone", "");
+                          }
+                        }} 
+                        defaultValue={field.value}
+                      >
                         <FormControl>
                           <SelectTrigger data-testid="select-create-role">
                             <SelectValue placeholder="Selecciona rol" />
@@ -694,25 +732,31 @@ export default function UsersPage() {
                       </Select>
                       <FormMessage />
                     </FormItem>
-                  )}
-                />
+                  );
+                }}
+              />
+              {ROLE_FORM_CONFIG[createForm.watch("role")]?.showZone && (
                 <FormField
                   control={createForm.control}
                   name="assignedZone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Zona</FormLabel>
+                      <FormLabel>
+                        Zona Asignada
+                        {ROLE_FORM_CONFIG[createForm.watch("role")]?.zoneRequired && (
+                          <span className="text-destructive ml-1">*</span>
+                        )}
+                      </FormLabel>
                       <Select 
-                        onValueChange={(value) => field.onChange(value === "none" ? "" : value)} 
-                        value={field.value || "none"}
+                        onValueChange={field.onChange} 
+                        value={field.value || ""}
                       >
                         <FormControl>
                           <SelectTrigger data-testid="select-create-zone">
-                            <SelectValue placeholder="Opcional" />
+                            <SelectValue placeholder="Selecciona zona" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="none">Sin zona</SelectItem>
                           {ZONES.map(zone => (
                             <SelectItem key={zone} value={zone}>{zone}</SelectItem>
                           ))}
@@ -722,7 +766,7 @@ export default function UsersPage() {
                     </FormItem>
                   )}
                 />
-              </div>
+              )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
                   Cancelar
@@ -815,46 +859,59 @@ export default function UsersPage() {
                   )}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={editForm.control}
-                  name="role"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Rol</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-edit-role">
-                            <SelectValue placeholder="Selecciona rol" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {ROLES.map(role => (
-                            <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <FormField
+                control={editForm.control}
+                name="role"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Rol</FormLabel>
+                    <Select 
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        const config = ROLE_FORM_CONFIG[value];
+                        if (!config?.showZone) {
+                          editForm.setValue("assignedZone", "");
+                        }
+                      }} 
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-role">
+                          <SelectValue placeholder="Selecciona rol" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {ROLES.map(role => (
+                          <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {ROLE_FORM_CONFIG[editForm.watch("role")]?.showZone && (
                 <FormField
                   control={editForm.control}
                   name="assignedZone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Zona</FormLabel>
+                      <FormLabel>
+                        Zona Asignada
+                        {ROLE_FORM_CONFIG[editForm.watch("role")]?.zoneRequired && (
+                          <span className="text-destructive ml-1">*</span>
+                        )}
+                      </FormLabel>
                       <Select 
-                        onValueChange={(value) => field.onChange(value === "none" ? "" : value)} 
-                        value={field.value || "none"}
+                        onValueChange={field.onChange} 
+                        value={field.value || ""}
                       >
                         <FormControl>
                           <SelectTrigger data-testid="select-edit-zone">
-                            <SelectValue placeholder="Opcional" />
+                            <SelectValue placeholder="Selecciona zona" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="none">Sin zona</SelectItem>
                           {ZONES.map(zone => (
                             <SelectItem key={zone} value={zone}>{zone}</SelectItem>
                           ))}
@@ -864,7 +921,7 @@ export default function UsersPage() {
                     </FormItem>
                   )}
                 />
-              </div>
+              )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
                   Cancelar
