@@ -60,6 +60,9 @@ import {
   CheckCircle2,
   XCircle,
   Eye,
+  EyeOff,
+  Copy,
+  RefreshCw,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -81,6 +84,26 @@ const ROLES = [
 ];
 
 const ZONES = ["Zona Norte", "Zona Sur", "Zona Este", "Zona Oeste", "Centro", "Industrial"];
+
+function generatePassword(length = 12): string {
+  const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const lowercase = "abcdefghijklmnopqrstuvwxyz";
+  const numbers = "0123456789";
+  const symbols = "!@#$%&*";
+  const allChars = uppercase + lowercase + numbers + symbols;
+  
+  let password = "";
+  password += uppercase[Math.floor(Math.random() * uppercase.length)];
+  password += lowercase[Math.floor(Math.random() * lowercase.length)];
+  password += numbers[Math.floor(Math.random() * numbers.length)];
+  password += symbols[Math.floor(Math.random() * symbols.length)];
+  
+  for (let i = 4; i < length; i++) {
+    password += allChars[Math.floor(Math.random() * allChars.length)];
+  }
+  
+  return password.split("").sort(() => Math.random() - 0.5).join("");
+}
 
 // Configuración de campos por rol
 const ROLE_FORM_CONFIG: Record<string, { showZone: boolean; zoneRequired: boolean }> = {
@@ -159,6 +182,8 @@ export default function UsersPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
+  const [showEditPassword, setShowEditPassword] = useState(false);
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ["/api/users"],
@@ -323,6 +348,7 @@ export default function UsersPage() {
 
   const handleOpenCreate = () => {
     createForm.reset();
+    setShowCreatePassword(false);
     setCreateOpen(true);
   };
 
@@ -338,6 +364,7 @@ export default function UsersPage() {
       assignedZone: user.assignedZone || "",
       isActive: user.isActive ?? true,
     });
+    setShowEditPassword(false);
     setEditOpen(true);
   };
 
@@ -665,9 +692,55 @@ export default function UsersPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Contraseña</FormLabel>
-                      <FormControl>
-                        <Input type="password" placeholder="******" {...field} data-testid="input-create-password" />
-                      </FormControl>
+                      <div className="flex gap-1">
+                        <FormControl>
+                          <Input 
+                            type={showCreatePassword ? "text" : "password"} 
+                            placeholder="******" 
+                            {...field} 
+                            data-testid="input-create-password" 
+                          />
+                        </FormControl>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setShowCreatePassword(!showCreatePassword)}
+                          title={showCreatePassword ? "Ocultar" : "Mostrar"}
+                          data-testid="button-toggle-create-password"
+                        >
+                          {showCreatePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => {
+                            const pwd = generatePassword();
+                            field.onChange(pwd);
+                            setShowCreatePassword(true);
+                          }}
+                          title="Generar contraseña"
+                          data-testid="button-generate-create-password"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => {
+                            if (field.value) {
+                              navigator.clipboard.writeText(field.value);
+                              toast({ title: "Contraseña copiada al portapapeles" });
+                            }
+                          }}
+                          title="Copiar contraseña"
+                          data-testid="button-copy-create-password"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -823,9 +896,55 @@ export default function UsersPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Nueva Contraseña</FormLabel>
-                      <FormControl>
-                        <Input type="password" placeholder="Dejar vacío para no cambiar" {...field} data-testid="input-edit-password" />
-                      </FormControl>
+                      <div className="flex gap-1">
+                        <FormControl>
+                          <Input 
+                            type={showEditPassword ? "text" : "password"} 
+                            placeholder="Vacío = no cambiar" 
+                            {...field} 
+                            data-testid="input-edit-password" 
+                          />
+                        </FormControl>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setShowEditPassword(!showEditPassword)}
+                          title={showEditPassword ? "Ocultar" : "Mostrar"}
+                          data-testid="button-toggle-edit-password"
+                        >
+                          {showEditPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => {
+                            const pwd = generatePassword();
+                            field.onChange(pwd);
+                            setShowEditPassword(true);
+                          }}
+                          title="Generar contraseña"
+                          data-testid="button-generate-edit-password"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => {
+                            if (field.value) {
+                              navigator.clipboard.writeText(field.value);
+                              toast({ title: "Contraseña copiada al portapapeles" });
+                            }
+                          }}
+                          title="Copiar contraseña"
+                          data-testid="button-copy-edit-password"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
