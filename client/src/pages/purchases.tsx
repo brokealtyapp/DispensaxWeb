@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDateShort } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 import { 
   Package, Building2, FileText, Truck, History, Plus, Search, Filter,
   Edit2, Trash2, Eye, Send, X, Check, AlertTriangle, DollarSign,
@@ -141,10 +142,6 @@ export default function PurchasesPage() {
     queryKey: ["/api/purchase-orders/low-stock"],
   });
 
-  const { data: users } = useQuery<any[]>({
-    queryKey: ["/api/users"],
-  });
-
   const { data: supplierHistory } = useQuery<any[]>({
     queryKey: ["/api/suppliers", selectedSupplier?.id, "purchase-history"],
     enabled: !!selectedSupplier?.id && isSupplierHistoryOpen,
@@ -195,10 +192,8 @@ export default function PurchasesPage() {
 
   const createOrderMutation = useMutation({
     mutationFn: async (data: OrderFormData) => {
-      const userId = users?.[0]?.id;
       return apiRequest("POST", "/api/purchase-orders", {
         ...data,
-        createdBy: userId,
         expectedDeliveryDate: data.expectedDeliveryDate ? new Date(data.expectedDeliveryDate) : undefined,
       });
     },
@@ -253,24 +248,22 @@ export default function PurchasesPage() {
 
   const updateOrderStatusMutation = useMutation({
     mutationFn: async ({ id, status, reason }: { id: string; status: string; reason?: string }) => {
-      const userId = users?.[0]?.id;
-      return apiRequest("PATCH", `/api/purchase-orders/${id}/status`, { status, userId, reason });
+      return apiRequest("PATCH", `/api/purchase-orders/${id}/status`, { status, reason });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders/stats"] });
       toast({ title: "Estado actualizado", description: "El estado de la orden se ha actualizado" });
       setIsOrderDetailOpen(false);
+      setSelectedOrder(null);
     },
   });
 
   const createReceptionMutation = useMutation({
     mutationFn: async () => {
-      const userId = users?.[0]?.id;
       return apiRequest("POST", "/api/purchase-receptions", {
         reception: {
           orderId: selectedOrder?.id,
-          receivedBy: userId,
           invoiceNumber,
           notes: receptionNotes,
         },
