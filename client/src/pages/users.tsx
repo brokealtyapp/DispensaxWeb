@@ -166,7 +166,9 @@ export default function UsersPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: CreateUserFormData) => {
-      return apiRequest("POST", "/api/admin/users", data);
+      const cleanData = { ...data };
+      if (!cleanData.assignedZone) delete cleanData.assignedZone;
+      return apiRequest("POST", "/api/admin/users", cleanData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
@@ -187,6 +189,7 @@ export default function UsersPage() {
     mutationFn: async ({ id, data }: { id: string; data: Partial<EditUserFormData> }) => {
       const cleanData = { ...data };
       if (!cleanData.password) delete cleanData.password;
+      if (!cleanData.assignedZone) cleanData.assignedZone = null as any;
       return apiRequest("PATCH", `/api/admin/users/${id}`, cleanData);
     },
     onSuccess: () => {
