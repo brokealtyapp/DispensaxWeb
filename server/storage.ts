@@ -100,6 +100,7 @@ export interface IStorage {
   getWarehouseInventory(): Promise<(WarehouseInventory & { product: Product })[]>;
   getWarehouseInventoryItem(productId: string): Promise<WarehouseInventory | undefined>;
   updateWarehouseStock(productId: string, quantity: number): Promise<WarehouseInventory>;
+  updateWarehouseInventory(productId: string, data: { currentStock?: number; minStock?: number; maxStock?: number; reorderPoint?: number }): Promise<WarehouseInventory>;
   getLowStockAlerts(): Promise<(WarehouseInventory & { product: Product })[]>;
   
   // Almacén - Lotes
@@ -112,8 +113,8 @@ export interface IStorage {
   // Almacén - Movimientos (Kardex)
   getWarehouseMovements(productId?: string, limit?: number): Promise<(WarehouseMovement & { product: Product })[]>;
   createWarehouseMovement(movement: InsertWarehouseMovement): Promise<WarehouseMovement>;
-  registerPurchaseEntry(data: { productId: string; quantity: number; unitCost: number; supplierId?: string; lotNumber: string; expirationDate?: Date; notes?: string }): Promise<WarehouseMovement>;
-  registerSupplierExit(data: { productId: string; quantity: number; destinationUserId: string; notes?: string }): Promise<WarehouseMovement>;
+  registerPurchaseEntry(data: { productId: string; quantity: number; unitCost: number; supplierId?: string; lotNumber: string; expirationDate?: Date; notes?: string; userId?: string }): Promise<WarehouseMovement>;
+  registerSupplierExit(data: { productId: string; quantity: number; destinationUserId: string; notes?: string; userId?: string }): Promise<WarehouseMovement>;
 
   // ==================== MÓDULO ABASTECEDOR ====================
   
@@ -753,6 +754,35 @@ export class DatabaseStorage implements IStorage {
     return newInventory;
   }
 
+  async updateWarehouseInventory(productId: string, data: { currentStock?: number; minStock?: number; maxStock?: number; reorderPoint?: number }): Promise<WarehouseInventory> {
+    const existing = await this.getWarehouseInventoryItem(productId);
+    
+    const updateData: any = { lastUpdated: new Date() };
+    if (data.currentStock !== undefined) updateData.currentStock = data.currentStock;
+    if (data.minStock !== undefined) updateData.minStock = data.minStock;
+    if (data.maxStock !== undefined) updateData.maxStock = data.maxStock;
+    if (data.reorderPoint !== undefined) updateData.reorderPoint = data.reorderPoint;
+    
+    if (existing) {
+      const [updated] = await db.update(warehouseInventory)
+        .set(updateData)
+        .where(eq(warehouseInventory.productId, productId))
+        .returning();
+      return updated;
+    }
+    
+    const [newInventory] = await db.insert(warehouseInventory)
+      .values({ 
+        productId, 
+        currentStock: data.currentStock ?? 0,
+        minStock: data.minStock,
+        maxStock: data.maxStock,
+        reorderPoint: data.reorderPoint,
+      })
+      .returning();
+    return newInventory;
+  }
+
   async getLowStockAlerts(): Promise<(WarehouseInventory & { product: Product })[]> {
     // Usar JOIN para evitar N+1 queries
     const results = await db.select({
@@ -877,7 +907,8 @@ export class DatabaseStorage implements IStorage {
     supplierId?: string; 
     lotNumber: string; 
     expirationDate?: Date; 
-    notes?: string 
+    notes?: string;
+    userId?: string;
   }): Promise<WarehouseMovement> {
     const currentInventory = await this.getWarehouseInventoryItem(data.productId);
     const previousStock = currentInventory?.currentStock || 0;
@@ -897,7 +928,7 @@ export class DatabaseStorage implements IStorage {
     // Actualizar inventario
     await this.updateWarehouseStock(data.productId, newStock);
 
-    // Registrar movimiento
+    // Registrar movimiento con userId para auditoría
     const movement = await this.createWarehouseMovement({
       productId: data.productId,
       lotId: lot.id,
@@ -908,6 +939,7 @@ export class DatabaseStorage implements IStorage {
       unitCost: String(data.unitCost),
       totalCost: String(data.quantity * data.unitCost),
       supplierId: data.supplierId,
+      userId: data.userId,
       notes: data.notes,
     });
 
@@ -918,7 +950,8 @@ export class DatabaseStorage implements IStorage {
     productId: string; 
     quantity: number; 
     destinationUserId: string; 
-    notes?: string 
+    notes?: string;
+    userId?: string;
   }): Promise<WarehouseMovement> {
     const currentInventory = await this.getWarehouseInventoryItem(data.productId);
     const previousStock = currentInventory?.currentStock || 0;
@@ -932,7 +965,7 @@ export class DatabaseStorage implements IStorage {
     // Actualizar inventario
     await this.updateWarehouseStock(data.productId, newStock);
 
-    // Descontar de lotes (FIFO - primero los más próximos a caducar)
+    // Descontar de lotes (FEFO - primero los más próximos a caducar, ya ordenados por expirationDate)
     const lots = await this.getProductLots(data.productId);
     let remaining = data.quantity;
     
@@ -946,7 +979,7 @@ export class DatabaseStorage implements IStorage {
       remaining -= toDeduct;
     }
 
-    // Registrar movimiento
+    // Registrar movimiento con userId para auditoría
     const movement = await this.createWarehouseMovement({
       productId: data.productId,
       movementType: "salida_abastecedor",
@@ -954,6 +987,7 @@ export class DatabaseStorage implements IStorage {
       previousStock,
       newStock,
       destinationUserId: data.destinationUserId,
+      userId: data.userId,
       notes: data.notes,
     });
 

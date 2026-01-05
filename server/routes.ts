@@ -749,8 +749,8 @@ export async function registerRoutes(
     }
   });
 
-  // Inventario de Almacén
-  app.get("/api/warehouse/inventory", async (req: Request, res: Response) => {
+  // Inventario de Almacén (protegido con JWT)
+  app.get("/api/warehouse/inventory", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const inventory = await storage.getWarehouseInventory();
       res.json(inventory);
@@ -759,7 +759,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/warehouse/low-stock", async (req: Request, res: Response) => {
+  app.get("/api/warehouse/low-stock", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const lowStock = await storage.getLowStockAlerts();
       res.json(lowStock);
@@ -768,18 +768,23 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/warehouse/inventory/:productId", async (req: Request, res: Response) => {
+  app.patch("/api/warehouse/inventory/:productId", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { quantity, minStock, maxStock, reorderPoint } = req.body;
-      const inventory = await storage.updateWarehouseStock(req.params.productId, quantity);
+      const inventory = await storage.updateWarehouseInventory(req.params.productId, {
+        currentStock: quantity,
+        minStock,
+        maxStock,
+        reorderPoint,
+      });
       res.json(inventory);
     } catch (error) {
       res.status(500).json({ error: "Error al actualizar stock" });
     }
   });
 
-  // Lotes de Productos
-  app.get("/api/warehouse/lots", async (req: Request, res: Response) => {
+  // Lotes de Productos (protegido con JWT)
+  app.get("/api/warehouse/lots", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { productId } = req.query;
       const lots = await storage.getProductLots(productId as string | undefined);
@@ -789,7 +794,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/warehouse/lots/expiring", async (req: Request, res: Response) => {
+  app.get("/api/warehouse/lots/expiring", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { days } = req.query;
       const expiringLots = await storage.getExpiringLots(parseInt(days as string) || 30);
@@ -799,7 +804,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/warehouse/lots", async (req: Request, res: Response) => {
+  app.post("/api/warehouse/lots", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertProductLotSchema.parse(req.body);
       const lot = await storage.createProductLot(data);
@@ -812,8 +817,8 @@ export async function registerRoutes(
     }
   });
 
-  // Movimientos (Kardex)
-  app.get("/api/warehouse/movements", async (req: Request, res: Response) => {
+  // Movimientos/Kardex (protegido con JWT)
+  app.get("/api/warehouse/movements", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { productId, limit } = req.query;
       const movements = await storage.getWarehouseMovements(
@@ -826,8 +831,8 @@ export async function registerRoutes(
     }
   });
 
-  // Entrada de mercancía (compra)
-  app.post("/api/warehouse/entry", async (req: Request, res: Response) => {
+  // Entrada de mercancía - solo admin y almacen pueden registrar entradas
+  app.post("/api/warehouse/entry", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { productId, quantity, unitCost, supplierId, lotNumber, expirationDate, notes } = req.body;
       
@@ -843,6 +848,7 @@ export async function registerRoutes(
         lotNumber,
         expirationDate: expirationDate ? new Date(expirationDate) : undefined,
         notes,
+        userId: req.user!.userId,
       });
       
       res.status(201).json(movement);
@@ -852,8 +858,8 @@ export async function registerRoutes(
     }
   });
 
-  // Salida hacia abastecedor
-  app.post("/api/warehouse/exit", async (req: Request, res: Response) => {
+  // Salida hacia abastecedor - solo admin y almacen pueden registrar salidas
+  app.post("/api/warehouse/exit", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { productId, quantity, destinationUserId, notes } = req.body;
       
@@ -866,6 +872,7 @@ export async function registerRoutes(
         quantity: parseInt(quantity),
         destinationUserId,
         notes,
+        userId: req.user!.userId,
       });
       
       res.status(201).json(movement);
@@ -878,8 +885,8 @@ export async function registerRoutes(
     }
   });
 
-  // Estadísticas del almacén
-  app.get("/api/warehouse/stats", async (req: Request, res: Response) => {
+  // Estadísticas del almacén (protegido con JWT)
+  app.get("/api/warehouse/stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const inventory = await storage.getWarehouseInventory();
       const lowStock = await storage.getLowStockAlerts();
