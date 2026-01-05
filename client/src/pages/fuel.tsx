@@ -673,11 +673,13 @@ export function FuelPage() {
                               </FormControl>
                               <SelectContent>
                                 <SelectItem value="none">Sin asignar</SelectItem>
-                                {users.map((u: any) => (
-                                  <SelectItem key={u.id} value={u.id}>
-                                    {u.fullName || u.username}
-                                  </SelectItem>
-                                ))}
+                                {users
+                                  .filter((u: any) => u.role === "abastecedor" || u.role === "supervisor")
+                                  .map((u: any) => (
+                                    <SelectItem key={u.id} value={u.id}>
+                                      {u.fullName || u.username}
+                                    </SelectItem>
+                                  ))}
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -768,11 +770,13 @@ export function FuelPage() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {users.map((u: any) => (
-                                  <SelectItem key={u.id} value={u.id}>
-                                    {u.fullName || u.username}
-                                  </SelectItem>
-                                ))}
+                                {users
+                                  .filter((u: any) => u.role === "abastecedor" || u.role === "supervisor")
+                                  .map((u: any) => (
+                                    <SelectItem key={u.id} value={u.id}>
+                                      {u.fullName || u.username}
+                                    </SelectItem>
+                                  ))}
                               </SelectContent>
                             </Select>
                             <FormMessage />

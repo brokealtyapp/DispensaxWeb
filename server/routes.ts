@@ -3105,10 +3105,14 @@ export async function registerRoutes(
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined
       });
-      res.json(records);
+      if (!res.headersSent) {
+        res.json(records);
+      }
     } catch (error) {
       console.error("Error getting time tracking:", error);
-      res.status(500).json({ error: "Error al obtener control de tiempos" });
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Error al obtener control de tiempos" });
+      }
     }
   });
 
@@ -3120,10 +3124,14 @@ export async function registerRoutes(
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined
       });
-      res.json(performance);
+      if (!res.headersSent) {
+        res.json(performance);
+      }
     } catch (error) {
       console.error("Error getting performance:", error);
-      res.status(500).json({ error: "Error al obtener rendimiento" });
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Error al obtener rendimiento" });
+      }
     }
   });
 

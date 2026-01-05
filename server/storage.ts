@@ -3712,14 +3712,26 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(serviceRecords.userId, filters.userId));
     }
 
-    const records = await db.select().from(serviceRecords)
-      .where(and(...conditions))
-      .orderBy(desc(serviceRecords.startTime));
+    const records = await db.select({
+      id: serviceRecords.id,
+      userId: serviceRecords.userId,
+      machineId: serviceRecords.machineId,
+      startTime: serviceRecords.startTime,
+      endTime: serviceRecords.endTime,
+      durationMinutes: serviceRecords.durationMinutes,
+      userName: users.fullName,
+      userUsername: users.username,
+      machineName: machines.name,
+      machineCode: machines.code
+    })
+    .from(serviceRecords)
+    .leftJoin(users, eq(serviceRecords.userId, users.id))
+    .leftJoin(machines, eq(serviceRecords.machineId, machines.id))
+    .where(and(...conditions))
+    .orderBy(desc(serviceRecords.startTime))
+    .limit(100);
 
-    const result = await Promise.all(records.map(async (r) => {
-      const user = await this.getUser(r.userId);
-      const machine = r.machineId ? await this.getMachine(r.machineId) : null;
-      
+    return records.map((r) => {
       const startTime = r.startTime ? new Date(r.startTime) : null;
       const endTime = r.endTime ? new Date(r.endTime) : null;
       
@@ -3732,57 +3744,70 @@ export class DatabaseStorage implements IStorage {
 
       return {
         id: r.id,
-        employee: user?.fullName || user?.username || r.userId,
+        employee: r.userName || r.userUsername || r.userId,
         employeeId: r.userId,
         date: startTime?.toISOString().split('T')[0] || "",
         checkIn: startTime?.toTimeString().slice(0, 5) || "",
         checkOut: endTime?.toTimeString().slice(0, 5) || "",
         hours: parseFloat(hours.toFixed(2)),
-        machine: machine?.name || machine?.code || null,
+        machine: r.machineName || r.machineCode || null,
         machineId: r.machineId
       };
-    }));
-
-    return result;
+    });
   }
 
   async getEmployeePerformance(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
     const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     const end = filters?.endDate || new Date();
 
+    const userConditions = [eq(users.role, "abastecedor"), eq(users.isActive, true)];
+    if (filters?.userId) {
+      userConditions.push(eq(users.id, filters.userId));
+    }
+
     const abastecedores = await db.select().from(users)
-      .where(eq(users.role, "abastecedor"));
+      .where(and(...userConditions))
+      .limit(20);
 
-    const filtered = filters?.userId 
-      ? abastecedores.filter(u => u.id === filters.userId)
-      : abastecedores;
+    const serviceStats = await db.select({
+      userId: serviceRecords.userId,
+      totalMachines: sql<number>`count(*)::int`,
+      totalDuration: sql<number>`coalesce(sum(${serviceRecords.durationMinutes}), 0)::int`,
+      daysWorked: sql<number>`count(distinct date(${serviceRecords.startTime}))::int`
+    })
+    .from(serviceRecords)
+    .where(and(
+      gte(serviceRecords.startTime, start),
+      lte(serviceRecords.startTime, end)
+    ))
+    .groupBy(serviceRecords.userId);
 
-    const result = await Promise.all(filtered.map(async (user) => {
-      const records = await db.select().from(serviceRecords)
-        .where(and(
-          eq(serviceRecords.userId, user.id),
-          gte(serviceRecords.startTime, start),
-          lte(serviceRecords.startTime, end)
-        ));
+    const collectionStats = await db.select({
+      userId: cashCollections.userId,
+      totalCollected: sql<number>`coalesce(sum(${cashCollections.actualAmount}), 0)::numeric`,
+      totalExpected: sql<number>`coalesce(sum(${cashCollections.expectedAmount}), 0)::numeric`
+    })
+    .from(cashCollections)
+    .where(and(
+      gte(cashCollections.createdAt, start),
+      lte(cashCollections.createdAt, end)
+    ))
+    .groupBy(cashCollections.userId);
 
-      const totalMachines = records.length;
-      const totalDuration = records.reduce((acc, r) => acc + (r.durationMinutes || 0), 0);
-      const avgTime = totalMachines > 0 ? totalDuration / totalMachines : 0;
+    const serviceMap = new Map(serviceStats.map(s => [s.userId, s]));
+    const collectionMap = new Map(collectionStats.map(c => [c.userId, c]));
 
-      const collections = await db.select().from(cashCollections)
-        .where(and(
-          eq(cashCollections.userId, user.id),
-          gte(cashCollections.createdAt, start),
-          lte(cashCollections.createdAt, end)
-        ));
+    const result = abastecedores.map((user) => {
+      const service = serviceMap.get(user.id) || { totalMachines: 0, totalDuration: 0, daysWorked: 0 };
+      const collection = collectionMap.get(user.id) || { totalCollected: 0, totalExpected: 0 };
 
-      const totalCollected = collections.reduce((acc, c) => acc + parseFloat(c.actualAmount?.toString() || "0"), 0);
-      const totalExpected = collections.reduce((acc, c) => acc + parseFloat(c.expectedAmount?.toString() || "0"), 0);
+      const totalMachines = service.totalMachines;
+      const avgTime = totalMachines > 0 ? service.totalDuration / totalMachines : 0;
+      const machinesPerDay = service.daysWorked > 0 ? totalMachines / service.daysWorked : 0;
 
+      const totalCollected = parseFloat(collection.totalCollected?.toString() || "0");
+      const totalExpected = parseFloat(collection.totalExpected?.toString() || "0");
       const efficiency = totalExpected > 0 ? (totalCollected / totalExpected * 100) : 100;
-
-      const daysWorked = new Set(records.map(r => r.startTime?.toISOString().split('T')[0])).size;
-      const machinesPerDay = daysWorked > 0 ? totalMachines / daysWorked : 0;
 
       return {
         id: user.id,
@@ -3794,7 +3819,7 @@ export class DatabaseStorage implements IStorage {
         totalCollected,
         rating: efficiency >= 95 ? 5 : efficiency >= 85 ? 4 : efficiency >= 75 ? 3.5 : efficiency >= 60 ? 3 : 2.5
       };
-    }));
+    });
 
     return result.sort((a, b) => b.efficiency - a.efficiency);
   }

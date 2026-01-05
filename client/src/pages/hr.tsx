@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import {
   Select,
@@ -38,6 +48,9 @@ import {
   Search,
   MoreHorizontal,
   Calendar,
+  Pencil,
+  X,
+  Filter,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -88,7 +101,16 @@ const employeeSchema = z.object({
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
 
+const editEmployeeSchema = z.object({
+  fullName: z.string().min(3, "El nombre debe tener al menos 3 caracteres"),
+  email: z.string().email("Email inválido"),
+  phone: z.string().optional(),
+  role: z.string().min(1, "Selecciona un rol"),
+  isActive: z.boolean().optional(),
+});
+
 type EmployeeFormData = z.infer<typeof employeeSchema>;
+type EditEmployeeFormData = z.infer<typeof editEmployeeSchema>;
 
 const roleLabels: Record<string, string> = {
   admin: "Administrador",
@@ -102,6 +124,11 @@ const roleLabels: Record<string, string> = {
 export function HRPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [deletingEmployeeId, setDeletingEmployeeId] = useState<string | null>(null);
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const { toast } = useToast();
 
   const form = useForm<EmployeeFormData>({
@@ -113,6 +140,17 @@ export function HRPage() {
       role: "",
       username: "",
       password: "",
+    },
+  });
+
+  const editForm = useForm<EditEmployeeFormData>({
+    resolver: zodResolver(editEmployeeSchema),
+    defaultValues: {
+      fullName: "",
+      email: "",
+      phone: "",
+      role: "",
+      isActive: true,
     },
   });
 
@@ -130,11 +168,7 @@ export function HRPage() {
 
   const createEmployeeMutation = useMutation({
     mutationFn: async (data: EmployeeFormData) => {
-      return await apiRequest("/api/hr/employees", {
-        method: "POST",
-        body: JSON.stringify(data),
-        headers: { "Content-Type": "application/json" },
-      });
+      return await apiRequest("POST", "/api/hr/employees", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/employees"] });
@@ -147,27 +181,75 @@ export function HRPage() {
     },
   });
 
+  const updateEmployeeMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: EditEmployeeFormData }) => {
+      return await apiRequest("PATCH", `/api/hr/employees/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/employees"] });
+      toast({ title: "Empleado actualizado correctamente" });
+      setIsEditDialogOpen(false);
+      setEditingEmployee(null);
+      editForm.reset();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error al actualizar empleado", description: error.message, variant: "destructive" });
+    },
+  });
+
   const deleteEmployeeMutation = useMutation({
     mutationFn: async (id: string) => {
-      return await apiRequest(`/api/hr/employees/${id}`, {
-        method: "DELETE",
-      });
+      return await apiRequest("DELETE", `/api/hr/employees/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/employees"] });
       toast({ title: "Empleado desactivado correctamente" });
+      setDeletingEmployeeId(null);
     },
     onError: (error: Error) => {
       toast({ title: "Error al desactivar empleado", description: error.message, variant: "destructive" });
     },
   });
 
-  const filteredEmployees = (employees || []).filter(
-    (emp) =>
-      (emp.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-       emp.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-       emp.email?.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const openEditEmployee = (employee: Employee) => {
+    setEditingEmployee(employee);
+    editForm.reset({
+      fullName: employee.fullName || "",
+      email: employee.email || "",
+      phone: employee.phone || "",
+      role: employee.role,
+      isActive: employee.isActive,
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const onEditSubmit = (data: EditEmployeeFormData) => {
+    if (editingEmployee) {
+      updateEmployeeMutation.mutate({ id: editingEmployee.id, data });
+    }
+  };
+
+  const filteredEmployees = useMemo(() => {
+    return (employees || []).filter((emp) => {
+      const matchesSearch = !searchQuery || 
+        emp.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        emp.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        emp.email?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesRole = roleFilter === "all" || emp.role === roleFilter;
+      const matchesStatus = statusFilter === "all" || 
+        (statusFilter === "active" && emp.isActive) || 
+        (statusFilter === "inactive" && !emp.isActive);
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+  }, [employees, searchQuery, roleFilter, statusFilter]);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setRoleFilter("all");
+    setStatusFilter("all");
+  };
+
+  const hasActiveFilters = searchQuery || roleFilter !== "all" || statusFilter !== "all";
 
   const activeEmployees = (employees || []).filter((e) => e.isActive).length;
   const avgHours = timeRecords?.length 
@@ -230,23 +312,27 @@ export function HRPage() {
       key: "id",
       header: "",
       render: (item) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" data-testid={`button-menu-${item.id}`}>
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem>Ver Perfil</DropdownMenuItem>
-            <DropdownMenuItem>Editar</DropdownMenuItem>
-            <DropdownMenuItem 
-              className="text-destructive"
-              onClick={() => deleteEmployeeMutation.mutate(item.id)}
+        <div className="flex items-center gap-1">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => openEditEmployee(item)}
+            data-testid={`button-edit-${item.id}`}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          {item.isActive && (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setDeletingEmployeeId(item.id)}
+              className="text-destructive hover:text-destructive"
+              data-testid={`button-delete-${item.id}`}
             >
-              Desactivar
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       ),
     },
   ];
@@ -489,8 +575,8 @@ export function HRPage() {
         <TabsContent value="personal" className="mt-6">
           <Card>
             <CardHeader className="pb-4">
-              <div className="flex items-center gap-4">
-                <div className="relative flex-1 max-w-sm">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="relative flex-1 min-w-[200px] max-w-sm">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Buscar empleados..."
@@ -500,6 +586,34 @@ export function HRPage() {
                     data-testid="input-search-employees"
                   />
                 </div>
+                <Select value={roleFilter} onValueChange={setRoleFilter}>
+                  <SelectTrigger className="w-[160px]" data-testid="select-role-filter">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Rol" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los roles</SelectItem>
+                    {Object.entries(roleLabels).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-[140px]" data-testid="select-status-filter">
+                    <SelectValue placeholder="Estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="active">Activos</SelectItem>
+                    <SelectItem value="inactive">Inactivos</SelectItem>
+                  </SelectContent>
+                </Select>
+                {hasActiveFilters && (
+                  <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
+                    <X className="h-4 w-4 mr-1" />
+                    Limpiar
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -563,6 +677,137 @@ export function HRPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Employee Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Empleado</DialogTitle>
+            <DialogDescription>Modifica los datos del empleado</DialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+              <FormField
+                control={editForm.control}
+                name="fullName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre Completo</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ej: Juan Pérez" {...field} data-testid="input-edit-fullname" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input placeholder="juan@dispensax.com" {...field} data-testid="input-edit-email" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Teléfono (opcional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="555-1234" {...field} data-testid="input-edit-phone" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="role"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Rol</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-role">
+                          <SelectValue placeholder="Selecciona un rol" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {Object.entries(roleLabels).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="isActive"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Estado</FormLabel>
+                    <Select 
+                      onValueChange={(val) => field.onChange(val === "true")} 
+                      value={field.value ? "true" : "false"}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-status">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="true">Activo</SelectItem>
+                        <SelectItem value="false">Inactivo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={updateEmployeeMutation.isPending} data-testid="button-save-edit">
+                  {updateEmployeeMutation.isPending ? "Guardando..." : "Guardar Cambios"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deletingEmployeeId} onOpenChange={(open) => { if (!open) setDeletingEmployeeId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Desactivar empleado?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción desactivará al empleado. Podrás reactivarlo más tarde desde la edición.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deletingEmployeeId && deleteEmployeeMutation.mutate(deletingEmployeeId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete"
+            >
+              Desactivar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
