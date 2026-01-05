@@ -112,6 +112,8 @@ export default function RoutesPage() {
   const [isAddStopOpen, setIsAddStopOpen] = useState(false);
   const [isDeleteRouteOpen, setIsDeleteRouteOpen] = useState(false);
   const [isDeleteStopOpen, setIsDeleteStopOpen] = useState(false);
+  const [isCancelRouteOpen, setIsCancelRouteOpen] = useState(false);
+  const [isCompleteRouteOpen, setIsCompleteRouteOpen] = useState(false);
   
   const [selectedRoute, setSelectedRoute] = useState<RouteData | null>(null);
   const [routeToDelete, setRouteToDelete] = useState<RouteData | null>(null);
@@ -235,7 +237,7 @@ export default function RoutesPage() {
       const routeData = {
         date: new Date(data.date).toISOString(),
         supplierId: data.supplierId,
-        supervisorId: data.supervisorId || undefined,
+        supervisorId: data.supervisorId === "none" ? undefined : data.supervisorId || undefined,
         estimatedDuration: data.estimatedDuration,
         notes: data.notes,
         totalStops: data.stops.length,
@@ -333,6 +335,39 @@ export default function RoutesPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo eliminar la parada", variant: "destructive" });
+    },
+  });
+
+  const cancelRouteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("PATCH", `/api/supplier/routes/${id}`, { status: "cancelada" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      toast({ title: "Ruta cancelada", description: "La ruta ha sido cancelada" });
+      setIsCancelRouteOpen(false);
+      setSelectedRoute(null);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo cancelar la ruta", variant: "destructive" });
+    },
+  });
+
+  const completeRouteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("PATCH", `/api/supplier/routes/${id}`, { 
+        status: "completada",
+        endTime: new Date().toISOString()
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      toast({ title: "Ruta completada", description: "La ruta ha sido marcada como completada" });
+      setIsCompleteRouteOpen(false);
+      setSelectedRoute(null);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo completar la ruta", variant: "destructive" });
     },
   });
 
@@ -642,12 +677,52 @@ export default function RoutesPage() {
                                       variant="ghost"
                                       size="icon"
                                       onClick={() => {
+                                        setSelectedRoute(route);
+                                        setIsCancelRouteOpen(true);
+                                      }}
+                                      data-testid={`button-cancel-route-${route.id}`}
+                                      title="Cancelar ruta"
+                                    >
+                                      <XCircle className="h-4 w-4 text-orange-500" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => {
                                         setRouteToDelete(route);
                                         setIsDeleteRouteOpen(true);
                                       }}
                                       data-testid={`button-delete-route-${route.id}`}
                                     >
                                       <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                  </>
+                                )}
+                                {route.status === "en_progreso" && (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => {
+                                        setSelectedRoute(route);
+                                        setIsCompleteRouteOpen(true);
+                                      }}
+                                      data-testid={`button-complete-route-${route.id}`}
+                                      title="Completar ruta"
+                                    >
+                                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => {
+                                        setSelectedRoute(route);
+                                        setIsCancelRouteOpen(true);
+                                      }}
+                                      data-testid={`button-cancel-active-route-${route.id}`}
+                                      title="Cancelar ruta"
+                                    >
+                                      <XCircle className="h-4 w-4 text-orange-500" />
                                     </Button>
                                   </>
                                 )}
@@ -741,7 +816,7 @@ export default function RoutesPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">Sin asignar</SelectItem>
+                          <SelectItem value="none">Sin asignar</SelectItem>
                           {supervisores.filter(u => u.isActive).map((user) => (
                             <SelectItem key={user.id} value={user.id}>
                               {user.fullName || user.username}
@@ -1171,6 +1246,48 @@ export default function RoutesPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleteStopMutation.isPending ? "Eliminando..." : "Eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isCancelRouteOpen} onOpenChange={setIsCancelRouteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cancelar ruta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              La ruta será marcada como cancelada y no podrá ser ejecutada.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => selectedRoute && cancelRouteMutation.mutate(selectedRoute.id)}
+              className="bg-orange-500 text-white hover:bg-orange-600"
+              data-testid="button-confirm-cancel-route"
+            >
+              {cancelRouteMutation.isPending ? "Cancelando..." : "Cancelar Ruta"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isCompleteRouteOpen} onOpenChange={setIsCompleteRouteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Completar ruta manualmente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              La ruta será marcada como completada. Use esta opción solo si la ruta fue ejecutada pero no se registró correctamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => selectedRoute && completeRouteMutation.mutate(selectedRoute.id)}
+              className="bg-green-500 text-white hover:bg-green-600"
+              data-testid="button-confirm-complete-route"
+            >
+              {completeRouteMutation.isPending ? "Completando..." : "Completar Ruta"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
