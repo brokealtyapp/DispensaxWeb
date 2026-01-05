@@ -20,16 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
@@ -49,16 +39,11 @@ import {
   AlertTriangle,
   TrendingUp,
   Calendar,
-  Truck,
   ArrowUpCircle,
   ArrowDownCircle,
   RotateCcw,
   Clock,
   Edit,
-  Trash2,
-  Eye,
-  FileText,
-  Building2,
   Download,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -114,23 +99,9 @@ const adjustmentSchema = z.object({
   notes: z.string().optional(),
 });
 
-const supplierSchema = z.object({
-  name: z.string().min(2, "El nombre es requerido"),
-  code: z.string().optional(),
-  contactName: z.string().optional(),
-  contactEmail: z.union([z.string().email(), z.literal("")]).optional(),
-  contactPhone: z.string().optional(),
-  address: z.string().optional(),
-  city: z.string().optional(),
-  taxId: z.string().optional(),
-  paymentTerms: z.string().optional(),
-  notes: z.string().optional(),
-});
-
 type EntryFormData = z.infer<typeof entrySchema>;
 type ExitFormData = z.infer<typeof exitSchema>;
 type AdjustmentFormData = z.infer<typeof adjustmentSchema>;
-type SupplierFormData = z.infer<typeof supplierSchema>;
 
 const movementTypeLabels: Record<string, string> = {
   entrada_compra: "Entrada (Compra)",
@@ -156,34 +127,16 @@ const movementTypeColors: Record<string, string> = {
   transferencia: "bg-purple-500 text-white",
 };
 
-interface PurchaseHistoryItem {
-  id: string;
-  orderNumber: string;
-  orderDate: string;
-  status: string;
-  totalAmount: string;
-  itemsCount: number;
-}
-
 export function WarehousePage() {
   const [activeTab, setActiveTab] = useState("inventario");
   const [searchQuery, setSearchQuery] = useState("");
-  const [supplierSearchQuery, setSupplierSearchQuery] = useState("");
-  const [supplierStatusFilter, setSupplierStatusFilter] = useState<string>("all");
-  const [supplierPage, setSupplierPage] = useState(1);
-  const SUPPLIERS_PER_PAGE = 10;
   const [isEntryDialogOpen, setIsEntryDialogOpen] = useState(false);
   const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
   const [isAdjustmentDialogOpen, setIsAdjustmentDialogOpen] = useState(false);
-  const [isSupplierDialogOpen, setIsSupplierDialogOpen] = useState(false);
   const [selectedProductFilter, setSelectedProductFilter] = useState<string>("all");
   const [selectedMovementTypeFilter, setSelectedMovementTypeFilter] = useState<string>("all");
   const [movementsPage, setMovementsPage] = useState(1);
   const MOVEMENTS_PER_PAGE = 20;
-  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
-  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
-  const [viewingSupplier, setViewingSupplier] = useState<Supplier | null>(null);
-  const [purchaseHistory, setPurchaseHistory] = useState<PurchaseHistoryItem[]>([]);
 
   const { data: stats, isLoading: statsLoading } = useQuery<WarehouseStats>({
     queryKey: ["/api/warehouse/stats"],
@@ -263,22 +216,6 @@ export function WarehousePage() {
     },
   });
 
-  const supplierForm = useForm<SupplierFormData>({
-    resolver: zodResolver(supplierSchema),
-    defaultValues: {
-      name: "",
-      code: "",
-      contactName: "",
-      contactEmail: "",
-      contactPhone: "",
-      address: "",
-      city: "",
-      taxId: "",
-      paymentTerms: "",
-      notes: "",
-    },
-  });
-
   const entryMutation = useMutation({
     mutationFn: async (data: EntryFormData) => {
       const response = await apiRequest("POST", "/api/warehouse/entry", data);
@@ -325,106 +262,6 @@ export function WarehousePage() {
       adjustmentForm.reset();
     },
   });
-
-  const supplierMutation = useMutation({
-    mutationFn: async (data: SupplierFormData) => {
-      if (editingSupplier) {
-        const response = await apiRequest("PATCH", `/api/suppliers/${editingSupplier.id}`, data);
-        return response.json();
-      }
-      const response = await apiRequest("POST", "/api/suppliers", data);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
-      setIsSupplierDialogOpen(false);
-      setEditingSupplier(null);
-      supplierForm.reset();
-    },
-  });
-
-  const deleteSupplierMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const response = await apiRequest("DELETE", `/api/suppliers/${id}`);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
-      setSupplierToDelete(null);
-    },
-  });
-
-  const handleEditSupplier = (supplier: Supplier) => {
-    setEditingSupplier(supplier);
-    supplierForm.reset({
-      name: supplier.name,
-      code: supplier.code || "",
-      contactName: supplier.contactName || "",
-      contactEmail: supplier.contactEmail || "",
-      contactPhone: supplier.contactPhone || "",
-      address: supplier.address || "",
-      city: supplier.city || "",
-      taxId: supplier.taxId || "",
-      paymentTerms: supplier.paymentTerms || "",
-      notes: supplier.notes || "",
-    });
-    setIsSupplierDialogOpen(true);
-  };
-
-  const [isLoadingPurchaseHistory, setIsLoadingPurchaseHistory] = useState(false);
-
-  const handleViewSupplier = async (supplier: Supplier) => {
-    setPurchaseHistory([]);
-    setIsLoadingPurchaseHistory(true);
-    setViewingSupplier(supplier);
-    try {
-      const response = await fetch(`/api/suppliers/${supplier.id}/purchase-history`, { credentials: "include" });
-      if (response.ok) {
-        const data = await response.json();
-        setPurchaseHistory(data);
-      } else {
-        setPurchaseHistory([]);
-      }
-    } catch {
-      setPurchaseHistory([]);
-    } finally {
-      setIsLoadingPurchaseHistory(false);
-    }
-  };
-
-  const filteredSuppliers = useMemo(() => {
-    return suppliers.filter((supplier) => {
-      const matchesSearch = supplier.name.toLowerCase().includes(supplierSearchQuery.toLowerCase()) ||
-        supplier.code?.toLowerCase().includes(supplierSearchQuery.toLowerCase()) ||
-        supplier.contactName?.toLowerCase().includes(supplierSearchQuery.toLowerCase());
-      const matchesStatus = supplierStatusFilter === "all" || 
-        (supplierStatusFilter === "active" && supplier.isActive) ||
-        (supplierStatusFilter === "inactive" && !supplier.isActive);
-      return matchesSearch && matchesStatus;
-    });
-  }, [suppliers, supplierSearchQuery, supplierStatusFilter]);
-
-  const paginatedSuppliers = useMemo(() => {
-    const startIndex = (supplierPage - 1) * SUPPLIERS_PER_PAGE;
-    return filteredSuppliers.slice(startIndex, startIndex + SUPPLIERS_PER_PAGE);
-  }, [filteredSuppliers, supplierPage]);
-
-  useEffect(() => {
-    const totalPages = Math.ceil(filteredSuppliers.length / SUPPLIERS_PER_PAGE);
-    if (supplierPage > totalPages && totalPages > 0) {
-      setSupplierPage(totalPages);
-    }
-  }, [filteredSuppliers.length, supplierPage]);
-
-  const handleSupplierSearchChange = (value: string) => {
-    setSupplierSearchQuery(value);
-    setSupplierPage(1);
-  };
-
-  const handleSupplierFilterChange = (value: string) => {
-    setSupplierStatusFilter(value);
-    setSupplierPage(1);
-  };
 
   const filteredInventory = inventory.filter((item) =>
     item.product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -500,14 +337,6 @@ export function WarehousePage() {
           >
             <ArrowUpCircle className="w-4 h-4 mr-2" />
             Salida
-          </Button>
-          <Button
-            onClick={() => setIsSupplierDialogOpen(true)}
-            variant="outline"
-            data-testid="button-new-supplier"
-          >
-            <Truck className="w-4 h-4 mr-2" />
-            Proveedor
           </Button>
           <Select onValueChange={(type) => {
             const url = `/api/warehouse/export/${type}`;
@@ -618,10 +447,6 @@ export function WarehousePage() {
           <TabsTrigger value="lotes" data-testid="tab-lots">
             <Clock className="w-4 h-4 mr-2" />
             Lotes
-          </TabsTrigger>
-          <TabsTrigger value="proveedores" data-testid="tab-suppliers">
-            <Truck className="w-4 h-4 mr-2" />
-            Proveedores
           </TabsTrigger>
         </TabsList>
 
@@ -845,7 +670,8 @@ export function WarehousePage() {
                     <div className="mt-4">
                       <DataPagination
                         currentPage={movementsPage}
-                        totalPages={totalMovementsPages}
+                        totalItems={filteredMovements.length}
+                        itemsPerPage={MOVEMENTS_PER_PAGE}
                         onPageChange={setMovementsPage}
                       />
                     </div>
@@ -976,143 +802,6 @@ export function WarehousePage() {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
-
-        <TabsContent value="proveedores" className="mt-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="w-5 h-5" />
-                Proveedores
-              </CardTitle>
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                  <Input
-                    placeholder="Buscar proveedor..."
-                    value={supplierSearchQuery}
-                    onChange={(e) => handleSupplierSearchChange(e.target.value)}
-                    className="pl-9 w-64"
-                    data-testid="input-search-supplier"
-                  />
-                </div>
-                <Select value={supplierStatusFilter} onValueChange={handleSupplierFilterChange}>
-                  <SelectTrigger className="w-36" data-testid="select-supplier-status">
-                    <SelectValue placeholder="Estado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="active">Activos</SelectItem>
-                    <SelectItem value="inactive">Inactivos</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button 
-                  onClick={() => {
-                    setEditingSupplier(null);
-                    supplierForm.reset({
-                      name: "",
-                      code: "",
-                      contactName: "",
-                      contactEmail: "",
-                      contactPhone: "",
-                      address: "",
-                      city: "",
-                      taxId: "",
-                      paymentTerms: "",
-                      notes: "",
-                    });
-                    setIsSupplierDialogOpen(true);
-                  }} 
-                  data-testid="button-add-supplier"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Agregar
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {filteredSuppliers.length === 0 ? (
-                <div className="text-center py-12">
-                  <Building2 className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">
-                    {suppliers.length === 0 
-                      ? "No hay proveedores registrados."
-                      : "No se encontraron proveedores con los filtros aplicados."}
-                  </p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead>Código</TableHead>
-                      <TableHead>Contacto</TableHead>
-                      <TableHead>Teléfono</TableHead>
-                      <TableHead>Ciudad</TableHead>
-                      <TableHead>Estado</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedSuppliers.map((supplier) => (
-                      <TableRow key={supplier.id} data-testid={`row-supplier-${supplier.id}`}>
-                        <TableCell className="font-medium">{supplier.name}</TableCell>
-                        <TableCell className="text-muted-foreground font-mono text-sm">
-                          {supplier.code || "-"}
-                        </TableCell>
-                        <TableCell>{supplier.contactName || "-"}</TableCell>
-                        <TableCell>{supplier.contactPhone || "-"}</TableCell>
-                        <TableCell>{supplier.city || "-"}</TableCell>
-                        <TableCell>
-                          <Badge variant={supplier.isActive ? "default" : "secondary"}>
-                            {supplier.isActive ? "Activo" : "Inactivo"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => handleViewSupplier(supplier)}
-                              data-testid={`button-view-supplier-${supplier.id}`}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => handleEditSupplier(supplier)}
-                              data-testid={`button-edit-supplier-${supplier.id}`}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => setSupplierToDelete(supplier)}
-                              data-testid={`button-delete-supplier-${supplier.id}`}
-                            >
-                              <Trash2 className="w-4 h-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-
-              {filteredSuppliers.length > SUPPLIERS_PER_PAGE && (
-                <DataPagination
-                  currentPage={supplierPage}
-                  totalItems={filteredSuppliers.length}
-                  itemsPerPage={SUPPLIERS_PER_PAGE}
-                  onPageChange={setSupplierPage}
-                  className="mt-4"
-                />
-              )}
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
 
@@ -1434,301 +1123,6 @@ export function WarehousePage() {
               </div>
             </form>
           </Form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isSupplierDialogOpen} onOpenChange={(open) => {
-        setIsSupplierDialogOpen(open);
-        if (!open) setEditingSupplier(null);
-      }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingSupplier ? "Editar Proveedor" : "Nuevo Proveedor"}</DialogTitle>
-            <DialogDescription>
-              {editingSupplier ? "Modifica los datos del proveedor" : "Agrega un nuevo proveedor al sistema"}
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...supplierForm}>
-            <form onSubmit={supplierForm.handleSubmit((data) => supplierMutation.mutate(data))} className="space-y-4">
-              <FormField
-                control={supplierForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nombre *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Nombre del proveedor" {...field} data-testid="input-supplier-name" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={supplierForm.control}
-                  name="code"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Código</FormLabel>
-                      <FormControl>
-                        <Input placeholder="PROV-001" {...field} data-testid="input-supplier-code" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={supplierForm.control}
-                  name="taxId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>RNC/Cédula</FormLabel>
-                      <FormControl>
-                        <Input placeholder="RNC o Cédula" {...field} data-testid="input-supplier-tax" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <FormField
-                control={supplierForm.control}
-                name="contactName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nombre de Contacto</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Nombre del contacto" {...field} data-testid="input-supplier-contact" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={supplierForm.control}
-                  name="contactEmail"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input type="email" placeholder="correo@ejemplo.com" {...field} data-testid="input-supplier-email" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={supplierForm.control}
-                  name="contactPhone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Teléfono</FormLabel>
-                      <FormControl>
-                        <Input placeholder="809-555-1234" {...field} data-testid="input-supplier-phone" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <FormField
-                control={supplierForm.control}
-                name="address"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Dirección</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Dirección completa" {...field} data-testid="input-supplier-address" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={supplierForm.control}
-                  name="city"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Ciudad</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Ciudad" {...field} data-testid="input-supplier-city" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={supplierForm.control}
-                  name="paymentTerms"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Términos de Pago</FormLabel>
-                      <FormControl>
-                        <Input placeholder="30 días, Contado, etc." {...field} data-testid="input-supplier-payment" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <FormField
-                control={supplierForm.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Notas</FormLabel>
-                    <FormControl>
-                      <Textarea placeholder="Observaciones adicionales..." {...field} data-testid="input-supplier-notes" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={() => {
-                  setIsSupplierDialogOpen(false);
-                  setEditingSupplier(null);
-                }}>
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={supplierMutation.isPending} data-testid="button-submit-supplier">
-                  {supplierMutation.isPending ? "Guardando..." : (editingSupplier ? "Actualizar" : "Guardar")}
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={!!supplierToDelete} onOpenChange={(open) => !open && setSupplierToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar Proveedor</AlertDialogTitle>
-            <AlertDialogDescription>
-              ¿Estás seguro de que deseas eliminar a <strong>{supplierToDelete?.name}</strong>? 
-              Esta acción no se puede deshacer y podría afectar órdenes de compra asociadas.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => supplierToDelete && deleteSupplierMutation.mutate(supplierToDelete.id)}
-              data-testid="button-confirm-delete-supplier"
-            >
-              {deleteSupplierMutation.isPending ? "Eliminando..." : "Eliminar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <Dialog open={!!viewingSupplier} onOpenChange={(open) => !open && setViewingSupplier(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Building2 className="w-5 h-5" />
-              {viewingSupplier?.name}
-            </DialogTitle>
-            <DialogDescription>
-              Información detallada del proveedor
-            </DialogDescription>
-          </DialogHeader>
-          
-          {viewingSupplier && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Código</p>
-                  <p className="font-medium">{viewingSupplier.code || "-"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">RNC/Cédula</p>
-                  <p className="font-medium">{viewingSupplier.taxId || "-"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Contacto</p>
-                  <p className="font-medium">{viewingSupplier.contactName || "-"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Email</p>
-                  <p className="font-medium">{viewingSupplier.contactEmail || "-"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Teléfono</p>
-                  <p className="font-medium">{viewingSupplier.contactPhone || "-"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Ciudad</p>
-                  <p className="font-medium">{viewingSupplier.city || "-"}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-sm text-muted-foreground">Dirección</p>
-                  <p className="font-medium">{viewingSupplier.address || "-"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Términos de Pago</p>
-                  <p className="font-medium">{viewingSupplier.paymentTerms || "-"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Estado</p>
-                  <Badge variant={viewingSupplier.isActive ? "default" : "secondary"}>
-                    {viewingSupplier.isActive ? "Activo" : "Inactivo"}
-                  </Badge>
-                </div>
-                {viewingSupplier.notes && (
-                  <div className="col-span-2">
-                    <p className="text-sm text-muted-foreground">Notas</p>
-                    <p className="font-medium">{viewingSupplier.notes}</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="border-t pt-4">
-                <h4 className="font-medium flex items-center gap-2 mb-4">
-                  <FileText className="w-4 h-4" />
-                  Historial de Órdenes de Compra
-                </h4>
-                {isLoadingPurchaseHistory ? (
-                  <div className="text-center py-4">
-                    <p className="text-muted-foreground">Cargando historial...</p>
-                  </div>
-                ) : purchaseHistory.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-4">
-                    No hay órdenes de compra registradas para este proveedor.
-                  </p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Orden</TableHead>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead className="text-right">Items</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {purchaseHistory.map((order) => (
-                        <TableRow key={order.id}>
-                          <TableCell className="font-mono text-sm">{order.orderNumber}</TableCell>
-                          <TableCell>{formatDateShort(new Date(order.orderDate))}</TableCell>
-                          <TableCell>
-                            <Badge variant="secondary">{order.status}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right">{order.itemsCount}</TableCell>
-                          <TableCell className="text-right font-medium">
-                            ${parseFloat(order.totalAmount).toFixed(2)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </div>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
     </div>
