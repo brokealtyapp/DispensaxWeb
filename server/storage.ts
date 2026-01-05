@@ -3339,12 +3339,16 @@ export class DatabaseStorage implements IStorage {
   // ==================== MÓDULO CONTABILIDAD ====================
 
   async getAccountingOverview(startDate?: Date, endDate?: Date): Promise<{
-    ingresosTotales: number;
-    egresosTotales: number;
+    totalIngresos: number;
+    totalGastos: number;
     utilidadNeta: number;
+    margen: number;
     transacciones: number;
+    promedioTicket: number;
     tendenciaIngresos: number;
-    tendenciaEgresos: number;
+    tendenciaGastos: number;
+    monthlyData: { month: string; ventas: number; gastos: number }[];
+    categoryData: { name: string; value: number }[];
   }> {
     const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     const end = endDate || new Date();
@@ -3364,7 +3368,7 @@ export class DatabaseStorage implements IStorage {
         lte(machineSales.saleDate, prevEnd)
       ));
 
-    const ingresosTotales = sales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
+    const totalIngresos = sales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
     const prevIngresos = prevSales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
 
     const pettyCashExp = await db.select().from(pettyCashExpenses)
@@ -3410,24 +3414,112 @@ export class DatabaseStorage implements IStorage {
     const egresosPettyCash = pettyCashExp.reduce((acc, e) => acc + parseFloat(e.amount?.toString() || "0"), 0);
     const egresosCompras = purchaseExp.reduce((acc, p) => acc + parseFloat(p.total?.toString() || "0"), 0);
     const egresosCombustible = fuelExp.reduce((acc, f) => acc + parseFloat(f.totalAmount?.toString() || "0"), 0);
-    const egresosTotales = egresosPettyCash + egresosCompras + egresosCombustible;
+    const totalGastos = egresosPettyCash + egresosCompras + egresosCombustible;
 
     const prevEgresosPettyCash = prevPettyCash.reduce((acc, e) => acc + parseFloat(e.amount?.toString() || "0"), 0);
     const prevEgresosCompras = prevPurchases.reduce((acc, p) => acc + parseFloat(p.total?.toString() || "0"), 0);
     const prevEgresosCombustible = prevFuel.reduce((acc, f) => acc + parseFloat(f.totalAmount?.toString() || "0"), 0);
-    const prevEgresos = prevEgresosPettyCash + prevEgresosCompras + prevEgresosCombustible;
+    const prevGastos = prevEgresosPettyCash + prevEgresosCompras + prevEgresosCombustible;
 
-    const tendenciaIngresos = prevIngresos > 0 ? ((ingresosTotales - prevIngresos) / prevIngresos * 100) : 0;
-    const tendenciaEgresos = prevEgresos > 0 ? ((egresosTotales - prevEgresos) / prevEgresos * 100) : 0;
+    const tendenciaIngresos = prevIngresos > 0 ? ((totalIngresos - prevIngresos) / prevIngresos * 100) : 0;
+    const tendenciaGastos = prevGastos > 0 ? ((totalGastos - prevGastos) / prevGastos * 100) : 0;
+
+    const utilidadNeta = totalIngresos - totalGastos;
+    const margen = totalIngresos > 0 ? (utilidadNeta / totalIngresos * 100) : 0;
+    const promedioTicket = sales.length > 0 ? totalIngresos / sales.length : 0;
+
+    const monthlyData = this.generateMonthlyData(sales, pettyCashExp, purchaseExp, fuelExp);
+    
+    const categoryData = this.generateCategoryData(egresosPettyCash, egresosCompras, egresosCombustible, totalGastos);
 
     return {
-      ingresosTotales,
-      egresosTotales,
-      utilidadNeta: ingresosTotales - egresosTotales,
+      totalIngresos,
+      totalGastos,
+      utilidadNeta,
+      margen: parseFloat(margen.toFixed(1)),
       transacciones: sales.length,
+      promedioTicket: parseFloat(promedioTicket.toFixed(2)),
       tendenciaIngresos: parseFloat(tendenciaIngresos.toFixed(1)),
-      tendenciaEgresos: parseFloat(tendenciaEgresos.toFixed(1)),
+      tendenciaGastos: parseFloat(tendenciaGastos.toFixed(1)),
+      monthlyData,
+      categoryData,
     };
+  }
+
+  private generateMonthlyData(
+    sales: any[], 
+    pettyCash: any[], 
+    purchases: any[], 
+    fuel: any[]
+  ): { month: string; ventas: number; gastos: number }[] {
+    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const monthlyMap: Record<string, { ventas: number; gastos: number }> = {};
+
+    for (const sale of sales) {
+      const date = sale.saleDate ? new Date(sale.saleDate) : null;
+      if (date) {
+        const key = `${date.getFullYear()}-${date.getMonth()}`;
+        if (!monthlyMap[key]) monthlyMap[key] = { ventas: 0, gastos: 0 };
+        monthlyMap[key].ventas += parseFloat(sale.totalAmount?.toString() || "0");
+      }
+    }
+
+    for (const exp of pettyCash) {
+      const date = exp.createdAt ? new Date(exp.createdAt) : null;
+      if (date) {
+        const key = `${date.getFullYear()}-${date.getMonth()}`;
+        if (!monthlyMap[key]) monthlyMap[key] = { ventas: 0, gastos: 0 };
+        monthlyMap[key].gastos += parseFloat(exp.amount?.toString() || "0");
+      }
+    }
+
+    for (const po of purchases) {
+      const date = po.createdAt ? new Date(po.createdAt) : null;
+      if (date) {
+        const key = `${date.getFullYear()}-${date.getMonth()}`;
+        if (!monthlyMap[key]) monthlyMap[key] = { ventas: 0, gastos: 0 };
+        monthlyMap[key].gastos += parseFloat(po.total?.toString() || "0");
+      }
+    }
+
+    for (const f of fuel) {
+      const date = f.recordDate ? new Date(f.recordDate) : null;
+      if (date) {
+        const key = `${date.getFullYear()}-${date.getMonth()}`;
+        if (!monthlyMap[key]) monthlyMap[key] = { ventas: 0, gastos: 0 };
+        monthlyMap[key].gastos += parseFloat(f.totalAmount?.toString() || "0");
+      }
+    }
+
+    const sortedKeys = Object.keys(monthlyMap).sort();
+    return sortedKeys.slice(-6).map(key => {
+      const [year, monthIdx] = key.split('-').map(Number);
+      return {
+        month: monthNames[monthIdx],
+        ventas: Math.round(monthlyMap[key].ventas),
+        gastos: Math.round(monthlyMap[key].gastos)
+      };
+    });
+  }
+
+  private generateCategoryData(
+    pettyCash: number, 
+    purchases: number, 
+    fuel: number, 
+    total: number
+  ): { name: string; value: number }[] {
+    if (total === 0) return [];
+    
+    const categories = [
+      { name: 'Compras', value: purchases },
+      { name: 'Caja Chica', value: pettyCash },
+      { name: 'Combustible', value: fuel },
+    ].filter(c => c.value > 0);
+
+    return categories.map(c => ({
+      name: c.name,
+      value: Math.round((c.value / total) * 100)
+    }));
   }
 
   async getMachineSalesReport(startDate?: Date, endDate?: Date): Promise<any[]> {
@@ -3443,64 +3535,64 @@ export class DatabaseStorage implements IStorage {
     const monthStart = new Date(today);
     monthStart.setMonth(monthStart.getMonth() - 1);
 
-    const allMachines = await db.select().from(machines);
-    
-    const result = await Promise.all(allMachines.map(async (machine) => {
-      const todaySales = await db.select().from(machineSales)
-        .where(and(
-          eq(machineSales.machineId, machine.id),
-          gte(machineSales.saleDate, today)
-        ));
-      
-      const weekSales = await db.select().from(machineSales)
-        .where(and(
-          eq(machineSales.machineId, machine.id),
-          gte(machineSales.saleDate, weekStart)
-        ));
-      
-      const monthSales = await db.select().from(machineSales)
-        .where(and(
-          eq(machineSales.machineId, machine.id),
-          gte(machineSales.saleDate, monthStart)
-        ));
-      
-      const periodSales = await db.select().from(machineSales)
-        .where(and(
-          eq(machineSales.machineId, machine.id),
-          gte(machineSales.saleDate, start),
-          lte(machineSales.saleDate, end)
-        ));
+    const prevWeekStart = new Date(weekStart);
+    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
 
-      const todayTotal = todaySales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
-      const weekTotal = weekSales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
-      const monthTotal = monthSales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
-      const periodTotal = periodSales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
+    const [allMachines, allLocations, allSales] = await Promise.all([
+      db.select().from(machines),
+      db.select().from(locations),
+      db.select().from(machineSales)
+        .where(gte(machineSales.saleDate, prevWeekStart))
+    ]);
 
-      const prevWeekStart = new Date(weekStart);
-      prevWeekStart.setDate(prevWeekStart.getDate() - 7);
-      const prevWeekSales = await db.select().from(machineSales)
-        .where(and(
-          eq(machineSales.machineId, machine.id),
-          gte(machineSales.saleDate, prevWeekStart),
-          lte(machineSales.saleDate, weekStart)
-        ));
-      const prevWeekTotal = prevWeekSales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
+    const locationMap = new Map(allLocations.map(l => [l.id, l.name]));
 
-      const location = machine.locationId ? await this.getLocation(machine.locationId) : null;
+    const salesByMachine = new Map<number, {
+      today: number; week: number; month: number; period: number;
+      prevWeek: number; periodCount: number;
+    }>();
+
+    for (const sale of allSales) {
+      const saleDate = sale.saleDate ? new Date(sale.saleDate) : null;
+      if (!saleDate || !sale.machineId) continue;
+
+      const amount = parseFloat(sale.totalAmount?.toString() || "0");
+      
+      if (!salesByMachine.has(sale.machineId)) {
+        salesByMachine.set(sale.machineId, {
+          today: 0, week: 0, month: 0, period: 0, prevWeek: 0, periodCount: 0
+        });
+      }
+      const data = salesByMachine.get(sale.machineId)!;
+
+      if (saleDate >= today) data.today += amount;
+      if (saleDate >= weekStart) data.week += amount;
+      if (saleDate >= monthStart) data.month += amount;
+      if (saleDate >= start && saleDate <= end) {
+        data.period += amount;
+        data.periodCount++;
+      }
+      if (saleDate >= prevWeekStart && saleDate < weekStart) data.prevWeek += amount;
+    }
+
+    const result = allMachines.map(machine => {
+      const sales = salesByMachine.get(machine.id) || {
+        today: 0, week: 0, month: 0, period: 0, prevWeek: 0, periodCount: 0
+      };
 
       return {
         id: machine.id,
         machine: machine.name || machine.code,
         code: machine.code,
-        location: location?.name || "Sin ubicación",
-        today: todayTotal,
-        week: weekTotal,
-        month: monthTotal,
-        total: periodTotal,
-        status: weekTotal >= prevWeekTotal ? "up" : "down",
-        transacciones: periodSales.length
+        location: machine.locationId ? (locationMap.get(machine.locationId) || "Sin ubicación") : "Sin ubicación",
+        today: Math.round(sales.today * 100) / 100,
+        week: Math.round(sales.week * 100) / 100,
+        month: Math.round(sales.month * 100) / 100,
+        total: Math.round(sales.period * 100) / 100,
+        status: sales.week >= sales.prevWeek ? "up" : "down",
+        transacciones: sales.periodCount
       };
-    }));
+    });
 
     return result.sort((a, b) => b.month - a.month);
   }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { DataTable, Column } from "@/components/DataTable";
 import { StatsCard } from "@/components/StatsCard";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
 import {
   DollarSign,
   TrendingUp,
@@ -22,6 +29,7 @@ import {
   Calendar,
   Download,
   Filter,
+  FileCheck,
 } from "lucide-react";
 import {
   AreaChart,
@@ -105,14 +113,15 @@ interface CashCutReport {
   totalRecolectado: number;
   totalEsperado: number;
   diferencia: number;
-  detallePorMaquina: { machineId: string; recolectado: number; esperado: number; diferencia: number }[];
-  detallePorAbastecedor: { userId: string; recolectado: number; esperado: number; diferencia: number; maquinas: number }[];
+  detallePorMaquina: { machineId: string; machine: string; recolectado: number; esperado: number; diferencia: number }[];
+  detallePorAbastecedor: { userId: string; abastecedor: string; recolectado: number; esperado: number; diferencia: number; maquinas: number }[];
 }
 
 export function AccountingPage() {
   const [period, setPeriod] = useState("month");
   const [selectedUser, setSelectedUser] = useState("all");
   const dateRange = useMemo(() => getDateRange(period), [period]);
+  const { toast } = useToast();
 
   const buildUrl = (base: string, params: Record<string, string | undefined>) => {
     const searchParams = new URLSearchParams();
@@ -122,6 +131,30 @@ export function AccountingPage() {
     const queryString = searchParams.toString();
     return queryString ? `${base}?${queryString}` : base;
   };
+
+  const exportToCSV = useCallback((data: any[], filename: string, columns: { key: string; header: string }[]) => {
+    if (!data || data.length === 0) {
+      toast({ title: "Sin datos para exportar", variant: "destructive" });
+      return;
+    }
+    const headers = columns.map(c => c.header).join(",");
+    const rows = data.map(item => 
+      columns.map(c => {
+        const val = item[c.key];
+        const strVal = val === null || val === undefined ? "" : String(val);
+        return strVal.includes(",") ? `"${strVal}"` : strVal;
+      }).join(",")
+    ).join("\n");
+    const csv = `${headers}\n${rows}`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "Exportación completada" });
+  }, [toast]);
 
   const overviewUrl = buildUrl("/api/accounting/overview", {
     startDate: dateRange.startDate,
@@ -181,8 +214,59 @@ export function AccountingPage() {
   });
 
   const { data: employees } = useQuery<any[]>({
-    queryKey: ["/api/hr/employees", "abastecedor"],
+    queryKey: ["/api/hr/employees"],
+    select: (data) => data?.filter(e => e.role === "abastecedor" || e.role === "supervisor") || [],
   });
+
+  const handleExportSales = useCallback(() => {
+    if (machineSales) {
+      exportToCSV(machineSales, "ventas_por_maquina", [
+        { key: "machine", header: "Máquina" },
+        { key: "code", header: "Código" },
+        { key: "location", header: "Ubicación" },
+        { key: "today", header: "Hoy" },
+        { key: "week", header: "Semana" },
+        { key: "month", header: "Mes" },
+        { key: "transacciones", header: "Transacciones" },
+      ]);
+    }
+  }, [machineSales, exportToCSV]);
+
+  const handleExportExpenses = useCallback(() => {
+    if (expenses) {
+      exportToCSV(expenses, "gastos", [
+        { key: "date", header: "Fecha" },
+        { key: "concepto", header: "Concepto" },
+        { key: "category", header: "Categoría" },
+        { key: "amount", header: "Monto" },
+        { key: "status", header: "Estado" },
+      ]);
+    }
+  }, [expenses, exportToCSV]);
+
+  const handleExportCashCut = useCallback(() => {
+    if (cashCut?.detallePorAbastecedor) {
+      exportToCSV(cashCut.detallePorAbastecedor, "corte_caja", [
+        { key: "abastecedor", header: "Abastecedor" },
+        { key: "esperado", header: "Esperado" },
+        { key: "recolectado", header: "Recolectado" },
+        { key: "diferencia", header: "Diferencia" },
+        { key: "maquinas", header: "Máquinas" },
+      ]);
+    }
+  }, [cashCut, exportToCSV]);
+
+  const handleGenerarCorte = useCallback(() => {
+    if (!cashCut) {
+      toast({ title: "No hay datos para generar corte", variant: "destructive" });
+      return;
+    }
+    handleExportCashCut();
+    toast({ 
+      title: "Corte de caja generado", 
+      description: `Período: ${new Date(dateRange.startDate).toLocaleDateString()} - ${new Date(dateRange.endDate).toLocaleDateString()}` 
+    });
+  }, [cashCut, handleExportCashCut, toast, dateRange]);
 
   const salesColumns: Column<MachineSale>[] = [
     { 
@@ -277,10 +361,25 @@ export function AccountingPage() {
               <SelectItem value="year">Este Año</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" className="gap-2" data-testid="button-export">
-            <Download className="h-4 w-4" />
-            Exportar
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2" data-testid="button-export">
+                <Download className="h-4 w-4" />
+                Exportar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={handleExportSales} data-testid="export-ventas">
+                Ventas por Máquina
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportExpenses} data-testid="export-gastos">
+                Gastos
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportCashCut} data-testid="export-corte">
+                Corte de Caja
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -536,7 +635,10 @@ export function AccountingPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Button data-testid="button-generar-corte">Generar Corte</Button>
+                <Button onClick={handleGenerarCorte} data-testid="button-generar-corte">
+                  <FileCheck className="h-4 w-4 mr-2" />
+                  Generar Corte
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
@@ -579,7 +681,7 @@ export function AccountingPage() {
                       <h4 className="font-medium mb-2">Desglose por Abastecedor</h4>
                       {cashCut.detallePorAbastecedor.map((user) => (
                         <div key={user.userId} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                          <span>{user.userId}</span>
+                          <span>{user.abastecedor || user.userId}</span>
                           <div className="flex gap-4 text-sm">
                             <span>Esperado: ${(user.esperado || 0).toLocaleString()}</span>
                             <span>Real: ${(user.recolectado || 0).toLocaleString()}</span>
