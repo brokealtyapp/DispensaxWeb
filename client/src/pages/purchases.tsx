@@ -4,7 +4,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDateShort } from "@/lib/utils";
-import { useAuth } from "@/lib/auth-context";
 import { 
   Package, Building2, FileText, Truck, History, Plus, Search, Filter,
   Edit2, Trash2, Eye, Send, X, Check, AlertTriangle, DollarSign,
@@ -16,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -50,8 +50,8 @@ type OrderFormData = z.infer<typeof orderFormSchema>;
 
 const orderItemFormSchema = z.object({
   productId: z.string().min(1, "Seleccione un producto"),
-  quantity: z.string().min(1, "La cantidad es requerida"),
-  unitPrice: z.string().min(1, "El precio unitario es requerido"),
+  quantity: z.coerce.number().min(1, "La cantidad es requerida"),
+  unitPrice: z.coerce.number().min(0.01, "El precio unitario es requerido"),
   notes: z.string().optional(),
 });
 
@@ -86,6 +86,11 @@ export default function PurchasesPage() {
   const [receptionItems, setReceptionItems] = useState<any[]>([]);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [receptionNotes, setReceptionNotes] = useState("");
+  
+  const [isDeleteSupplierOpen, setIsDeleteSupplierOpen] = useState(false);
+  const [supplierToDelete, setSupplierToDelete] = useState<any>(null);
+  const [isDeleteOrderOpen, setIsDeleteOrderOpen] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState<any>(null);
 
   const supplierForm = useForm<SupplierFormData>({
     resolver: zodResolver(supplierFormSchema),
@@ -116,8 +121,8 @@ export default function PurchasesPage() {
     resolver: zodResolver(orderItemFormSchema),
     defaultValues: {
       productId: "",
-      quantity: "",
-      unitPrice: "",
+      quantity: 1,
+      unitPrice: 0,
       notes: "",
     },
   });
@@ -213,23 +218,23 @@ export default function PurchasesPage() {
 
   const addOrderItemMutation = useMutation({
     mutationFn: async (data: OrderItemFormData) => {
-      const quantity = parseInt(data.quantity);
-      const unitPrice = parseFloat(data.unitPrice);
-      const subtotal = quantity * unitPrice;
+      const subtotal = data.quantity * data.unitPrice;
       
       return apiRequest("POST", `/api/purchase-orders/${selectedOrder?.id}/items`, {
         productId: data.productId,
-        quantity,
-        unitPrice: unitPrice.toFixed(2),
+        quantity: data.quantity,
+        unitPrice: data.unitPrice.toFixed(2),
         subtotal: subtotal.toFixed(2),
         notes: data.notes,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", selectedOrder?.id] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      const updatedOrders = queryClient.getQueryData<any[]>(["/api/purchase-orders"]);
+      const updatedOrder = updatedOrders?.find((o: any) => o.id === selectedOrder?.id);
+      if (updatedOrder) setSelectedOrder(updatedOrder);
       toast({ title: "Producto agregado", description: "El producto se ha agregado a la orden" });
-      orderItemForm.reset();
+      orderItemForm.reset({ productId: "", quantity: 1, unitPrice: 0, notes: "" });
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo agregar el producto", variant: "destructive" });
@@ -240,8 +245,11 @@ export default function PurchasesPage() {
     mutationFn: async (itemId: string) => {
       return apiRequest("DELETE", `/api/purchase-order-items/${itemId}`, {});
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      const updatedOrders = queryClient.getQueryData<any[]>(["/api/purchase-orders"]);
+      const updatedOrder = updatedOrders?.find((o: any) => o.id === selectedOrder?.id);
+      if (updatedOrder) setSelectedOrder(updatedOrder);
       toast({ title: "Producto eliminado", description: "El producto se ha eliminado de la orden" });
     },
   });
@@ -521,7 +529,7 @@ export default function PurchasesPage() {
                           <Button variant="ghost" size="icon" onClick={() => handleEditSupplier(supplier)} data-testid={`button-edit-${supplier.id}`}>
                             <Edit2 className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => deleteSupplierMutation.mutate(supplier.id)} data-testid={`button-delete-${supplier.id}`}>
+                          <Button variant="ghost" size="icon" onClick={() => { setSupplierToDelete(supplier); setIsDeleteSupplierOpen(true); }} data-testid={`button-delete-${supplier.id}`}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
@@ -1194,7 +1202,7 @@ export default function PurchasesPage() {
             <Button variant="outline" onClick={() => setIsOrderDetailOpen(false)}>Cerrar</Button>
             {selectedOrder?.status === "borrador" && (
               <>
-                <Button variant="destructive" onClick={() => deleteOrderMutation.mutate(selectedOrder.id)}>
+                <Button variant="destructive" onClick={() => { setOrderToDelete(selectedOrder); setIsDeleteOrderOpen(true); }}>
                   <Trash2 className="h-4 w-4 mr-2" />
                   Eliminar
                 </Button>
@@ -1390,6 +1398,60 @@ export default function PurchasesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={isDeleteSupplierOpen} onOpenChange={setIsDeleteSupplierOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar proveedor?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará permanentemente al proveedor "{supplierToDelete?.name}". Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setSupplierToDelete(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (supplierToDelete) {
+                  deleteSupplierMutation.mutate(supplierToDelete.id);
+                  setSupplierToDelete(null);
+                  setIsDeleteSupplierOpen(false);
+                }
+              }}
+              data-testid="button-confirm-delete-supplier"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isDeleteOrderOpen} onOpenChange={setIsDeleteOrderOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar orden de compra?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará permanentemente la orden "{orderToDelete?.orderNumber}". Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setOrderToDelete(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (orderToDelete) {
+                  deleteOrderMutation.mutate(orderToDelete.id);
+                  setOrderToDelete(null);
+                  setIsDeleteOrderOpen(false);
+                }
+              }}
+              data-testid="button-confirm-delete-order"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
