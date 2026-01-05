@@ -824,7 +824,7 @@ export function FuelPage() {
                               {record.vehicle?.plate || "Vehículo"} - {parseFloat(record.liters).toFixed(2)} L
                             </p>
                             <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                              <span data-testid={`text-record-date-${record.id}`}>{format(new Date(record.recordDate), "dd MMM yyyy HH:mm", { locale: es })}</span>
+                              <span data-testid={`text-record-date-${record.id}`}>{formatDateShort(new Date(record.recordDate))}</span>
                               {record.gasStation && (
                                 <>
                                   <span>•</span>
