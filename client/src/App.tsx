@@ -33,6 +33,7 @@ import UsersPage from "@/pages/users";
 import { AlmacenPanelPage } from "@/pages/almacen-panel";
 import { ContabilidadPanelPage } from "@/pages/contabilidad-panel";
 import { ProductsPage } from "@/pages/products";
+import RoutesPage from "@/pages/routes";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
@@ -223,6 +224,7 @@ function ProtectedRoutes() {
               <Route path="/reportes">{() => <ProtectedRoute path="/reportes" component={ReportsPage} />}</Route>
               <Route path="/supervisores">{() => <ProtectedRoute path="/supervisores" component={SupervisorsPage} />}</Route>
               <Route path="/usuarios">{() => <ProtectedRoute path="/usuarios" component={UsersPage} />}</Route>
+              <Route path="/rutas">{() => <ProtectedRoute path="/rutas" component={RoutesPage} />}</Route>
               <Route path="/configuracion">{() => <ProtectedRoute path="/configuracion" component={SettingsPage} />}</Route>
               <Route component={NotFound} />
             </Switch>

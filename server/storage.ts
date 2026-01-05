@@ -1198,6 +1198,28 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async deleteRoute(id: string): Promise<boolean> {
+    await db.delete(routeStops).where(eq(routeStops.routeId, id));
+    const result = await db.delete(routes).where(eq(routes.id, id));
+    return true;
+  }
+
+  async deleteRouteStop(id: string): Promise<boolean> {
+    const [stop] = await db.select().from(routeStops).where(eq(routeStops.id, id));
+    if (!stop) return false;
+    
+    await db.delete(routeStops).where(eq(routeStops.id, id));
+    
+    const routeData = await this.getRoute(stop.routeId);
+    if (routeData && routeData.totalStops && routeData.totalStops > 0) {
+      await db.update(routes)
+        .set({ totalStops: routeData.totalStops - 1 })
+        .where(eq(routes.id, stop.routeId));
+    }
+    
+    return true;
+  }
+
   // Registros de Servicio
   async getServiceRecords(userId?: string, machineId?: string, limit?: number): Promise<any[]> {
     let conditions: any[] = [];

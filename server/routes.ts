@@ -1296,6 +1296,34 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/supplier/routes/:id", async (req: Request, res: Response) => {
+    try {
+      const route = await storage.getRoute(req.params.id);
+      if (!route) {
+        return res.status(404).json({ error: "Ruta no encontrada" });
+      }
+      if (route.status !== "pendiente") {
+        return res.status(400).json({ error: "Solo se pueden eliminar rutas pendientes" });
+      }
+      await storage.deleteRoute(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Error al eliminar ruta" });
+    }
+  });
+
+  app.delete("/api/supplier/stops/:id", async (req: Request, res: Response) => {
+    try {
+      const success = await storage.deleteRouteStop(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Parada no encontrada" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Error al eliminar parada" });
+    }
+  });
+
   // Registros de Servicio
   app.get("/api/supplier/services", async (req: Request, res: Response) => {
     try {
@@ -1600,7 +1628,15 @@ export async function registerRoutes(
     try {
       const { db } = await import("./db");
       const { users } = await import("@shared/schema");
-      const allUsers = await db.select().from(users);
+      const { eq } = await import("drizzle-orm");
+      const { role } = req.query;
+      
+      let allUsers;
+      if (role && typeof role === 'string') {
+        allUsers = await db.select().from(users).where(eq(users.role, role));
+      } else {
+        allUsers = await db.select().from(users);
+      }
       // Omitir password de la respuesta por seguridad
       const usersWithoutPassword = allUsers.map(({ password, ...user }) => user);
       res.json(usersWithoutPassword);

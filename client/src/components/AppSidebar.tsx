@@ -66,6 +66,7 @@ const menuItems: MenuItem[] = [
 const operacionItems: MenuItem[] = [
   { icon: Package, label: "Almacén", href: "/almacen", roles: ["admin", "supervisor", "almacen"] },
   { icon: Tag, label: "Productos", href: "/productos", roles: ["admin", "supervisor", "almacen"] },
+  { icon: Navigation, label: "Gestión Rutas", href: "/rutas", roles: ["admin", "supervisor"] },
   { icon: Truck, label: "Abastecedor", href: "/abastecedor", roles: ["admin", "supervisor"] },
   { icon: ArrowDownUp, label: "Dinero y Productos", href: "/dinero-productos", roles: ["admin", "supervisor", "contabilidad"] },
   { icon: ShoppingCart, label: "Compras", href: "/compras", roles: ["admin", "almacen"] },
