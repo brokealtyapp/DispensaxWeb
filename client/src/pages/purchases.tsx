@@ -24,6 +24,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { DataPagination } from "@/components/DataPagination";
 
 const supplierFormSchema = z.object({
   name: z.string().min(2, "El nombre es requerido"),
@@ -91,6 +92,10 @@ export default function PurchasesPage() {
   const [supplierToDelete, setSupplierToDelete] = useState<any>(null);
   const [isDeleteOrderOpen, setIsDeleteOrderOpen] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<any>(null);
+  
+  const [suppliersPage, setSuppliersPage] = useState(1);
+  const [ordersPage, setOrdersPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
 
   const supplierForm = useForm<SupplierFormData>({
     resolver: zodResolver(supplierFormSchema),
@@ -398,6 +403,24 @@ export default function PurchasesPage() {
     return matchesSearch && matchesStatus;
   }) || [];
 
+  const paginatedSuppliers = filteredSuppliers.slice(
+    (suppliersPage - 1) * ITEMS_PER_PAGE,
+    suppliersPage * ITEMS_PER_PAGE
+  );
+
+  const paginatedOrders = filteredOrders.slice(
+    (ordersPage - 1) * ITEMS_PER_PAGE,
+    ordersPage * ITEMS_PER_PAGE
+  );
+
+  useEffect(() => {
+    setSuppliersPage(1);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setOrdersPage(1);
+  }, [searchTerm, statusFilter]);
+
   return (
     <div className="flex-1 space-y-4 p-4 md:p-6 pt-6">
       <div className="flex items-center justify-between">
@@ -514,7 +537,7 @@ export default function PurchasesPage() {
                         No hay proveedores registrados
                       </TableCell>
                     </TableRow>
-                  ) : filteredSuppliers.map((supplier) => (
+                  ) : paginatedSuppliers.map((supplier) => (
                     <TableRow key={supplier.id} data-testid={`row-supplier-${supplier.id}`}>
                       <TableCell className="font-mono text-sm">{supplier.code || "-"}</TableCell>
                       <TableCell className="font-medium">{supplier.name}</TableCell>
@@ -539,6 +562,16 @@ export default function PurchasesPage() {
                 </TableBody>
               </Table>
             </CardContent>
+            {filteredSuppliers.length > ITEMS_PER_PAGE && (
+              <div className="p-4 border-t">
+                <DataPagination
+                  currentPage={suppliersPage}
+                  totalItems={filteredSuppliers.length}
+                  itemsPerPage={ITEMS_PER_PAGE}
+                  onPageChange={setSuppliersPage}
+                />
+              </div>
+            )}
           </Card>
         </TabsContent>
 
@@ -601,7 +634,7 @@ export default function PurchasesPage() {
                         No hay órdenes de compra
                       </TableCell>
                     </TableRow>
-                  ) : filteredOrders.map((order) => (
+                  ) : paginatedOrders.map((order) => (
                     <TableRow key={order.id} data-testid={`row-order-${order.id}`}>
                       <TableCell className="font-mono font-medium">{order.orderNumber}</TableCell>
                       <TableCell>{order.supplier?.name}</TableCell>
@@ -628,6 +661,16 @@ export default function PurchasesPage() {
                 </TableBody>
               </Table>
             </CardContent>
+            {filteredOrders.length > ITEMS_PER_PAGE && (
+              <div className="p-4 border-t">
+                <DataPagination
+                  currentPage={ordersPage}
+                  totalItems={filteredOrders.length}
+                  itemsPerPage={ITEMS_PER_PAGE}
+                  onPageChange={setOrdersPage}
+                />
+              </div>
+            )}
           </Card>
         </TabsContent>
 
