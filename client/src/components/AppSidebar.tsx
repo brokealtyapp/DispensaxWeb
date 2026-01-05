@@ -41,6 +41,7 @@ import {
   Navigation,
   Wrench,
   TrendingUp,
+  Tag,
 } from "lucide-react";
 
 interface MenuItem {
@@ -63,6 +64,7 @@ const menuItems: MenuItem[] = [
 
 const operacionItems: MenuItem[] = [
   { icon: Package, label: "Almacén", href: "/almacen", roles: ["admin", "supervisor", "almacen"] },
+  { icon: Tag, label: "Productos", href: "/productos", roles: ["admin", "supervisor", "almacen"] },
   { icon: Truck, label: "Abastecedor", href: "/abastecedor", roles: ["admin", "supervisor"] },
   { icon: ArrowDownUp, label: "Dinero y Productos", href: "/dinero-productos", roles: ["admin", "supervisor", "contabilidad"] },
   { icon: ShoppingCart, label: "Compras", href: "/compras", roles: ["admin", "almacen"] },

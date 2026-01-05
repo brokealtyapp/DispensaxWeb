@@ -30,6 +30,7 @@ import { ResetPasswordPage } from "@/pages/reset-password";
 import { SupervisorPage } from "@/pages/supervisor";
 import { AlmacenPanelPage } from "@/pages/almacen-panel";
 import { ContabilidadPanelPage } from "@/pages/contabilidad-panel";
+import { ProductsPage } from "@/pages/products";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
@@ -210,6 +211,7 @@ function ProtectedRoutes() {
               <Route path="/calendario">{() => <ProtectedRoute path="/calendario" component={CalendarPage} />}</Route>
               <Route path="/abastecedor">{() => <ProtectedRoute path="/abastecedor" component={SupplierPage} />}</Route>
               <Route path="/almacen">{() => <ProtectedRoute path="/almacen" component={WarehousePage} />}</Route>
+              <Route path="/productos">{() => <ProtectedRoute path="/productos" component={ProductsPage} />}</Route>
               <Route path="/dinero-productos">{() => <ProtectedRoute path="/dinero-productos" component={MoneyProductsPage} />}</Route>
               <Route path="/caja-chica">{() => <ProtectedRoute path="/caja-chica" component={PettyCashPage} />}</Route>
               <Route path="/combustible">{() => <ProtectedRoute path="/combustible" component={FuelPage} />}</Route>
