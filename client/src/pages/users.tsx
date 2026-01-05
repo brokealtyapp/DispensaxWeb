@@ -85,6 +85,17 @@ const ROLES = [
 
 const ZONES = ["Zona Norte", "Zona Sur", "Zona Este", "Zona Oeste", "Centro", "Industrial"];
 
+function generateUsername(fullName: string): string {
+  if (!fullName.trim()) return "";
+  const parts = fullName.trim().toLowerCase().split(/\s+/);
+  if (parts.length === 1) {
+    return parts[0].substring(0, 8).replace(/[^a-z0-9]/g, "");
+  }
+  const firstName = parts[0].replace(/[^a-z]/g, "");
+  const lastName = parts[parts.length - 1].replace(/[^a-z]/g, "");
+  return (firstName.charAt(0) + lastName).substring(0, 12);
+}
+
 function generatePassword(length = 12): string {
   const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const lowercase = "abcdefghijklmnopqrstuvwxyz";
@@ -650,7 +661,7 @@ export default function UsersPage() {
       )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Nuevo Usuario</DialogTitle>
             <DialogDescription>
@@ -659,26 +670,35 @@ export default function UsersPage() {
           </DialogHeader>
           <Form {...createForm}>
             <form onSubmit={createForm.handleSubmit(handleCreateSubmit)} className="space-y-4">
-              <FormField
-                control={createForm.control}
-                name="fullName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nombre Completo</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Juan Pérez" {...field} data-testid="input-create-fullname" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
               <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={createForm.control}
+                  name="fullName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nombre Completo</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="Juan Pérez" 
+                          {...field} 
+                          onChange={(e) => {
+                            field.onChange(e);
+                            const username = generateUsername(e.target.value);
+                            createForm.setValue("username", username);
+                          }}
+                          data-testid="input-create-fullname" 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <FormField
                   control={createForm.control}
                   name="username"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Usuario</FormLabel>
+                      <FormLabel>Usuario (generado)</FormLabel>
                       <FormControl>
                         <Input placeholder="jperez" {...field} data-testid="input-create-username" />
                       </FormControl>
@@ -686,6 +706,8 @@ export default function UsersPage() {
                     </FormItem>
                   )}
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={createForm.control}
                   name="password"
@@ -854,7 +876,7 @@ export default function UsersPage() {
       </Dialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Editar Usuario</DialogTitle>
             <DialogDescription>
@@ -863,33 +885,41 @@ export default function UsersPage() {
           </DialogHeader>
           <Form {...editForm}>
             <form onSubmit={editForm.handleSubmit(handleEditSubmit)} className="space-y-4">
-              <FormField
-                control={editForm.control}
-                name="fullName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nombre Completo</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Juan Pérez" {...field} data-testid="input-edit-fullname" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={editForm.control}
-                  name="username"
+                  name="fullName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Usuario</FormLabel>
+                      <FormLabel>Nombre Completo</FormLabel>
                       <FormControl>
-                        <Input placeholder="jperez" {...field} data-testid="input-edit-username" />
+                        <Input placeholder="Juan Pérez" {...field} data-testid="input-edit-fullname" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={editForm.control}
+                  name="username"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Usuario (no editable)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="jperez" 
+                          {...field} 
+                          disabled 
+                          className="bg-muted"
+                          data-testid="input-edit-username" 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={editForm.control}
                   name="password"
