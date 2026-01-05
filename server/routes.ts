@@ -3214,6 +3214,168 @@ export async function registerRoutes(
     }
   });
 
+  // Supervisors management endpoints
+  app.get("/api/supervisors", async (req: Request, res: Response) => {
+    try {
+      const { db } = await import("./db");
+      const { routes: routesTable, users: usersTable } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      const allUsers = await storage.getEmployees();
+      const supervisors = allUsers.filter((u: any) => u.role === "supervisor");
+      
+      const machines = await storage.getMachines();
+      const routesList = await db.select().from(routesTable).limit(500);
+      const alerts = await storage.getMachineAlerts();
+      const tasks = await storage.getTasks();
+      const abastecedores = allUsers.filter((u: any) => u.role === "abastecedor");
+      
+      const supervisorsWithMetrics = supervisors.map((sup: any) => {
+        const zone = sup.assignedZone;
+        const zoneMachines = zone ? machines.filter(m => m.zone === zone) : [];
+        const zoneAbastecedores = zone ? abastecedores.filter((a: any) => a.assignedZone === zone) : [];
+        const supRoutes = routesList.filter((r: any) => r.supervisorId === sup.id);
+        const zoneAlerts = zone ? alerts.filter((a: any) => {
+          const machine = machines.find(m => m.id === a.machineId);
+          return machine?.zone === zone && !a.isResolved;
+        }) : [];
+        const assignedTasks = tasks.filter(t => t.assignedUserId === sup.id);
+        const completedTasks = assignedTasks.filter(t => t.status === "completada");
+        
+        const operativeMachines = zoneMachines.filter(m => m.status === "operando").length;
+        const operativityRate = zoneMachines.length > 0 
+          ? Math.round((operativeMachines / zoneMachines.length) * 100) 
+          : 0;
+        
+        const completionRate = assignedTasks.length > 0
+          ? Math.round((completedTasks.length / assignedTasks.length) * 100)
+          : 100;
+        
+        const criticalAlerts = zoneAlerts.filter((a: any) => a.priority === "critica").length;
+        
+        return {
+          ...sup,
+          metrics: {
+            machinesCount: zoneMachines.length,
+            operativeMachines,
+            operativityRate,
+            abastecedoresCount: zoneAbastecedores.length,
+            routesCount: supRoutes.length,
+            pendingAlerts: zoneAlerts.length,
+            criticalAlerts,
+            tasksCompleted: completedTasks.length,
+            tasksTotal: assignedTasks.length,
+            completionRate,
+          }
+        };
+      });
+      
+      res.json(supervisorsWithMetrics);
+    } catch (error) {
+      console.error("Error getting supervisors:", error);
+      res.status(500).json({ error: "Error al obtener supervisores" });
+    }
+  });
+
+  app.get("/api/supervisors/:id", async (req: Request, res: Response) => {
+    try {
+      const { db } = await import("./db");
+      const { routes: routesTable, users: usersTable } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      const { id } = req.params;
+      const supervisor = await storage.getEmployee(id);
+      
+      if (!supervisor || supervisor.role !== "supervisor") {
+        return res.status(404).json({ error: "Supervisor no encontrado" });
+      }
+      
+      const allUsers = await storage.getEmployees();
+      const machines = await storage.getMachines();
+      const routesList = await db.select().from(routesTable).where(eq(routesTable.supervisorId, id)).limit(50);
+      const alerts = await storage.getMachineAlerts();
+      const tasks = await storage.getTasks();
+      
+      const zone = supervisor.assignedZone;
+      const zoneMachines = zone ? machines.filter(m => m.zone === zone) : [];
+      const abastecedores = zone 
+        ? allUsers.filter((u: any) => u.role === "abastecedor" && u.assignedZone === zone)
+        : [];
+      const zoneAlerts = zone ? alerts.filter((a: any) => {
+        const machine = machines.find(m => m.id === a.machineId);
+        return machine?.zone === zone;
+      }) : [];
+      
+      const assignedTasks = tasks.filter(t => t.assignedUserId === id);
+      const operativeMachines = zoneMachines.filter(m => m.status === "operando").length;
+      
+      const recentRoutes = routesList.slice(0, 10).map((r: any) => ({
+        id: r.id,
+        date: r.date,
+        status: r.status,
+        totalStops: r.totalStops,
+        completedStops: r.completedStops,
+      }));
+      
+      res.json({
+        ...supervisor,
+        zone,
+        machines: zoneMachines.map(m => ({
+          id: m.id,
+          name: m.name,
+          code: m.code,
+          status: m.status,
+        })),
+        abastecedores: abastecedores.map((a: any) => ({
+          id: a.id,
+          fullName: a.fullName,
+          isActive: a.isActive,
+        })),
+        recentRoutes,
+        alerts: zoneAlerts.filter((a: any) => !a.isResolved).slice(0, 10),
+        tasks: assignedTasks.slice(0, 10),
+        metrics: {
+          machinesCount: zoneMachines.length,
+          operativeMachines,
+          operativityRate: zoneMachines.length > 0 
+            ? Math.round((operativeMachines / zoneMachines.length) * 100) 
+            : 0,
+          abastecedoresCount: abastecedores.length,
+          pendingAlerts: zoneAlerts.filter((a: any) => !a.isResolved).length,
+          criticalAlerts: zoneAlerts.filter((a: any) => a.priority === "critica" && !a.isResolved).length,
+          tasksCompleted: assignedTasks.filter(t => t.status === "completada").length,
+          tasksTotal: assignedTasks.length,
+        }
+      });
+    } catch (error) {
+      console.error("Error getting supervisor detail:", error);
+      res.status(500).json({ error: "Error al obtener detalle del supervisor" });
+    }
+  });
+
+  app.patch("/api/supervisors/:id/zone", async (req: Request, res: Response) => {
+    try {
+      const { db } = await import("./db");
+      const { users: usersTable } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      const { id } = req.params;
+      const { zone } = req.body;
+      
+      const supervisor = await storage.getEmployee(id);
+      if (!supervisor || supervisor.role !== "supervisor") {
+        return res.status(404).json({ error: "Supervisor no encontrado" });
+      }
+      
+      await db.update(usersTable).set({ assignedZone: zone }).where(eq(usersTable.id, id));
+      
+      res.json({ success: true, message: "Zona asignada correctamente" });
+    } catch (error) {
+      console.error("Error assigning zone:", error);
+      res.status(500).json({ error: "Error al asignar zona" });
+    }
+  });
+
   // Global search endpoint
   app.get("/api/search", async (req: Request, res: Response) => {
     try {

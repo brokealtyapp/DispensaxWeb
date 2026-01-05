@@ -12,6 +12,7 @@ export const users = pgTable("users", {
   email: text("email"),
   phone: text("phone"),
   role: text("role").default("abastecedor"),
+  assignedZone: text("assigned_zone"),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
