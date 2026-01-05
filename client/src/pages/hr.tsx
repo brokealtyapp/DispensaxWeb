@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, Column } from "@/components/DataTable";
+import { DataPagination } from "@/components/DataPagination";
 import { StatsCard } from "@/components/StatsCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useForm } from "react-hook-form";
@@ -121,6 +122,8 @@ const roleLabels: Record<string, string> = {
   rh: "Recursos Humanos",
 };
 
+const ITEMS_PER_PAGE = 10;
+
 export function HRPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -129,6 +132,9 @@ export function HRPage() {
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<string | null>(null);
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [employeesPage, setEmployeesPage] = useState(1);
+  const [timePage, setTimePage] = useState(1);
+  const [performancePage, setPerformancePage] = useState(1);
   const { toast } = useToast();
 
   const form = useForm<EmployeeFormData>({
@@ -243,10 +249,26 @@ export function HRPage() {
     });
   }, [employees, searchQuery, roleFilter, statusFilter]);
 
+  const paginatedEmployees = useMemo(() => {
+    const start = (employeesPage - 1) * ITEMS_PER_PAGE;
+    return filteredEmployees.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredEmployees, employeesPage]);
+
+  const paginatedTime = useMemo(() => {
+    const start = (timePage - 1) * ITEMS_PER_PAGE;
+    return (timeRecords || []).slice(start, start + ITEMS_PER_PAGE);
+  }, [timeRecords, timePage]);
+
+  const paginatedPerformance = useMemo(() => {
+    const start = (performancePage - 1) * ITEMS_PER_PAGE;
+    return (performance || []).slice(start, start + ITEMS_PER_PAGE);
+  }, [performance, performancePage]);
+
   const clearFilters = () => {
     setSearchQuery("");
     setRoleFilter("all");
     setStatusFilter("all");
+    setEmployeesPage(1);
   };
 
   const hasActiveFilters = searchQuery || roleFilter !== "all" || statusFilter !== "all";
@@ -620,12 +642,21 @@ export function HRPage() {
               {loadingEmployees ? (
                 <Skeleton className="h-64 w-full" />
               ) : (
-                <DataTable
-                  data={filteredEmployees}
-                  columns={employeeColumns}
-                  searchPlaceholder="Buscar..."
-                  searchKeys={["fullName", "email", "username"]}
-                />
+                <>
+                  <DataTable
+                    data={paginatedEmployees}
+                    columns={employeeColumns}
+                    searchPlaceholder="Buscar..."
+                    searchKeys={["fullName", "email", "username"]}
+                  />
+                  <DataPagination
+                    currentPage={employeesPage}
+                    totalItems={filteredEmployees.length}
+                    itemsPerPage={ITEMS_PER_PAGE}
+                    onPageChange={setEmployeesPage}
+                    className="mt-4"
+                  />
+                </>
               )}
             </CardContent>
           </Card>
@@ -646,12 +677,21 @@ export function HRPage() {
               {loadingTime ? (
                 <Skeleton className="h-64 w-full" />
               ) : (
-                <DataTable
-                  data={timeRecords || []}
-                  columns={timeColumns}
-                  searchPlaceholder="Buscar..."
-                  searchKeys={["employee"]}
-                />
+                <>
+                  <DataTable
+                    data={paginatedTime}
+                    columns={timeColumns}
+                    searchPlaceholder="Buscar..."
+                    searchKeys={["employee"]}
+                  />
+                  <DataPagination
+                    currentPage={timePage}
+                    totalItems={(timeRecords || []).length}
+                    itemsPerPage={ITEMS_PER_PAGE}
+                    onPageChange={setTimePage}
+                    className="mt-4"
+                  />
+                </>
               )}
             </CardContent>
           </Card>
@@ -666,12 +706,21 @@ export function HRPage() {
               {loadingPerformance ? (
                 <Skeleton className="h-64 w-full" />
               ) : (
-                <DataTable
-                  data={performance || []}
-                  columns={performanceColumns}
-                  searchPlaceholder="Buscar..."
-                  searchKeys={["employee"]}
-                />
+                <>
+                  <DataTable
+                    data={paginatedPerformance}
+                    columns={performanceColumns}
+                    searchPlaceholder="Buscar..."
+                    searchKeys={["employee"]}
+                  />
+                  <DataPagination
+                    currentPage={performancePage}
+                    totalItems={(performance || []).length}
+                    itemsPerPage={ITEMS_PER_PAGE}
+                    onPageChange={setPerformancePage}
+                    className="mt-4"
+                  />
+                </>
               )}
             </CardContent>
           </Card>
