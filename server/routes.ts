@@ -689,8 +689,8 @@ export async function registerRoutes(
 
   // ==================== MÓDULO ALMACÉN ====================
 
-  // Proveedores
-  app.get("/api/suppliers", async (req: Request, res: Response) => {
+  // Proveedores (protegidos con JWT)
+  app.get("/api/suppliers", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const suppliers = await storage.getSuppliers();
       res.json(suppliers);
@@ -699,7 +699,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/suppliers/:id", async (req: Request, res: Response) => {
+  app.get("/api/suppliers/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const supplier = await storage.getSupplier(req.params.id);
       if (!supplier) {
@@ -711,7 +711,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/suppliers", async (req: Request, res: Response) => {
+  app.post("/api/suppliers", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertSupplierSchema.parse(req.body);
       const supplier = await storage.createSupplier(data);
@@ -724,7 +724,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/suppliers/:id", async (req: Request, res: Response) => {
+  app.patch("/api/suppliers/:id", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertSupplierSchema.partial().parse(req.body);
       const supplier = await storage.updateSupplier(req.params.id, data);
@@ -740,7 +740,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/suppliers/:id", async (req: Request, res: Response) => {
+  app.delete("/api/suppliers/:id", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.deleteSupplier(req.params.id);
       res.status(204).send();
@@ -2032,10 +2032,10 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== MÓDULO COMPRAS ====================
+  // ==================== MÓDULO COMPRAS (protegidos con JWT) ====================
 
   // Órdenes de Compra
-  app.get("/api/purchase-orders", async (req: Request, res: Response) => {
+  app.get("/api/purchase-orders", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { supplierId, status, startDate, endDate } = req.query;
       const filters: any = {};
@@ -2051,7 +2051,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/purchase-orders/next-number", async (req: Request, res: Response) => {
+  app.get("/api/purchase-orders/next-number", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orderNumber = await storage.getNextOrderNumber();
       res.json({ orderNumber });
@@ -2060,7 +2060,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/purchase-orders/stats", async (req: Request, res: Response) => {
+  app.get("/api/purchase-orders/stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const stats = await storage.getPurchaseStats(
@@ -2073,7 +2073,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/purchase-orders/low-stock", async (req: Request, res: Response) => {
+  app.get("/api/purchase-orders/low-stock", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const products = await storage.getLowStockProducts();
       res.json(products);
@@ -2082,7 +2082,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/purchase-orders/:id", async (req: Request, res: Response) => {
+  app.get("/api/purchase-orders/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const order = await storage.getPurchaseOrder(req.params.id);
       if (!order) {
@@ -2094,13 +2094,14 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/purchase-orders", async (req: Request, res: Response) => {
+  app.post("/api/purchase-orders", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertPurchaseOrderSchema.omit({ orderNumber: true }).parse(req.body);
       const orderNumber = await storage.getNextOrderNumber();
       const order = await storage.createPurchaseOrder({
         ...data,
-        orderNumber
+        orderNumber,
+        createdBy: req.user!.userId
       });
       res.status(201).json(order);
     } catch (error) {
@@ -2112,7 +2113,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/purchase-orders/:id", async (req: Request, res: Response) => {
+  app.patch("/api/purchase-orders/:id", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertPurchaseOrderSchema.partial().parse(req.body);
       const order = await storage.updatePurchaseOrder(req.params.id, data);
@@ -2128,15 +2129,14 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/purchase-orders/:id/status", async (req: Request, res: Response) => {
+  app.patch("/api/purchase-orders/:id/status", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const statusSchema = z.object({
         status: z.enum(["borrador", "enviada", "parcialmente_recibida", "recibida", "cancelada"]),
-        userId: z.string().optional(),
         reason: z.string().optional()
       });
-      const { status, userId, reason } = statusSchema.parse(req.body);
-      const order = await storage.updatePurchaseOrderStatus(req.params.id, status, userId, reason);
+      const { status, reason } = statusSchema.parse(req.body);
+      const order = await storage.updatePurchaseOrderStatus(req.params.id, status, req.user!.userId, reason);
       if (!order) {
         return res.status(404).json({ error: "Orden no encontrada" });
       }
@@ -2149,7 +2149,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/purchase-orders/:id", async (req: Request, res: Response) => {
+  app.delete("/api/purchase-orders/:id", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const deleted = await storage.deletePurchaseOrder(req.params.id);
       if (!deleted) {
@@ -2162,7 +2162,7 @@ export async function registerRoutes(
   });
 
   // Items de Orden de Compra
-  app.get("/api/purchase-orders/:id/items", async (req: Request, res: Response) => {
+  app.get("/api/purchase-orders/:id/items", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const items = await storage.getPurchaseOrderItems(req.params.id);
       res.json(items);
@@ -2171,7 +2171,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/purchase-orders/:id/items", async (req: Request, res: Response) => {
+  app.post("/api/purchase-orders/:id/items", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertPurchaseOrderItemSchema.omit({ orderId: true }).parse(req.body);
       const item = await storage.addPurchaseOrderItem({
@@ -2188,7 +2188,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/purchase-order-items/:id", async (req: Request, res: Response) => {
+  app.patch("/api/purchase-order-items/:id", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertPurchaseOrderItemSchema.partial().parse(req.body);
       const item = await storage.updatePurchaseOrderItem(req.params.id, data);
@@ -2204,7 +2204,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/purchase-order-items/:id", async (req: Request, res: Response) => {
+  app.delete("/api/purchase-order-items/:id", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const deleted = await storage.removePurchaseOrderItem(req.params.id);
       if (!deleted) {
@@ -2217,7 +2217,7 @@ export async function registerRoutes(
   });
 
   // Recepciones de Mercancía
-  app.get("/api/purchase-receptions", async (req: Request, res: Response) => {
+  app.get("/api/purchase-receptions", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { orderId, startDate, endDate } = req.query;
       const filters: any = {};
@@ -2232,7 +2232,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/purchase-receptions/next-number", async (req: Request, res: Response) => {
+  app.get("/api/purchase-receptions/next-number", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const receptionNumber = await storage.getNextReceptionNumber();
       res.json({ receptionNumber });
@@ -2241,7 +2241,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/purchase-receptions/:id", async (req: Request, res: Response) => {
+  app.get("/api/purchase-receptions/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const reception = await storage.getPurchaseReception(req.params.id);
       if (!reception) {
@@ -2253,7 +2253,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/purchase-receptions", async (req: Request, res: Response) => {
+  app.post("/api/purchase-receptions", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const bodySchema = z.object({
         reception: insertPurchaseReceptionSchema.omit({ receptionNumber: true }),
@@ -2263,7 +2263,7 @@ export async function registerRoutes(
       const receptionNumber = await storage.getNextReceptionNumber();
       
       const newReception = await storage.createPurchaseReception(
-        { ...reception, receptionNumber },
+        { ...reception, receptionNumber, receivedBy: req.user!.userId },
         items
       );
       res.status(201).json(newReception);
@@ -2277,7 +2277,7 @@ export async function registerRoutes(
   });
 
   // Historial de compras por proveedor
-  app.get("/api/suppliers/:id/purchase-history", async (req: Request, res: Response) => {
+  app.get("/api/suppliers/:id/purchase-history", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { limit } = req.query;
       const history = await storage.getSupplierPurchaseHistory(
