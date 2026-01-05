@@ -52,13 +52,18 @@ import {
   Tag,
   CheckCircle,
   XCircle,
+  History,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  RotateCcw,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Product } from "@shared/schema";
+import { formatDateShort, formatTime } from "@/lib/utils";
+import type { Product, WarehouseMovement } from "@shared/schema";
 
 const productSchema = z.object({
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
@@ -88,6 +93,28 @@ const categoryColors: Record<string, string> = {
   otros: "bg-gray-500/10 text-gray-600 dark:text-gray-400",
 };
 
+const movementTypeLabels: Record<string, string> = {
+  entrada_compra: "Entrada (Compra)",
+  entrada_devolucion: "Entrada (Devolución)",
+  salida_abastecedor: "Salida (Abastecedor)",
+  salida_merma: "Salida (Merma)",
+  salida_caducidad: "Salida (Caducidad)",
+  salida_danio: "Salida (Daño)",
+  ajuste_inventario: "Ajuste",
+  transferencia: "Transferencia",
+};
+
+const movementTypeColors: Record<string, string> = {
+  entrada_compra: "bg-emerald-500 text-white",
+  entrada_devolucion: "bg-blue-500 text-white",
+  salida_abastecedor: "bg-amber-500 text-white",
+  salida_merma: "bg-destructive text-destructive-foreground",
+  salida_caducidad: "bg-orange-500 text-white",
+  salida_danio: "bg-red-500 text-white",
+  ajuste_inventario: "bg-purple-500 text-white",
+  transferencia: "bg-indigo-500 text-white",
+};
+
 export function ProductsPage() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
@@ -97,9 +124,21 @@ export function ProductsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [kardexProduct, setKardexProduct] = useState<Product | null>(null);
 
   const { data: products = [], isLoading } = useQuery<Product[]>({
     queryKey: ["/api/products"],
+  });
+
+  const { data: kardexMovements = [], isLoading: isLoadingKardex } = useQuery<(WarehouseMovement & { product: Product })[]>({
+    queryKey: ["/api/warehouse/movements", kardexProduct?.id],
+    queryFn: async () => {
+      if (!kardexProduct) return [];
+      const response = await fetch(`/api/warehouse/movements?productId=${kardexProduct.id}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!kardexProduct,
   });
 
   const form = useForm<ProductFormData>({
@@ -442,6 +481,18 @@ export function ProductsPage() {
                       size="icon"
                       onClick={(e) => {
                         e.stopPropagation();
+                        setKardexProduct(product);
+                      }}
+                      title="Ver Kardex"
+                      data-testid={`button-kardex-product-${product.id}`}
+                    >
+                      <History className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
                         handleOpenEdit(product);
                       }}
                       data-testid={`button-edit-product-${product.id}`}
@@ -526,6 +577,15 @@ export function ProductsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setKardexProduct(product)}
+                        title="Ver Kardex"
+                        data-testid={`button-kardex-product-list-${product.id}`}
+                      >
+                        <History className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -739,6 +799,86 @@ export function ProductsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!kardexProduct} onOpenChange={() => setKardexProduct(null)}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Kardex - {kardexProduct?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Historial de movimientos del producto en almacén
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            {isLoadingKardex ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : kardexMovements.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead className="text-right">Cantidad</TableHead>
+                    <TableHead className="text-right">Costo Unit.</TableHead>
+                    <TableHead>Notas</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {kardexMovements.map((movement) => {
+                    const isEntry = movement.movementType?.startsWith("entrada");
+                    const MovementIcon = isEntry ? ArrowUpCircle : movement.movementType === "ajuste_inventario" ? RotateCcw : ArrowDownCircle;
+                    return (
+                      <TableRow key={movement.id} data-testid={`row-kardex-${movement.id}`}>
+                        <TableCell>
+                          <div className="text-sm">
+                            {movement.createdAt ? formatDateShort(new Date(movement.createdAt)) : "-"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {movement.createdAt ? formatTime(new Date(movement.createdAt)) : ""}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={movementTypeColors[movement.movementType || ""] || "bg-gray-500"}>
+                            <MovementIcon className="h-3 w-3 mr-1" />
+                            {movementTypeLabels[movement.movementType || ""] || movement.movementType}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          <span className={isEntry ? "text-emerald-600" : "text-red-600"}>
+                            {isEntry ? "+" : "-"}{movement.quantity}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {movement.unitCost ? formatCurrency(movement.unitCost) : "-"}
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate text-muted-foreground">
+                          {movement.notes || "-"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-12">
+                <History className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No hay movimientos registrados para este producto</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setKardexProduct(null)} data-testid="button-close-kardex">
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

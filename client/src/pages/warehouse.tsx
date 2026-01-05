@@ -667,7 +667,7 @@ export function WarehousePage() {
                             <TableCell className="text-right">{lot.remainingQuantity}</TableCell>
                             <TableCell>
                               {lot.expirationDate 
-                                ? format(new Date(lot.expirationDate), "dd/MM/yyyy", { locale: es })
+                                ? formatDateShort(new Date(lot.expirationDate))
                                 : "-"}
                             </TableCell>
                             <TableCell>
@@ -736,12 +736,12 @@ export function WarehousePage() {
                           </TableCell>
                           <TableCell>
                             {lot.purchaseDate 
-                              ? format(new Date(lot.purchaseDate), "dd/MM/yy", { locale: es })
+                              ? formatDateShort(new Date(lot.purchaseDate))
                               : "-"}
                           </TableCell>
                           <TableCell>
                             {lot.expirationDate 
-                              ? format(new Date(lot.expirationDate), "dd/MM/yy", { locale: es })
+                              ? formatDateShort(new Date(lot.expirationDate))
                               : "-"}
                           </TableCell>
                         </TableRow>
