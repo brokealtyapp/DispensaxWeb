@@ -59,7 +59,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
-import { formatDateTime, formatTimeWithSeconds } from "@/lib/utils";
+import { formatDateTime, formatTimeWithSeconds, formatCurrency } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -444,13 +444,6 @@ export function MachineDetailPage() {
 
   const handleSaveInventoryQuantity = (productId: string) => {
     updateInventoryMutation.mutate({ productId, currentQuantity: editingQuantity });
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("es-MX", {
-      style: "currency",
-      currency: "MXN",
-    }).format(amount);
   };
 
   const formatMachineDate = (date: string | Date | null | undefined) => {

@@ -8,6 +8,35 @@ export function cn(...inputs: ClassValue[]) {
 // Zona horaria de República Dominicana (GMT-4)
 export const TIMEZONE = 'America/Santo_Domingo';
 export const LOCALE = 'es-DO';
+export const CURRENCY = 'DOP';
+
+// Formatear moneda en Pesos Dominicanos (RD$ 1,234.56)
+export function formatCurrency(amount: number | string | null | undefined): string {
+  if (amount === null || amount === undefined || amount === '') return 'RD$ 0.00';
+  const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+  if (isNaN(numericAmount)) return 'RD$ 0.00';
+  
+  return new Intl.NumberFormat(LOCALE, {
+    style: 'currency',
+    currency: CURRENCY,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(numericAmount);
+}
+
+// Formatear moneda compacta para valores grandes (ej: RD$ 1.2M)
+export function formatCurrencyCompact(amount: number | string | null | undefined): string {
+  if (amount === null || amount === undefined || amount === '') return 'RD$ 0';
+  const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+  if (isNaN(numericAmount)) return 'RD$ 0';
+  
+  if (numericAmount >= 1000000) {
+    return `RD$ ${(numericAmount / 1000000).toFixed(1)}M`;
+  } else if (numericAmount >= 1000) {
+    return `RD$ ${(numericAmount / 1000).toFixed(1)}K`;
+  }
+  return formatCurrency(numericAmount);
+}
 
 // Formatear solo hora (ej: "14:30")
 export function formatTime(date: Date | string | null | undefined): string {

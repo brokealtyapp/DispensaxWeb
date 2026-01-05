@@ -40,7 +40,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth-context";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
-import { formatDate, formatTime } from "@/lib/utils";
+import { formatDate, formatTime, formatCurrency } from "@/lib/utils";
 import {
   MapPin,
   Navigation,
@@ -349,7 +349,7 @@ export function SupplierPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/cash"] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/stats", supplierId] });
-      toast({ title: "Efectivo registrado", description: `$${cashAmount} MXN registrados` });
+      toast({ title: "Efectivo registrado", description: `${formatCurrency(parseFloat(cashAmount))} registrados` });
       setCashAmount("");
       setExpectedAmount("");
       setIsCashDialogOpen(false);
@@ -1429,7 +1429,7 @@ export function SupplierPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Monto esperado (MXN) - opcional</Label>
+              <Label>Monto esperado (RD$) - opcional</Label>
               <Input
                 type="number"
                 placeholder="0.00"
@@ -1439,7 +1439,7 @@ export function SupplierPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Monto recolectado (MXN)</Label>
+              <Label>Monto recolectado (RD$)</Label>
               <Input
                 type="number"
                 placeholder="0.00"

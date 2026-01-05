@@ -21,6 +21,7 @@ import { DataTable, Column } from "@/components/DataTable";
 import { StatsCard } from "@/components/StatsCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { formatCurrency } from "@/lib/utils";
 import {
   DollarSign,
   TrendingUp,
@@ -282,17 +283,17 @@ export function AccountingPage() {
     {
       key: "today",
       header: "Hoy",
-      render: (item) => `$${(item.today || 0).toLocaleString()}`,
+      render: (item) => formatCurrency(item.today || 0),
     },
     {
       key: "week",
       header: "Semana",
-      render: (item) => `$${(item.week || 0).toLocaleString()}`,
+      render: (item) => formatCurrency(item.week || 0),
     },
     {
       key: "month",
       header: "Mes",
-      render: (item) => `$${(item.month || 0).toLocaleString()}`,
+      render: (item) => formatCurrency(item.month || 0),
     },
     {
       key: "transacciones",
@@ -330,7 +331,7 @@ export function AccountingPage() {
       header: "Monto",
       render: (item) => (
         <span className="text-destructive font-medium">
-          -${(item.amount || 0).toLocaleString()}
+          -{formatCurrency(item.amount || 0)}
         </span>
       ),
     },
@@ -394,7 +395,7 @@ export function AccountingPage() {
           <>
             <StatsCard
               title="Ingresos del Período"
-              value={`$${(overview?.totalIngresos || 0).toLocaleString()}`}
+              value={formatCurrency(overview?.totalIngresos || 0)}
               subtitle={`Tendencia: ${overview?.tendenciaIngresos?.toFixed(1) || 0}%`}
               trend={{ value: overview?.tendenciaIngresos || 0, isPositive: (overview?.tendenciaIngresos || 0) >= 0 }}
               icon={DollarSign}
@@ -402,7 +403,7 @@ export function AccountingPage() {
             />
             <StatsCard
               title="Gastos del Período"
-              value={`$${(overview?.totalGastos || 0).toLocaleString()}`}
+              value={formatCurrency(overview?.totalGastos || 0)}
               subtitle={`Tendencia: ${overview?.tendenciaGastos?.toFixed(1) || 0}%`}
               trend={{ value: Math.abs(overview?.tendenciaGastos || 0), isPositive: (overview?.tendenciaGastos || 0) <= 0 }}
               icon={TrendingDown}
@@ -410,7 +411,7 @@ export function AccountingPage() {
             />
             <StatsCard
               title="Utilidad Neta"
-              value={`$${(overview?.utilidadNeta || 0).toLocaleString()}`}
+              value={formatCurrency(overview?.utilidadNeta || 0)}
               subtitle={`Margen: ${overview?.margen?.toFixed(1) || 0}%`}
               trend={{ value: overview?.margen || 0, isPositive: (overview?.margen || 0) > 0 }}
               icon={TrendingUp}
@@ -419,7 +420,7 @@ export function AccountingPage() {
             <StatsCard
               title="Transacciones"
               value={(overview?.transacciones || 0).toLocaleString()}
-              subtitle={`Promedio: $${overview?.promedioTicket?.toFixed(2) || 0}`}
+              subtitle={`Promedio: ${formatCurrency(overview?.promedioTicket || 0)}`}
               icon={Receipt}
               iconColor="purple"
             />
@@ -456,7 +457,7 @@ export function AccountingPage() {
                             border: "1px solid hsl(var(--border))",
                             borderRadius: "8px",
                           }}
-                          formatter={(value: number) => [`$${value.toLocaleString()}`, ""]}
+                          formatter={(value: number) => [formatCurrency(value), ""]}
                         />
                         <Area
                           type="monotone"
@@ -568,7 +569,7 @@ export function AccountingPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-4xl font-bold text-emerald-500 mb-4" data-testid="text-total-ingresos">
-                  ${(overview?.totalIngresos || 0).toLocaleString()}
+                  {formatCurrency(overview?.totalIngresos || 0)}
                 </div>
                 <div className="h-[200px]">
                   {loadingOverview ? (
@@ -600,7 +601,7 @@ export function AccountingPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-4xl font-bold text-destructive mb-4" data-testid="text-total-gastos">
-                  ${(expenses?.reduce((acc, e) => acc + (e.amount || 0), 0) || 0).toLocaleString()}
+                  {formatCurrency(expenses?.reduce((acc, e) => acc + (e.amount || 0), 0) || 0)}
                 </div>
                 {loadingExpenses ? (
                   <Skeleton className="h-48 w-full" />
@@ -655,7 +656,7 @@ export function AccountingPage() {
                       <CardContent className="p-4">
                         <p className="text-sm text-muted-foreground">Efectivo Esperado</p>
                         <p className="text-2xl font-bold" data-testid="text-efectivo-esperado">
-                          ${(cashCut?.totalEsperado || 0).toLocaleString()}
+                          {formatCurrency(cashCut?.totalEsperado || 0)}
                         </p>
                       </CardContent>
                     </Card>
@@ -663,7 +664,7 @@ export function AccountingPage() {
                       <CardContent className="p-4">
                         <p className="text-sm text-muted-foreground">Efectivo Real</p>
                         <p className="text-2xl font-bold" data-testid="text-efectivo-real">
-                          ${(cashCut?.totalRecolectado || 0).toLocaleString()}
+                          {formatCurrency(cashCut?.totalRecolectado || 0)}
                         </p>
                       </CardContent>
                     </Card>
@@ -671,7 +672,7 @@ export function AccountingPage() {
                       <CardContent className="p-4">
                         <p className="text-sm text-muted-foreground">Diferencia</p>
                         <p className={`text-2xl font-bold ${(cashCut?.diferencia || 0) < 0 ? "text-destructive" : "text-emerald-500"}`} data-testid="text-diferencia">
-                          {(cashCut?.diferencia || 0) < 0 ? "-" : "+"}${Math.abs(cashCut?.diferencia || 0).toLocaleString()}
+                          {(cashCut?.diferencia || 0) < 0 ? "-" : "+"}{formatCurrency(Math.abs(cashCut?.diferencia || 0))}
                         </p>
                       </CardContent>
                     </Card>
@@ -683,10 +684,10 @@ export function AccountingPage() {
                         <div key={user.userId} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                           <span>{user.abastecedor || user.userId}</span>
                           <div className="flex gap-4 text-sm">
-                            <span>Esperado: ${(user.esperado || 0).toLocaleString()}</span>
-                            <span>Real: ${(user.recolectado || 0).toLocaleString()}</span>
+                            <span>Esperado: {formatCurrency(user.esperado || 0)}</span>
+                            <span>Real: {formatCurrency(user.recolectado || 0)}</span>
                             <span className={(user.diferencia || 0) < 0 ? "text-destructive" : "text-emerald-500"}>
-                              Dif: ${(user.diferencia || 0).toLocaleString()}
+                              Dif: {formatCurrency(user.diferencia || 0)}
                             </span>
                           </div>
                         </div>

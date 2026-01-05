@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, formatCurrency } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -243,9 +243,9 @@ export function MoneyProductsPage() {
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold" data-testid="text-total-cash">${(cashSummary?.total || 0).toLocaleString()}</div>
+              <div className="text-2xl font-bold" data-testid="text-total-cash">{formatCurrency(cashSummary?.total || 0)}</div>
               <p className="text-xs text-muted-foreground">
-                {cashSummary?.pending > 0 && `$${cashSummary.pending.toLocaleString()} pendiente`}
+                {cashSummary?.pending > 0 && `${formatCurrency(cashSummary.pending)} pendiente`}
               </p>
             </CardContent>
           </Card>
@@ -347,10 +347,10 @@ export function MoneyProductsPage() {
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-right">
-                            <p className="font-bold text-lg" data-testid={`text-movement-amount-${movement.id}`}>${parseFloat(movement.amount).toLocaleString()}</p>
+                            <p className="font-bold text-lg" data-testid={`text-movement-amount-${movement.id}`}>{formatCurrency(movement.amount)}</p>
                             {movement.difference && parseFloat(movement.difference) !== 0 && (
                               <p className={`text-sm ${parseFloat(movement.difference) < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                {parseFloat(movement.difference) < 0 ? '-' : '+'}${Math.abs(parseFloat(movement.difference)).toLocaleString()}
+                                {parseFloat(movement.difference) < 0 ? '-' : '+'}{formatCurrency(Math.abs(parseFloat(movement.difference)))}
                               </p>
                             )}
                           </div>

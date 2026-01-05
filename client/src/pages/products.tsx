@@ -62,7 +62,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { formatDateShort, formatTime } from "@/lib/utils";
+import { formatDateShort, formatTime, formatCurrency } from "@/lib/utils";
 import { DataPagination } from "@/components/DataPagination";
 import type { Product, WarehouseMovement } from "@shared/schema";
 
@@ -253,15 +253,6 @@ export function ProductsPage() {
     if (deletingProduct) {
       deleteMutation.mutate(deletingProduct.id);
     }
-  };
-
-  const formatCurrency = (amount: string | number | null | undefined) => {
-    if (!amount) return "RD$ 0.00";
-    const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return new Intl.NumberFormat("es-DO", {
-      style: "currency",
-      currency: "DOP",
-    }).format(num);
   };
 
   const filteredProducts = useMemo(() => {

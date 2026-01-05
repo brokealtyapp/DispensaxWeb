@@ -51,7 +51,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Product, Supplier, WarehouseInventory, WarehouseMovement, ProductLot } from "@shared/schema";
-import { formatDateShort, formatTime } from "@/lib/utils";
+import { formatDateShort, formatTime, formatCurrency } from "@/lib/utils";
 
 interface WarehouseStats {
   totalProducts: number;
@@ -782,7 +782,7 @@ export function WarehousePage() {
                             {lot.remainingQuantity}
                           </TableCell>
                           <TableCell className="text-right">
-                            ${parseFloat(lot.costPrice || "0").toFixed(2)}
+                            {formatCurrency(lot.costPrice || 0)}
                           </TableCell>
                           <TableCell>
                             {lot.purchaseDate 

@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { StatsCard } from "@/components/StatsCard";
 import { subDays, subMonths, startOfMonth, endOfMonth } from "date-fns";
-import { formatDateShort, getTodayInTimezone, getDateKeyInTimezone } from "@/lib/utils";
+import { formatDateShort, getTodayInTimezone, getDateKeyInTimezone, formatCurrency } from "@/lib/utils";
 import {
   BarChart3,
   TrendingUp,
@@ -108,14 +108,6 @@ function getDateRange(rangeValue: string): { startDate: Date; endDate: Date } {
   return { startDate, endDate };
 }
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("es-MX", {
-    style: "currency",
-    currency: "MXN",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
 
 export function ReportsPage() {
   const { toast } = useToast();

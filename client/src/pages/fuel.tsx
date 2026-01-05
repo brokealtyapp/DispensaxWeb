@@ -21,7 +21,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatsCard } from "@/components/StatsCard";
 import { DataPagination } from "@/components/DataPagination";
-import { formatDateShort } from "@/lib/utils";
+import { formatDateShort, formatCurrency } from "@/lib/utils";
 import {
   Car,
   Fuel,
@@ -995,7 +995,7 @@ export function FuelPage() {
               />
               <StatsCard
                 title="Gasto Total"
-                value={`$${(fuelStats?.totalAmount || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}`}
+                value={formatCurrency(fuelStats?.totalAmount || 0)}
                 icon={DollarSign}
                 iconColor="success"
                 subtitle="En combustible"
@@ -1009,7 +1009,7 @@ export function FuelPage() {
               />
               <StatsCard
                 title="Costo por Km"
-                value={`$${(fuelStats?.costPerKm || 0).toFixed(2)}`}
+                value={formatCurrency(fuelStats?.costPerKm || 0)}
                 icon={TrendingUp}
                 iconColor="warning"
                 subtitle="Costo operativo"
@@ -1351,7 +1351,7 @@ export function FuelPage() {
                                 {parseFloat(record.liters).toFixed(2)} L
                               </TableCell>
                               <TableCell className="text-right font-medium" data-testid={`text-record-amount-${record.id}`}>
-                                ${parseFloat(record.totalAmount).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                                {formatCurrency(record.totalAmount)}
                               </TableCell>
                               <TableCell className="text-right" data-testid={`text-record-odometer-${record.id}`}>
                                 {parseInt(record.odometerReading).toLocaleString()} km
@@ -1570,7 +1570,7 @@ export function FuelPage() {
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                           ))}
                         </Pie>
-                        <Tooltip formatter={(value: number) => `$${value.toLocaleString("es-MX", { minimumFractionDigits: 2 })}`} />
+                        <Tooltip formatter={(value: number) => formatCurrency(value)} />
                       </PieChart>
                     </ResponsiveContainer>
                   ) : (
@@ -1595,7 +1595,7 @@ export function FuelPage() {
                     <div className="p-4 rounded-lg bg-muted/50">
                       <p className="text-sm text-muted-foreground">Promedio por Carga</p>
                       <p className="text-2xl font-bold" data-testid="text-avg-per-charge">
-                        ${(fuelStats?.recordCount ? (fuelStats?.totalAmount || 0) / fuelStats.recordCount : 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                        {formatCurrency(fuelStats?.recordCount ? (fuelStats?.totalAmount || 0) / fuelStats.recordCount : 0)}
                       </p>
                     </div>
                     <div className="p-4 rounded-lg bg-muted/50">
@@ -1625,7 +1625,7 @@ export function FuelPage() {
                               <span>{v.name}</span>
                             </div>
                             <span className="font-medium">
-                              ${v.gasto.toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                              {formatCurrency(v.gasto)}
                             </span>
                           </div>
                         ))}

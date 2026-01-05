@@ -10,7 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { addDays } from "date-fns";
-import { formatTime, TIMEZONE, LOCALE, isSameDayInTimezone, isTodayInTimezone, getStartOfWeekInTimezone } from "@/lib/utils";
+import { formatTime, TIMEZONE, LOCALE, isSameDayInTimezone, isTodayInTimezone, getStartOfWeekInTimezone, formatCurrency } from "@/lib/utils";
 import { 
   Plus, MoreHorizontal, Check, Box, AlertTriangle, TrendingUp, Users, Loader2,
   Route, Warehouse, DollarSign, Wallet, ShoppingCart, Fuel, UserCheck, FileText,
@@ -258,11 +258,6 @@ export function DashboardPage() {
       return formatTime(task.dueDate);
     }
     return "Sin hora";
-  };
-
-  const formatCurrency = (value: number | string) => {
-    const num = typeof value === "string" ? parseFloat(value) : value;
-    return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(num || 0);
   };
 
   return (

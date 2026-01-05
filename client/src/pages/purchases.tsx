@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { formatDateShort } from "@/lib/utils";
+import { formatDateShort, formatCurrency } from "@/lib/utils";
 import { 
   Package, Building2, FileText, Truck, History, Plus, Search, Filter,
   Edit2, Trash2, Eye, Send, X, Check, AlertTriangle, DollarSign,
@@ -448,7 +448,7 @@ export default function PurchasesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-total-amount">
-              ${(stats?.totalAmount || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+              {formatCurrency(stats?.totalAmount || 0)}
             </div>
             <p className="text-xs text-muted-foreground">Este período</p>
           </CardContent>
@@ -641,7 +641,7 @@ export default function PurchasesPage() {
                       <TableCell>{formatDateShort(order.issueDate)}</TableCell>
                       <TableCell>{order.itemCount} productos</TableCell>
                       <TableCell className="font-medium">
-                        ${parseFloat(order.total || "0").toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                        {formatCurrency(order.total || 0)}
                       </TableCell>
                       <TableCell>{getStatusBadge(order.status)}</TableCell>
                       <TableCell className="text-right">
@@ -703,7 +703,7 @@ export default function PurchasesPage() {
                         <div>
                           <p className="font-medium">{order.itemCount} productos</p>
                           <p className="text-sm text-muted-foreground">
-                            ${parseFloat(order.total || "0").toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                            {formatCurrency(order.total || 0)}
                           </p>
                         </div>
                         {getStatusBadge(order.status)}
@@ -771,7 +771,7 @@ export default function PurchasesPage() {
                   <Card>
                     <CardContent className="pt-6">
                       <div className="text-2xl font-bold">
-                        ${orders?.filter(o => o.status === "recibida").reduce((sum, o) => sum + parseFloat(o.total || "0"), 0).toLocaleString("es-MX", { minimumFractionDigits: 2 }) || "0.00"}
+                        {formatCurrency(orders?.filter(o => o.status === "recibida").reduce((sum, o) => sum + parseFloat(o.total || "0"), 0) || 0)}
                       </div>
                       <p className="text-sm text-muted-foreground">Total Comprado</p>
                     </CardContent>
@@ -800,7 +800,7 @@ export default function PurchasesPage() {
                           <TableRow key={item.supplierId} data-testid={`row-top-supplier-${index}`}>
                             <TableCell className="font-medium">{item.supplier?.name}</TableCell>
                             <TableCell>{item.count}</TableCell>
-                            <TableCell>${item.total.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</TableCell>
+                            <TableCell>{formatCurrency(item.total)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -1127,8 +1127,8 @@ export default function PurchasesPage() {
                     <TableRow key={item.id}>
                       <TableCell>{item.product?.name}</TableCell>
                       <TableCell className="text-right">{item.quantity}</TableCell>
-                      <TableCell className="text-right">${parseFloat(item.unitPrice).toFixed(2)}</TableCell>
-                      <TableCell className="text-right">${parseFloat(item.subtotal).toFixed(2)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.subtotal)}</TableCell>
                       <TableCell>
                         <Button variant="ghost" size="icon" onClick={() => removeOrderItemMutation.mutate(item.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -1145,9 +1145,9 @@ export default function PurchasesPage() {
                 {selectedOrder?.items?.length || 0} productos
               </div>
               <div className="text-right">
-                <p className="text-sm text-muted-foreground">Subtotal: ${parseFloat(selectedOrder?.subtotal || "0").toFixed(2)}</p>
-                <p className="text-sm text-muted-foreground">IVA 16%: ${parseFloat(selectedOrder?.taxAmount || "0").toFixed(2)}</p>
-                <p className="text-lg font-bold">Total: ${parseFloat(selectedOrder?.total || "0").toFixed(2)}</p>
+                <p className="text-sm text-muted-foreground">Subtotal: {formatCurrency(selectedOrder?.subtotal || 0)}</p>
+                <p className="text-sm text-muted-foreground">IVA 16%: {formatCurrency(selectedOrder?.taxAmount || 0)}</p>
+                <p className="text-lg font-bold">Total: {formatCurrency(selectedOrder?.total || 0)}</p>
               </div>
             </div>
           </div>
@@ -1224,8 +1224,8 @@ export default function PurchasesPage() {
                           </Badge>
                         ) : "-"}
                       </TableCell>
-                      <TableCell className="text-right">${parseFloat(item.unitPrice).toFixed(2)}</TableCell>
-                      <TableCell className="text-right">${parseFloat(item.subtotal).toFixed(2)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.subtotal)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1234,9 +1234,9 @@ export default function PurchasesPage() {
 
             <div className="flex justify-end pt-4 border-t">
               <div className="text-right">
-                <p className="text-sm text-muted-foreground">Subtotal: ${parseFloat(selectedOrder?.subtotal || "0").toFixed(2)}</p>
-                <p className="text-sm text-muted-foreground">IVA 16%: ${parseFloat(selectedOrder?.taxAmount || "0").toFixed(2)}</p>
-                <p className="text-lg font-bold">Total: ${parseFloat(selectedOrder?.total || "0").toFixed(2)}</p>
+                <p className="text-sm text-muted-foreground">Subtotal: {formatCurrency(selectedOrder?.subtotal || 0)}</p>
+                <p className="text-sm text-muted-foreground">IVA 16%: {formatCurrency(selectedOrder?.taxAmount || 0)}</p>
+                <p className="text-lg font-bold">Total: {formatCurrency(selectedOrder?.total || 0)}</p>
               </div>
             </div>
           </div>

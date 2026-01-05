@@ -41,6 +41,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatCurrency } from "@/lib/utils";
 import {
   Users,
   Clock,
@@ -414,7 +415,7 @@ export function HRPage() {
     {
       key: "totalCollected",
       header: "Total Recolectado",
-      render: (item) => `$${item.totalCollected.toLocaleString()}`,
+      render: (item) => formatCurrency(item.totalCollected),
     },
   ];
 

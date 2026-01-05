@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { formatDate, formatTime, formatDateTime } from "@/lib/utils";
+import { formatDate, formatTime, formatDateTime, formatCurrency } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -415,7 +415,7 @@ export function PettyCashPage() {
             </CardHeader>
             <CardContent>
               <div className={`text-2xl font-bold ${needsReplenish ? 'text-orange-600' : ''}`} data-testid="text-fund-balance">
-                ${fundBalance.toLocaleString()}
+                {formatCurrency(fundBalance)}
               </div>
               <Progress value={balancePercentage} className="mt-2" />
               <p className="text-xs text-muted-foreground mt-1">
@@ -436,7 +436,7 @@ export function PettyCashPage() {
               <Receipt className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold" data-testid="text-today-expenses">${(stats?.todayExpenses || 0).toLocaleString()}</div>
+              <div className="text-2xl font-bold" data-testid="text-today-expenses">{formatCurrency(stats?.todayExpenses || 0)}</div>
               <p className="text-xs text-muted-foreground">Gastado hoy</p>
             </CardContent>
           </Card>
@@ -458,7 +458,7 @@ export function PettyCashPage() {
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold" data-testid="text-monthly-expenses">${(stats?.monthlyExpenses || 0).toLocaleString()}</div>
+              <div className="text-2xl font-bold" data-testid="text-monthly-expenses">{formatCurrency(stats?.monthlyExpenses || 0)}</div>
               <p className="text-xs text-muted-foreground">Total mensual</p>
             </CardContent>
           </Card>
@@ -519,7 +519,7 @@ export function PettyCashPage() {
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-right">
-                            <p className="font-bold text-lg" data-testid={`text-expense-amount-${expense.id}`}>${parseFloat(expense.amount).toLocaleString()}</p>
+                            <p className="font-bold text-lg" data-testid={`text-expense-amount-${expense.id}`}>{formatCurrency(expense.amount)}</p>
                             <p className="text-sm text-muted-foreground">
                               {formatDate(expense.createdAt)}
                             </p>
@@ -580,7 +580,7 @@ export function PettyCashPage() {
                               </div>
                               <div className="flex items-center gap-4">
                                 <div className="text-right">
-                                  <p className="font-bold text-lg" data-testid={`text-pending-amount-${expense.id}`}>${parseFloat(expense.amount).toLocaleString()}</p>
+                                  <p className="font-bold text-lg" data-testid={`text-pending-amount-${expense.id}`}>{formatCurrency(expense.amount)}</p>
                                 </div>
                                 {getStatusBadge(expense.status)}
                               </div>
@@ -673,10 +673,10 @@ export function PettyCashPage() {
                         <div className="flex items-center gap-4">
                           <div className="text-right">
                             <p className={`font-bold text-lg ${transaction.type === "reposicion" ? 'text-green-600' : 'text-red-600'}`} data-testid={`text-transaction-amount-${transaction.id}`}>
-                              {transaction.type === "reposicion" ? '+' : '-'}${parseFloat(transaction.amount).toLocaleString()}
+                              {transaction.type === "reposicion" ? '+' : '-'}{formatCurrency(transaction.amount)}
                             </p>
                             <p className="text-sm text-muted-foreground">
-                              Saldo: ${parseFloat(transaction.newBalance).toLocaleString()}
+                              Saldo: {formatCurrency(transaction.newBalance)}
                             </p>
                           </div>
                           <div className="text-xs text-muted-foreground">
@@ -854,7 +854,7 @@ export function PettyCashPage() {
                 <div className="p-4 bg-muted rounded-lg">
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Saldo actual:</span>
-                    <span className="font-bold" data-testid="text-current-balance">${fundBalance.toLocaleString()}</span>
+                    <span className="font-bold" data-testid="text-current-balance">{formatCurrency(fundBalance)}</span>
                   </div>
                   <div className="flex justify-between items-center mt-1">
                     <span className="text-muted-foreground">Monto máximo:</span>

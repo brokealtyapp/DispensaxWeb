@@ -21,7 +21,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { startOfMonth, endOfMonth } from "date-fns";
-import { formatDateShort } from "@/lib/utils";
+import { formatDateShort, formatCurrency } from "@/lib/utils";
 import type { CashMovement, BankDeposit, PettyCashExpense, MachineSale } from "@shared/schema";
 
 interface SalesStats {
@@ -113,13 +113,6 @@ export function ContabilidadPanelPage() {
       return response.json();
     },
   });
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("es-MX", {
-      style: "currency",
-      currency: "MXN",
-    }).format(value);
-  };
 
   return (
     <ScrollArea className="h-full">
