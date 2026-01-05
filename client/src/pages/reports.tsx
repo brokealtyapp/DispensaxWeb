@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { StatsCard } from "@/components/StatsCard";
 import { subDays, subMonths, startOfMonth, endOfMonth } from "date-fns";
-import { formatDateShort } from "@/lib/utils";
+import { formatDateShort, getTodayInTimezone, getDateKeyInTimezone } from "@/lib/utils";
 import {
   BarChart3,
   TrendingUp,
@@ -75,34 +75,34 @@ const categoryLabels: Record<string, string> = {
 };
 
 function getDateRange(rangeValue: string): { startDate: Date; endDate: Date } {
-  const now = new Date();
+  const today = getTodayInTimezone();
   let startDate: Date;
-  let endDate = now;
+  let endDate = today;
 
   switch (rangeValue) {
     case "7d":
-      startDate = subDays(now, 7);
+      startDate = subDays(today, 7);
       break;
     case "30d":
-      startDate = subDays(now, 30);
+      startDate = subDays(today, 30);
       break;
     case "this_month":
-      startDate = startOfMonth(now);
-      endDate = endOfMonth(now);
+      startDate = startOfMonth(today);
+      endDate = endOfMonth(today);
       break;
     case "last_month":
-      const lastMonth = subMonths(now, 1);
+      const lastMonth = subMonths(today, 1);
       startDate = startOfMonth(lastMonth);
       endDate = endOfMonth(lastMonth);
       break;
     case "90d":
-      startDate = subDays(now, 90);
+      startDate = subDays(today, 90);
       break;
     case "year":
-      startDate = new Date(now.getFullYear(), 0, 1);
+      startDate = new Date(today.getFullYear(), 0, 1);
       break;
     default:
-      startDate = subDays(now, 30);
+      startDate = subDays(today, 30);
   }
 
   return { startDate, endDate };
@@ -190,7 +190,12 @@ export function ReportsPage() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+      await queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey[0];
+          return typeof key === 'string' && key.startsWith('/api/reports');
+        }
+      });
       toast({
         title: "Datos actualizados",
         description: "Los reportes se han actualizado correctamente",
@@ -643,6 +648,19 @@ export function ReportsPage() {
                   </tr>
                 )}
               </tbody>
+              {salesBreakdown.length > 0 && !loadingSales && (
+                <tfoot className="sticky bottom-0 bg-muted/80 backdrop-blur-sm font-semibold">
+                  <tr className="border-t-2">
+                    <td className="py-3 px-2">TOTAL</td>
+                    <td className="text-right py-3 px-2">
+                      {salesBreakdown.reduce((sum, item) => sum + (item.quantity || 0), 0)}
+                    </td>
+                    <td className="text-right py-3 px-2">
+                      {formatCurrency(salesBreakdown.reduce((sum, item) => sum + (item.totalAmount || 0), 0))}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </ScrollArea>
         </CardContent>
@@ -991,6 +1009,118 @@ export function ReportsPage() {
     </div>
   );
 
+  const renderProductsTab = () => (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-4">
+        <Button
+          variant="outline"
+          onClick={() => handleExport("inventory")}
+          disabled={isExporting}
+          data-testid="button-export-inventory"
+        >
+          <Download className={`h-4 w-4 mr-2 ${isExporting ? 'animate-pulse' : ''}`} />
+          {isExporting ? "Exportando..." : "Exportar Inventario CSV"}
+        </Button>
+      </div>
+
+      <Card data-testid="card-top-products-chart">
+        <CardHeader>
+          <CardTitle>Top 10 Productos</CardTitle>
+          <CardDescription>Por monto total de ventas</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingProducts ? (
+            <Skeleton className="h-80" />
+          ) : topProducts.length > 0 ? (
+            <ResponsiveContainer width="100%" height={350}>
+              <BarChart data={topProducts} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" tick={{ fontSize: 12 }} />
+                <YAxis 
+                  type="category" 
+                  dataKey="product.name" 
+                  width={150}
+                  tick={{ fontSize: 11 }}
+                />
+                <Tooltip formatter={(value: number, name: string) => 
+                  name === 'Ventas' ? formatCurrency(value) : value
+                } />
+                <Legend />
+                <Bar dataKey="totalAmount" fill="#E84545" name="Ventas" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="quantity" fill="#4ECB71" name="Cantidad" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-80 flex items-center justify-center text-muted-foreground">
+              No hay datos de productos
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-products-table">
+        <CardHeader>
+          <CardTitle>Detalle por Producto</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="h-96">
+            <table className="w-full">
+              <thead className="sticky top-0 bg-background">
+                <tr className="border-b">
+                  <th className="text-left py-3 px-2 text-sm font-medium">Producto</th>
+                  <th className="text-right py-3 px-2 text-sm font-medium">Cantidad Vendida</th>
+                  <th className="text-right py-3 px-2 text-sm font-medium">Total Ventas</th>
+                  <th className="text-right py-3 px-2 text-sm font-medium">Promedio/Unidad</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingProducts ? (
+                  <tr><td colSpan={4}>{renderLoadingSkeleton()}</td></tr>
+                ) : topProducts.length > 0 ? (
+                  topProducts.map((item, index) => (
+                    <tr key={index} className="border-b hover:bg-muted/50" data-testid={`row-product-${index}`}>
+                      <td className="py-3 px-2">
+                        <div>
+                          <p className="font-medium">{item.product?.name || 'N/A'}</p>
+                          <p className="text-xs text-muted-foreground">{item.product?.code}</p>
+                        </div>
+                      </td>
+                      <td className="text-right py-3 px-2">{item.quantity}</td>
+                      <td className="text-right py-3 px-2 font-medium">{formatCurrency(item.totalAmount)}</td>
+                      <td className="text-right py-3 px-2">
+                        {item.quantity > 0 ? formatCurrency(item.totalAmount / item.quantity) : '-'}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="text-center py-8 text-muted-foreground">
+                      No hay datos de productos
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {topProducts.length > 0 && !loadingProducts && (
+                <tfoot className="sticky bottom-0 bg-muted/80 backdrop-blur-sm font-semibold">
+                  <tr className="border-t-2">
+                    <td className="py-3 px-2">TOTAL</td>
+                    <td className="text-right py-3 px-2">
+                      {topProducts.reduce((sum, item) => sum + (item.quantity || 0), 0)}
+                    </td>
+                    <td className="text-right py-3 px-2">
+                      {formatCurrency(topProducts.reduce((sum, item) => sum + (item.totalAmount || 0), 0))}
+                    </td>
+                    <td className="text-right py-3 px-2">-</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </ScrollArea>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const renderMachinesTab = () => (
     <div className="space-y-6">
       <Card data-testid="card-machine-performance">
@@ -1073,6 +1203,28 @@ export function ReportsPage() {
                   </tr>
                 )}
               </tbody>
+              {machinePerformance.length > 0 && !loadingMachines && (
+                <tfoot className="sticky bottom-0 bg-muted/80 backdrop-blur-sm font-semibold">
+                  <tr className="border-t-2">
+                    <td className="py-3 px-2">TOTAL</td>
+                    <td className="text-right py-3 px-2">
+                      {machinePerformance.reduce((sum, item) => sum + (item.transactionCount || 0), 0)}
+                    </td>
+                    <td className="text-right py-3 px-2">
+                      {machinePerformance.reduce((sum, item) => sum + (item.totalQuantity || 0), 0)}
+                    </td>
+                    <td className="text-right py-3 px-2">
+                      {formatCurrency(machinePerformance.reduce((sum, item) => sum + (item.totalSales || 0), 0))}
+                    </td>
+                    <td className="text-right py-3 px-2">-</td>
+                    <td className="text-center py-3 px-2">
+                      <Badge variant="outline">
+                        {machinePerformance.reduce((sum, item) => sum + (item.activeAlerts || 0), 0)}
+                      </Badge>
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </ScrollArea>
         </CardContent>
@@ -1235,6 +1387,10 @@ export function ReportsPage() {
               <Building className="h-4 w-4" />
               <span className="hidden sm:inline">Máquinas</span>
             </TabsTrigger>
+            <TabsTrigger value="products" data-testid="tab-products" className="flex items-center gap-2">
+              <Package className="h-4 w-4" />
+              <span className="hidden sm:inline">Productos</span>
+            </TabsTrigger>
             <TabsTrigger value="suppliers" data-testid="tab-suppliers" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               <span className="hidden sm:inline">Proveedores</span>
@@ -1258,6 +1414,9 @@ export function ReportsPage() {
           </TabsContent>
           <TabsContent value="machines" data-testid="content-machines">
             {renderMachinesTab()}
+          </TabsContent>
+          <TabsContent value="products" data-testid="content-products">
+            {renderProductsTab()}
           </TabsContent>
           <TabsContent value="suppliers" data-testid="content-suppliers">
             {renderSuppliersTab()}
