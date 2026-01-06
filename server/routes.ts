@@ -1,6 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
+import { eq, desc, and, gte, lte, sql, asc, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { 
   signAccessToken, 
@@ -44,7 +46,12 @@ import {
   insertFuelRecordSchema,
   insertEmployeeSchema,
   insertTaskSchema,
-  insertCalendarEventSchema
+  insertCalendarEventSchema,
+  machines,
+  machineSales,
+  cashCollections,
+  bankDeposits,
+  cashMovements
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -3090,6 +3097,81 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting cash cut report:", error);
       res.status(500).json({ error: "Error al obtener corte de caja" });
+    }
+  });
+
+  app.get("/api/accounting/sales-summary", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      const end = endDate ? new Date(endDate as string) : new Date();
+      
+      const salesData = await db.select().from(machineSales)
+        .where(and(
+          gte(machineSales.saleDate, start),
+          lte(machineSales.saleDate, end)
+        ));
+      
+      const machinesList = await db.select().from(machines);
+      const machineMap = new Map(machinesList.map(m => [m.id, m.name]));
+      
+      const totalRevenue = salesData.reduce((sum, s) => sum + Number(s.totalAmount), 0);
+      const totalSales = salesData.length;
+      
+      const salesByMachine: Record<string, number> = {};
+      for (const sale of salesData) {
+        salesByMachine[sale.machineId] = (salesByMachine[sale.machineId] || 0) + Number(sale.totalAmount);
+      }
+      
+      const topMachines = Object.entries(salesByMachine)
+        .map(([machineId, total]) => ({
+          machineId,
+          machineName: machineMap.get(machineId) || machineId,
+          total
+        }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 10);
+      
+      const activeMachines = new Set(salesData.map(s => s.machineId)).size;
+      const averagePerMachine = activeMachines > 0 ? totalRevenue / activeMachines : 0;
+      
+      res.json({
+        totalSales,
+        totalRevenue,
+        averagePerMachine,
+        topMachines
+      });
+    } catch (error) {
+      console.error("Error getting sales summary:", error);
+      res.status(500).json({ error: "Error al obtener resumen de ventas" });
+    }
+  });
+
+  app.get("/api/accounting/cash-summary", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const collectionsData = await db.select().from(cashCollections)
+        .orderBy(desc(cashCollections.createdAt))
+        .limit(100);
+      
+      const depositsData = await db.select().from(bankDeposits);
+      
+      const totalCollected = collectionsData.reduce((sum, c) => sum + Number(c.actualAmount), 0);
+      const totalDeposited = depositsData.reduce((sum, d) => sum + Number(d.amount), 0);
+      const pendingDeposit = totalCollected - totalDeposited;
+      
+      const recentMovements = await db.select().from(cashMovements)
+        .orderBy(desc(cashMovements.createdAt))
+        .limit(10);
+      
+      res.json({
+        totalCollected,
+        pendingDeposit: pendingDeposit > 0 ? pendingDeposit : 0,
+        deposited: totalDeposited,
+        recentMovements
+      });
+    } catch (error) {
+      console.error("Error getting cash summary:", error);
+      res.status(500).json({ error: "Error al obtener resumen de efectivo" });
     }
   });
 
