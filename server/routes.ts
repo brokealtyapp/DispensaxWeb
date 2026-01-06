@@ -3402,6 +3402,23 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/tasks/:id/cancel", async (req: Request, res: Response) => {
+    try {
+      const { cancelledBy } = req.body;
+      if (!cancelledBy) {
+        return res.status(400).json({ error: "Se requiere cancelledBy" });
+      }
+      const task = await storage.cancelTask(req.params.id, cancelledBy);
+      if (!task) {
+        return res.status(404).json({ error: "Tarea no encontrada" });
+      }
+      res.json(task);
+    } catch (error) {
+      console.error("Error cancelling task:", error);
+      res.status(500).json({ error: "Error al cancelar tarea" });
+    }
+  });
+
   app.delete("/api/tasks/:id", async (req: Request, res: Response) => {
     try {
       await storage.deleteTask(req.params.id);

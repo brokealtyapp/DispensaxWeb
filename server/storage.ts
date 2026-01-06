@@ -4137,6 +4137,18 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async cancelTask(id: string, cancelledBy: string): Promise<Task | undefined> {
+    const [updated] = await db.update(tasks)
+      .set({ 
+        status: "cancelada", 
+        updatedAt: new Date(),
+        notes: `Cancelada por usuario`
+      })
+      .where(eq(tasks.id, id))
+      .returning();
+    return updated;
+  }
+
   async deleteTask(id: string): Promise<boolean> {
     await db.delete(tasks).where(eq(tasks.id, id));
     return true;
