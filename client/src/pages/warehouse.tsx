@@ -155,24 +155,14 @@ export function WarehousePage() {
   });
 
   const { data: expiringLots = [] } = useQuery<LotItem[]>({
-    queryKey: ["/api/warehouse/lots/expiring", { days: 30 }],
-    queryFn: async () => {
-      const response = await fetch("/api/warehouse/lots/expiring?days=30", { credentials: "include" });
-      if (!response.ok) throw new Error("Error loading expiring lots");
-      return response.json();
-    },
+    queryKey: ["/api/warehouse/lots/expiring", { days: "30" }],
   });
 
   const { data: movements = [] } = useQuery<MovementItem[]>({
-    queryKey: ["/api/warehouse/movements", selectedProductFilter],
-    queryFn: async () => {
-      const url = selectedProductFilter !== "all" 
-        ? `/api/warehouse/movements?productId=${selectedProductFilter}&limit=100`
-        : "/api/warehouse/movements?limit=100";
-      const response = await fetch(url, { credentials: "include" });
-      if (!response.ok) throw new Error("Error loading movements");
-      return response.json();
-    },
+    queryKey: ["/api/warehouse/movements", { 
+      productId: selectedProductFilter !== "all" ? selectedProductFilter : undefined,
+      limit: "100"
+    }],
   });
 
   const { data: products = [] } = useQuery<Product[]>({
