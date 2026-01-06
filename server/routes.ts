@@ -1446,7 +1446,8 @@ export async function registerRoutes(
 
   app.get("/api/supplier/active-service/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const service = await storage.getActiveService(req.params.userId);
+      const routeStopId = req.query.routeStopId as string | undefined;
+      const service = await storage.getActiveService(req.params.userId, routeStopId);
       res.json(service || null);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener servicio activo" });

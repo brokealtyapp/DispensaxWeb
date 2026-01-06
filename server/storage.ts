@@ -159,7 +159,7 @@ export interface IStorage {
   // Registros de Servicio
   getServiceRecords(userId?: string, machineId?: string, limit?: number): Promise<any[]>;
   getServiceRecord(id: string): Promise<any>;
-  getActiveService(userId: string): Promise<ServiceRecord | undefined>;
+  getActiveService(userId: string, routeStopId?: string): Promise<ServiceRecord | undefined>;
   startService(data: InsertServiceRecord): Promise<ServiceRecord>;
   endService(id: string, notes?: string, signature?: string, responsibleName?: string): Promise<ServiceRecord | undefined>;
   
@@ -1352,9 +1352,12 @@ export class DatabaseStorage implements IStorage {
     return { ...record, machine, user, productLoads: loads, cashCollections: cash, issues };
   }
 
-  async getActiveService(userId: string): Promise<ServiceRecord | undefined> {
-    const [record] = await db.select().from(serviceRecords)
-      .where(and(eq(serviceRecords.userId, userId), eq(serviceRecords.status, "en_progreso")));
+  async getActiveService(userId: string, routeStopId?: string): Promise<ServiceRecord | undefined> {
+    const conditions = [eq(serviceRecords.userId, userId), eq(serviceRecords.status, "en_progreso")];
+    if (routeStopId) {
+      conditions.push(eq(serviceRecords.routeStopId, routeStopId));
+    }
+    const [record] = await db.select().from(serviceRecords).where(and(...conditions));
     return record;
   }
 

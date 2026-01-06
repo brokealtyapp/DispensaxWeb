@@ -345,38 +345,44 @@ export function SupplierPage() {
     enabled: isViewingOther && !!supplierId,
   });
 
-  // Query para obtener servicio activo al cargar la página
+  // Detectar parada en progreso de la ruta del día
+  const inProgressStop = useMemo(() => {
+    if (!todayRoute?.stops || isViewingOther) return null;
+    return todayRoute.stops.find((stop: RouteStop) => stop.status === "en_progreso") || null;
+  }, [todayRoute, isViewingOther]);
+
+  // Query para obtener servicio activo al cargar la página (busca por routeStopId si hay parada en progreso)
   const { data: activeService } = useQuery<{ id: string; routeStopId: string } | null>({
-    queryKey: ["/api/supplier/active-service", supplierId],
+    queryKey: ["/api/supplier/active-service", supplierId, inProgressStop?.id],
     queryFn: async () => {
-      const response = await fetch(`/api/supplier/active-service/${supplierId}`, {
+      const url = inProgressStop?.id 
+        ? `/api/supplier/active-service/${supplierId}?routeStopId=${inProgressStop.id}`
+        : `/api/supplier/active-service/${supplierId}`;
+      const response = await fetch(url, {
         credentials: "include",
       });
       if (!response.ok) return null;
       return response.json();
     },
-    enabled: !!supplierId && !isViewingOther,
+    enabled: !!supplierId && !isViewingOther && !!inProgressStop,
   });
 
   // Restaurar estado del servicio activo al cargar la página
   useEffect(() => {
-    if (!todayRoute?.stops || isViewingOther) return;
+    if (!inProgressStop || isViewingOther || isServiceActive) return;
     
-    // Buscar parada "en_progreso" en la ruta
-    const inProgressStop = todayRoute.stops.find((stop: RouteStop) => stop.status === "en_progreso");
-    
-    if (inProgressStop && activeService?.id && !isServiceActive) {
-      // Hay un servicio activo - restaurar estado
+    if (activeService?.id) {
+      // Hay un servicio activo exacto - restaurar estado
       setCurrentStop(inProgressStop);
       setActiveServiceId(activeService.id);
       setIsServiceActive(true);
       setChecklist(defaultChecklist.map(item => ({ ...item, checked: false })));
-      // Cambiar automáticamente al tab de servicio activo (usando handleTabChange para sincronizar URL)
+      // Cambiar automáticamente al tab de servicio activo
       if (activeTab === "ruta") {
         handleTabChange("servicio");
       }
     }
-  }, [todayRoute, activeService, isViewingOther, isServiceActive, activeTab, handleTabChange]);
+  }, [inProgressStop, activeService, isViewingOther, isServiceActive, activeTab, handleTabChange]);
 
   const startRouteMutation = useMutation({
     mutationFn: async (routeId: string) => {
