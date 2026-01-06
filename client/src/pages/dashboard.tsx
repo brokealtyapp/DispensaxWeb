@@ -15,7 +15,7 @@ import {
   Plus, MoreHorizontal, Check, Box, AlertTriangle, TrendingUp, Users, Loader2,
   Route, Warehouse, DollarSign, Wallet, ShoppingCart, Fuel, UserCheck, FileText,
   Package, Clock, ArrowUpRight, ArrowDownRight, Truck, CircleDollarSign, MapPin,
-  CheckCircle2, XCircle, BarChart3, Calendar
+  CheckCircle2, XCircle, BarChart3, Calendar, ChevronLeft, ChevronRight, PanelRightClose, PanelRightOpen
 } from "lucide-react";
 import { Link } from "wouter";
 import type { Task, Machine } from "@shared/schema";
@@ -104,11 +104,24 @@ interface SummaryReconciliation {
   collectionsCount: number;
 }
 
+const TASK_PANEL_KEY = "dispensax-task-panel-open";
+
 export function DashboardPage() {
   const { user } = useAuth();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeTab, setActiveTab] = useState("today");
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [isTaskPanelOpen, setIsTaskPanelOpen] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(TASK_PANEL_KEY);
+      return saved !== null ? saved === "true" : true;
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(TASK_PANEL_KEY, String(isTaskPanelOpen));
+  }, [isTaskPanelOpen]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -842,7 +855,37 @@ export function DashboardPage() {
         )}
       </div>
 
-      <div className="w-80 border-l bg-background p-4 overflow-auto hidden lg:block" data-testid="panel-today-tasks">
+      <div 
+        className={`border-l bg-background overflow-hidden hidden lg:flex flex-col transition-all duration-300 ease-in-out ${
+          isTaskPanelOpen ? "w-80" : "w-12"
+        }`} 
+        data-testid="panel-today-tasks"
+      >
+        <div className="flex items-center justify-center p-2 border-b">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsTaskPanelOpen(!isTaskPanelOpen)}
+            className="h-8 w-8"
+            data-testid="button-toggle-task-panel"
+            aria-expanded={isTaskPanelOpen}
+            aria-controls="task-panel-content"
+            title={isTaskPanelOpen ? "Ocultar panel" : "Mostrar panel"}
+          >
+            {isTaskPanelOpen ? (
+              <PanelRightClose className="h-4 w-4" />
+            ) : (
+              <PanelRightOpen className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+        
+        <div 
+          id="task-panel-content"
+          className={`flex-1 overflow-auto transition-opacity duration-200 ${
+            isTaskPanelOpen ? "opacity-100 p-4" : "opacity-0 p-0 pointer-events-none"
+          }`}
+        >
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="w-full bg-muted/50">
             <TabsTrigger value="messages" className="flex-1 text-xs">
@@ -1035,6 +1078,7 @@ export function DashboardPage() {
             )}
           </TabsContent>
         </Tabs>
+        </div>
       </div>
     </div>
   );
