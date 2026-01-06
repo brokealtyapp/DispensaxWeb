@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { formatDateShort, formatDate, formatTime } from "@/lib/utils";
+import { formatDateShort, formatDate, formatTime, getDateKeyInTimezone, getTodayInTimezone } from "@/lib/utils";
 import { 
   Route, MapPin, Plus, Search, Filter, Edit2, Trash2, Eye, 
   Calendar, Clock, CheckCircle2, XCircle, Play, Square, Truck,
@@ -125,7 +125,7 @@ export default function RoutesPage() {
   const routeForm = useForm<RouteFormData>({
     resolver: zodResolver(routeFormSchema),
     defaultValues: {
-      date: new Date().toISOString().split('T')[0],
+      date: getDateKeyInTimezone(getTodayInTimezone()),
       supplierId: "",
       supervisorId: "",
       estimatedDuration: 480,
@@ -180,7 +180,7 @@ export default function RoutesPage() {
     
     if (dateFilter) {
       filtered = filtered.filter(r => {
-        const routeDate = new Date(r.date).toISOString().split('T')[0];
+        const routeDate = getDateKeyInTimezone(r.date);
         return routeDate === dateFilter;
       });
     }
@@ -190,9 +190,9 @@ export default function RoutesPage() {
     }
     
     if (activeTab === "today") {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getDateKeyInTimezone(getTodayInTimezone());
       filtered = filtered.filter(r => {
-        const routeDate = new Date(r.date).toISOString().split('T')[0];
+        const routeDate = getDateKeyInTimezone(r.date);
         return routeDate === today;
       });
     } else if (activeTab === "pending") {
@@ -214,9 +214,9 @@ export default function RoutesPage() {
   const totalPages = Math.ceil(filteredRoutes.length / ITEMS_PER_PAGE);
 
   const stats = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getDateKeyInTimezone(getTodayInTimezone());
     const todayRoutes = routes.filter(r => {
-      const routeDate = new Date(r.date).toISOString().split('T')[0];
+      const routeDate = getDateKeyInTimezone(r.date);
       return routeDate === today;
     });
     
@@ -401,7 +401,7 @@ export default function RoutesPage() {
   const handleEditRoute = (route: RouteData) => {
     setSelectedRoute(route);
     routeForm.reset({
-      date: new Date(route.date).toISOString().split('T')[0],
+      date: getDateKeyInTimezone(route.date),
       supplierId: route.supplierId,
       supervisorId: route.supervisorId || "",
       estimatedDuration: route.estimatedDuration || 480,
