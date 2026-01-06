@@ -52,66 +52,37 @@ export function ContabilidadPanelPage() {
   };
 
   const { data: salesStats, isLoading: salesLoading } = useQuery<SalesStats>({
-    queryKey: ["/api/accounting/sales-summary", currentMonth],
-    queryFn: async () => {
-      const response = await fetch(
-        `/api/accounting/sales-summary?startDate=${currentMonth.start}&endDate=${currentMonth.end}`,
-        { credentials: "include" }
-      );
-      if (!response.ok) return { totalSales: 0, totalRevenue: 0, averagePerMachine: 0, topMachines: [] };
-      return response.json();
-    },
+    queryKey: ["/api/accounting/sales-summary", { startDate: currentMonth.start, endDate: currentMonth.end }],
   });
 
   const { data: cashStats, isLoading: cashLoading } = useQuery<CashStats>({
     queryKey: ["/api/accounting/cash-summary"],
-    queryFn: async () => {
-      const response = await fetch("/api/accounting/cash-summary", { credentials: "include" });
-      if (!response.ok) return { totalCollected: 0, pendingDeposit: 0, deposited: 0, recentMovements: [] };
-      return response.json();
-    },
   });
 
-  const { data: pettyCashStats, isLoading: pettyCashLoading } = useQuery<PettyCashStats>({
-    queryKey: ["/api/petty-cash/summary"],
-    queryFn: async () => {
-      const [fundRes, expensesRes] = await Promise.all([
-        fetch("/api/petty-cash/fund", { credentials: "include" }),
-        fetch("/api/petty-cash/expenses", { credentials: "include" }),
-      ]);
-      
-      const fund = fundRes.ok ? await fundRes.json() : null;
-      const expenses = expensesRes.ok ? await expensesRes.json() : [];
-      
-      const pendingApproval = expenses.filter((e: PettyCashExpense) => e.status === "pending").length;
-      const approvedExpenses = expenses.filter((e: PettyCashExpense) => e.status === "approved")
-        .reduce((sum: number, e: PettyCashExpense) => sum + Number(e.amount), 0);
-      
-      return {
-        currentBalance: fund?.currentBalance || 0,
-        totalExpenses: expenses.reduce((sum: number, e: PettyCashExpense) => sum + Number(e.amount), 0),
-        pendingApproval,
-        approvedExpenses,
-      };
-    },
+  const { data: pettyCashFund } = useQuery<{ currentBalance: number } | null>({
+    queryKey: ["/api/petty-cash/fund"],
   });
+
+  const { data: allExpenses = [] } = useQuery<PettyCashExpense[]>({
+    queryKey: ["/api/petty-cash/expenses"],
+  });
+
+  const pettyCashStats: PettyCashStats = {
+    currentBalance: Number(pettyCashFund?.currentBalance ?? 0),
+    totalExpenses: allExpenses.reduce((sum, e) => sum + Number(e.amount), 0),
+    pendingApproval: allExpenses.filter((e) => e.status === "pendiente").length,
+    approvedExpenses: allExpenses.filter((e) => e.status === "aprobado")
+      .reduce((sum, e) => sum + Number(e.amount), 0),
+  };
+
+  const pettyCashLoading = !pettyCashFund && !allExpenses.length;
 
   const { data: recentDeposits = [] } = useQuery<BankDeposit[]>({
-    queryKey: ["/api/bank-deposits", { limit: 5 }],
-    queryFn: async () => {
-      const response = await fetch("/api/bank-deposits?limit=5", { credentials: "include" });
-      if (!response.ok) return [];
-      return response.json();
-    },
+    queryKey: ["/api/bank-deposits", { limit: "5" }],
   });
 
   const { data: pendingExpenses = [] } = useQuery<PettyCashExpense[]>({
-    queryKey: ["/api/petty-cash/expenses", { status: "pending" }],
-    queryFn: async () => {
-      const response = await fetch("/api/petty-cash/expenses?status=pending", { credentials: "include" });
-      if (!response.ok) return [];
-      return response.json();
-    },
+    queryKey: ["/api/petty-cash/expenses", { status: "pendiente" }],
   });
 
   return (
@@ -357,10 +328,10 @@ export function ContabilidadPanelPage() {
                           {formatCurrency(Number(deposit.amount))}
                         </p>
                         <Badge
-                          variant={deposit.status === "confirmed" ? "default" : "secondary"}
+                          variant={deposit.status === "conciliado" ? "default" : "secondary"}
                           className="text-xs"
                         >
-                          {deposit.status === "confirmed" ? "Confirmado" : "Pendiente"}
+                          {deposit.status === "conciliado" ? "Conciliado" : "Pendiente"}
                         </Badge>
                       </div>
                     </div>
