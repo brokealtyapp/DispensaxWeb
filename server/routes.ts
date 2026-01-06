@@ -2098,8 +2098,8 @@ export async function registerRoutes(
     }
   });
 
-  // Transferencias de Productos
-  app.get("/api/product-transfers", async (req: Request, res: Response) => {
+  // Transferencias de Productos (protegido con JWT)
+  app.get("/api/product-transfers", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { type, productId, startDate, endDate } = req.query;
       const filters = {
@@ -2115,7 +2115,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/product-transfers/:id", async (req: Request, res: Response) => {
+  app.get("/api/product-transfers/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const transfer = await storage.getProductTransfer(req.params.id);
       if (!transfer) {
@@ -2127,7 +2127,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/product-transfers", async (req: Request, res: Response) => {
+  app.post("/api/product-transfers", authenticateJWT, authorizeRoles("admin", "almacen", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertProductTransferSchema.parse(req.body);
       const transfer = await storage.createProductTransfer(data);
