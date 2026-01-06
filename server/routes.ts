@@ -2673,7 +2673,7 @@ export async function registerRoutes(
   // ==================== MÓDULO COMBUSTIBLE ====================
 
   // Vehículos
-  app.get("/api/vehicles", async (req: Request, res: Response) => {
+  app.get("/api/vehicles", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { status, type, assignedUserId } = req.query;
       const vehicles = await storage.getVehicles({
@@ -2687,7 +2687,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/vehicles/:id", async (req: Request, res: Response) => {
+  app.get("/api/vehicles/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const vehicle = await storage.getVehicle(req.params.id);
       if (!vehicle) {
@@ -2699,7 +2699,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/vehicles", async (req: Request, res: Response) => {
+  app.post("/api/vehicles", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const validated = insertVehicleSchema.parse(req.body);
       const vehicle = await storage.createVehicle(validated);
@@ -2713,7 +2713,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/vehicles/:id", async (req: Request, res: Response) => {
+  app.patch("/api/vehicles/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const validated = insertVehicleSchema.partial().parse(req.body);
       const vehicle = await storage.updateVehicle(req.params.id, validated);
@@ -2729,7 +2729,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/vehicles/:id", async (req: Request, res: Response) => {
+  app.delete("/api/vehicles/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.deleteVehicle(req.params.id);
       res.json({ success: true });
@@ -2739,7 +2739,7 @@ export async function registerRoutes(
   });
 
   // Estadísticas de vehículo
-  app.get("/api/vehicles/:id/fuel-stats", async (req: Request, res: Response) => {
+  app.get("/api/vehicles/:id/fuel-stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const stats = await storage.getVehicleFuelStats(
@@ -2754,7 +2754,7 @@ export async function registerRoutes(
   });
 
   // Registros de combustible
-  app.get("/api/fuel-records", async (req: Request, res: Response) => {
+  app.get("/api/fuel-records", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { vehicleId, userId, startDate, endDate, limit } = req.query;
       const records = await storage.getFuelRecords({
@@ -2762,7 +2762,7 @@ export async function registerRoutes(
         userId: userId as string,
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined,
-        limit: limit ? parseInt(limit as string) : undefined
+        limit: limit ? parseInt(limit as string) : 50
       });
       res.json(records);
     } catch (error) {
@@ -2770,7 +2770,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/fuel-records/:id", async (req: Request, res: Response) => {
+  app.get("/api/fuel-records/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const record = await storage.getFuelRecord(req.params.id);
       if (!record) {
@@ -2782,7 +2782,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/fuel-records", async (req: Request, res: Response) => {
+  app.post("/api/fuel-records", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const validated = insertFuelRecordSchema.parse(req.body);
       const record = await storage.createFuelRecord(validated);
@@ -2796,7 +2796,23 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/fuel-records/:id", async (req: Request, res: Response) => {
+  app.patch("/api/fuel-records/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const validated = insertFuelRecordSchema.partial().parse(req.body);
+      const record = await storage.updateFuelRecord(req.params.id, validated);
+      if (!record) {
+        return res.status(404).json({ error: "Registro no encontrado" });
+      }
+      res.json(record);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Error al actualizar registro de combustible" });
+    }
+  });
+
+  app.delete("/api/fuel-records/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.deleteFuelRecord(req.params.id);
       res.json({ success: true });
@@ -2806,7 +2822,7 @@ export async function registerRoutes(
   });
 
   // Estadísticas generales de combustible
-  app.get("/api/fuel-stats", async (req: Request, res: Response) => {
+  app.get("/api/fuel-stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { vehicleId, userId, startDate, endDate } = req.query;
       const stats = await storage.getFuelStats({
@@ -2822,7 +2838,7 @@ export async function registerRoutes(
   });
 
   // Estadísticas por usuario
-  app.get("/api/users/:id/fuel-stats", async (req: Request, res: Response) => {
+  app.get("/api/users/:id/fuel-stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const stats = await storage.getUserFuelStats(
@@ -2837,7 +2853,7 @@ export async function registerRoutes(
   });
 
   // Estadísticas por ruta
-  app.get("/api/fuel-stats/by-route", async (req: Request, res: Response) => {
+  app.get("/api/fuel-stats/by-route", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const stats = await storage.getFuelStatsPerRoute(
@@ -2851,7 +2867,7 @@ export async function registerRoutes(
   });
 
   // Vehículos con bajo rendimiento
-  app.get("/api/vehicles/low-mileage", async (req: Request, res: Response) => {
+  app.get("/api/vehicles/low-mileage", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const vehicles = await storage.getLowMileageVehicles();
       res.json(vehicles);

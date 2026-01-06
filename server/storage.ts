@@ -282,6 +282,7 @@ export interface IStorage {
   getFuelRecords(filters?: { vehicleId?: string; userId?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]>;
   getFuelRecord(id: string): Promise<any>;
   createFuelRecord(record: InsertFuelRecord): Promise<FuelRecord>;
+  updateFuelRecord(id: string, data: Partial<InsertFuelRecord>): Promise<FuelRecord | undefined>;
   deleteFuelRecord(id: string): Promise<boolean>;
   
   // Estadísticas de Combustible
@@ -2707,25 +2708,37 @@ export class DatabaseStorage implements IStorage {
     if (filters?.startDate) conditions.push(gte(fuelRecords.recordDate, filters.startDate));
     if (filters?.endDate) conditions.push(lte(fuelRecords.recordDate, filters.endDate));
     
-    let query = conditions.length > 0
-      ? db.select().from(fuelRecords).where(and(...conditions)).orderBy(desc(fuelRecords.recordDate))
-      : db.select().from(fuelRecords).orderBy(desc(fuelRecords.recordDate));
+    const records = await db.select().from(fuelRecords)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(fuelRecords.recordDate))
+      .limit(filters?.limit || 100);
     
-    const records = filters?.limit
-      ? await db.select().from(fuelRecords)
-          .where(conditions.length > 0 ? and(...conditions) : undefined)
-          .orderBy(desc(fuelRecords.recordDate))
-          .limit(filters.limit)
-      : await query;
+    // Precargar todas las entidades relacionadas en paralelo para evitar N+1
+    const vehicleIds = Array.from(new Set(records.map(r => r.vehicleId)));
+    const userIds = Array.from(new Set(records.map(r => r.userId)));
+    const routeIds = Array.from(new Set(records.filter(r => r.routeId).map(r => r.routeId!)));
     
-    const recordsWithDetails = await Promise.all(records.map(async (r) => {
-      const vehicle = await this.getVehicle(r.vehicleId);
-      const user = await this.getUser(r.userId);
-      const route = r.routeId ? await this.getRoute(r.routeId) : null;
-      return { ...r, vehicle: { plate: vehicle?.plate, brand: vehicle?.brand, model: vehicle?.model }, user, route };
-    }));
+    const [vehiclesList, usersList, routesList] = await Promise.all([
+      vehicleIds.length > 0 ? db.select().from(vehicles).where(inArray(vehicles.id, vehicleIds)) : [],
+      userIds.length > 0 ? db.select().from(users).where(inArray(users.id, userIds)) : [],
+      routeIds.length > 0 ? db.select().from(routes).where(inArray(routes.id, routeIds)) : []
+    ]);
     
-    return recordsWithDetails;
+    const vehicleMap = new Map(vehiclesList.map(v => [v.id, v]));
+    const userMap = new Map(usersList.map(u => [u.id, u]));
+    const routeMap = new Map(routesList.map(r => [r.id, r]));
+    
+    return records.map(r => {
+      const vehicle = vehicleMap.get(r.vehicleId);
+      const user = userMap.get(r.userId);
+      const route = r.routeId ? routeMap.get(r.routeId) : null;
+      return {
+        ...r,
+        vehicle: vehicle ? { id: vehicle.id, plate: vehicle.plate, brand: vehicle.brand, model: vehicle.model } : null,
+        user: user ? { id: user.id, username: user.username, fullName: user.fullName } : null,
+        route: route ? { id: route.id, date: route.date, status: route.status } : null
+      };
+    });
   }
 
   async getFuelRecord(id: string): Promise<any> {
@@ -2774,6 +2787,14 @@ export class DatabaseStorage implements IStorage {
       .where(eq(vehicles.id, record.vehicleId));
     
     return newRecord;
+  }
+
+  async updateFuelRecord(id: string, data: Partial<InsertFuelRecord>): Promise<FuelRecord | undefined> {
+    const [updated] = await db.update(fuelRecords)
+      .set(data)
+      .where(eq(fuelRecords.id, id))
+      .returning();
+    return updated;
   }
 
   async deleteFuelRecord(id: string): Promise<boolean> {
