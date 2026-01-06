@@ -30,6 +30,7 @@ import {
   formatCurrency,
   isTodayInTimezone,
   getDateKeyInTimezone,
+  getTodayInTimezone,
 } from "@/lib/utils";
 import {
   Truck,
@@ -121,31 +122,36 @@ export function SuppliersManagementPage() {
     queryKey: ["/api/supplier/routes"],
   });
 
-  const { data: routeStopsMap = {} } = useQuery<Record<string, RouteStop[]>>({
-    queryKey: ["/api/supplier/route-stops-map"],
+  const { data: routeStopsMap = {}, isLoading: loadingStops } = useQuery<Record<string, RouteStop[]>>({
+    queryKey: ["/api/supplier/route-stops-map", routes.map(r => r.id).join(",")],
     queryFn: async () => {
       const map: Record<string, RouteStop[]> = {};
-      for (const route of routes) {
-        try {
+      const results = await Promise.allSettled(
+        routes.map(async (route) => {
           const res = await fetch(`/api/supplier/routes/${route.id}/stops`);
           if (res.ok) {
-            map[route.id] = await res.json();
+            const stops = await res.json();
+            return { routeId: route.id, stops };
           }
-        } catch (e) {
-          console.error("Error fetching stops for route", route.id);
+          return { routeId: route.id, stops: [] };
+        })
+      );
+      results.forEach((result) => {
+        if (result.status === "fulfilled") {
+          map[result.value.routeId] = result.value.stops;
         }
-      }
+      });
       return map;
     },
     enabled: routes.length > 0,
   });
 
-  const { data: cashCollections = [] } = useQuery<any[]>({
-    queryKey: ["/api/supplier/cash-collections"],
+  const { data: cashCollections = [], isLoading: loadingCash } = useQuery<any[]>({
+    queryKey: ["/api/supplier/cash"],
   });
 
-  const { data: productLoads = [] } = useQuery<any[]>({
-    queryKey: ["/api/supplier/product-loads"],
+  const { data: productLoads = [], isLoading: loadingLoads } = useQuery<any[]>({
+    queryKey: ["/api/supplier/loads"],
   });
 
   const suppliersWithRoutes = useMemo((): SupplierWithRoute[] => {
@@ -252,6 +258,32 @@ export function SuppliersManagementPage() {
   }, [suppliersWithRoutes, activeSuppliers, completedSuppliers, pendingSuppliers]);
 
   const isLoading = loadingSuppliers || loadingRoutes;
+  const isLoadingDetails = loadingStops || loadingCash || loadingLoads;
+
+  const getDateRangeForPeriod = (period: string): { start: Date; end: Date } => {
+    const now = new Date();
+    const today = getTodayInTimezone();
+    
+    if (period === "semana") {
+      const start = new Date(today);
+      start.setDate(start.getDate() - 7);
+      return { start, end: now };
+    }
+    if (period === "mes") {
+      const start = new Date(today);
+      start.setDate(start.getDate() - 30);
+      return { start, end: now };
+    }
+    return { start: today, end: now };
+  };
+
+  const filteredRoutesByPeriod = useMemo(() => {
+    const { start, end } = getDateRangeForPeriod(periodFilter);
+    return routes.filter(r => {
+      const routeDate = new Date(r.date);
+      return routeDate >= start && routeDate <= end;
+    });
+  }, [routes, periodFilter]);
 
   const getStatusBadge = (supplier: SupplierWithRoute) => {
     if (!supplier.todayRoute) {
