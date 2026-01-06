@@ -119,26 +119,17 @@ export function SuppliersManagementPage() {
   });
 
   const { data: routeStopsMap = {}, isLoading: loadingStops } = useQuery<Record<string, RouteStop[]>>({
-    queryKey: ["/api/supplier/route-stops-map", routes.map(r => r.id).join(",")],
+    queryKey: ["/api/supplier/route-stops-batch", routes.map(r => r.id).join(",")],
     queryFn: async () => {
-      const map: Record<string, RouteStop[]> = {};
-      routes.forEach(r => { map[r.id] = []; });
-      const results = await Promise.allSettled(
-        routes.map(async (route) => {
-          const res = await fetch(`/api/supplier/routes/${route.id}/stops`);
-          if (res.ok) {
-            const stops = await res.json();
-            return { routeId: route.id, stops };
-          }
-          return { routeId: route.id, stops: [] };
-        })
-      );
-      results.forEach((result) => {
-        if (result.status === "fulfilled") {
-          map[result.value.routeId] = result.value.stops;
-        }
+      if (routes.length === 0) return {};
+      const routeIds = routes.map(r => r.id);
+      const res = await fetch("/api/supplier/route-stops-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ routeIds }),
       });
-      return map;
+      if (!res.ok) return {};
+      return res.json();
     },
     enabled: routes.length > 0,
   });

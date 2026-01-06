@@ -1313,6 +1313,21 @@ export async function registerRoutes(
     }
   });
 
+  // Endpoint batch para obtener paradas de múltiples rutas en una sola llamada
+  app.post("/api/supplier/route-stops-batch", async (req: Request, res: Response) => {
+    try {
+      const { routeIds } = req.body;
+      if (!Array.isArray(routeIds)) {
+        return res.status(400).json({ error: "Se requiere un array de routeIds" });
+      }
+      const stopsMap = await storage.getRouteStopsBatch(routeIds);
+      res.json(stopsMap);
+    } catch (error) {
+      console.error("Error fetching batch route stops:", error);
+      res.status(500).json({ error: "Error al obtener paradas en batch" });
+    }
+  });
+
   app.get("/api/supplier/stops/:id", async (req: Request, res: Response) => {
     try {
       const stop = await storage.getRouteStop(req.params.id);

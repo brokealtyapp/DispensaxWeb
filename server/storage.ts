@@ -45,7 +45,7 @@ import {
   tasks, calendarEvents, passwordResetTokens, refreshTokens
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, asc, or } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, asc, or, inArray } from "drizzle-orm";
 
 // =====================
 // TIMEZONE UTILITIES (GMT-4 / America/Santo_Domingo)
@@ -149,6 +149,7 @@ export interface IStorage {
   
   // Paradas de Ruta
   getRouteStops(routeId: string): Promise<any[]>;
+  getRouteStopsBatch(routeIds: string[]): Promise<Record<string, any[]>>;
   getRouteStop(id: string): Promise<any>;
   createRouteStop(stop: InsertRouteStop): Promise<RouteStop>;
   updateRouteStop(id: string, stop: Partial<RouteStop>): Promise<RouteStop | undefined>;
@@ -1210,6 +1211,35 @@ export class DatabaseStorage implements IStorage {
     }));
     
     return stopsWithDetails;
+  }
+
+  async getRouteStopsBatch(routeIds: string[]): Promise<Record<string, any[]>> {
+    if (routeIds.length === 0) return {};
+    
+    // Obtener todas las paradas para los routeIds en una sola query
+    const allStops = await db.select().from(routeStops)
+      .where(inArray(routeStops.routeId, routeIds))
+      .orderBy(asc(routeStops.order));
+    
+    // Obtener todos los machineIds únicos
+    const machineIds = Array.from(new Set(allStops.map(s => s.machineId)));
+    
+    // Obtener detalles de todas las máquinas en paralelo
+    const machinesWithDetails = await Promise.all(
+      machineIds.map(id => this.getMachineWithDetails(id))
+    );
+    const machineMap = new Map(machinesWithDetails.map(m => [m?.id, m]));
+    
+    // Agrupar por routeId y adjuntar detalles de máquina
+    const result: Record<string, any[]> = {};
+    routeIds.forEach(id => { result[id] = []; });
+    
+    allStops.forEach(stop => {
+      const machine = machineMap.get(stop.machineId);
+      result[stop.routeId].push({ ...stop, machine });
+    });
+    
+    return result;
   }
 
   async getRouteStop(id: string): Promise<any> {
