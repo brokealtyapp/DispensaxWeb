@@ -3,7 +3,7 @@ import {
   machines, locations, machineAlerts, machineInventory, products,
   warehouseInventory, productLots, cashCollections, pettyCashExpenses,
   pettyCashFund, productTransfers, shrinkageRecords, tasks, users,
-  routes, routeStops, serviceRecords, purchaseOrders, purchaseReceptions,
+  routes, routeStops, serviceRecords, purchaseOrders, purchaseReceptions, receptionItems,
   vehicles, fuelRecords, machineVisits
 } from "@shared/schema";
 import { eq, desc, and, gte, sql, count, inArray } from "drizzle-orm";
@@ -83,7 +83,7 @@ interface SummaryCache {
   purchases: {
     openOrders: number;
     totalOrders: number;
-    weekSpending: number;
+    monthSpending: number;
     pendingReceptions: number;
   };
   fuel: {
@@ -134,7 +134,7 @@ const defaultSummaryCache: SummaryCache = {
   pettyCash: { currentBalance: "0", initialAmount: "0", weekExpenses: 0, pendingCount: 0, approvedCount: 0, recentExpenses: [] },
   reconciliation: { weekTransfers: 0, pendingTransfers: 0, weekShrinkage: 0, shrinkageRecords: 0, weekCollections: 0, collectionsCount: 0, recentDiscrepancies: [] },
   routes: { activeRoutes: 0, totalRoutes: 0, todayStops: 0, completedStops: 0, pendingStops: 0, avgServiceTimeMinutes: 0 },
-  purchases: { openOrders: 0, totalOrders: 0, weekSpending: 0, pendingReceptions: 0 },
+  purchases: { openOrders: 0, totalOrders: 0, monthSpending: 0, pendingReceptions: 0 },
   fuel: { totalVehicles: 0, activeVehicles: 0, monthCost: 0, monthLiters: 0, avgEfficiency: "0", lowEfficiencyAlerts: 0 },
   hr: { totalEmployees: 0, activeEmployees: 0, weekVisits: 0, weekTasksCompleted: 0, topPerformers: [], byRole: { technicians: 0, admins: 0, supervisors: 0 } },
   lastUpdated: new Date(0),
@@ -431,17 +431,23 @@ async function computeRoutesSummary() {
 }
 
 async function computePurchasesSummary() {
-  const weekAgo = new Date();
-  weekAgo.setDate(weekAgo.getDate() - 7);
+  const monthAgo = new Date();
+  monthAgo.setDate(monthAgo.getDate() - 30);
 
   const orderStats = await db
     .select({
       total: count(),
       open: sql<number>`count(*) filter (where ${purchaseOrders.status} in ('borrador', 'enviada'))`,
-      // Sum only orders that were received (fully or partially) in the last week
-      weekTotal: sql<number>`coalesce(sum(case when ${purchaseOrders.status} in ('recibida', 'parcialmente_recibida') and ${purchaseOrders.createdAt} >= ${weekAgo} then cast(${purchaseOrders.total} as numeric) else 0 end), 0)`,
     })
     .from(purchaseOrders);
+
+  const monthReceptions = await db
+    .select({
+      monthTotal: sql<number>`coalesce(sum(cast(${receptionItems.quantityReceived} as numeric) * cast(${receptionItems.unitCost} as numeric)), 0)`,
+    })
+    .from(receptionItems)
+    .innerJoin(purchaseReceptions, eq(receptionItems.receptionId, purchaseReceptions.id))
+    .where(gte(purchaseReceptions.receptionDate, monthAgo));
 
   const pendingReceptions = await db
     .select({ count: count() })
@@ -451,7 +457,7 @@ async function computePurchasesSummary() {
   return {
     openOrders: Number(orderStats[0]?.open) || 0,
     totalOrders: orderStats[0]?.total || 0,
-    weekSpending: Number(orderStats[0]?.weekTotal) || 0,
+    monthSpending: Number(monthReceptions[0]?.monthTotal) || 0,
     pendingReceptions: pendingReceptions[0]?.count || 0,
   };
 }

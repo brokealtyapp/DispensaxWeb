@@ -72,7 +72,7 @@ interface SummaryPettyCash {
 interface SummaryPurchases {
   openOrders: number;
   totalOrders: number;
-  weekSpending: number;
+  monthSpending: number;
   pendingReceptions: number;
   recentOrders: { id: string; orderNumber: string; total: string; status: string }[];
 }
@@ -504,8 +504,8 @@ export function DashboardPage() {
                       <span className="font-medium text-orange-600">{purchasesSummary?.pendingReceptions || 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Gasto sem.</span>
-                      <span className="font-medium">{formatCurrency(purchasesSummary?.weekSpending || 0)}</span>
+                      <span className="text-muted-foreground">Gasto mes</span>
+                      <span className="font-medium">{formatCurrency(purchasesSummary?.monthSpending || 0)}</span>
                     </div>
                   </div>
                 </CardContent>
