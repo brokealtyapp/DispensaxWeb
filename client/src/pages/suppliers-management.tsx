@@ -111,12 +111,7 @@ export function SuppliersManagementPage() {
   const [periodFilter, setPeriodFilter] = useState("hoy");
 
   const { data: suppliers = [], isLoading: loadingSuppliers } = useQuery<Supplier[]>({
-    queryKey: ["/api/users", "abastecedor"],
-    queryFn: async () => {
-      const res = await fetch("/api/users?role=abastecedor");
-      if (!res.ok) throw new Error("Error fetching suppliers");
-      return res.json();
-    },
+    queryKey: ["/api/users?role=abastecedor"],
   });
 
   const { data: routes = [], isLoading: loadingRoutes } = useQuery<Route[]>({
@@ -127,6 +122,7 @@ export function SuppliersManagementPage() {
     queryKey: ["/api/supplier/route-stops-map", routes.map(r => r.id).join(",")],
     queryFn: async () => {
       const map: Record<string, RouteStop[]> = {};
+      routes.forEach(r => { map[r.id] = []; });
       const results = await Promise.allSettled(
         routes.map(async (route) => {
           const res = await fetch(`/api/supplier/routes/${route.id}/stops`);
@@ -261,28 +257,25 @@ export function SuppliersManagementPage() {
   const isLoading = loadingSuppliers || loadingRoutes;
   const isLoadingDetails = loadingStops || loadingCash || loadingLoads;
 
-  const getDateRangeForPeriod = (period: string): { start: Date; end: Date } => {
-    const now = new Date();
+  const filteredRoutesByPeriod = useMemo(() => {
+    const todayKey = getDateKeyInTimezone(new Date());
     const today = getTodayInTimezone();
     
-    if (period === "semana") {
-      const start = new Date(today);
-      start.setDate(start.getDate() - 7);
-      return { start, end: now };
+    if (periodFilter === "hoy") {
+      return routes.filter(r => {
+        const routeKey = getDateKeyInTimezone(new Date(r.date));
+        return routeKey === todayKey;
+      });
     }
-    if (period === "mes") {
-      const start = new Date(today);
-      start.setDate(start.getDate() - 30);
-      return { start, end: now };
-    }
-    return { start: today, end: now };
-  };
-
-  const filteredRoutesByPeriod = useMemo(() => {
-    const { start, end } = getDateRangeForPeriod(periodFilter);
+    
+    const daysBack = periodFilter === "semana" ? 7 : 30;
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() - daysBack);
+    const startKey = getDateKeyInTimezone(startDate);
+    
     return routes.filter(r => {
-      const routeDate = new Date(r.date);
-      return routeDate >= start && routeDate <= end;
+      const routeKey = getDateKeyInTimezone(new Date(r.date));
+      return routeKey >= startKey && routeKey <= todayKey;
     });
   }, [routes, periodFilter]);
 
@@ -790,29 +783,36 @@ export function SuppliersManagementPage() {
                     variant="outline" 
                     size="sm"
                     onClick={() => {
-                      const csvData = filteredRoutesByPeriod
-                        .filter(r => r.status === "completada" || r.status === "en_progreso")
-                        .map(r => {
-                          const supplier = suppliers.find(s => s.id === r.supplierId);
-                          return {
-                            fecha: formatDate(new Date(r.date)),
-                            abastecedor: supplier?.fullName || "Desconocido",
-                            paradas_completadas: r.completedStops,
-                            paradas_totales: r.totalStops,
-                            duracion_minutos: r.actualDurationMinutes || r.estimatedDurationMinutes || 0,
-                            estado: r.status
-                          };
-                        });
-                      const headers = Object.keys(csvData[0] || {}).join(",");
-                      const rows = csvData.map(row => Object.values(row).join(",")).join("\n");
+                      const filteredData = filteredRoutesByPeriod
+                        .filter(r => r.status === "completada" || r.status === "en_progreso");
+                      
+                      if (filteredData.length === 0) {
+                        return;
+                      }
+                      
+                      const headers = "fecha,abastecedor,paradas_completadas,paradas_totales,duracion_minutos,estado";
+                      const rows = filteredData.map(r => {
+                        const supplier = suppliers.find(s => s.id === r.supplierId);
+                        return [
+                          formatDate(new Date(r.date)),
+                          supplier?.fullName || "Desconocido",
+                          r.completedStops,
+                          r.totalStops,
+                          r.actualDurationMinutes || r.estimatedDurationMinutes || 0,
+                          r.status
+                        ].join(",");
+                      }).join("\n");
+                      
                       const csv = headers + "\n" + rows;
-                      const blob = new Blob([csv], { type: "text/csv" });
+                      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement("a");
                       a.href = url;
                       a.download = `historial-rutas-${periodFilter}.csv`;
                       a.click();
+                      URL.revokeObjectURL(url);
                     }}
+                    disabled={filteredRoutesByPeriod.filter(r => r.status === "completada" || r.status === "en_progreso").length === 0}
                     data-testid="button-export-history"
                   >
                     <Download className="w-4 h-4 mr-2" />
