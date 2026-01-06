@@ -43,7 +43,8 @@ import {
   Pencil,
   Trash2,
   Filter,
-  X
+  X,
+  Download
 } from "lucide-react";
 import {
   LineChart,
@@ -117,6 +118,7 @@ export function FuelPage() {
   const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false);
   const [fuelDialogOpen, setFuelDialogOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<any | null>(null);
+  const [editingFuelRecord, setEditingFuelRecord] = useState<any | null>(null);
   const [vehicleToDelete, setVehicleToDelete] = useState<string | null>(null);
   const [fuelRecordToDelete, setFuelRecordToDelete] = useState<string | null>(null);
   
@@ -250,6 +252,7 @@ export function FuelPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/fuel-records"] });
       queryClient.invalidateQueries({ queryKey: ["/api/fuel-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
       setFuelRecordToDelete(null);
       toast({ title: "Registro eliminado", description: "El registro de combustible se ha eliminado correctamente" });
     },
@@ -257,6 +260,75 @@ export function FuelPage() {
       toast({ title: "Error", description: "No se pudo eliminar el registro", variant: "destructive" });
     },
   });
+
+  const updateFuelRecordMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<FuelRecordFormData> }) =>
+      apiRequest("PATCH", `/api/fuel-records/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/fuel-records"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/fuel-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
+      setFuelDialogOpen(false);
+      setEditingFuelRecord(null);
+      fuelForm.reset();
+      toast({ title: "Registro actualizado", description: "Los cambios se han guardado correctamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo actualizar el registro", variant: "destructive" });
+    },
+  });
+
+  const exportRecordsToCSV = () => {
+    if (filteredRecords.length === 0) {
+      toast({ title: "Sin datos", description: "No hay registros para exportar", variant: "destructive" });
+      return;
+    }
+    
+    const headers = ["Fecha", "Vehículo", "Conductor", "Litros", "Precio/L", "Total", "Odómetro", "Rendimiento", "Estación", "Ticket", "Notas"];
+    const rows = filteredRecords.map((r: any) => [
+      formatDateShort(new Date(r.recordDate)),
+      r.vehicle?.plate || "",
+      r.user?.fullName || r.user?.username || "",
+      parseFloat(r.liters || 0).toFixed(2),
+      parseFloat(r.pricePerLiter || 0).toFixed(2),
+      parseFloat(r.totalAmount || 0).toFixed(2),
+      r.odometerReading || "",
+      r.calculatedMileage ? parseFloat(r.calculatedMileage).toFixed(2) : "",
+      r.gasStation || "",
+      r.ticketNumber || "",
+      r.notes || ""
+    ]);
+    
+    const csvContent = [headers.join(","), ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `combustible_${formatDateShort(new Date()).replace(/\//g, "-")}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    
+    toast({ title: "Exportación exitosa", description: `Se exportaron ${filteredRecords.length} registros` });
+  };
+
+  const openEditFuelRecord = (record: any) => {
+    setEditingFuelRecord(record);
+    fuelForm.reset({
+      vehicleId: record.vehicleId,
+      userId: record.userId,
+      routeId: record.routeId || null,
+      fuelType: record.fuelType || "gasolina_regular",
+      liters: parseFloat(record.liters),
+      pricePerLiter: parseFloat(record.pricePerLiter),
+      totalAmount: parseFloat(record.totalAmount),
+      odometerReading: parseInt(record.odometerReading),
+      ticketNumber: record.ticketNumber || "",
+      gasStation: record.gasStation || "",
+      isFull: record.isFull ?? true,
+      notes: record.notes || "",
+    });
+    setFuelDialogOpen(true);
+  };
 
   const openEditVehicle = (vehicle: any) => {
     setEditingVehicle(vehicle);
@@ -294,7 +366,11 @@ export function FuelPage() {
   };
 
   const onSubmitFuelRecord = (data: FuelRecordFormData) => {
-    createFuelRecordMutation.mutate(data);
+    if (editingFuelRecord) {
+      updateFuelRecordMutation.mutate({ id: editingFuelRecord.id, data });
+    } else {
+      createFuelRecordMutation.mutate(data);
+    }
   };
 
   const watchLiters = fuelForm.watch("liters");
@@ -728,7 +804,7 @@ export function FuelPage() {
               </DialogTrigger>
               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Nueva Carga de Combustible</DialogTitle>
+                  <DialogTitle>{editingFuelRecord ? "Editar Carga de Combustible" : "Nueva Carga de Combustible"}</DialogTitle>
                 </DialogHeader>
                 <Form {...fuelForm}>
                   <form onSubmit={fuelForm.handleSubmit(onSubmitFuelRecord)} className="space-y-4">
@@ -962,11 +1038,13 @@ export function FuelPage() {
                       )}
                     />
                     <div className="flex justify-end gap-2 pt-4">
-                      <Button type="button" variant="outline" onClick={() => setFuelDialogOpen(false)} data-testid="button-cancel-fuel">
+                      <Button type="button" variant="outline" onClick={() => { setFuelDialogOpen(false); setEditingFuelRecord(null); fuelForm.reset(); }} data-testid="button-cancel-fuel">
                         Cancelar
                       </Button>
-                      <Button type="submit" disabled={createFuelRecordMutation.isPending} data-testid="button-submit-fuel">
-                        {createFuelRecordMutation.isPending ? "Guardando..." : "Registrar Carga"}
+                      <Button type="submit" disabled={createFuelRecordMutation.isPending || updateFuelRecordMutation.isPending} data-testid="button-submit-fuel">
+                        {(createFuelRecordMutation.isPending || updateFuelRecordMutation.isPending) 
+                          ? "Guardando..." 
+                          : editingFuelRecord ? "Actualizar" : "Registrar Carga"}
                       </Button>
                     </div>
                   </form>
@@ -988,7 +1066,7 @@ export function FuelPage() {
             <>
               <StatsCard
                 title="Total Litros"
-                value={`${(fuelStats?.totalLiters || 0).toLocaleString("es-MX", { maximumFractionDigits: 1 })} L`}
+                value={`${(fuelStats?.totalLiters || 0).toLocaleString("es-DO", { maximumFractionDigits: 1 })} L`}
                 icon={Droplets}
                 iconColor="primary"
                 subtitle="Combustible consumido"
@@ -1165,20 +1243,32 @@ export function FuelPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <CardTitle className="text-lg">Registros de Cargas</CardTitle>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setShowFilters(!showFilters)}
-                    data-testid="button-toggle-filters"
-                  >
-                    <Filter className="h-4 w-4 mr-2" />
-                    Filtros
-                    {hasActiveFilters && (
-                      <Badge variant="secondary" className="ml-2">{
-                        [filterVehicleId, filterUserId, filterStartDate, filterEndDate].filter(Boolean).length
-                      }</Badge>
-                    )}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={exportRecordsToCSV}
+                      disabled={filteredRecords.length === 0}
+                      data-testid="button-export-fuel-csv"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Exportar CSV
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setShowFilters(!showFilters)}
+                      data-testid="button-toggle-filters"
+                    >
+                      <Filter className="h-4 w-4 mr-2" />
+                      Filtros
+                      {hasActiveFilters && (
+                        <Badge variant="secondary" className="ml-2">{
+                          [filterVehicleId, filterUserId, filterStartDate, filterEndDate].filter(Boolean).length
+                        }</Badge>
+                      )}
+                    </Button>
+                  </div>
                 </div>
                 
                 {showFilters && (
@@ -1366,21 +1456,30 @@ export function FuelPage() {
                                 )}
                               </TableCell>
                               <TableCell className="text-right">
-                                <AlertDialog 
-                                  open={fuelRecordToDelete === record.id} 
-                                  onOpenChange={(open) => !open && setFuelRecordToDelete(null)}
-                                >
-                                  <AlertDialogTrigger asChild>
-                                    <Button 
-                                      size="icon" 
-                                      variant="ghost" 
-                                      className="text-destructive hover:text-destructive"
-                                      onClick={() => setFuelRecordToDelete(record.id)}
-                                      data-testid={`button-delete-fuel-${record.id}`}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </AlertDialogTrigger>
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button 
+                                    size="icon" 
+                                    variant="ghost"
+                                    onClick={() => openEditFuelRecord(record)}
+                                    data-testid={`button-edit-fuel-${record.id}`}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <AlertDialog 
+                                    open={fuelRecordToDelete === record.id} 
+                                    onOpenChange={(open) => !open && setFuelRecordToDelete(null)}
+                                  >
+                                    <AlertDialogTrigger asChild>
+                                      <Button 
+                                        size="icon" 
+                                        variant="ghost" 
+                                        className="text-destructive hover:text-destructive"
+                                        onClick={() => setFuelRecordToDelete(record.id)}
+                                        data-testid={`button-delete-fuel-${record.id}`}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </AlertDialogTrigger>
                                   <AlertDialogContent>
                                     <AlertDialogHeader>
                                       <AlertDialogTitle>¿Eliminar registro?</AlertDialogTitle>
@@ -1400,10 +1499,36 @@ export function FuelPage() {
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
+                                </div>
                               </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
+                        {filteredRecords.length > 0 && (
+                          <tfoot className="border-t-2 bg-muted/50">
+                            <tr>
+                              <td colSpan={3} className="p-3 font-semibold">
+                                Totales ({filteredRecords.length} registros)
+                              </td>
+                              <td className="p-3 text-right font-semibold" data-testid="text-total-liters">
+                                {filteredRecords.reduce((sum: number, r: any) => sum + parseFloat(r.liters || 0), 0).toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} L
+                              </td>
+                              <td className="p-3 text-right font-semibold" data-testid="text-total-amount">
+                                {formatCurrency(filteredRecords.reduce((sum: number, r: any) => sum + parseFloat(r.totalAmount || 0), 0))}
+                              </td>
+                              <td className="p-3 text-right text-muted-foreground">—</td>
+                              <td className="p-3 text-right font-semibold" data-testid="text-avg-mileage">
+                                {(() => {
+                                  const withMileage = filteredRecords.filter((r: any) => r.calculatedMileage);
+                                  if (withMileage.length === 0) return "—";
+                                  const avg = withMileage.reduce((sum: number, r: any) => sum + parseFloat(r.calculatedMileage), 0) / withMileage.length;
+                                  return `${avg.toFixed(1)} km/L`;
+                                })()}
+                              </td>
+                              <td className="p-3"></td>
+                            </tr>
+                          </tfoot>
+                        )}
                       </Table>
                     </div>
                     
