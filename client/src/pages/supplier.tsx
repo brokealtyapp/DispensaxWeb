@@ -345,6 +345,39 @@ export function SupplierPage() {
     enabled: isViewingOther && !!supplierId,
   });
 
+  // Query para obtener servicio activo al cargar la página
+  const { data: activeService } = useQuery<{ id: string; routeStopId: string } | null>({
+    queryKey: ["/api/supplier/active-service", supplierId],
+    queryFn: async () => {
+      const response = await fetch(`/api/supplier/active-service/${supplierId}`, {
+        credentials: "include",
+      });
+      if (!response.ok) return null;
+      return response.json();
+    },
+    enabled: !!supplierId && !isViewingOther,
+  });
+
+  // Restaurar estado del servicio activo al cargar la página
+  useEffect(() => {
+    if (!todayRoute?.stops || isViewingOther) return;
+    
+    // Buscar parada "en_progreso" en la ruta
+    const inProgressStop = todayRoute.stops.find((stop: RouteStop) => stop.status === "en_progreso");
+    
+    if (inProgressStop && activeService?.id && !isServiceActive) {
+      // Hay un servicio activo - restaurar estado
+      setCurrentStop(inProgressStop);
+      setActiveServiceId(activeService.id);
+      setIsServiceActive(true);
+      setChecklist(defaultChecklist.map(item => ({ ...item, checked: false })));
+      // Cambiar automáticamente al tab de servicio activo (usando handleTabChange para sincronizar URL)
+      if (activeTab === "ruta") {
+        handleTabChange("servicio");
+      }
+    }
+  }, [todayRoute, activeService, isViewingOther, isServiceActive, activeTab, handleTabChange]);
+
   const startRouteMutation = useMutation({
     mutationFn: async (routeId: string) => {
       return apiRequest("POST", `/api/supplier/routes/${routeId}/start`);
