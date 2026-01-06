@@ -3017,7 +3017,7 @@ export class DatabaseStorage implements IStorage {
       totalFuelCost,
       totalPettyCash,
       machineCount: allMachines.length,
-      activeRoutes: allRoutes.filter(r => r.isActive).length,
+      activeRoutes: allRoutes.filter(r => r.status === 'en_progreso' || r.status === 'pendiente').length,
       productCount: allProducts.length,
       lowStockAlerts: lowStockProducts.length,
       pendingOrders,
