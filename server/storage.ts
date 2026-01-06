@@ -172,7 +172,7 @@ export interface IStorage {
   createProductLoad(load: InsertProductLoad): Promise<ProductLoad>;
   
   // Reportes de Problemas
-  getIssueReports(machineId?: string, status?: string): Promise<any[]>;
+  getIssueReports(machineId?: string, status?: string, userId?: string): Promise<any[]>;
   getIssueReport(id: string): Promise<any>;
   createIssueReport(report: InsertIssueReport): Promise<IssueReport>;
   resolveIssue(id: string, userId: string, resolution: string): Promise<IssueReport | undefined>;
@@ -1494,11 +1494,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Reportes de Problemas
-  async getIssueReports(machineId?: string, status?: string): Promise<any[]> {
+  async getIssueReports(machineId?: string, status?: string, userId?: string): Promise<any[]> {
     let conditions: any[] = [];
     
     if (machineId) conditions.push(eq(issueReports.machineId, machineId));
     if (status) conditions.push(eq(issueReports.status, status));
+    if (userId) conditions.push(eq(issueReports.userId, userId));
     
     const query = conditions.length > 0
       ? db.select().from(issueReports).where(and(...conditions))

@@ -1539,10 +1539,11 @@ export async function registerRoutes(
   // Reportes de Problemas
   app.get("/api/supplier/issues", async (req: Request, res: Response) => {
     try {
-      const { machineId, status } = req.query;
+      const { machineId, status, userId } = req.query;
       const issues = await storage.getIssueReports(
         machineId as string | undefined,
-        status as string | undefined
+        status as string | undefined,
+        userId as string | undefined
       );
       res.json(issues);
     } catch (error) {

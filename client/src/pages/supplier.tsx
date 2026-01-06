@@ -165,11 +165,15 @@ export function SupplierPage() {
   // useLocation retorna [path, navigate] - usamos navigate para actualizar la URL
   const [, navigate] = useLocation();
   
-  // Extraer tab del query string (se recalcula cuando searchString cambia)
-  const tabFromUrl = useMemo(() => {
+  // Extraer tab y id del query string (se recalcula cuando searchString cambia)
+  const { tabFromUrl, supplierIdFromUrl } = useMemo(() => {
     const params = new URLSearchParams(searchString);
     const tab = params.get("tab");
-    return tab && ["ruta", "servicio", "inventario", "rendimiento"].includes(tab) ? tab : "ruta";
+    const id = params.get("id");
+    return {
+      tabFromUrl: tab && ["ruta", "servicio", "inventario", "rendimiento", "analisis"].includes(tab) ? tab : (id ? "analisis" : "ruta"),
+      supplierIdFromUrl: id || null
+    };
   }, [searchString]);
   
   const [activeTab, setActiveTab] = useState(tabFromUrl);
@@ -198,7 +202,22 @@ export function SupplierPage() {
   const { toast } = useToast();
   const { user, isLoading: isAuthLoading } = useAuth();
 
-  const supplierId = user?.id;
+  // Determinar si es admin/supervisor viendo a otro abastecedor
+  const isViewingOther = !!supplierIdFromUrl && user?.role && ["admin", "supervisor"].includes(user.role);
+  const supplierId = isViewingOther ? supplierIdFromUrl : user?.id;
+
+  // Cargar información del abastecedor cuando se ve a otro
+  const { data: targetSupplier, isLoading: isLoadingTargetSupplier } = useQuery<{
+    id: string;
+    fullName: string;
+    email: string;
+    phone?: string;
+    role: string;
+    isActive: boolean;
+  }>({
+    queryKey: ["/api/users", supplierIdFromUrl],
+    enabled: isViewingOther && !!supplierIdFromUrl,
+  });
 
   // Sincronizar activeTab cuando cambie tabFromUrl (navegación del sidebar)
   useEffect(() => {
@@ -211,9 +230,10 @@ export function SupplierPage() {
   // Usa navigate de wouter para que useSearch se actualice correctamente
   const handleTabChange = useCallback((newTab: string) => {
     setActiveTab(newTab);
-    // Usar navigate de wouter para notificar el cambio de URL
-    navigate(`/abastecedor?tab=${newTab}`, { replace: true });
-  }, [navigate]);
+    // Mantener el id en la URL si está viendo a otro abastecedor
+    const idParam = supplierIdFromUrl ? `&id=${supplierIdFromUrl}` : "";
+    navigate(`/abastecedor?tab=${newTab}${idParam}`, { replace: true });
+  }, [navigate, supplierIdFromUrl]);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -292,6 +312,37 @@ export function SupplierPage() {
   const { data: pendingAlerts } = useQuery<any[]>({
     queryKey: ["/api/alerts", { resolved: false }],
     enabled: !!supplierId,
+  });
+
+  // Queries adicionales para análisis de admin
+  const { data: supplierRouteHistory = [] } = useQuery<any[]>({
+    queryKey: ["/api/supplier/routes", { userId: supplierId }],
+    enabled: isViewingOther && !!supplierId,
+  });
+
+  const { data: supplierCashCollections = [] } = useQuery<any[]>({
+    queryKey: ["/api/supplier/cash", { userId: supplierId }],
+    enabled: isViewingOther && !!supplierId,
+  });
+
+  const { data: supplierIssues = [] } = useQuery<any[]>({
+    queryKey: ["/api/supplier/issues", { userId: supplierId }],
+    enabled: isViewingOther && !!supplierId,
+  });
+
+  // Estadísticas mensuales para análisis
+  const getMonthDates = () => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    return { startOfMonth, endOfMonth };
+  };
+
+  const monthDates = getMonthDates();
+
+  const { data: monthlyStats } = useQuery<any>({
+    queryKey: ["/api/supplier/stats", supplierId, { startDate: monthDates.startOfMonth.toISOString(), endDate: monthDates.endOfMonth.toISOString() }],
+    enabled: isViewingOther && !!supplierId,
   });
 
   const startRouteMutation = useMutation({
@@ -669,15 +720,39 @@ export function SupplierPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+      {/* Banner cuando admin/supervisor ve a otro abastecedor */}
+      {isViewingOther && targetSupplier && (
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-full bg-primary/10">
+                <Eye className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-medium text-lg">{targetSupplier.fullName}</p>
+                <p className="text-sm text-muted-foreground">{targetSupplier.email} {targetSupplier.phone ? `• ${targetSupplier.phone}` : ""}</p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => navigate("/abastecedores")} data-testid="button-back-suppliers">
+              Volver a lista
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Header con indicador de conexión */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl md:text-2xl font-bold" data-testid="text-page-title">Panel de Abastecedor</h1>
-            <Badge variant={isOnline ? "outline" : "destructive"} className="gap-1">
-              {isOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-              {isOnline ? "En línea" : "Sin conexión"}
-            </Badge>
+            <h1 className="text-xl md:text-2xl font-bold" data-testid="text-page-title">
+              {isViewingOther ? `Análisis de ${targetSupplier?.fullName?.split(" ")[0] || "Abastecedor"}` : "Panel de Abastecedor"}
+            </h1>
+            {!isViewingOther && (
+              <Badge variant={isOnline ? "outline" : "destructive"} className="gap-1">
+                {isOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+                {isOnline ? "En línea" : "Sin conexión"}
+              </Badge>
+            )}
           </div>
           <p className="text-muted-foreground text-sm md:text-base">
             {todayRoute ? formatDate(todayRoute.date) : "Sin ruta asignada"}
@@ -752,13 +827,27 @@ export function SupplierPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList data-testid="tabs-list" className="w-full md:w-auto">
-          <TabsTrigger value="ruta" data-testid="tab-route" className="flex-1 md:flex-none">Mi Ruta</TabsTrigger>
-          <TabsTrigger value="servicio" disabled={!isServiceActive} data-testid="tab-service" className="flex-1 md:flex-none">
-            Servicio Activo
+        <TabsList data-testid="tabs-list" className="w-full md:w-auto flex-wrap">
+          {isViewingOther && (
+            <TabsTrigger value="analisis" data-testid="tab-analysis" className="flex-1 md:flex-none">
+              <Eye className="h-4 w-4 mr-1" />
+              Análisis
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="ruta" data-testid="tab-route" className="flex-1 md:flex-none">
+            {isViewingOther ? "Ruta Hoy" : "Mi Ruta"}
           </TabsTrigger>
-          <TabsTrigger value="inventario" data-testid="tab-inventory" className="flex-1 md:flex-none">Mi Vehículo</TabsTrigger>
-          <TabsTrigger value="rendimiento" data-testid="tab-performance" className="flex-1 md:flex-none">Mi Rendimiento</TabsTrigger>
+          {!isViewingOther && (
+            <TabsTrigger value="servicio" disabled={!isServiceActive} data-testid="tab-service" className="flex-1 md:flex-none">
+              Servicio Activo
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="inventario" data-testid="tab-inventory" className="flex-1 md:flex-none">
+            {isViewingOther ? "Inventario" : "Mi Vehículo"}
+          </TabsTrigger>
+          <TabsTrigger value="rendimiento" data-testid="tab-performance" className="flex-1 md:flex-none">
+            {isViewingOther ? "Rendimiento" : "Mi Rendimiento"}
+          </TabsTrigger>
         </TabsList>
 
         {/* TAB: Mi Ruta */}
@@ -1319,6 +1408,225 @@ export function SupplierPage() {
             </div>
           </div>
         </TabsContent>
+
+        {/* TAB: Análisis (solo para admin/supervisor) */}
+        {isViewingOther && (
+          <TabsContent value="analisis" className="mt-4 md:mt-6">
+            <div className="space-y-6">
+              {/* Resumen de estadísticas */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/20">
+                  <CardContent className="p-4 text-center">
+                    <div className="flex items-center justify-center mb-2">
+                      <div className="p-2 bg-blue-500/20 rounded-full">
+                        <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      </div>
+                    </div>
+                    <p className="text-2xl md:text-3xl font-bold text-blue-700 dark:text-blue-300">
+                      {monthlyStats?.machinesVisited || 0}
+                    </p>
+                    <p className="text-xs md:text-sm text-blue-600/80">Máquinas este mes</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/20">
+                  <CardContent className="p-4 text-center">
+                    <div className="flex items-center justify-center mb-2">
+                      <div className="p-2 bg-emerald-500/20 rounded-full">
+                        <ClipboardCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                    </div>
+                    <p className="text-2xl md:text-3xl font-bold text-emerald-700 dark:text-emerald-300">
+                      {monthlyStats?.servicesCompleted || 0}
+                    </p>
+                    <p className="text-xs md:text-sm text-emerald-600/80">Servicios este mes</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/20">
+                  <CardContent className="p-4 text-center">
+                    <div className="flex items-center justify-center mb-2">
+                      <div className="p-2 bg-amber-500/20 rounded-full">
+                        <DollarSign className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                      </div>
+                    </div>
+                    <p className="text-2xl md:text-3xl font-bold text-amber-700 dark:text-amber-300">
+                      {formatCurrency(monthlyStats?.cashCollected || 0)}
+                    </p>
+                    <p className="text-xs md:text-sm text-amber-600/80">Efectivo este mes</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/30 dark:to-purple-900/20">
+                  <CardContent className="p-4 text-center">
+                    <div className="flex items-center justify-center mb-2">
+                      <div className="p-2 bg-purple-500/20 rounded-full">
+                        <Package className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                      </div>
+                    </div>
+                    <p className="text-2xl md:text-3xl font-bold text-purple-700 dark:text-purple-300">
+                      {monthlyStats?.productsLoaded || 0}
+                    </p>
+                    <p className="text-xs md:text-sm text-purple-600/80">Productos cargados</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Historial de rutas y cash collections */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Historial de rutas */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Navigation className="h-5 w-5" />
+                      Historial de Rutas
+                    </CardTitle>
+                    <CardDescription>Últimas rutas asignadas</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-[300px]">
+                      {supplierRouteHistory.length > 0 ? (
+                        <div className="space-y-3">
+                          {supplierRouteHistory.slice(0, 10).map((route: any) => (
+                            <div key={route.id} className="flex items-center justify-between p-3 rounded-lg border">
+                              <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-full ${
+                                  route.status === "completada" ? "bg-emerald-500/10" :
+                                  route.status === "en_progreso" ? "bg-blue-500/10" :
+                                  "bg-muted"
+                                }`}>
+                                  <Navigation className={`h-4 w-4 ${
+                                    route.status === "completada" ? "text-emerald-500" :
+                                    route.status === "en_progreso" ? "text-blue-500" :
+                                    "text-muted-foreground"
+                                  }`} />
+                                </div>
+                                <div>
+                                  <p className="font-medium text-sm">{formatDate(route.date)}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {route.completedStops || 0}/{route.totalStops || 0} paradas
+                                  </p>
+                                </div>
+                              </div>
+                              <Badge variant={
+                                route.status === "completada" ? "default" :
+                                route.status === "en_progreso" ? "secondary" :
+                                "outline"
+                              }>
+                                {route.status === "completada" ? "Completada" :
+                                 route.status === "en_progreso" ? "En progreso" : "Pendiente"}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <Navigation className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                          <p>Sin historial de rutas</p>
+                        </div>
+                      )}
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+
+                {/* Cash collections */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <DollarSign className="h-5 w-5" />
+                      Recolecciones de Efectivo
+                    </CardTitle>
+                    <CardDescription>Últimas recolecciones registradas</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-[300px]">
+                      {supplierCashCollections.length > 0 ? (
+                        <div className="space-y-3">
+                          {supplierCashCollections.slice(0, 10).map((collection: any) => (
+                            <div key={collection.id} className="flex items-center justify-between p-3 rounded-lg border">
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-full bg-amber-500/10">
+                                  <DollarSign className="h-4 w-4 text-amber-500" />
+                                </div>
+                                <div>
+                                  <p className="font-medium text-sm">{collection.machine?.name || "Máquina"}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatDate(collection.createdAt)}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold text-emerald-600 dark:text-emerald-400">
+                                  {formatCurrency(parseFloat(collection.actualAmount || "0"))}
+                                </p>
+                                {collection.difference && parseFloat(collection.difference) !== 0 && (
+                                  <p className={`text-xs ${parseFloat(collection.difference) > 0 ? "text-emerald-500" : "text-red-500"}`}>
+                                    {parseFloat(collection.difference) > 0 ? "+" : ""}{formatCurrency(parseFloat(collection.difference))}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <DollarSign className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                          <p>Sin recolecciones registradas</p>
+                        </div>
+                      )}
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Problemas reportados */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5" />
+                    Problemas Reportados
+                  </CardTitle>
+                  <CardDescription>Incidencias registradas por este abastecedor</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {supplierIssues.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {supplierIssues.slice(0, 6).map((issue: any) => (
+                        <div key={issue.id} className="p-4 rounded-lg border">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2">
+                              <Badge variant={
+                                issue.priority === "critica" ? "destructive" :
+                                issue.priority === "alta" ? "destructive" :
+                                issue.priority === "media" ? "secondary" :
+                                "outline"
+                              }>
+                                {issue.priority}
+                              </Badge>
+                              <Badge variant="outline">{issue.type}</Badge>
+                            </div>
+                            <Badge variant={issue.status === "resuelto" ? "default" : "secondary"}>
+                              {issue.status === "resuelto" ? "Resuelto" : "Pendiente"}
+                            </Badge>
+                          </div>
+                          <p className="text-sm font-medium">{issue.machine?.name || "Máquina"}</p>
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                            {issue.description}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {formatDate(issue.createdAt)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <CheckCircle2 className="h-10 w-10 mx-auto mb-3 opacity-50 text-emerald-500" />
+                      <p>Sin problemas reportados</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* DIALOGO: Reportar Problema con fotos */}
