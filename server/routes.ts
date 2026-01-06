@@ -2906,7 +2906,7 @@ export async function registerRoutes(
   });
 
   // Resumen general de reportes
-  app.get("/api/reports/overview", async (req: Request, res: Response) => {
+  app.get("/api/reports/overview", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = reportFiltersSchema.parse(req.query);
       const overview = await storage.getReportsOverview(
@@ -2924,7 +2924,7 @@ export async function registerRoutes(
   });
 
   // Desglose de ventas
-  app.get("/api/reports/sales", async (req: Request, res: Response) => {
+  app.get("/api/reports/sales", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, groupBy } = salesBreakdownSchema.parse(req.query);
       const breakdown = await storage.getSalesBreakdown({
@@ -2943,7 +2943,7 @@ export async function registerRoutes(
   });
 
   // Desglose de compras
-  app.get("/api/reports/purchases", async (req: Request, res: Response) => {
+  app.get("/api/reports/purchases", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, groupBy } = purchasesBreakdownSchema.parse(req.query);
       const breakdown = await storage.getPurchasesBreakdown({
@@ -2962,7 +2962,7 @@ export async function registerRoutes(
   });
 
   // Desglose de combustible
-  app.get("/api/reports/fuel", async (req: Request, res: Response) => {
+  app.get("/api/reports/fuel", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, groupBy } = fuelBreakdownSchema.parse(req.query);
       const breakdown = await storage.getFuelBreakdown({
@@ -2981,7 +2981,7 @@ export async function registerRoutes(
   });
 
   // Desglose de caja chica
-  app.get("/api/reports/petty-cash", async (req: Request, res: Response) => {
+  app.get("/api/reports/petty-cash", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, groupBy } = pettyCashBreakdownSchema.parse(req.query);
       const breakdown = await storage.getPettyCashBreakdown({
@@ -3000,7 +3000,7 @@ export async function registerRoutes(
   });
 
   // Rendimiento de máquinas
-  app.get("/api/reports/machine-performance", async (req: Request, res: Response) => {
+  app.get("/api/reports/machine-performance", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = reportFiltersSchema.parse(req.query);
       const performance = await storage.getMachinePerformance(
@@ -3018,7 +3018,7 @@ export async function registerRoutes(
   });
 
   // Productos más vendidos
-  app.get("/api/reports/top-products", async (req: Request, res: Response) => {
+  app.get("/api/reports/top-products", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = reportFiltersSchema.parse(req.query);
       const limit = parseInt(req.query.limit as string) || 10;
@@ -3038,7 +3038,7 @@ export async function registerRoutes(
   });
 
   // Ranking de proveedores
-  app.get("/api/reports/supplier-ranking", async (req: Request, res: Response) => {
+  app.get("/api/reports/supplier-ranking", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = reportFiltersSchema.parse(req.query);
       const ranking = await storage.getSupplierRanking(
@@ -3056,7 +3056,7 @@ export async function registerRoutes(
   });
 
   // Exportar datos
-  app.get("/api/reports/export", async (req: Request, res: Response) => {
+  app.get("/api/reports/export", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { type, startDate, endDate } = exportDataSchema.parse(req.query);
       const data = await storage.getExportData(type, {
