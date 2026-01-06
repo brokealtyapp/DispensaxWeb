@@ -12,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { StatsCard } from "@/components/StatsCard";
 import { subDays, subMonths, startOfMonth, endOfMonth } from "date-fns";
 import { formatDateShort, getTodayInTimezone, getDateKeyInTimezone, formatCurrency } from "@/lib/utils";
+import type { Machine } from "@shared/schema";
 import {
   BarChart3,
   TrendingUp,
@@ -32,10 +33,15 @@ import {
   Truck,
   ArrowUpRight,
   ArrowDownRight,
+  ArrowUp,
+  ArrowDown,
+  Minus,
   Percent,
   Clock,
   CheckCircle,
   XCircle,
+  Warehouse,
+  MapPin,
 } from "lucide-react";
 import {
   LineChart,
@@ -74,6 +80,20 @@ const categoryLabels: Record<string, string> = {
   otros: "Otros",
 };
 
+const shrinkageTypeLabels: Record<string, string> = {
+  caducidad: "Caducidad",
+  danio: "Daño",
+  robo: "Robo",
+  otros: "Otros",
+};
+
+const movementTypeLabels: Record<string, string> = {
+  entrada: "Entrada",
+  salida: "Salida",
+  ajuste: "Ajuste",
+  merma: "Merma",
+};
+
 function getDateRange(rangeValue: string): { startDate: Date; endDate: Date } {
   const today = getTodayInTimezone();
   let startDate: Date;
@@ -108,17 +128,57 @@ function getDateRange(rangeValue: string): { startDate: Date; endDate: Date } {
   return { startDate, endDate };
 }
 
+function calculateTrend(current: number, previous: number): { change: number; direction: 'up' | 'down' | 'neutral' } {
+  if (previous === 0) return { change: 0, direction: 'neutral' };
+  const change = ((current - previous) / previous) * 100;
+  const direction = change > 0 ? 'up' : change < 0 ? 'down' : 'neutral';
+  return { change: Math.abs(change), direction };
+}
+
+function TrendIndicator({ current, previous, inverted = false }: { current: number; previous: number; inverted?: boolean }) {
+  if (previous === undefined || previous === null) return null;
+  
+  const { change, direction } = calculateTrend(current, previous);
+  const isPositive = inverted ? direction === 'down' : direction === 'up';
+  const color = direction === 'neutral' ? 'text-muted-foreground' : isPositive ? 'text-green-600' : 'text-red-600';
+  const Icon = direction === 'up' ? ArrowUp : direction === 'down' ? ArrowDown : Minus;
+  
+  return (
+    <div className="flex flex-col">
+      <span className={`flex items-center gap-1 text-sm ${color}`} data-testid="trend-indicator">
+        <Icon className="h-3 w-3" />
+        <span>{change.toFixed(1)}%</span>
+      </span>
+      <span className="text-xs text-muted-foreground">vs período anterior</span>
+    </div>
+  );
+}
+
 
 export function ReportsPage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("overview");
   const [dateRange, setDateRange] = useState("30d");
+  const [selectedZone, setSelectedZone] = useState("all");
+  const [selectedMachineId, setSelectedMachineId] = useState("all");
   const [salesGroupBy, setSalesGroupBy] = useState<string>("machine");
   const [purchasesGroupBy, setPurchasesGroupBy] = useState<string>("supplier");
   const [fuelGroupBy, setFuelGroupBy] = useState<string>("vehicle");
   const [pettyCashGroupBy, setPettyCashGroupBy] = useState<string>("category");
+  const [movementType, setMovementType] = useState("all");
+  const [productsLimit, setProductsLimit] = useState(10);
   const [isExporting, setIsExporting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const { data: allMachines = [] } = useQuery<Machine[]>({
+    queryKey: ["/api/machines"],
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const filteredMachines = useMemo(() => {
+    if (selectedZone === "all") return allMachines;
+    return allMachines.filter((m) => m.zone === selectedZone);
+  }, [allMachines, selectedZone]);
 
   const { startDateStr, endDateStr } = useMemo(() => {
     const { startDate, endDate } = getDateRange(dateRange);
@@ -132,13 +192,46 @@ export function ReportsPage() {
     };
   }, [dateRange]);
 
+  const { previousStartDateStr, previousEndDateStr } = useMemo(() => {
+    const { startDate, endDate } = getDateRange(dateRange);
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    
+    const periodDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const previousEnd = new Date(start);
+    previousEnd.setDate(previousEnd.getDate() - 1);
+    previousEnd.setHours(23, 59, 59, 999);
+    const previousStart = new Date(previousEnd);
+    previousStart.setDate(previousStart.getDate() - periodDays + 1);
+    previousStart.setHours(0, 0, 0, 0);
+    
+    return {
+      previousStartDateStr: previousStart.toISOString(),
+      previousEndDateStr: previousEnd.toISOString(),
+    };
+  }, [dateRange]);
+
   const { data: overview, isLoading: loadingOverview } = useQuery<any>({
     queryKey: ["/api/reports/overview", { startDate: startDateStr, endDate: endDateStr }],
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: previousOverview } = useQuery<any>({
+    queryKey: ["/api/reports/overview", { startDate: previousStartDateStr, endDate: previousEndDateStr }],
+    enabled: activeTab === "overview" && !!previousStartDateStr && !!previousEndDateStr,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const { data: salesBreakdown = [], isLoading: loadingSales } = useQuery<any[]>({
-    queryKey: ["/api/reports/sales", { startDate: startDateStr, endDate: endDateStr, groupBy: salesGroupBy }],
+    queryKey: ["/api/reports/sales", { 
+      startDate: startDateStr, 
+      endDate: endDateStr, 
+      groupBy: salesGroupBy,
+      ...(selectedZone !== "all" && { zone: selectedZone }),
+      ...(selectedMachineId !== "all" && { machineId: selectedMachineId }),
+    }],
     enabled: activeTab === "sales" || activeTab === "overview",
     staleTime: 5 * 60 * 1000,
   });
@@ -162,13 +255,24 @@ export function ReportsPage() {
   });
 
   const { data: machinePerformance = [], isLoading: loadingMachines } = useQuery<any[]>({
-    queryKey: ["/api/reports/machine-performance", { startDate: startDateStr, endDate: endDateStr }],
+    queryKey: ["/api/reports/machine-performance", { 
+      startDate: startDateStr, 
+      endDate: endDateStr,
+      ...(selectedZone !== "all" && { zone: selectedZone }),
+      ...(selectedMachineId !== "all" && { machineId: selectedMachineId }),
+    }],
     enabled: activeTab === "machines",
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: topProducts = [], isLoading: loadingProducts } = useQuery<any[]>({
-    queryKey: ["/api/reports/top-products", { startDate: startDateStr, endDate: endDateStr, limit: "10" }],
+    queryKey: ["/api/reports/top-products", { 
+      startDate: startDateStr, 
+      endDate: endDateStr, 
+      limit: productsLimit.toString(),
+      ...(selectedZone !== "all" && { zone: selectedZone }),
+      ...(selectedMachineId !== "all" && { machineId: selectedMachineId }),
+    }],
     enabled: activeTab === "products" || activeTab === "overview",
     staleTime: 5 * 60 * 1000,
   });
@@ -176,6 +280,24 @@ export function ReportsPage() {
   const { data: supplierRanking = [], isLoading: loadingSuppliers } = useQuery<any[]>({
     queryKey: ["/api/reports/supplier-ranking", { startDate: startDateStr, endDate: endDateStr }],
     enabled: activeTab === "suppliers",
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: warehouseMovements = [], isLoading: loadingWarehouse } = useQuery<any[]>({
+    queryKey: ["/api/warehouse/movements", { startDate: startDateStr, endDate: endDateStr }],
+    enabled: activeTab === "warehouse",
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: shrinkageRecords = [], isLoading: loadingShrinkage } = useQuery<any[]>({
+    queryKey: ["/api/shrinkage", { startDate: startDateStr, endDate: endDateStr }],
+    enabled: activeTab === "shrinkage",
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: shrinkageSummary } = useQuery<any>({
+    queryKey: ["/api/shrinkage/summary", { startDate: startDateStr, endDate: endDateStr }],
+    enabled: activeTab === "shrinkage",
     staleTime: 5 * 60 * 1000,
   });
 
@@ -255,6 +377,47 @@ export function ReportsPage() {
     }
   };
 
+  const filteredSalesBreakdown = useMemo(() => {
+    if (selectedZone === "all" && selectedMachineId === "all") return salesBreakdown;
+    
+    const machineIdsInZone = selectedZone !== "all" 
+      ? new Set(allMachines.filter(m => m.zone === selectedZone).map(m => m.id))
+      : null;
+    
+    return salesBreakdown.filter(item => {
+      if (selectedMachineId !== "all") {
+        return item.machineId === selectedMachineId || item.machine?.id === selectedMachineId;
+      }
+      if (machineIdsInZone) {
+        return machineIdsInZone.has(item.machineId) || machineIdsInZone.has(item.machine?.id);
+      }
+      return true;
+    });
+  }, [salesBreakdown, selectedZone, selectedMachineId, allMachines]);
+
+  const filteredMachinePerformance = useMemo(() => {
+    if (selectedZone === "all" && selectedMachineId === "all") return machinePerformance;
+    
+    return machinePerformance.filter(item => {
+      if (selectedMachineId !== "all") {
+        return item.machine?.id === selectedMachineId;
+      }
+      if (selectedZone !== "all") {
+        return item.machine?.zone === selectedZone;
+      }
+      return true;
+    });
+  }, [machinePerformance, selectedZone, selectedMachineId]);
+
+  const filteredTopProducts = useMemo(() => {
+    if (selectedZone === "all" && selectedMachineId === "all") return topProducts;
+    return topProducts;
+  }, [topProducts, selectedZone, selectedMachineId]);
+
+  const displayedTopProducts = useMemo(() => {
+    return filteredTopProducts.slice(0, productsLimit);
+  }, [filteredTopProducts, productsLimit]);
+
   const renderLoadingSkeleton = () => (
     <div className="space-y-4">
       <Skeleton className="h-20 w-full" />
@@ -275,34 +438,98 @@ export function ReportsPage() {
           </>
         ) : (
           <>
-            <StatsCard
-              title="Ventas Totales"
-              value={formatCurrency(overview?.totalSales || 0)}
-              icon={DollarSign}
-              iconColor="success"
-              subtitle={`${Math.abs(overview?.profitMargin || 0).toFixed(1)}% margen`}
-            />
-            <StatsCard
-              title="Compras"
-              value={formatCurrency(overview?.totalPurchases || 0)}
-              icon={ShoppingCart}
-              iconColor="primary"
-              subtitle={`${overview?.pendingOrders || 0} pendientes`}
-            />
-            <StatsCard
-              title="Combustible"
-              value={formatCurrency(overview?.totalFuelCost || 0)}
-              icon={Fuel}
-              iconColor="warning"
-              subtitle="Gasto operativo"
-            />
-            <StatsCard
-              title="Caja Chica"
-              value={formatCurrency(overview?.totalPettyCash || 0)}
-              icon={Wallet}
-              iconColor="purple"
-              subtitle={`${overview?.pendingExpenses || 0} pendientes`}
-            />
+            <Card className="hover-elevate" data-testid="card-total-sales">
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-muted-foreground">Ventas Totales</p>
+                    <p className="text-2xl font-bold">{formatCurrency(overview?.totalSales || 0)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{`${Math.abs(overview?.profitMargin || 0).toFixed(1)}% margen`}</p>
+                    {previousOverview && (
+                      <div className="mt-2">
+                        <TrendIndicator 
+                          current={overview?.totalSales || 0} 
+                          previous={previousOverview?.totalSales || 0} 
+                          inverted={false}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-lg p-2 bg-green-500/10">
+                    <DollarSign className="h-6 w-6 text-green-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="hover-elevate" data-testid="card-total-purchases">
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-muted-foreground">Compras</p>
+                    <p className="text-2xl font-bold">{formatCurrency(overview?.totalPurchases || 0)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{`${overview?.pendingOrders || 0} pendientes`}</p>
+                    {previousOverview && (
+                      <div className="mt-2">
+                        <TrendIndicator 
+                          current={overview?.totalPurchases || 0} 
+                          previous={previousOverview?.totalPurchases || 0} 
+                          inverted={true}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-lg p-2 bg-primary/10">
+                    <ShoppingCart className="h-6 w-6 text-primary" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="hover-elevate" data-testid="card-total-fuel">
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-muted-foreground">Combustible</p>
+                    <p className="text-2xl font-bold">{formatCurrency(overview?.totalFuelCost || 0)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Gasto operativo</p>
+                    {previousOverview && (
+                      <div className="mt-2">
+                        <TrendIndicator 
+                          current={overview?.totalFuelCost || 0} 
+                          previous={previousOverview?.totalFuelCost || 0} 
+                          inverted={true}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-lg p-2 bg-yellow-500/10">
+                    <Fuel className="h-6 w-6 text-yellow-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="hover-elevate" data-testid="card-total-pettycash">
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-muted-foreground">Caja Chica</p>
+                    <p className="text-2xl font-bold">{formatCurrency(overview?.totalPettyCash || 0)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{`${overview?.pendingExpenses || 0} pendientes`}</p>
+                    {previousOverview && (
+                      <div className="mt-2">
+                        <TrendIndicator 
+                          current={overview?.totalPettyCash || 0} 
+                          previous={previousOverview?.totalPettyCash || 0} 
+                          inverted={true}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-lg p-2 bg-purple-500/10">
+                    <Wallet className="h-6 w-6 text-purple-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </>
         )}
       </div>
@@ -377,9 +604,9 @@ export function ReportsPage() {
           <CardContent>
             {loadingSales ? (
               <Skeleton className="h-64" />
-            ) : salesBreakdown.length > 0 ? (
+            ) : filteredSalesBreakdown.length > 0 ? (
               <ResponsiveContainer width="100%" height={250}>
-                <AreaChart data={salesBreakdown.slice(0, 10)}>
+                <AreaChart data={filteredSalesBreakdown.slice(0, 10)}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis 
                     dataKey={salesGroupBy === 'day' ? 'date' : 'machine.code'} 
@@ -419,9 +646,9 @@ export function ReportsPage() {
           <CardContent>
             {loadingProducts ? (
               <Skeleton className="h-64" />
-            ) : topProducts.length > 0 ? (
+            ) : filteredTopProducts.length > 0 ? (
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={topProducts.slice(0, 5)} layout="vertical">
+                <BarChart data={filteredTopProducts.slice(0, 5)} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" tick={{ fontSize: 12 }} />
                   <YAxis 
@@ -610,8 +837,8 @@ export function ReportsPage() {
               <tbody>
                 {loadingSales ? (
                   <tr><td colSpan={3}>{renderLoadingSkeleton()}</td></tr>
-                ) : salesBreakdown.length > 0 ? (
-                  salesBreakdown.map((item, index) => (
+                ) : filteredSalesBreakdown.length > 0 ? (
+                  filteredSalesBreakdown.map((item, index) => (
                     <tr key={index} className="border-b hover:bg-muted/50" data-testid={`row-sales-${index}`}>
                       <td className="py-3 px-2">
                         {salesGroupBy === 'machine' ? (
@@ -640,15 +867,15 @@ export function ReportsPage() {
                   </tr>
                 )}
               </tbody>
-              {salesBreakdown.length > 0 && !loadingSales && (
+              {filteredSalesBreakdown.length > 0 && !loadingSales && (
                 <tfoot className="sticky bottom-0 bg-muted/80 backdrop-blur-sm font-semibold">
                   <tr className="border-t-2">
                     <td className="py-3 px-2">TOTAL</td>
                     <td className="text-right py-3 px-2">
-                      {salesBreakdown.reduce((sum, item) => sum + (item.quantity || 0), 0)}
+                      {filteredSalesBreakdown.reduce((sum, item) => sum + (item.quantity || 0), 0)}
                     </td>
                     <td className="text-right py-3 px-2">
-                      {formatCurrency(salesBreakdown.reduce((sum, item) => sum + (item.totalAmount || 0), 0))}
+                      {formatCurrency(filteredSalesBreakdown.reduce((sum, item) => sum + (item.totalAmount || 0), 0))}
                     </td>
                   </tr>
                 </tfoot>
@@ -760,6 +987,19 @@ export function ReportsPage() {
                   </tr>
                 )}
               </tbody>
+              {purchasesBreakdown.length > 0 && !loadingPurchases && (
+                <tfoot className="sticky bottom-0 bg-muted/80 backdrop-blur-sm font-semibold">
+                  <tr className="border-t-2">
+                    <td className="py-3 px-2">TOTAL</td>
+                    <td className="text-right py-3 px-2">
+                      {purchasesBreakdown.reduce((sum, item) => sum + (item.orderCount || 0), 0)}
+                    </td>
+                    <td className="text-right py-3 px-2">
+                      {formatCurrency(purchasesBreakdown.reduce((sum, item) => sum + (item.totalAmount || 0), 0))}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </ScrollArea>
         </CardContent>
@@ -879,6 +1119,22 @@ export function ReportsPage() {
                   </tr>
                 )}
               </tbody>
+              {fuelBreakdown.length > 0 && !loadingFuel && (
+                <tfoot className="sticky bottom-0 bg-muted/80 backdrop-blur-sm font-semibold">
+                  <tr className="border-t-2">
+                    <td className="py-3 px-2">TOTAL</td>
+                    <td className="text-right py-3 px-2">
+                      {fuelBreakdown.reduce((sum, item) => sum + (item.recordCount || 0), 0)}
+                    </td>
+                    <td className="text-right py-3 px-2">
+                      {fuelBreakdown.reduce((sum, item) => sum + (item.totalLiters || 0), 0).toFixed(1)} L
+                    </td>
+                    <td className="text-right py-3 px-2">
+                      {formatCurrency(fuelBreakdown.reduce((sum, item) => sum + (item.totalAmount || 0), 0))}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </ScrollArea>
         </CardContent>
@@ -994,6 +1250,19 @@ export function ReportsPage() {
                   </tr>
                 )}
               </tbody>
+              {pettyCashBreakdown.length > 0 && !loadingPettyCash && (
+                <tfoot className="sticky bottom-0 bg-muted/80 backdrop-blur-sm font-semibold">
+                  <tr className="border-t-2">
+                    <td className="py-3 px-2">TOTAL</td>
+                    <td className="text-right py-3 px-2">
+                      {pettyCashBreakdown.reduce((sum, item) => sum + (item.expenseCount || 0), 0)}
+                    </td>
+                    <td className="text-right py-3 px-2">
+                      {formatCurrency(pettyCashBreakdown.reduce((sum, item) => sum + (item.totalAmount || 0), 0))}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </ScrollArea>
         </CardContent>
@@ -1017,15 +1286,15 @@ export function ReportsPage() {
 
       <Card data-testid="card-top-products-chart">
         <CardHeader>
-          <CardTitle>Top 10 Productos</CardTitle>
+          <CardTitle>Top {productsLimit} Productos</CardTitle>
           <CardDescription>Por monto total de ventas</CardDescription>
         </CardHeader>
         <CardContent>
           {loadingProducts ? (
             <Skeleton className="h-80" />
-          ) : topProducts.length > 0 ? (
+          ) : displayedTopProducts.length > 0 ? (
             <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={topProducts} layout="vertical">
+              <BarChart data={displayedTopProducts} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis type="number" tick={{ fontSize: 12 }} />
                 <YAxis 
@@ -1051,8 +1320,33 @@ export function ReportsPage() {
       </Card>
 
       <Card data-testid="card-products-table">
-        <CardHeader>
-          <CardTitle>Detalle por Producto</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <div>
+            <CardTitle>Detalle por Producto</CardTitle>
+            <CardDescription>Mostrando {displayedTopProducts.length} productos</CardDescription>
+          </div>
+          <div className="flex gap-2">
+            {productsLimit > 10 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setProductsLimit(10)}
+                data-testid="button-products-show-less"
+              >
+                Ver menos
+              </Button>
+            )}
+            {displayedTopProducts.length === productsLimit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setProductsLimit(prev => prev + 10)}
+                data-testid="button-products-show-more"
+              >
+                Ver más
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-96">
@@ -1068,8 +1362,8 @@ export function ReportsPage() {
               <tbody>
                 {loadingProducts ? (
                   <tr><td colSpan={4}>{renderLoadingSkeleton()}</td></tr>
-                ) : topProducts.length > 0 ? (
-                  topProducts.map((item, index) => (
+                ) : displayedTopProducts.length > 0 ? (
+                  displayedTopProducts.map((item, index) => (
                     <tr key={index} className="border-b hover:bg-muted/50" data-testid={`row-product-${index}`}>
                       <td className="py-3 px-2">
                         <div>
@@ -1092,15 +1386,15 @@ export function ReportsPage() {
                   </tr>
                 )}
               </tbody>
-              {topProducts.length > 0 && !loadingProducts && (
+              {displayedTopProducts.length > 0 && !loadingProducts && (
                 <tfoot className="sticky bottom-0 bg-muted/80 backdrop-blur-sm font-semibold">
                   <tr className="border-t-2">
                     <td className="py-3 px-2">TOTAL</td>
                     <td className="text-right py-3 px-2">
-                      {topProducts.reduce((sum, item) => sum + (item.quantity || 0), 0)}
+                      {displayedTopProducts.reduce((sum, item) => sum + (item.quantity || 0), 0)}
                     </td>
                     <td className="text-right py-3 px-2">
-                      {formatCurrency(topProducts.reduce((sum, item) => sum + (item.totalAmount || 0), 0))}
+                      {formatCurrency(displayedTopProducts.reduce((sum, item) => sum + (item.totalAmount || 0), 0))}
                     </td>
                     <td className="text-right py-3 px-2">-</td>
                   </tr>
@@ -1123,9 +1417,9 @@ export function ReportsPage() {
         <CardContent>
           {loadingMachines ? (
             <Skeleton className="h-80" />
-          ) : machinePerformance.length > 0 ? (
+          ) : filteredMachinePerformance.length > 0 ? (
             <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={machinePerformance.slice(0, 10)}>
+              <BarChart data={filteredMachinePerformance.slice(0, 10)}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="machine.code" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 12 }} />
@@ -1165,8 +1459,8 @@ export function ReportsPage() {
               <tbody>
                 {loadingMachines ? (
                   <tr><td colSpan={6}>{renderLoadingSkeleton()}</td></tr>
-                ) : machinePerformance.length > 0 ? (
-                  machinePerformance.map((item, index) => (
+                ) : filteredMachinePerformance.length > 0 ? (
+                  filteredMachinePerformance.map((item, index) => (
                     <tr key={index} className="border-b hover:bg-muted/50" data-testid={`row-machine-${index}`}>
                       <td className="py-3 px-2">
                         <div>
@@ -1195,23 +1489,23 @@ export function ReportsPage() {
                   </tr>
                 )}
               </tbody>
-              {machinePerformance.length > 0 && !loadingMachines && (
+              {filteredMachinePerformance.length > 0 && !loadingMachines && (
                 <tfoot className="sticky bottom-0 bg-muted/80 backdrop-blur-sm font-semibold">
                   <tr className="border-t-2">
                     <td className="py-3 px-2">TOTAL</td>
                     <td className="text-right py-3 px-2">
-                      {machinePerformance.reduce((sum, item) => sum + (item.transactionCount || 0), 0)}
+                      {filteredMachinePerformance.reduce((sum, item) => sum + (item.transactionCount || 0), 0)}
                     </td>
                     <td className="text-right py-3 px-2">
-                      {machinePerformance.reduce((sum, item) => sum + (item.totalQuantity || 0), 0)}
+                      {filteredMachinePerformance.reduce((sum, item) => sum + (item.totalQuantity || 0), 0)}
                     </td>
                     <td className="text-right py-3 px-2">
-                      {formatCurrency(machinePerformance.reduce((sum, item) => sum + (item.totalSales || 0), 0))}
+                      {formatCurrency(filteredMachinePerformance.reduce((sum, item) => sum + (item.totalSales || 0), 0))}
                     </td>
                     <td className="text-right py-3 px-2">-</td>
                     <td className="text-center py-3 px-2">
                       <Badge variant="outline">
-                        {machinePerformance.reduce((sum, item) => sum + (item.activeAlerts || 0), 0)}
+                        {filteredMachinePerformance.reduce((sum, item) => sum + (item.activeAlerts || 0), 0)}
                       </Badge>
                     </td>
                   </tr>
@@ -1316,6 +1610,324 @@ export function ReportsPage() {
     </div>
   );
 
+  const filteredWarehouseMovements = useMemo(() => {
+    if (movementType === "all") return warehouseMovements;
+    return warehouseMovements.filter((m: any) => m.movementType === movementType);
+  }, [warehouseMovements, movementType]);
+
+  const warehouseChartData = useMemo(() => {
+    const grouped: Record<string, { type: string; count: number; totalCost: number }> = {};
+    warehouseMovements.forEach((m: any) => {
+      const type = m.movementType || 'otros';
+      if (!grouped[type]) {
+        grouped[type] = { type: movementTypeLabels[type] || type, count: 0, totalCost: 0 };
+      }
+      grouped[type].count += 1;
+      grouped[type].totalCost += parseFloat(m.cost || 0);
+    });
+    return Object.values(grouped);
+  }, [warehouseMovements]);
+
+  const shrinkageChartData = useMemo(() => {
+    const grouped: Record<string, { type: string; count: number; totalCost: number }> = {};
+    shrinkageRecords.forEach((s: any) => {
+      const type = s.shrinkageType || 'otros';
+      if (!grouped[type]) {
+        grouped[type] = { type: shrinkageTypeLabels[type] || type, count: 0, totalCost: 0 };
+      }
+      grouped[type].count += 1;
+      grouped[type].totalCost += parseFloat(s.cost || 0);
+    });
+    return Object.values(grouped);
+  }, [shrinkageRecords]);
+
+  const renderWarehouseTab = () => (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-4">
+        <Select value={movementType} onValueChange={setMovementType}>
+          <SelectTrigger className="w-48" data-testid="select-movement-type">
+            <SelectValue placeholder="Tipo de movimiento" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all" data-testid="option-movement-all">Todos</SelectItem>
+            <SelectItem value="entrada" data-testid="option-movement-entrada">Entrada</SelectItem>
+            <SelectItem value="salida" data-testid="option-movement-salida">Salida</SelectItem>
+            <SelectItem value="ajuste" data-testid="option-movement-ajuste">Ajuste</SelectItem>
+            <SelectItem value="merma" data-testid="option-movement-merma">Merma</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          onClick={() => handleExport("inventory")}
+          disabled={isExporting}
+          data-testid="button-export-warehouse"
+        >
+          <Download className={`h-4 w-4 mr-2 ${isExporting ? 'animate-pulse' : ''}`} />
+          {isExporting ? "Exportando..." : "Exportar CSV"}
+        </Button>
+      </div>
+
+      <Card data-testid="card-warehouse-chart">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Warehouse className="h-5 w-5 text-primary" />
+            Movimientos por Tipo
+          </CardTitle>
+          <CardDescription>Distribución de movimientos de inventario</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingWarehouse ? (
+            <Skeleton className="h-80" />
+          ) : warehouseChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={warehouseChartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="type" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip formatter={(value: number, name: string) => 
+                  name === 'Costo' ? formatCurrency(value) : value
+                } />
+                <Legend />
+                <Bar dataKey="count" fill="#2F6FED" name="Cantidad" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="totalCost" fill="#4ECB71" name="Costo" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-80 flex items-center justify-center text-muted-foreground">
+              No hay movimientos de almacén en este período
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-warehouse-table">
+        <CardHeader>
+          <CardTitle>Detalle de Movimientos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="h-96">
+            <table className="w-full">
+              <thead className="sticky top-0 bg-background">
+                <tr className="border-b">
+                  <th className="text-left py-3 px-2 text-sm font-medium">Fecha</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium">Producto</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium">Tipo</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium">Lote</th>
+                  <th className="text-right py-3 px-2 text-sm font-medium">Cantidad</th>
+                  <th className="text-right py-3 px-2 text-sm font-medium">Costo</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium">Usuario</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingWarehouse ? (
+                  <tr><td colSpan={7}>{renderLoadingSkeleton()}</td></tr>
+                ) : filteredWarehouseMovements.length > 0 ? (
+                  filteredWarehouseMovements.map((item: any, index: number) => (
+                    <tr key={index} className="border-b hover:bg-muted/50" data-testid={`row-warehouse-${index}`}>
+                      <td className="py-3 px-2">{formatDateShort(item.date || item.createdAt)}</td>
+                      <td className="py-3 px-2">
+                        <div>
+                          <p className="font-medium">{item.product?.name || 'N/A'}</p>
+                          <p className="text-xs text-muted-foreground">{item.product?.code}</p>
+                        </div>
+                      </td>
+                      <td className="py-3 px-2">
+                        <Badge variant={
+                          item.movementType === 'entrada' ? 'default' :
+                          item.movementType === 'salida' ? 'secondary' :
+                          item.movementType === 'merma' ? 'destructive' : 'outline'
+                        }>
+                          {movementTypeLabels[item.movementType] || item.movementType}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-2">{item.lotNumber || item.lot?.lotNumber || '-'}</td>
+                      <td className="text-right py-3 px-2">{item.quantity}</td>
+                      <td className="text-right py-3 px-2">{formatCurrency(item.cost || 0)}</td>
+                      <td className="py-3 px-2">{item.user?.fullName || item.user?.username || '-'}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                      No hay movimientos de almacén en este período
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {filteredWarehouseMovements.length > 0 && !loadingWarehouse && (
+                <tfoot className="sticky bottom-0 bg-muted/80 backdrop-blur-sm font-semibold">
+                  <tr className="border-t-2">
+                    <td className="py-3 px-2" colSpan={4}>TOTAL</td>
+                    <td className="text-right py-3 px-2">
+                      {filteredWarehouseMovements.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0)}
+                    </td>
+                    <td className="text-right py-3 px-2">
+                      {formatCurrency(filteredWarehouseMovements.reduce((sum: number, item: any) => sum + parseFloat(item.cost || 0), 0))}
+                    </td>
+                    <td className="py-3 px-2"></td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </ScrollArea>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderShrinkageTab = () => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatsCard
+          title="Total Mermas"
+          value={shrinkageSummary?.totalRecords || 0}
+          icon={AlertTriangle}
+          iconColor="warning"
+          subtitle="Registros"
+        />
+        <StatsCard
+          title="Costo Total"
+          value={formatCurrency(shrinkageSummary?.totalCost || 0)}
+          icon={DollarSign}
+          iconColor="primary"
+          subtitle="Pérdidas"
+        />
+        <StatsCard
+          title="Unidades Perdidas"
+          value={shrinkageSummary?.totalQuantity || 0}
+          icon={Package}
+          iconColor="purple"
+          subtitle="Productos"
+        />
+        <StatsCard
+          title="Pendientes"
+          value={shrinkageSummary?.pendingCount || 0}
+          icon={Clock}
+          iconColor="warning"
+          subtitle="Por aprobar"
+        />
+      </div>
+
+      <Card data-testid="card-shrinkage-chart">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-yellow-500" />
+            Distribución por Tipo de Merma
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loadingShrinkage ? (
+            <Skeleton className="h-80" />
+          ) : shrinkageChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={shrinkageChartData}
+                  dataKey="totalCost"
+                  nameKey="type"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={100}
+                  label={({ type, percent }) => `${type} ${(percent * 100).toFixed(0)}%`}
+                  labelLine={false}
+                >
+                  {shrinkageChartData.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-80 flex items-center justify-center text-muted-foreground">
+              No hay registros de mermas en este período
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-shrinkage-table">
+        <CardHeader>
+          <CardTitle>Registros de Mermas</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="h-96">
+            <table className="w-full">
+              <thead className="sticky top-0 bg-background">
+                <tr className="border-b">
+                  <th className="text-left py-3 px-2 text-sm font-medium">Fecha</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium">Producto</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium">Tipo</th>
+                  <th className="text-right py-3 px-2 text-sm font-medium">Cantidad</th>
+                  <th className="text-right py-3 px-2 text-sm font-medium">Costo</th>
+                  <th className="text-center py-3 px-2 text-sm font-medium">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingShrinkage ? (
+                  <tr><td colSpan={6}>{renderLoadingSkeleton()}</td></tr>
+                ) : shrinkageRecords.length > 0 ? (
+                  shrinkageRecords.map((item: any, index: number) => (
+                    <tr key={index} className="border-b hover:bg-muted/50" data-testid={`row-shrinkage-${index}`}>
+                      <td className="py-3 px-2">{formatDateShort(item.date || item.createdAt)}</td>
+                      <td className="py-3 px-2">
+                        <div>
+                          <p className="font-medium">{item.product?.name || 'N/A'}</p>
+                          <p className="text-xs text-muted-foreground">{item.product?.code}</p>
+                        </div>
+                      </td>
+                      <td className="py-3 px-2">
+                        <Badge variant={
+                          item.shrinkageType === 'caducidad' ? 'secondary' :
+                          item.shrinkageType === 'robo' ? 'destructive' :
+                          item.shrinkageType === 'danio' ? 'outline' : 'default'
+                        }>
+                          {shrinkageTypeLabels[item.shrinkageType] || item.shrinkageType}
+                        </Badge>
+                      </td>
+                      <td className="text-right py-3 px-2">{item.quantity}</td>
+                      <td className="text-right py-3 px-2">{formatCurrency(item.cost || 0)}</td>
+                      <td className="text-center py-3 px-2">
+                        <Badge variant={
+                          item.status === 'aprobado' ? 'default' :
+                          item.status === 'rechazado' ? 'destructive' : 'secondary'
+                        } className={item.status === 'aprobado' ? 'bg-green-100 text-green-800' : ''}>
+                          {item.status === 'aprobado' ? 'Aprobado' : 
+                           item.status === 'rechazado' ? 'Rechazado' : 'Pendiente'}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="text-center py-8 text-muted-foreground">
+                      No hay registros de mermas en este período
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {shrinkageRecords.length > 0 && !loadingShrinkage && (
+                <tfoot className="sticky bottom-0 bg-muted/80 backdrop-blur-sm font-semibold">
+                  <tr className="border-t-2">
+                    <td className="py-3 px-2" colSpan={3}>TOTAL</td>
+                    <td className="text-right py-3 px-2">
+                      {shrinkageRecords.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0)}
+                    </td>
+                    <td className="text-right py-3 px-2">
+                      {formatCurrency(shrinkageRecords.reduce((sum: number, item: any) => sum + parseFloat(item.cost || 0), 0))}
+                    </td>
+                    <td className="py-3 px-2"></td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </ScrollArea>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   return (
     <ScrollArea className="h-full">
       <div className="p-6 space-y-6">
@@ -1337,6 +1949,44 @@ export function ReportsPage() {
                 {dateRanges.map((range) => (
                   <SelectItem key={range.value} value={range.value} data-testid={`option-range-${range.value}`}>
                     {range.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select 
+              value={selectedZone} 
+              onValueChange={(val) => {
+                setSelectedZone(val);
+                setSelectedMachineId("all");
+              }}
+            >
+              <SelectTrigger className="w-36" data-testid="select-zone">
+                <MapPin className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Zona" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" data-testid="option-zone-all">Todas las zonas</SelectItem>
+                <SelectItem value="Norte" data-testid="option-zone-norte">Norte</SelectItem>
+                <SelectItem value="Sur" data-testid="option-zone-sur">Sur</SelectItem>
+                <SelectItem value="Este" data-testid="option-zone-este">Este</SelectItem>
+                <SelectItem value="Oeste" data-testid="option-zone-oeste">Oeste</SelectItem>
+                <SelectItem value="Centro" data-testid="option-zone-centro">Centro</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={selectedMachineId} onValueChange={setSelectedMachineId}>
+              <SelectTrigger className="w-48" data-testid="select-machine">
+                <Building className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Máquina" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" data-testid="option-machine-all">Todas las máquinas</SelectItem>
+                {filteredMachines.map((machine) => (
+                  <SelectItem 
+                    key={machine.id} 
+                    value={machine.id}
+                    data-testid={`option-machine-${machine.id}`}
+                  >
+                    {machine.code} - {machine.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1387,6 +2037,14 @@ export function ReportsPage() {
               <Users className="h-4 w-4" />
               <span className="hidden sm:inline">Proveedores</span>
             </TabsTrigger>
+            <TabsTrigger value="warehouse" data-testid="tab-warehouse" className="flex items-center gap-2">
+              <Warehouse className="h-4 w-4" />
+              <span className="hidden sm:inline">Almacén/Kardex</span>
+            </TabsTrigger>
+            <TabsTrigger value="shrinkage" data-testid="tab-shrinkage" className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              <span className="hidden sm:inline">Mermas</span>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" data-testid="content-overview">
@@ -1412,6 +2070,12 @@ export function ReportsPage() {
           </TabsContent>
           <TabsContent value="suppliers" data-testid="content-suppliers">
             {renderSuppliersTab()}
+          </TabsContent>
+          <TabsContent value="warehouse" data-testid="content-warehouse">
+            {renderWarehouseTab()}
+          </TabsContent>
+          <TabsContent value="shrinkage" data-testid="content-shrinkage">
+            {renderShrinkageTab()}
           </TabsContent>
         </Tabs>
       </div>
