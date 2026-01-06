@@ -196,7 +196,7 @@ export function SuppliersManagementPage() {
           stats: {
             machinesAttended: completedStops.length,
             totalMachines: todayStops.length,
-            cashCollected: supplierCash.reduce((acc, c) => acc + (c.amount || 0), 0),
+            cashCollected: supplierCash.reduce((acc, c) => acc + parseFloat(c.actualAmount || "0"), 0),
             productsLoaded: supplierLoads.reduce((acc, l) => acc + (l.quantity || 0), 0),
             avgServiceTime: Math.round(avgTime),
           },
