@@ -218,6 +218,20 @@ export function TasksPage() {
     },
   });
 
+  const cancelTaskMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("POST", `/api/tasks/${id}/cancel`, { cancelledBy: user?.id || "system" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/stats"] });
+      toast({ title: "Tarea cancelada", description: "La tarea ha sido cancelada" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo cancelar la tarea", variant: "destructive" });
+    },
+  });
+
   const changeStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       return apiRequest("PATCH", `/api/tasks/${id}`, { status });
@@ -544,6 +558,15 @@ export function TasksPage() {
                                     <Edit className="h-4 w-4 mr-2" />
                                     Editar
                                   </DropdownMenuItem>
+                                  {task.status !== "completada" && task.status !== "cancelada" && (
+                                    <DropdownMenuItem 
+                                      onClick={() => cancelTaskMutation.mutate(task.id)}
+                                      className="text-orange-600"
+                                    >
+                                      <XCircle className="h-4 w-4 mr-2" />
+                                      Cancelar
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem 
                                     onClick={() => deleteTaskMutation.mutate(task.id)}
                                     className="text-red-600"
