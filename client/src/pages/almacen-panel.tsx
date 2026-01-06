@@ -55,30 +55,15 @@ export function AlmacenPanelPage() {
   });
 
   const { data: expiringLots = [], isLoading: expiringLoading } = useQuery<LotItem[]>({
-    queryKey: ["/api/warehouse/lots/expiring", { days: 30 }],
-    queryFn: async () => {
-      const response = await fetch("/api/warehouse/lots/expiring?days=30", { credentials: "include" });
-      if (!response.ok) throw new Error("Error loading expiring lots");
-      return response.json();
-    },
+    queryKey: ["/api/warehouse/lots/expiring", { days: "30" }],
   });
 
   const { data: pendingReceptions = [], isLoading: receptionsLoading } = useQuery<PendingReception[]>({
-    queryKey: ["/api/purchase-receptions"],
-    queryFn: async () => {
-      const response = await fetch("/api/purchase-receptions?status=pending", { credentials: "include" });
-      if (!response.ok) return [];
-      return response.json();
-    },
+    queryKey: ["/api/purchase-receptions", { status: "pending" }],
   });
 
   const { data: recentMovements = [] } = useQuery<(WarehouseMovement & { product: Product })[]>({
-    queryKey: ["/api/warehouse/movements", { limit: 10 }],
-    queryFn: async () => {
-      const response = await fetch("/api/warehouse/movements?limit=10", { credentials: "include" });
-      if (!response.ok) return [];
-      return response.json();
-    },
+    queryKey: ["/api/warehouse/movements", { limit: "10" }],
   });
 
   const getStockLevelColor = (current: number, min: number, max: number) => {
