@@ -6,7 +6,7 @@ import {
   routes, routeStops, serviceRecords, purchaseOrders, purchaseReceptions,
   vehicles, fuelRecords, machineVisits
 } from "@shared/schema";
-import { eq, desc, and, gte, sql, count } from "drizzle-orm";
+import { eq, desc, and, gte, sql, count, inArray } from "drizzle-orm";
 
 interface MachineBasic {
   id: string;
@@ -99,6 +99,8 @@ interface SummaryCache {
     activeEmployees: number;
     weekVisits: number;
     weekTasksCompleted: number;
+    topPerformers: { id: string; name: string; role: string; visitsThisWeek: number; tasksCompleted: number }[];
+    byRole: { technicians: number; admins: number; supervisors: number };
   };
   lastUpdated: Date;
 }
@@ -134,7 +136,7 @@ const defaultSummaryCache: SummaryCache = {
   routes: { activeRoutes: 0, totalRoutes: 0, todayStops: 0, completedStops: 0, pendingStops: 0, avgServiceTimeMinutes: 0 },
   purchases: { openOrders: 0, totalOrders: 0, weekSpending: 0, pendingReceptions: 0 },
   fuel: { totalVehicles: 0, activeVehicles: 0, monthCost: 0, monthLiters: 0, avgEfficiency: "0", lowEfficiencyAlerts: 0 },
-  hr: { totalEmployees: 0, activeEmployees: 0, weekVisits: 0, weekTasksCompleted: 0 },
+  hr: { totalEmployees: 0, activeEmployees: 0, weekVisits: 0, weekTasksCompleted: 0, topPerformers: [], byRole: { technicians: 0, admins: 0, supervisors: 0 } },
   lastUpdated: new Date(0),
 };
 
@@ -436,7 +438,8 @@ async function computePurchasesSummary() {
     .select({
       total: count(),
       open: sql<number>`count(*) filter (where ${purchaseOrders.status} in ('borrador', 'enviada'))`,
-      weekTotal: sql<number>`coalesce(sum(case when ${purchaseOrders.createdAt} >= ${weekAgo} then cast(${purchaseOrders.total} as numeric) else 0 end), 0)`,
+      // Sum only orders that were received (fully or partially) in the last week
+      weekTotal: sql<number>`coalesce(sum(case when ${purchaseOrders.status} in ('recibida', 'parcialmente_recibida') and ${purchaseOrders.createdAt} >= ${weekAgo} then cast(${purchaseOrders.total} as numeric) else 0 end), 0)`,
     })
     .from(purchaseOrders);
 
@@ -506,6 +509,9 @@ async function computeHRSummary() {
     .select({
       total: count(),
       active: sql<number>`count(*) filter (where ${users.isActive} = true)`,
+      technicians: sql<number>`count(*) filter (where ${users.role} in ('abastecedor', 'tecnico') and ${users.isActive} = true)`,
+      admins: sql<number>`count(*) filter (where ${users.role} = 'admin' and ${users.isActive} = true)`,
+      supervisors: sql<number>`count(*) filter (where ${users.role} = 'supervisor' and ${users.isActive} = true)`,
     })
     .from(users);
 
@@ -521,11 +527,64 @@ async function computeHRSummary() {
     .from(tasks)
     .where(gte(tasks.createdAt, weekAgo));
 
+  // Top performers - users with most visits/tasks this week
+  const topPerformersData = await db
+    .select({
+      userId: machineVisits.userId,
+    })
+    .from(machineVisits)
+    .where(gte(machineVisits.createdAt, weekAgo))
+    .groupBy(machineVisits.userId)
+    .limit(5);
+
+  const userIds = topPerformersData.map(p => p.userId).filter(Boolean) as string[];
+  const usersList = userIds.length > 0 ? await db.select().from(users).where(inArray(users.id, userIds)) : [];
+  const usersMap = new Map(usersList.map(u => [u.id, u]));
+
+  // Count visits and tasks per user
+  const visitsPerUser = await db
+    .select({
+      userId: machineVisits.userId,
+      count: count(),
+    })
+    .from(machineVisits)
+    .where(gte(machineVisits.createdAt, weekAgo))
+    .groupBy(machineVisits.userId);
+
+  const tasksPerUser = await db
+    .select({
+      userId: tasks.assignedUserId,
+      count: sql<number>`count(*) filter (where ${tasks.status} = 'completada')`,
+    })
+    .from(tasks)
+    .where(gte(tasks.createdAt, weekAgo))
+    .groupBy(tasks.assignedUserId);
+
+  const visitsMap = new Map(visitsPerUser.map(v => [v.userId, v.count]));
+  const tasksMap = new Map(tasksPerUser.map(t => [t.userId, Number(t.count) || 0]));
+
+  const topPerformers = userIds.slice(0, 5).map(userId => {
+    const user = usersMap.get(userId);
+    return {
+      id: userId,
+      name: user?.fullName || user?.username || 'Desconocido',
+      role: user?.role || 'empleado',
+      visitsThisWeek: visitsMap.get(userId) || 0,
+      tasksCompleted: tasksMap.get(userId) || 0,
+    };
+  });
+
   return {
     totalEmployees: employeeStats[0]?.total || 0,
     activeEmployees: Number(employeeStats[0]?.active) || 0,
     weekVisits: visitStats[0]?.count || 0,
     weekTasksCompleted: Number(taskStats[0]?.completed) || 0,
+    topPerformers,
+    byRole: {
+      technicians: Number(employeeStats[0]?.technicians) || 0,
+      admins: Number(employeeStats[0]?.admins) || 0,
+      supervisors: Number(employeeStats[0]?.supervisors) || 0,
+    },
   };
 }
 
