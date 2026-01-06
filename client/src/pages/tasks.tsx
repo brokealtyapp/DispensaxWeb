@@ -286,7 +286,8 @@ export function TasksPage() {
     if (activeTab === "pending") return task.status === "pendiente";
     if (activeTab === "in_progress") return task.status === "en_progreso";
     if (activeTab === "completed") return task.status === "completada";
-    if (activeTab === "overdue") return task.dueDate && isPast(parseISO(task.dueDate)) && task.status !== "completada";
+    if (activeTab === "cancelled") return task.status === "cancelada";
+    if (activeTab === "overdue") return task.dueDate && isPast(parseISO(task.dueDate)) && task.status !== "completada" && task.status !== "cancelada";
     return true;
   }) || [];
 
@@ -442,6 +443,7 @@ export function TasksPage() {
                 <TabsTrigger value="pending" data-testid="tab-pending">Pendientes</TabsTrigger>
                 <TabsTrigger value="in_progress" data-testid="tab-in-progress">En Progreso</TabsTrigger>
                 <TabsTrigger value="completed" data-testid="tab-completed">Completadas</TabsTrigger>
+                <TabsTrigger value="cancelled" data-testid="tab-cancelled">Canceladas</TabsTrigger>
                 <TabsTrigger value="overdue" data-testid="tab-overdue">Vencidas</TabsTrigger>
               </TabsList>
 
