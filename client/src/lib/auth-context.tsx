@@ -266,11 +266,11 @@ export function getRoleDefaultRoute(role: UserRole): string {
 
 export function canAccessRoute(role: UserRole, route: string): boolean {
   const adminRoutes = ["/", "/maquinas", "/tareas", "/todas-tareas", "/calendario", "/almacen", "/almacen-panel",
-    "/abastecedor", "/dinero-productos", "/compras", "/combustible", "/contabilidad", "/contabilidad-panel",
+    "/abastecedor", "/abastecedores", "/dinero-productos", "/compras", "/combustible", "/contabilidad", "/contabilidad-panel",
     "/caja-chica", "/rh", "/reportes", "/configuracion", "/supervisor", "/productos", "/supervisores", "/usuarios", "/rutas"];
   
   const supervisorRoutes = ["/supervisor", "/maquinas", "/tareas", "/todas-tareas", "/calendario", 
-    "/almacen", "/abastecedor", "/dinero-productos", "/combustible", "/rh", "/configuracion", "/productos", "/rutas"];
+    "/almacen", "/abastecedor", "/abastecedores", "/dinero-productos", "/combustible", "/rh", "/configuracion", "/productos", "/rutas"];
   
   const abastecedorRoutes = ["/abastecedor", "/tareas", "/calendario", "/configuracion"];
   
