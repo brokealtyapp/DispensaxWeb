@@ -3617,6 +3617,150 @@ export async function registerRoutes(
     }
   });
 
+  // Products Summary
+  app.get("/api/summary/products", async (req: Request, res: Response) => {
+    try {
+      const products = await storage.getProducts();
+      const productLots = await storage.getProductLots();
+      const machineSales = await storage.getMachineSales();
+      
+      // Calculate stock per product
+      const productStocks: Record<string, number> = {};
+      productLots.forEach(lot => {
+        if (!productStocks[lot.productId]) {
+          productStocks[lot.productId] = 0;
+        }
+        productStocks[lot.productId] += lot.remainingQuantity || lot.quantity;
+      });
+      
+      // Products with low stock (< 50 units)
+      const lowStockProducts = products.filter(p => (productStocks[p.id] || 0) < 50);
+      
+      // Sales in last 7 days
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const todaySales = machineSales.filter(s => {
+        const saleDate = new Date(s.saleDate || 0);
+        saleDate.setHours(0, 0, 0, 0);
+        return saleDate.getTime() === today.getTime();
+      });
+      
+      const weekSales = machineSales.filter(s => new Date(s.saleDate || 0) >= weekAgo);
+      
+      // Top selling products
+      const salesByProduct: Record<string, { quantity: number; revenue: number; name: string }> = {};
+      weekSales.forEach(sale => {
+        const pid = sale.productId;
+        if (!pid) return;
+        if (!salesByProduct[pid]) {
+          const product = products.find(p => p.id === pid);
+          salesByProduct[pid] = { 
+            quantity: 0, 
+            revenue: 0, 
+            name: product?.name || "Desconocido" 
+          };
+        }
+        salesByProduct[pid].quantity += sale.quantity || 0;
+        salesByProduct[pid].revenue += parseFloat(sale.totalAmount || "0");
+      });
+      
+      const topProducts = Object.entries(salesByProduct)
+        .sort((a, b) => b[1].quantity - a[1].quantity)
+        .slice(0, 5)
+        .map(([productId, data]) => ({
+          id: productId,
+          name: data.name,
+          quantity: data.quantity,
+          revenue: data.revenue
+        }));
+      
+      // Categories count
+      const categories: Record<string, number> = {};
+      products.forEach(p => {
+        const cat = p.category || "sin_categoria";
+        categories[cat] = (categories[cat] || 0) + 1;
+      });
+      
+      res.json({
+        totalProducts: products.length,
+        activeProducts: products.filter(p => p.isActive).length,
+        lowStockCount: lowStockProducts.length,
+        todaySalesUnits: todaySales.reduce((sum, s) => sum + (s.quantity || 0), 0),
+        weekSalesUnits: weekSales.reduce((sum, s) => sum + (s.quantity || 0), 0),
+        topProducts,
+        categories
+      });
+    } catch (error) {
+      console.error("Error in products summary:", error);
+      res.status(500).json({ error: "Error al obtener resumen de productos" });
+    }
+  });
+
+  // Machines Summary
+  app.get("/api/summary/machines", async (req: Request, res: Response) => {
+    try {
+      const dashCache = getDashboardCache();
+      const machines = dashCache.machinesList;
+      const alerts = dashCache.recentAlerts;
+      const machineSales = await storage.getMachineSales();
+      
+      // Status counts
+      const statusCounts = {
+        operando: machines.filter(m => m.status === "operando").length,
+        necesita_servicio: machines.filter(m => m.status === "necesita_servicio").length,
+        mantenimiento: machines.filter(m => m.status === "mantenimiento").length,
+        fuera_servicio: machines.filter(m => m.status === "fuera_servicio").length
+      };
+      
+      // Today's sales
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todaySales = machineSales.filter(s => {
+        const saleDate = new Date(s.saleDate || 0);
+        saleDate.setHours(0, 0, 0, 0);
+        return saleDate.getTime() === today.getTime();
+      });
+      const todayRevenue = todaySales.reduce((sum, s) => sum + parseFloat(s.totalAmount || "0"), 0);
+      
+      // Critical alerts count
+      const criticalAlerts = alerts.filter(a => a.priority === "critica").length;
+      const highAlerts = alerts.filter(a => a.priority === "alta").length;
+      
+      // Zones summary
+      const zoneStats: Record<string, { total: number; operating: number }> = {};
+      machines.forEach(m => {
+        const zone = m.zone || "Sin zona";
+        if (!zoneStats[zone]) {
+          zoneStats[zone] = { total: 0, operating: 0 };
+        }
+        zoneStats[zone].total++;
+        if (m.status === "operando") {
+          zoneStats[zone].operating++;
+        }
+      });
+      
+      res.json({
+        totalMachines: machines.length,
+        statusCounts,
+        operativityRate: machines.length > 0 
+          ? Math.round((statusCounts.operando / machines.length) * 100) 
+          : 0,
+        todaySalesUnits: todaySales.reduce((sum, s) => sum + (s.quantity || 0), 0),
+        todayRevenue,
+        activeAlerts: alerts.length,
+        criticalAlerts,
+        highAlerts,
+        zonesCount: Object.keys(zoneStats).length
+      });
+    } catch (error) {
+      console.error("Error in machines summary:", error);
+      res.status(500).json({ error: "Error al obtener resumen de máquinas" });
+    }
+  });
+
   // Supervisors management endpoints
   app.get("/api/supervisors", async (req: Request, res: Response) => {
     try {
