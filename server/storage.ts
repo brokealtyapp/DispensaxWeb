@@ -1800,17 +1800,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCashMovementsSummary(startDate?: Date, endDate?: Date): Promise<{ total: number; pending: number; delivered: number; deposited: number; differences: number }> {
-    const start = startDate || new Date(new Date().setHours(0, 0, 0, 0));
-    const end = endDate || new Date();
+    // Usar zona horaria GMT-4 (República Dominicana) para cálculo del día actual
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' });
+    const start = startDate || new Date(todayStr + 'T00:00:00-04:00');
+    const end = endDate || new Date(todayStr + 'T23:59:59.999-04:00');
     
+    // Obtener movimientos del día
     const movements = await db.select().from(cashMovements)
       .where(and(gte(cashMovements.createdAt, start), lte(cashMovements.createdAt, end)));
+    
+    // Obtener depósitos bancarios del día usando SQL DATE() para comparación exacta
+    const deposits = await db.select().from(bankDeposits)
+      .where(sql`DATE(${bankDeposits.depositDate}) = ${todayStr}`);
+    
+    const totalDeposited = deposits.reduce((sum, d) => sum + parseFloat(d.amount || "0"), 0);
     
     return {
       total: movements.reduce((sum, m) => sum + parseFloat(m.amount || "0"), 0),
       pending: movements.filter(m => m.status === "pendiente").reduce((sum, m) => sum + parseFloat(m.amount || "0"), 0),
       delivered: movements.filter(m => m.status === "entregado").reduce((sum, m) => sum + parseFloat(m.amount || "0"), 0),
-      deposited: movements.filter(m => m.status === "depositado").reduce((sum, m) => sum + parseFloat(m.amount || "0"), 0),
+      deposited: totalDeposited,
       differences: movements.reduce((sum, m) => sum + parseFloat(m.difference || "0"), 0),
     };
   }
