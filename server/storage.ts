@@ -2006,10 +2006,14 @@ export class DatabaseStorage implements IStorage {
 
   // Conciliación
   async getDailyReconciliation(date: Date): Promise<any> {
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Usar zona horaria GMT-4 (República Dominicana) para comparación de fechas
+    // Normalizar a inicio y fin del día en GMT-4
+    const dateStr = date.toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' });
+    const startOfDay = new Date(dateStr + 'T00:00:00-04:00');
+    const endOfDay = new Date(dateStr + 'T23:59:59.999-04:00');
+    
+    // Para deposit_date que solo tiene fecha (00:00:00), buscar por el día exacto
+    const depositDateStr = dateStr; // YYYY-MM-DD format
     
     const collections = await db.select().from(cashCollections)
       .where(and(gte(cashCollections.createdAt, startOfDay), lte(cashCollections.createdAt, endOfDay)));
@@ -2017,8 +2021,9 @@ export class DatabaseStorage implements IStorage {
     const movements = await db.select().from(cashMovements)
       .where(and(gte(cashMovements.createdAt, startOfDay), lte(cashMovements.createdAt, endOfDay)));
     
+    // Para bank_deposits, comparar por fecha exacta usando SQL
     const deposits = await db.select().from(bankDeposits)
-      .where(and(gte(bankDeposits.depositDate, startOfDay), lte(bankDeposits.depositDate, endOfDay)));
+      .where(sql`DATE(${bankDeposits.depositDate}) = ${depositDateStr}`);
     
     return {
       date,

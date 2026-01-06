@@ -468,7 +468,7 @@ export function MoneyProductsPage() {
                           <div className="text-right">
                             <p className="font-bold text-red-600" data-testid={`text-shrinkage-qty-${record.id}`}>-{record.quantity} unidades</p>
                             <p className="text-sm text-muted-foreground">
-                              ${parseFloat(record.totalLoss || "0").toLocaleString()} pérdida
+                              {formatCurrency(parseFloat(record.totalLoss || "0"))} pérdida
                             </p>
                           </div>
                           {getStatusBadge(record.status)}
@@ -493,21 +493,21 @@ export function MoneyProductsPage() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="p-4 bg-muted rounded-lg" data-testid="stat-collected">
                         <p className="text-sm text-muted-foreground">Recolectado</p>
-                        <p className="text-2xl font-bold">${dailyReconciliation.totalCollected?.toLocaleString()}</p>
+                        <p className="text-2xl font-bold">{formatCurrency(dailyReconciliation.totalCollected || 0)}</p>
                       </div>
                       <div className="p-4 bg-muted rounded-lg" data-testid="stat-expected">
                         <p className="text-sm text-muted-foreground">Esperado</p>
-                        <p className="text-2xl font-bold">${dailyReconciliation.totalExpected?.toLocaleString()}</p>
+                        <p className="text-2xl font-bold">{formatCurrency(dailyReconciliation.totalExpected || 0)}</p>
                       </div>
                       <div className="p-4 bg-muted rounded-lg" data-testid="stat-difference">
                         <p className="text-sm text-muted-foreground">Diferencia</p>
                         <p className={`text-2xl font-bold ${dailyReconciliation.totalDifference < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                          ${Math.abs(dailyReconciliation.totalDifference || 0).toLocaleString()}
+                          {formatCurrency(Math.abs(dailyReconciliation.totalDifference || 0))}
                         </p>
                       </div>
                       <div className="p-4 bg-muted rounded-lg" data-testid="stat-deposited">
                         <p className="text-sm text-muted-foreground">Depositado</p>
-                        <p className="text-2xl font-bold text-green-600">${dailyReconciliation.totalDeposited?.toLocaleString()}</p>
+                        <p className="text-2xl font-bold text-green-600">{formatCurrency(dailyReconciliation.totalDeposited || 0)}</p>
                       </div>
                     </div>
 
