@@ -16,6 +16,7 @@ import {
   SidebarMenuButton,
   SidebarGroup,
   SidebarGroupLabel,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import {
   LayoutDashboard,
@@ -102,6 +103,7 @@ export function AppSidebar() {
   const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { toggleSidebar } = useSidebar();
 
   const handleLogout = () => {
     logout();
@@ -185,6 +187,7 @@ export function AppSidebar() {
             variant="ghost"
             size="icon"
             className="h-8 w-8 shrink-0"
+            onClick={toggleSidebar}
             data-testid="button-collapse-sidebar"
           >
             <ChevronLeft className="h-4 w-4" />
