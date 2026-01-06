@@ -19,7 +19,7 @@ import {
 import { formatDistanceToNow, differenceInDays } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatDateShort } from "@/lib/utils";
-import type { Product, WarehouseInventory, WarehouseMovement, ProductLot, PurchaseReception } from "@shared/schema";
+import type { Product, WarehouseInventory, WarehouseMovement, ProductLot, PurchaseOrder, Supplier } from "@shared/schema";
 
 interface WarehouseStats {
   totalProducts: number;
@@ -38,11 +38,8 @@ interface LotItem extends ProductLot {
   product: Product;
 }
 
-interface PendingReception extends PurchaseReception {
-  order?: {
-    orderNumber: string;
-    supplier: { name: string };
-  };
+interface PendingOrder extends PurchaseOrder {
+  supplier?: Supplier;
 }
 
 export function AlmacenPanelPage() {
@@ -58,8 +55,8 @@ export function AlmacenPanelPage() {
     queryKey: ["/api/warehouse/lots/expiring", { days: "30" }],
   });
 
-  const { data: pendingReceptions = [], isLoading: receptionsLoading } = useQuery<PendingReception[]>({
-    queryKey: ["/api/purchase-receptions", { status: "pending" }],
+  const { data: pendingOrders = [], isLoading: ordersLoading } = useQuery<PendingOrder[]>({
+    queryKey: ["/api/purchase-orders", { status: "enviada" }],
   });
 
   const { data: recentMovements = [] } = useQuery<(WarehouseMovement & { product: Product })[]>({
@@ -296,38 +293,36 @@ export function AlmacenPanelPage() {
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Truck className="h-5 w-5 text-primary" />
-                  Recepciones Pendientes
+                  Órdenes Pendientes de Recepción
                 </CardTitle>
-                <Badge variant="secondary">{pendingReceptions.length}</Badge>
+                <Badge variant="secondary">{pendingOrders.length}</Badge>
               </div>
             </CardHeader>
             <CardContent>
-              {receptionsLoading ? (
+              {ordersLoading ? (
                 <div className="space-y-3">
                   {[...Array(3)].map((_, i) => (
                     <Skeleton key={i} className="h-14 w-full" />
                   ))}
                 </div>
-              ) : pendingReceptions.length === 0 ? (
+              ) : pendingOrders.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Truck className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                  <p>No hay recepciones pendientes</p>
+                  <p>No hay órdenes pendientes de recepción</p>
                 </div>
               ) : (
                 <ScrollArea className="h-[200px]">
                   <div className="space-y-3 pr-4">
-                    {pendingReceptions.slice(0, 5).map((reception) => (
+                    {pendingOrders.slice(0, 5).map((order) => (
                       <div
-                        key={reception.id}
+                        key={order.id}
                         className="p-3 rounded-lg bg-muted/50 flex items-center justify-between"
-                        data-testid={`item-pending-reception-${reception.id}`}
+                        data-testid={`item-pending-order-${order.id}`}
                       >
                         <div>
-                          <p className="font-medium">
-                            {reception.order?.orderNumber || `Recepción #${reception.id.slice(0, 8)}`}
-                          </p>
+                          <p className="font-medium">{order.orderNumber}</p>
                           <p className="text-xs text-muted-foreground">
-                            {reception.order?.supplier?.name || "Proveedor"}
+                            {order.supplier?.name || "Proveedor"} - RD$ {Number(order.total).toLocaleString()}
                           </p>
                         </div>
                         <Link href="/compras">
