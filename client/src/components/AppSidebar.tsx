@@ -148,7 +148,7 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar className="border-r-0">
+    <Sidebar collapsible="icon" className="border-r-0">
       <SidebarHeader className="p-4 pb-6 space-y-4">
         <div className="flex items-center justify-center py-3">
           <img 

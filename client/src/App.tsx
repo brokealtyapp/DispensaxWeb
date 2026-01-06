@@ -173,7 +173,7 @@ function ProtectedRoutes() {
         <div className="flex flex-col flex-1 overflow-hidden">
           <header className="flex items-center justify-between gap-4 px-6 py-4 bg-background sticky top-0 z-50">
             <div className="flex items-center gap-4">
-              <SidebarTrigger data-testid="button-sidebar-toggle" className="lg:hidden" />
+              <SidebarTrigger data-testid="button-sidebar-toggle" />
               <SearchBar
                 onSearch={handleSearch}
                 results={searchResults}
