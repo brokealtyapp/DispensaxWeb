@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -121,6 +121,15 @@ export function MachinesPage() {
   const [deletingMachineId, setDeletingMachineId] = useState<string | null>(null);
   const [, navigate] = useLocation();
   const { toast } = useToast();
+
+  // Read zone filter from URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const zoneParam = params.get("zone");
+    if (zoneParam) {
+      setZoneFilter(zoneParam);
+    }
+  }, []);
 
   const { data: machines = [], isLoading } = useQuery<MachineWithDetails[]>({
     queryKey: ["/api/machines"],
