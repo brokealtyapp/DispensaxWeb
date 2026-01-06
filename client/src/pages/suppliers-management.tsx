@@ -109,23 +109,43 @@ export function SuppliersManagementPage() {
   const [periodFilter, setPeriodFilter] = useState("hoy");
 
   const { data: suppliers = [], isLoading: loadingSuppliers } = useQuery<Supplier[]>({
-    queryKey: ["/api/users", { role: "abastecedor" }],
+    queryKey: ["/api/users", "abastecedor"],
+    queryFn: async () => {
+      const res = await fetch("/api/users?role=abastecedor");
+      if (!res.ok) throw new Error("Error fetching suppliers");
+      return res.json();
+    },
   });
 
   const { data: routes = [], isLoading: loadingRoutes } = useQuery<Route[]>({
-    queryKey: ["/api/routes"],
+    queryKey: ["/api/supplier/routes"],
   });
 
-  const { data: routeStops = [] } = useQuery<RouteStop[]>({
-    queryKey: ["/api/route-stops"],
+  const { data: routeStopsMap = {} } = useQuery<Record<string, RouteStop[]>>({
+    queryKey: ["/api/supplier/route-stops-map"],
+    queryFn: async () => {
+      const map: Record<string, RouteStop[]> = {};
+      for (const route of routes) {
+        try {
+          const res = await fetch(`/api/supplier/routes/${route.id}/stops`);
+          if (res.ok) {
+            map[route.id] = await res.json();
+          }
+        } catch (e) {
+          console.error("Error fetching stops for route", route.id);
+        }
+      }
+      return map;
+    },
+    enabled: routes.length > 0,
   });
 
   const { data: cashCollections = [] } = useQuery<any[]>({
-    queryKey: ["/api/cash-collections"],
+    queryKey: ["/api/supplier/cash-collections"],
   });
 
   const { data: productLoads = [] } = useQuery<any[]>({
-    queryKey: ["/api/product-loads"],
+    queryKey: ["/api/supplier/product-loads"],
   });
 
   const suppliersWithRoutes = useMemo((): SupplierWithRoute[] => {
@@ -139,11 +159,11 @@ export function SuppliersManagementPage() {
           return r.supplierId === supplier.id && routeKey === todayKey;
         });
 
-        const todayStops = todayRoute
-          ? routeStops.filter(s => s.routeId === todayRoute.id)
+        const todayStops: RouteStop[] = todayRoute
+          ? (routeStopsMap[todayRoute.id] || [])
           : [];
 
-        const completedStops = todayStops.filter(s => s.status === "completada");
+        const completedStops = todayStops.filter((s: RouteStop) => s.status === "completada");
 
         const supplierCash = cashCollections.filter(c => {
           const collectionDate = new Date(c.collectedAt || c.createdAt);
@@ -156,7 +176,7 @@ export function SuppliersManagementPage() {
         });
 
         const avgTime = completedStops.length > 0
-          ? completedStops.reduce((acc, stop) => {
+          ? completedStops.reduce((acc: number, stop: RouteStop) => {
               if (stop.actualArrival && stop.actualDeparture) {
                 const arrival = new Date(stop.actualArrival);
                 const departure = new Date(stop.actualDeparture);
@@ -179,7 +199,7 @@ export function SuppliersManagementPage() {
           },
         };
       });
-  }, [suppliers, routes, routeStops, cashCollections, productLoads]);
+  }, [suppliers, routes, routeStopsMap, cashCollections, productLoads]);
 
   const activeSuppliers = suppliersWithRoutes.filter(s => 
     s.todayRoute?.status === "en_progreso"
