@@ -3630,7 +3630,7 @@ export async function registerRoutes(
         if (!productStocks[lot.productId]) {
           productStocks[lot.productId] = 0;
         }
-        productStocks[lot.productId] += lot.remainingQuantity || lot.quantity;
+        productStocks[lot.productId] += lot.remainingQuantity ?? lot.quantity ?? 0;
       });
       
       // Products with low stock (< 50 units)

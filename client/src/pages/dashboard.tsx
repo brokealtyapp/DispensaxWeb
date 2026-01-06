@@ -104,6 +104,28 @@ interface SummaryReconciliation {
   collectionsCount: number;
 }
 
+interface SummaryProducts {
+  totalProducts: number;
+  activeProducts: number;
+  lowStockCount: number;
+  todaySalesUnits: number;
+  weekSalesUnits: number;
+  topProducts: { id: string; name: string; quantity: number; revenue: number }[];
+  categories: Record<string, number>;
+}
+
+interface SummaryMachines {
+  totalMachines: number;
+  statusCounts: { operando: number; necesita_servicio: number; mantenimiento: number; fuera_servicio: number };
+  operativityRate: number;
+  todaySalesUnits: number;
+  todayRevenue: number;
+  activeAlerts: number;
+  criticalAlerts: number;
+  highAlerts: number;
+  zonesCount: number;
+}
+
 const TASK_PANEL_KEY = "dispensax-task-panel-open";
 
 export function DashboardPage() {
@@ -180,6 +202,14 @@ export function DashboardPage() {
 
   const { data: reconciliationSummary } = useQuery<SummaryReconciliation>({
     queryKey: ["/api/summary/reconciliation"],
+  });
+
+  const { data: productsSummary } = useQuery<SummaryProducts>({
+    queryKey: ["/api/summary/products"],
+  });
+
+  const { data: machinesSummary } = useQuery<SummaryMachines>({
+    queryKey: ["/api/summary/machines"],
   });
 
   const toggleTaskMutation = useMutation({
@@ -341,21 +371,51 @@ export function DashboardPage() {
                     </div>
                     <div>
                       <h3 className="font-semibold">Máquinas</h3>
-                      <p className="text-xs text-muted-foreground">{machines.length} total</p>
+                      <p className="text-xs text-muted-foreground">{machinesSummary?.totalMachines || machines.length} total</p>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Operando</span>
-                      <span className="font-medium text-green-600">{machines.filter((m: any) => m.status === "operando").length}</span>
+                      <span className="font-medium text-green-600">{machinesSummary?.statusCounts?.operando || 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Con alertas</span>
-                      <span className="font-medium text-orange-600">{activeAlerts}</span>
+                      <span className="font-medium text-orange-600">{machinesSummary?.activeAlerts || activeAlerts}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Zonas</span>
-                      <span className="font-medium">{zoneStats.length}</span>
+                      <span className="text-muted-foreground">Operatividad</span>
+                      <span className="font-medium">{machinesSummary?.operativityRate || 0}%</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/productos">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-products">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center">
+                      <Package className="h-5 w-5 text-pink-600 dark:text-pink-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Productos</h3>
+                      <p className="text-xs text-muted-foreground">{productsSummary?.totalProducts || 0} productos</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Activos</span>
+                      <span className="font-medium text-green-600">{productsSummary?.activeProducts || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Stock bajo</span>
+                      <span className="font-medium text-red-600">{productsSummary?.lowStockCount || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Ventas sem.</span>
+                      <span className="font-medium">{productsSummary?.weekSalesUnits || 0} uds</span>
                     </div>
                   </div>
                 </CardContent>
