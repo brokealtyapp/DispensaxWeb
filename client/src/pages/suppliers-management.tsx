@@ -54,6 +54,7 @@ import {
   Filter,
   Eye,
   ChevronRight,
+  Download,
   CalendarDays,
   BarChart3,
 } from "lucide-react";
@@ -774,16 +775,50 @@ export function SuppliersManagementPage() {
                   <CardTitle>Historial de Rutas</CardTitle>
                   <CardDescription>Registro de rutas completadas por abastecedor</CardDescription>
                 </div>
-                <Select value={periodFilter} onValueChange={setPeriodFilter}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="hoy">Hoy</SelectItem>
-                    <SelectItem value="semana">Esta semana</SelectItem>
-                    <SelectItem value="mes">Este mes</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Select value={periodFilter} onValueChange={setPeriodFilter}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hoy">Hoy</SelectItem>
+                      <SelectItem value="semana">Esta semana</SelectItem>
+                      <SelectItem value="mes">Este mes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      const csvData = filteredRoutesByPeriod
+                        .filter(r => r.status === "completada" || r.status === "en_progreso")
+                        .map(r => {
+                          const supplier = suppliers.find(s => s.id === r.supplierId);
+                          return {
+                            fecha: formatDate(new Date(r.date)),
+                            abastecedor: supplier?.fullName || "Desconocido",
+                            paradas_completadas: r.completedStops,
+                            paradas_totales: r.totalStops,
+                            duracion_minutos: r.actualDurationMinutes || r.estimatedDurationMinutes || 0,
+                            estado: r.status
+                          };
+                        });
+                      const headers = Object.keys(csvData[0] || {}).join(",");
+                      const rows = csvData.map(row => Object.values(row).join(",")).join("\n");
+                      const csv = headers + "\n" + rows;
+                      const blob = new Blob([csv], { type: "text/csv" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `historial-rutas-${periodFilter}.csv`;
+                      a.click();
+                    }}
+                    data-testid="button-export-history"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Exportar
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -799,7 +834,7 @@ export function SuppliersManagementPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {routes
+                  {filteredRoutesByPeriod
                     .filter(r => r.status === "completada" || r.status === "en_progreso")
                     .slice(0, 20)
                     .map((route) => {
