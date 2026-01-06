@@ -209,11 +209,11 @@ export interface IStorage {
   createProductTransfer(transfer: InsertProductTransfer): Promise<ProductTransfer>;
   
   // Mermas
-  getShrinkageRecords(filters?: { type?: string; productId?: string; status?: string; limit?: number }): Promise<any[]>;
+  getShrinkageRecords(filters?: { type?: string; productId?: string; status?: string; limit?: number; startDate?: Date; endDate?: Date }): Promise<any[]>;
   getShrinkageRecord(id: string): Promise<any>;
   createShrinkageRecord(record: InsertShrinkageRecord): Promise<ShrinkageRecord>;
   approveShrinkage(id: string, approvedBy: string): Promise<ShrinkageRecord | undefined>;
-  getShrinkageSummary(startDate?: Date, endDate?: Date): Promise<{ totalQuantity: number; totalLoss: number; byType: Record<string, number> }>;
+  getShrinkageSummary(startDate?: Date, endDate?: Date): Promise<{ totalRecords: number; totalQuantity: number; totalCost: number; pendingCount: number; byType: Record<string, { count: number; quantity: number; cost: number }> }>;
   
   // Conciliación
   getDailyReconciliation(date: Date): Promise<any>;
@@ -1930,14 +1930,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Mermas
-  async getShrinkageRecords(filters?: { type?: string; productId?: string; status?: string; limit?: number }): Promise<any[]> {
+  async getShrinkageRecords(filters?: { type?: string; productId?: string; status?: string; limit?: number; startDate?: Date; endDate?: Date }): Promise<any[]> {
     let conditions: any[] = [];
     
     if (filters?.type) conditions.push(eq(shrinkageRecords.shrinkageType, filters.type));
     if (filters?.productId) conditions.push(eq(shrinkageRecords.productId, filters.productId));
     if (filters?.status) conditions.push(eq(shrinkageRecords.status, filters.status));
+    if (filters?.startDate) conditions.push(gte(shrinkageRecords.createdAt, filters.startDate));
+    if (filters?.endDate) conditions.push(lte(shrinkageRecords.createdAt, filters.endDate));
     
-    const limit = filters?.limit || 30;
+    const limit = filters?.limit || 50;
     
     // Usar JOIN para productos en lugar de N+1 queries
     const query = conditions.length > 0
@@ -1996,21 +1998,34 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getShrinkageSummary(startDate?: Date, endDate?: Date): Promise<{ totalQuantity: number; totalLoss: number; byType: Record<string, number> }> {
+  async getShrinkageSummary(startDate?: Date, endDate?: Date): Promise<{ 
+    totalRecords: number; 
+    totalQuantity: number; 
+    totalCost: number; 
+    pendingCount: number;
+    byType: Record<string, { count: number; quantity: number; cost: number }>;
+  }> {
     const start = startDate || new Date(new Date().setDate(new Date().getDate() - 30));
     const end = endDate || new Date();
     
     const records = await db.select().from(shrinkageRecords)
       .where(and(gte(shrinkageRecords.createdAt, start), lte(shrinkageRecords.createdAt, end)));
     
-    const byType: Record<string, number> = {};
+    const byType: Record<string, { count: number; quantity: number; cost: number }> = {};
     records.forEach(r => {
-      byType[r.shrinkageType] = (byType[r.shrinkageType] || 0) + r.quantity;
+      if (!byType[r.shrinkageType]) {
+        byType[r.shrinkageType] = { count: 0, quantity: 0, cost: 0 };
+      }
+      byType[r.shrinkageType].count++;
+      byType[r.shrinkageType].quantity += r.quantity;
+      byType[r.shrinkageType].cost += parseFloat(r.totalLoss || "0");
     });
     
     return {
+      totalRecords: records.length,
       totalQuantity: records.reduce((sum, r) => sum + r.quantity, 0),
-      totalLoss: records.reduce((sum, r) => sum + parseFloat(r.totalLoss || "0"), 0),
+      totalCost: records.reduce((sum, r) => sum + parseFloat(r.totalLoss || "0"), 0),
+      pendingCount: records.filter(r => r.status === 'pendiente').length,
       byType,
     };
   }

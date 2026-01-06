@@ -1629,17 +1629,28 @@ export function ReportsPage() {
   }, [warehouseMovements]);
 
   const shrinkageChartData = useMemo(() => {
-    const grouped: Record<string, { type: string; count: number; totalCost: number }> = {};
+    // Usar datos del summary si están disponibles (pre-agrupados por el backend)
+    if (shrinkageSummary?.byType && Object.keys(shrinkageSummary.byType).length > 0) {
+      return Object.entries(shrinkageSummary.byType).map(([type, data]: [string, any]) => ({
+        type: shrinkageTypeLabels[type] || type,
+        count: data.count || 0,
+        totalCost: data.cost || 0,
+        quantity: data.quantity || 0,
+      }));
+    }
+    // Fallback: agrupar desde los registros individuales
+    const grouped: Record<string, { type: string; count: number; totalCost: number; quantity: number }> = {};
     shrinkageRecords.forEach((s: any) => {
       const type = s.shrinkageType || 'otros';
       if (!grouped[type]) {
-        grouped[type] = { type: shrinkageTypeLabels[type] || type, count: 0, totalCost: 0 };
+        grouped[type] = { type: shrinkageTypeLabels[type] || type, count: 0, totalCost: 0, quantity: 0 };
       }
       grouped[type].count += 1;
-      grouped[type].totalCost += parseFloat(s.cost || 0);
+      grouped[type].totalCost += parseFloat(s.totalLoss || 0);
+      grouped[type].quantity += s.quantity || 0;
     });
     return Object.values(grouped);
-  }, [shrinkageRecords]);
+  }, [shrinkageRecords, shrinkageSummary]);
 
   const renderWarehouseTab = () => (
     <div className="space-y-6">
@@ -1887,7 +1898,7 @@ export function ReportsPage() {
                         </Badge>
                       </td>
                       <td className="text-right py-3 px-2">{item.quantity}</td>
-                      <td className="text-right py-3 px-2">{formatCurrency(item.cost || 0)}</td>
+                      <td className="text-right py-3 px-2">{formatCurrency(item.totalLoss || 0)}</td>
                       <td className="text-center py-3 px-2">
                         <Badge variant={
                           item.status === 'aprobado' ? 'default' :
@@ -1915,7 +1926,7 @@ export function ReportsPage() {
                       {shrinkageRecords.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0)}
                     </td>
                     <td className="text-right py-3 px-2">
-                      {formatCurrency(shrinkageRecords.reduce((sum: number, item: any) => sum + parseFloat(item.cost || 0), 0))}
+                      {formatCurrency(shrinkageRecords.reduce((sum: number, item: any) => sum + parseFloat(item.totalLoss || 0), 0))}
                     </td>
                     <td className="py-3 px-2"></td>
                   </tr>

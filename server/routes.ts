@@ -2143,11 +2143,13 @@ export async function registerRoutes(
   // Mermas (protegido con JWT)
   app.get("/api/shrinkage", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { type, productId, status } = req.query;
+      const { type, productId, status, startDate, endDate } = req.query;
       const filters = {
         type: type as string | undefined,
         productId: productId as string | undefined,
         status: status as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
       };
       const records = await storage.getShrinkageRecords(filters);
       res.json(records);
