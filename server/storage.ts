@@ -1088,17 +1088,52 @@ export class DatabaseStorage implements IStorage {
     }
     
     const result = conditions.length > 0
-      ? await db.select().from(routes).where(and(...conditions)).orderBy(desc(routes.date))
-      : await db.select().from(routes).orderBy(desc(routes.date));
+      ? await db.select().from(routes).where(and(...conditions)).orderBy(desc(routes.date)).limit(50)
+      : await db.select().from(routes).orderBy(desc(routes.date)).limit(50);
     
-    const routesWithDetails = await Promise.all(result.map(async (route) => {
-      const supplier = await this.getUser(route.supplierId);
-      const supervisor = route.supervisorId ? await this.getUser(route.supervisorId) : undefined;
-      const stops = await this.getRouteStops(route.id);
-      return { ...route, supplier, supervisor, stops };
+    if (result.length === 0) return [];
+    
+    // Precargar todos los datos necesarios en paralelo (evita N+1)
+    const routeIds = result.map(r => r.id);
+    const userIds = Array.from(new Set([
+      ...result.map(r => r.supplierId),
+      ...result.filter(r => r.supervisorId).map(r => r.supervisorId!)
+    ]));
+    
+    const [allUsers, allStops, allMachines, allLocations] = await Promise.all([
+      db.select().from(users).where(sql`${users.id} = ANY(ARRAY[${sql.join(userIds.map(id => sql`${id}`), sql`, `)}]::text[])`),
+      db.select().from(routeStops).where(sql`${routeStops.routeId} = ANY(ARRAY[${sql.join(routeIds.map(id => sql`${id}`), sql`, `)}]::text[])`).orderBy(asc(routeStops.order)),
+      db.select().from(machines),
+      db.select().from(locations)
+    ]);
+    
+    // Crear Maps para lookups O(1)
+    const userMap = new Map(allUsers.map(u => [u.id, u]));
+    const machineMap = new Map(allMachines.map(m => [m.id, m]));
+    const locationMap = new Map(allLocations.map(l => [l.id, l]));
+    
+    // Agrupar paradas por ruta
+    const stopsByRoute = new Map<string, any[]>();
+    for (const stop of allStops) {
+      const machine = machineMap.get(stop.machineId);
+      const location = machine?.locationId ? locationMap.get(machine.locationId) : undefined;
+      const stopWithMachine = {
+        ...stop,
+        machine: machine ? { ...machine, location } : undefined
+      };
+      if (!stopsByRoute.has(stop.routeId)) {
+        stopsByRoute.set(stop.routeId, []);
+      }
+      stopsByRoute.get(stop.routeId)!.push(stopWithMachine);
+    }
+    
+    // Construir resultado final
+    return result.map(route => ({
+      ...route,
+      supplier: userMap.get(route.supplierId),
+      supervisor: route.supervisorId ? userMap.get(route.supervisorId) : undefined,
+      stops: stopsByRoute.get(route.id) || []
     }));
-    
-    return routesWithDetails;
   }
 
   async getRoute(id: string): Promise<any> {
