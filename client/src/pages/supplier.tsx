@@ -1321,7 +1321,7 @@ export function SupplierPage() {
                         </div>
                       </div>
                       <p className="text-2xl md:text-3xl font-bold text-amber-700 dark:text-amber-300">
-                        ${(weeklyStats?.cashCollected || 0).toLocaleString()}
+                        {formatCurrency(weeklyStats?.cashCollected || 0)}
                       </p>
                       <p className="text-xs md:text-sm text-amber-600/80 dark:text-amber-400/80">Efectivo recolectado</p>
                     </div>

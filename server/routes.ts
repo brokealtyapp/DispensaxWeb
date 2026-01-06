@@ -1207,9 +1207,10 @@ export async function registerRoutes(
   });
 
   // ==================== MÓDULO ABASTECEDOR ====================
+  // Roles permitidos: admin, supervisor, abastecedor
 
   // Rutas
-  app.get("/api/supplier/routes", async (req: Request, res: Response) => {
+  app.get("/api/supplier/routes", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, date, status } = req.query;
       const routes = await storage.getRoutes(
@@ -1224,7 +1225,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/supplier/routes/:id", async (req: Request, res: Response) => {
+  app.get("/api/supplier/routes/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const route = await storage.getRoute(req.params.id);
       if (!route) {
@@ -1236,7 +1237,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/supplier/today-route/:userId", async (req: Request, res: Response) => {
+  app.get("/api/supplier/today-route/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const route = await storage.getTodayRoute(req.params.userId);
       if (!route) {
@@ -1249,7 +1250,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/routes", async (req: Request, res: Response) => {
+  app.post("/api/supplier/routes", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertRouteSchema.parse(req.body);
       const route = await storage.createRoute(data);
@@ -1263,7 +1264,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/supplier/routes/:id", async (req: Request, res: Response) => {
+  app.patch("/api/supplier/routes/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertRouteSchema.partial().parse(req.body);
       const route = await storage.updateRoute(req.params.id, data);
@@ -1279,7 +1280,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/routes/:id/start", async (req: Request, res: Response) => {
+  app.post("/api/supplier/routes/:id/start", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const route = await storage.startRoute(req.params.id);
       if (!route) {
@@ -1291,7 +1292,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/routes/:id/complete", async (req: Request, res: Response) => {
+  app.post("/api/supplier/routes/:id/complete", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const route = await storage.completeRoute(req.params.id);
       if (!route) {
@@ -1304,7 +1305,7 @@ export async function registerRoutes(
   });
 
   // Paradas de Ruta
-  app.get("/api/supplier/routes/:routeId/stops", async (req: Request, res: Response) => {
+  app.get("/api/supplier/routes/:routeId/stops", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const stops = await storage.getRouteStops(req.params.routeId);
       res.json(stops);
@@ -1314,7 +1315,7 @@ export async function registerRoutes(
   });
 
   // Endpoint batch para obtener paradas de múltiples rutas en una sola llamada
-  app.post("/api/supplier/route-stops-batch", async (req: Request, res: Response) => {
+  app.post("/api/supplier/route-stops-batch", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { routeIds } = req.body;
       if (!Array.isArray(routeIds)) {
@@ -1328,7 +1329,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/supplier/stops/:id", async (req: Request, res: Response) => {
+  app.get("/api/supplier/stops/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const stop = await storage.getRouteStop(req.params.id);
       if (!stop) {
@@ -1340,7 +1341,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/routes/:routeId/stops", async (req: Request, res: Response) => {
+  app.post("/api/supplier/routes/:routeId/stops", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertRouteStopSchema.parse({
         ...req.body,
@@ -1364,7 +1365,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/stops/:id/start", async (req: Request, res: Response) => {
+  app.post("/api/supplier/stops/:id/start", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const stop = await storage.startStop(req.params.id);
       if (!stop) {
@@ -1376,7 +1377,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/stops/:id/complete", async (req: Request, res: Response) => {
+  app.post("/api/supplier/stops/:id/complete", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const stop = await storage.completeStop(req.params.id);
       if (!stop) {
@@ -1388,7 +1389,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/supplier/routes/:id", async (req: Request, res: Response) => {
+  app.delete("/api/supplier/routes/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const route = await storage.getRoute(req.params.id);
       if (!route) {
@@ -1404,7 +1405,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/supplier/stops/:id", async (req: Request, res: Response) => {
+  app.delete("/api/supplier/stops/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const success = await storage.deleteRouteStop(req.params.id);
       if (!success) {
@@ -1417,7 +1418,7 @@ export async function registerRoutes(
   });
 
   // Registros de Servicio
-  app.get("/api/supplier/services", async (req: Request, res: Response) => {
+  app.get("/api/supplier/services", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, machineId, limit } = req.query;
       const services = await storage.getServiceRecords(
@@ -1431,7 +1432,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/supplier/services/:id", async (req: Request, res: Response) => {
+  app.get("/api/supplier/services/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const service = await storage.getServiceRecord(req.params.id);
       if (!service) {
@@ -1443,7 +1444,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/supplier/active-service/:userId", async (req: Request, res: Response) => {
+  app.get("/api/supplier/active-service/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const service = await storage.getActiveService(req.params.userId);
       res.json(service || null);
@@ -1452,7 +1453,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/services", async (req: Request, res: Response) => {
+  app.post("/api/supplier/services", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertServiceRecordSchema.parse(req.body);
       const service = await storage.startService(data);
@@ -1466,7 +1467,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/services/:id/end", async (req: Request, res: Response) => {
+  app.post("/api/supplier/services/:id/end", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { notes, signature, responsibleName } = req.body;
       const service = await storage.endService(req.params.id, notes, signature, responsibleName);
@@ -1480,7 +1481,7 @@ export async function registerRoutes(
   });
 
   // Recolección de Efectivo
-  app.get("/api/supplier/cash", async (req: Request, res: Response) => {
+  app.get("/api/supplier/cash", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, machineId, startDate, endDate } = req.query;
       const collections = await storage.getCashCollections(
@@ -1495,7 +1496,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/cash", async (req: Request, res: Response) => {
+  app.post("/api/supplier/cash", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertCashCollectionSchema.parse(req.body);
       const collection = await storage.createCashCollection(data);
@@ -1509,7 +1510,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/supplier/cash/summary/:userId", async (req: Request, res: Response) => {
+  app.get("/api/supplier/cash/summary/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const summary = await storage.getCashCollectionsSummary(
@@ -1524,7 +1525,7 @@ export async function registerRoutes(
   });
 
   // Carga/Retiro de Productos
-  app.get("/api/supplier/loads", async (req: Request, res: Response) => {
+  app.get("/api/supplier/loads", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { serviceRecordId, machineId } = req.query;
       const loads = await storage.getProductLoads(
@@ -1537,7 +1538,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/loads", async (req: Request, res: Response) => {
+  app.post("/api/supplier/loads", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertProductLoadSchema.parse(req.body);
       const load = await storage.createProductLoad(data);
@@ -1552,7 +1553,7 @@ export async function registerRoutes(
   });
 
   // Reportes de Problemas
-  app.get("/api/supplier/issues", async (req: Request, res: Response) => {
+  app.get("/api/supplier/issues", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { machineId, status, userId } = req.query;
       const issues = await storage.getIssueReports(
@@ -1566,7 +1567,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/supplier/issues/:id", async (req: Request, res: Response) => {
+  app.get("/api/supplier/issues/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const issue = await storage.getIssueReport(req.params.id);
       if (!issue) {
@@ -1578,7 +1579,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/issues", async (req: Request, res: Response) => {
+  app.post("/api/supplier/issues", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertIssueReportSchema.parse(req.body);
       const issue = await storage.createIssueReport(data);
@@ -1592,9 +1593,10 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/issues/:id/resolve", async (req: Request, res: Response) => {
+  app.post("/api/supplier/issues/:id/resolve", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, resolution } = req.body;
+      const { resolution } = req.body;
+      const userId = req.user?.userId;
       if (!userId || !resolution) {
         return res.status(400).json({ error: "Faltan campos requeridos" });
       }
@@ -1609,7 +1611,7 @@ export async function registerRoutes(
   });
 
   // Inventario del Abastecedor
-  app.get("/api/supplier/inventory/:userId", async (req: Request, res: Response) => {
+  app.get("/api/supplier/inventory/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const inventory = await storage.getSupplierInventory(req.params.userId);
       res.json(inventory);
@@ -1618,7 +1620,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/inventory/load", async (req: Request, res: Response) => {
+  app.post("/api/supplier/inventory/load", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, productId, quantity } = req.body;
       if (!userId || !productId || !quantity) {
@@ -1635,7 +1637,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/inventory/unload", async (req: Request, res: Response) => {
+  app.post("/api/supplier/inventory/unload", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, machineId, productId, quantity } = req.body;
       if (!userId || !machineId || !productId || !quantity) {
@@ -1653,7 +1655,7 @@ export async function registerRoutes(
   });
 
   // Cargar múltiples productos a máquina (desde el panel del abastecedor)
-  app.post("/api/supplier/load-products", async (req: Request, res: Response) => {
+  app.post("/api/supplier/load-products", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { machineId, products } = req.body;
       if (!machineId || !products || !Array.isArray(products)) {
@@ -1701,7 +1703,7 @@ export async function registerRoutes(
   });
 
   // Estadísticas del Abastecedor
-  app.get("/api/supplier/stats/:userId", async (req: Request, res: Response) => {
+  app.get("/api/supplier/stats/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const stats = await storage.getSupplierStats(
