@@ -1,7 +1,7 @@
-import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatDate } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 import { 
   CheckSquare,
   Clock,
@@ -63,6 +63,7 @@ const typeConfig: Record<string, { label: string; icon: any; color: string }> = 
 
 export function TasksTodayPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const today = new Date();
 
   const { data: tasks, isLoading: tasksLoading } = useQuery<any[]>({
@@ -71,7 +72,7 @@ export function TasksTodayPage() {
 
   const completeTaskMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("POST", `/api/tasks/${id}/complete`, { completedBy: "system" });
+      return apiRequest("POST", `/api/tasks/${id}/complete`, { completedBy: user?.id || "system" });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks/today"] });

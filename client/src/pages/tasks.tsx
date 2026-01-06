@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useAuth } from "@/lib/auth-context";
 import { 
   CheckSquare,
   Plus,
@@ -94,6 +95,7 @@ const typeConfig: Record<string, { label: string; icon: any }> = {
 
 export function TasksPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("all");
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [isEditTaskOpen, setIsEditTaskOpen] = useState(false);
@@ -118,17 +120,17 @@ export function TasksPage() {
     },
   });
 
+  const buildTasksQueryKey = () => {
+    const params = new URLSearchParams();
+    if (filterPriority && filterPriority !== "all") params.append("priority", filterPriority);
+    if (filterStatus && filterStatus !== "all") params.append("status", filterStatus);
+    if (filterType && filterType !== "all") params.append("type", filterType);
+    const queryString = params.toString();
+    return queryString ? `/api/tasks?${queryString}` : "/api/tasks";
+  };
+
   const { data: tasks, isLoading: tasksLoading } = useQuery<any[]>({
-    queryKey: ["/api/tasks", filterPriority, filterStatus, filterType],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (filterPriority) params.append("priority", filterPriority);
-      if (filterStatus) params.append("status", filterStatus);
-      if (filterType) params.append("type", filterType);
-      const response = await fetch(`/api/tasks?${params.toString()}`);
-      if (!response.ok) throw new Error("Error fetching tasks");
-      return response.json();
-    },
+    queryKey: [buildTasksQueryKey()],
   });
 
   const { data: stats } = useQuery<any>({
@@ -190,7 +192,7 @@ export function TasksPage() {
 
   const completeTaskMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("POST", `/api/tasks/${id}/complete`, { completedBy: "system" });
+      return apiRequest("POST", `/api/tasks/${id}/complete`, { completedBy: user?.id || "system" });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
