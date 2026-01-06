@@ -26,6 +26,7 @@ import {
   Calendar,
   Settings,
   ChevronLeft,
+  ChevronRight,
   Moon,
   Sun,
   LogOut,
@@ -103,7 +104,8 @@ export function AppSidebar() {
   const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar, state } = useSidebar();
+  const isCollapsed = state === "collapsed";
 
   const handleLogout = () => {
     logout();
@@ -151,17 +153,19 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
-      <SidebarHeader className="p-4 pb-6 space-y-4">
-        <div className="flex items-center justify-center py-3">
-          <img 
-            src={dispensaxLogo} 
-            alt="Dispensax" 
-            className="w-full max-w-[180px] h-auto"
-            data-testid="img-logo"
-          />
-        </div>
-        <div className="flex items-center gap-3">
-          <Avatar className="h-11 w-11 ring-2 ring-primary/20">
+      <SidebarHeader className={cn("p-4 space-y-4", isCollapsed ? "pb-2" : "pb-6")}>
+        {!isCollapsed && (
+          <div className="flex items-center justify-center py-3">
+            <img 
+              src={dispensaxLogo} 
+              alt="Dispensax" 
+              className="w-full max-w-[180px] h-auto"
+              data-testid="img-logo"
+            />
+          </div>
+        )}
+        <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
+          <Avatar className={cn("ring-2 ring-primary/20", isCollapsed ? "h-9 w-9" : "h-11 w-11")}>
             <AvatarFallback className="bg-primary text-primary-foreground font-medium">
               {user?.fullName
                 ?.split(" ")
@@ -170,37 +174,56 @@ export function AppSidebar() {
                 .toUpperCase() || "U"}
             </AvatarFallback>
           </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm truncate">
-              {user?.fullName || "Usuario"}
-            </p>
-            <div className="flex items-center gap-2 mt-1">
-              <Badge 
-                variant="secondary" 
-                className={cn("text-[10px] px-2 py-0", getRoleBadgeColor(userRole))}
+          {!isCollapsed && (
+            <>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm truncate">
+                  {user?.fullName || "Usuario"}
+                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge 
+                    variant="secondary" 
+                    className={cn("text-[10px] px-2 py-0", getRoleBadgeColor(userRole))}
+                  >
+                    {userRole ? getRoleDisplayName(userRole) : "Sin rol"}
+                  </Badge>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={toggleSidebar}
+                data-testid="button-collapse-sidebar"
               >
-                {userRole ? getRoleDisplayName(userRole) : "Sin rol"}
-              </Badge>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0"
-            onClick={toggleSidebar}
-            data-testid="button-collapse-sidebar"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            </>
+          )}
         </div>
+        {isCollapsed && (
+          <div className="flex justify-center">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={toggleSidebar}
+              data-testid="button-expand-sidebar"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </SidebarHeader>
 
-      <SidebarContent className="px-3">
+      <SidebarContent className={cn("px-3", isCollapsed && "px-1")}>
         {visibleMenuItems.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
-              MENÚ
-            </SidebarGroupLabel>
+            {!isCollapsed && (
+              <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+                MENÚ
+              </SidebarGroupLabel>
+            )}
             <SidebarMenu>
               {visibleMenuItems.map((item) => {
                 const isActive = location === item.href;
@@ -208,16 +231,18 @@ export function AppSidebar() {
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       asChild
+                      tooltip={isCollapsed ? item.label : undefined}
                       className={cn(
-                        "h-11 px-4 rounded-xl transition-all duration-200",
+                        "rounded-xl transition-all duration-200",
+                        isCollapsed ? "h-10 px-0 justify-center" : "h-11 px-4",
                         isActive
                           ? "bg-primary text-primary-foreground shadow-md"
                           : "hover:bg-muted"
                       )}
                     >
                       <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <item.icon className="h-5 w-5" />
-                        <span className="font-medium">{item.label}</span>
+                        <item.icon className="h-5 w-5 shrink-0" />
+                        {!isCollapsed && <span className="font-medium">{item.label}</span>}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -228,10 +253,12 @@ export function AppSidebar() {
         )}
 
         {visibleOperacionItems.length > 0 && (
-          <SidebarGroup className="mt-4">
-            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
-              OPERACIONES
-            </SidebarGroupLabel>
+          <SidebarGroup className={isCollapsed ? "mt-2" : "mt-4"}>
+            {!isCollapsed && (
+              <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+                OPERACIONES
+              </SidebarGroupLabel>
+            )}
             <SidebarMenu>
               {visibleOperacionItems.map((item) => {
                 const isActive = location === item.href;
@@ -239,16 +266,18 @@ export function AppSidebar() {
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       asChild
+                      tooltip={isCollapsed ? item.label : undefined}
                       className={cn(
-                        "h-10 px-4 rounded-xl transition-all duration-200",
+                        "rounded-xl transition-all duration-200",
+                        isCollapsed ? "h-10 px-0 justify-center" : "h-10 px-4",
                         isActive
                           ? "bg-primary text-primary-foreground shadow-md"
                           : "hover:bg-muted"
                       )}
                     >
                       <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <item.icon className="h-4 w-4" />
-                        <span className="text-sm font-medium">{item.label}</span>
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -259,10 +288,12 @@ export function AppSidebar() {
         )}
 
         {visibleAbastecedorItems.length > 0 && (
-          <SidebarGroup className="mt-4">
-            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
-              MI TRABAJO
-            </SidebarGroupLabel>
+          <SidebarGroup className={isCollapsed ? "mt-2" : "mt-4"}>
+            {!isCollapsed && (
+              <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+                MI TRABAJO
+              </SidebarGroupLabel>
+            )}
             <SidebarMenu>
               {visibleAbastecedorItems.map((item) => {
                 const isActive = isRouteActive(item.href);
@@ -270,16 +301,18 @@ export function AppSidebar() {
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       asChild
+                      tooltip={isCollapsed ? item.label : undefined}
                       className={cn(
-                        "h-10 px-4 rounded-xl transition-all duration-200",
+                        "rounded-xl transition-all duration-200",
+                        isCollapsed ? "h-10 px-0 justify-center" : "h-10 px-4",
                         isActive
                           ? "bg-primary text-primary-foreground shadow-md"
                           : "hover:bg-muted"
                       )}
                     >
                       <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <item.icon className="h-4 w-4" />
-                        <span className="text-sm font-medium">{item.label}</span>
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -290,10 +323,12 @@ export function AppSidebar() {
         )}
 
         {visibleFinanzasItems.length > 0 && (
-          <SidebarGroup className="mt-4">
-            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
-              FINANZAS
-            </SidebarGroupLabel>
+          <SidebarGroup className={isCollapsed ? "mt-2" : "mt-4"}>
+            {!isCollapsed && (
+              <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+                FINANZAS
+              </SidebarGroupLabel>
+            )}
             <SidebarMenu>
               {visibleFinanzasItems.map((item) => {
                 const isActive = location === item.href;
@@ -301,16 +336,18 @@ export function AppSidebar() {
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       asChild
+                      tooltip={isCollapsed ? item.label : undefined}
                       className={cn(
-                        "h-10 px-4 rounded-xl transition-all duration-200",
+                        "rounded-xl transition-all duration-200",
+                        isCollapsed ? "h-10 px-0 justify-center" : "h-10 px-4",
                         isActive
                           ? "bg-primary text-primary-foreground shadow-md"
                           : "hover:bg-muted"
                       )}
                     >
                       <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <item.icon className="h-4 w-4" />
-                        <span className="text-sm font-medium">{item.label}</span>
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -321,10 +358,12 @@ export function AppSidebar() {
         )}
 
         {visibleAdminItems.length > 0 && (
-          <SidebarGroup className="mt-4">
-            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
-              ADMINISTRACIÓN
-            </SidebarGroupLabel>
+          <SidebarGroup className={isCollapsed ? "mt-2" : "mt-4"}>
+            {!isCollapsed && (
+              <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+                ADMINISTRACIÓN
+              </SidebarGroupLabel>
+            )}
             <SidebarMenu>
               {visibleAdminItems.map((item) => {
                 const isActive = location === item.href;
@@ -332,16 +371,18 @@ export function AppSidebar() {
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       asChild
+                      tooltip={isCollapsed ? item.label : undefined}
                       className={cn(
-                        "h-10 px-4 rounded-xl transition-all duration-200",
+                        "rounded-xl transition-all duration-200",
+                        isCollapsed ? "h-10 px-0 justify-center" : "h-10 px-4",
                         isActive
                           ? "bg-primary text-primary-foreground shadow-md"
                           : "hover:bg-muted"
                       )}
                     >
                       <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <item.icon className="h-4 w-4" />
-                        <span className="text-sm font-medium">{item.label}</span>
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -351,24 +392,28 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        <SidebarGroup className="mt-6">
-          <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
-            GENERAL
-          </SidebarGroupLabel>
+        <SidebarGroup className={isCollapsed ? "mt-2" : "mt-6"}>
+          {!isCollapsed && (
+            <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+              GENERAL
+            </SidebarGroupLabel>
+          )}
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
                 asChild
+                tooltip={isCollapsed ? "Configuración" : undefined}
                 className={cn(
-                  "h-11 px-4 rounded-xl transition-all duration-200",
+                  "rounded-xl transition-all duration-200",
+                  isCollapsed ? "h-10 px-0 justify-center" : "h-11 px-4",
                   location === "/configuracion"
                     ? "bg-primary text-primary-foreground shadow-md"
                     : "hover:bg-muted"
                 )}
               >
                 <Link href="/configuracion" data-testid="link-nav-configuracion">
-                  <Settings className="h-5 w-5" />
-                  <span className="font-medium">Configuración</span>
+                  <Settings className="h-5 w-5 shrink-0" />
+                  {!isCollapsed && <span className="font-medium">Configuración</span>}
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -376,44 +421,72 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4 space-y-3">
-        <div className="flex items-center justify-center gap-1 p-1 bg-muted rounded-full">
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "flex-1 h-9 rounded-full gap-2 transition-all",
-              theme === "dark" && "bg-background shadow-sm"
-            )}
-            onClick={() => setTheme("dark")}
-            data-testid="button-theme-dark"
-          >
-            <Moon className="h-4 w-4" />
-            <span className="text-sm">Oscuro</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "flex-1 h-9 rounded-full gap-2 transition-all",
-              theme === "light" && "bg-background shadow-sm"
-            )}
-            onClick={() => setTheme("light")}
-            data-testid="button-theme-light"
-          >
-            <Sun className="h-4 w-4" />
-            <span className="text-sm">Claro</span>
-          </Button>
-        </div>
-        <Button
-          variant="ghost"
-          className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
-          onClick={handleLogout}
-          data-testid="button-logout"
-        >
-          <LogOut className="h-4 w-4" />
-          <span>Cerrar Sesión</span>
-        </Button>
+      <SidebarFooter className={cn("p-4 space-y-3", isCollapsed && "p-2 space-y-2")}>
+        {isCollapsed ? (
+          <div className="flex flex-col items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-9 w-9 rounded-full transition-all",
+                theme === "dark" ? "bg-muted" : ""
+              )}
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              data-testid="button-theme-toggle"
+            >
+              {theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-full text-muted-foreground hover:text-foreground"
+              onClick={handleLogout}
+              data-testid="button-logout"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-center gap-1 p-1 bg-muted rounded-full">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "flex-1 h-9 rounded-full gap-2 transition-all",
+                  theme === "dark" && "bg-background shadow-sm"
+                )}
+                onClick={() => setTheme("dark")}
+                data-testid="button-theme-dark"
+              >
+                <Moon className="h-4 w-4" />
+                <span className="text-sm">Oscuro</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "flex-1 h-9 rounded-full gap-2 transition-all",
+                  theme === "light" && "bg-background shadow-sm"
+                )}
+                onClick={() => setTheme("light")}
+                data-testid="button-theme-light"
+              >
+                <Sun className="h-4 w-4" />
+                <span className="text-sm">Claro</span>
+              </Button>
+            </div>
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+              onClick={handleLogout}
+              data-testid="button-logout"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Cerrar Sesión</span>
+            </Button>
+          </>
+        )}
       </SidebarFooter>
     </Sidebar>
   );
