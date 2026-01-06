@@ -47,6 +47,24 @@ import {
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc, or } from "drizzle-orm";
 
+// =====================
+// TIMEZONE UTILITIES (GMT-4 / America/Santo_Domingo)
+// =====================
+const TIMEZONE = 'America/Santo_Domingo';
+
+function getTodayInTimezone(): Date {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const dateStr = formatter.format(now);
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -86,6 +104,7 @@ export interface IStorage {
   endMachineVisit(id: string, endTime: Date, notes?: string): Promise<MachineVisit | undefined>;
   
   getMachineSales(machineId: string, startDate?: Date, endDate?: Date): Promise<MachineSale[]>;
+  getAllMachineSales(): Promise<MachineSale[]>;
   createMachineSale(sale: InsertMachineSale): Promise<MachineSale>;
   getMachineSalesSummary(machineId: string): Promise<{ today: number; week: number; month: number }>;
   
@@ -663,6 +682,11 @@ export class DatabaseStorage implements IStorage {
     
     return db.select().from(machineSales)
       .where(and(...conditions))
+      .orderBy(desc(machineSales.saleDate));
+  }
+
+  async getAllMachineSales(): Promise<MachineSale[]> {
+    return db.select().from(machineSales)
       .orderBy(desc(machineSales.saleDate));
   }
 
@@ -4047,14 +4071,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTasksForToday(userId?: string): Promise<any[]> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    // Use timezone-aware date for "today"
+    // For DATE-only columns stored as midnight UTC, we need to use the UTC date representation
+    const todayInTZ = getTodayInTimezone();
+    const year = todayInTZ.getFullYear();
+    const month = todayInTZ.getMonth();
+    const day = todayInTZ.getDate();
+    
+    // Create dates that will match UTC midnight representation of the target date
+    const targetDateUTC = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+    const nextDateUTC = new Date(Date.UTC(year, month, day + 1, 0, 0, 0, 0));
 
     const conditions: any[] = [
-      gte(tasks.dueDate, today),
-      lte(tasks.dueDate, tomorrow),
+      gte(tasks.dueDate, targetDateUTC),
+      lte(tasks.dueDate, nextDateUTC),
       or(eq(tasks.status, "pendiente"), eq(tasks.status, "en_progreso"))
     ];
 

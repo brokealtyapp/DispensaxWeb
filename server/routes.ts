@@ -48,6 +48,76 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 
+// =====================
+// TIMEZONE UTILITIES (GMT-4 / America/Santo_Domingo)
+// =====================
+const TIMEZONE = 'America/Santo_Domingo';
+
+function getTodayInTimezone(): Date {
+  // Get current date in GMT-4 timezone
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const dateStr = formatter.format(now); // YYYY-MM-DD
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0, 0); // Noon to avoid DST issues
+}
+
+function getStartOfWeekInTimezone(): Date {
+  const today = getTodayInTimezone();
+  const dayOfWeek = today.getDay();
+  const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - daysToMonday);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+function getStartOfMonthInTimezone(): Date {
+  const today = getTodayInTimezone();
+  return new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function getDateRangeForToday(): { start: Date; end: Date } {
+  const today = getTodayInTimezone();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+  return { start, end };
+}
+
+function isSameDayInTimezone(date1: Date, date2: Date): boolean {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  return formatter.format(date1) === formatter.format(date2);
+}
+
+function getDateKeyInTimezone(date: Date): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  return formatter.format(date);
+}
+
+// For dates stored as DATE (without time), extract date key directly
+function getDateKeyFromDateOnly(date: Date): string {
+  // If date was stored as DATE (midnight UTC), extract year/month/day from UTC
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -3491,34 +3561,48 @@ export async function registerRoutes(
   // Accounting Summary
   app.get("/api/summary/accounting", async (req: Request, res: Response) => {
     try {
-      const machines = await storage.getMachines();
+      const machineSales = await storage.getAllMachineSales();
       const cashMovements = await storage.getCashMovements();
       const bankDeposits = await storage.getBankDeposits();
       
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      const monthAgo = new Date();
-      monthAgo.setDate(monthAgo.getDate() - 30);
+      // Use timezone-aware date calculations
+      const today = getTodayInTimezone();
+      const todayKey = getDateKeyInTimezone(today);
+      const weekStart = getStartOfWeekInTimezone();
+      const monthStart = getStartOfMonthInTimezone();
       
+      // Calculate real sales from machine_sales table
       let salesToday = 0;
       let salesWeek = 0;
       let salesMonth = 0;
       
-      machines.forEach((m: any) => {
-        if (m.salesSummary) {
-          salesToday += m.salesSummary.today || 0;
-          salesWeek += m.salesSummary.week || 0;
-          salesMonth += m.salesSummary.month || 0;
+      machineSales.forEach((sale) => {
+        if (!sale.saleDate) return;
+        const saleDate = new Date(sale.saleDate);
+        const saleDateKey = getDateKeyFromDateOnly(saleDate);
+        const amount = parseFloat(sale.totalAmount || "0");
+        
+        // Today - compare date keys directly
+        if (saleDateKey === todayKey) {
+          salesToday += amount;
+        }
+        // This week
+        const weekStartKey = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+        if (saleDateKey >= weekStartKey) {
+          salesWeek += amount;
+        }
+        // This month
+        const monthStartKey = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}-${String(monthStart.getDate()).padStart(2, '0')}`;
+        if (saleDateKey >= monthStartKey) {
+          salesMonth += amount;
         }
       });
       
-      const weekCashMovements = cashMovements.filter(c => new Date(c.createdAt || 0) >= weekAgo);
-      const cashInflow = weekCashMovements.filter(c => c.type === "ingreso").reduce((s, c) => s + parseFloat(c.amount || "0"), 0);
+      const weekCashMovements = cashMovements.filter(c => new Date(c.createdAt || 0) >= weekStart);
+      const cashInflow = weekCashMovements.filter(c => c.type === "ingreso" || c.type === "recoleccion").reduce((s, c) => s + parseFloat(c.amount || "0"), 0);
       const cashOutflow = weekCashMovements.filter(c => c.type === "egreso").reduce((s, c) => s + parseFloat(c.amount || "0"), 0);
       
-      const weekDeposits = bankDeposits.filter(d => new Date(d.depositDate || 0) >= weekAgo);
+      const weekDeposits = bankDeposits.filter(d => new Date(d.depositDate || 0) >= weekStart);
       const totalDeposits = weekDeposits.reduce((s, d) => s + parseFloat(d.amount || "0"), 0);
       
       res.json({
@@ -3534,7 +3618,6 @@ export async function registerRoutes(
           id: m.id,
           type: m.type,
           amount: m.amount,
-          description: m.description,
           date: m.createdAt
         }))
       });
@@ -3622,7 +3705,7 @@ export async function registerRoutes(
     try {
       const products = await storage.getProducts();
       const productLots = await storage.getProductLots();
-      const machineSales = await storage.getMachineSales();
+      const machineSales = await storage.getAllMachineSales();
       
       // Calculate stock per product
       const productStocks: Record<string, number> = {};
@@ -3636,19 +3719,23 @@ export async function registerRoutes(
       // Products with low stock (< 50 units)
       const lowStockProducts = products.filter(p => (productStocks[p.id] || 0) < 50);
       
-      // Sales in last 7 days
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // Sales filtering using timezone-aware dates (comparing date keys for DATE-only columns)
+      const today = getTodayInTimezone();
+      const todayKey = getDateKeyInTimezone(today);
+      const weekStart = getStartOfWeekInTimezone();
+      const weekStartKey = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
       
       const todaySales = machineSales.filter(s => {
-        const saleDate = new Date(s.saleDate || 0);
-        saleDate.setHours(0, 0, 0, 0);
-        return saleDate.getTime() === today.getTime();
+        if (!s.saleDate) return false;
+        const saleDateKey = getDateKeyFromDateOnly(new Date(s.saleDate));
+        return saleDateKey === todayKey;
       });
       
-      const weekSales = machineSales.filter(s => new Date(s.saleDate || 0) >= weekAgo);
+      const weekSales = machineSales.filter(s => {
+        if (!s.saleDate) return false;
+        const saleDateKey = getDateKeyFromDateOnly(new Date(s.saleDate));
+        return saleDateKey >= weekStartKey;
+      });
       
       // Top selling products
       const salesByProduct: Record<string, { quantity: number; revenue: number; name: string }> = {};
@@ -3705,7 +3792,7 @@ export async function registerRoutes(
       const dashCache = getDashboardCache();
       const machines = dashCache.machinesList;
       const alerts = dashCache.recentAlerts;
-      const machineSales = await storage.getMachineSales();
+      const machineSales = await storage.getAllMachineSales();
       
       // Status counts
       const statusCounts = {
@@ -3715,13 +3802,13 @@ export async function registerRoutes(
         fuera_servicio: machines.filter(m => m.status === "fuera_servicio").length
       };
       
-      // Today's sales
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // Today's sales using timezone-aware dates (comparing date keys for DATE-only columns)
+      const today = getTodayInTimezone();
+      const todayKey = getDateKeyInTimezone(today);
       const todaySales = machineSales.filter(s => {
-        const saleDate = new Date(s.saleDate || 0);
-        saleDate.setHours(0, 0, 0, 0);
-        return saleDate.getTime() === today.getTime();
+        if (!s.saleDate) return false;
+        const saleDateKey = getDateKeyFromDateOnly(new Date(s.saleDate));
+        return saleDateKey === todayKey;
       });
       const todayRevenue = todaySales.reduce((sum, s) => sum + parseFloat(s.totalAmount || "0"), 0);
       

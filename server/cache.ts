@@ -469,7 +469,7 @@ async function computeFuelSummary() {
     .from(fuelRecords)
     .limit(500);
 
-  const recentRecords = recentFuel.filter(r => new Date(r.fuelDate) >= monthAgo);
+  const recentRecords = recentFuel.filter(r => new Date(r.recordDate) >= monthAgo);
 
   let monthCost = 0;
   let monthLiters = 0;
@@ -478,9 +478,9 @@ async function computeFuelSummary() {
   let lowEff = 0;
 
   for (const r of recentRecords) {
-    monthCost += Number(r.totalCost) || 0;
+    monthCost += Number(r.totalAmount) || 0;
     monthLiters += Number(r.liters) || 0;
-    const eff = Number(r.efficiency) || 0;
+    const eff = Number(r.calculatedMileage) || 0;
     if (eff > 0) {
       effSum += eff;
       effCount++;
