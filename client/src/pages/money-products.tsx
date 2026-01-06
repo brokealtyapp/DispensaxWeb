@@ -256,7 +256,7 @@ export function MoneyProductsPage() {
               <Banknote className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600" data-testid="text-deposited">${(cashSummary?.deposited || 0).toLocaleString()}</div>
+              <div className="text-2xl font-bold text-green-600" data-testid="text-deposited">{formatCurrency(cashSummary?.deposited || 0)}</div>
               <p className="text-xs text-muted-foreground">Depósitos bancarios</p>
             </CardContent>
           </Card>
@@ -268,7 +268,7 @@ export function MoneyProductsPage() {
             </CardHeader>
             <CardContent>
               <div className={`text-2xl font-bold ${(cashSummary?.differences || 0) < 0 ? 'text-red-600' : 'text-green-600'}`} data-testid="text-differences">
-                ${Math.abs(cashSummary?.differences || 0).toLocaleString()}
+                {formatCurrency(Math.abs(cashSummary?.differences || 0))}
               </div>
               <p className="text-xs text-muted-foreground">
                 {(cashSummary?.differences || 0) < 0 ? 'Faltante' : 'Sobrante'}
@@ -282,7 +282,7 @@ export function MoneyProductsPage() {
               <Trash2 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-orange-600" data-testid="text-shrinkage">${(shrinkageSummary?.totalLoss || 0).toLocaleString()}</div>
+              <div className="text-2xl font-bold text-orange-600" data-testid="text-shrinkage">{formatCurrency(shrinkageSummary?.totalLoss || 0)}</div>
               <p className="text-xs text-muted-foreground">{shrinkageSummary?.totalQuantity || 0} unidades</p>
             </CardContent>
           </Card>
