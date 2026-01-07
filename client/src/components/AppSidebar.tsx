@@ -45,6 +45,7 @@ import {
   TrendingUp,
   Tag,
   UserCog,
+  Activity,
 } from "lucide-react";
 
 interface MenuItem {
@@ -70,6 +71,7 @@ const operacionItems: MenuItem[] = [
   { icon: Tag, label: "Productos", href: "/productos", roles: ["admin", "supervisor", "almacen"] },
   { icon: Navigation, label: "Gestión Rutas", href: "/rutas", roles: ["admin", "supervisor"] },
   { icon: Truck, label: "Abastecedores", href: "/abastecedores", roles: ["admin", "supervisor"] },
+  { icon: Activity, label: "Monitoreo Servicios", href: "/monitoreo-servicios", roles: ["admin", "supervisor"] },
   { icon: ArrowDownUp, label: "Dinero y Productos", href: "/dinero-productos", roles: ["admin", "supervisor", "contabilidad"] },
   { icon: ShoppingCart, label: "Compras", href: "/compras", roles: ["admin", "almacen"] },
   { icon: Fuel, label: "Combustible", href: "/combustible", roles: ["admin", "supervisor"] },

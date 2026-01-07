@@ -1779,6 +1779,257 @@ export async function registerRoutes(
     }
   });
 
+  // Estado completo del servicio (para monitoreo de admin/supervisor)
+  app.get("/api/services/:id/full-status", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { serviceRecords, productLoads, cashCollections, issueReports, products, machines, users, routeStops, routes } = await import("@shared/schema");
+      
+      // Obtener el servicio base
+      const [service] = await db.select({
+        id: serviceRecords.id,
+        status: serviceRecords.status,
+        startTime: serviceRecords.startTime,
+        endTime: serviceRecords.endTime,
+        notes: serviceRecords.notes,
+        checklistData: serviceRecords.checklistData,
+        signature: serviceRecords.signature,
+        responsibleName: serviceRecords.responsibleName,
+        machineId: serviceRecords.machineId,
+        userId: serviceRecords.userId,
+        routeStopId: serviceRecords.routeStopId,
+        machineName: machines.name,
+        machineCode: machines.code,
+        userName: users.fullName,
+        userEmail: users.email,
+      })
+        .from(serviceRecords)
+        .leftJoin(machines, eq(serviceRecords.machineId, machines.id))
+        .leftJoin(users, eq(serviceRecords.userId, users.id))
+        .where(eq(serviceRecords.id, req.params.id));
+      
+      if (!service) {
+        return res.status(404).json({ error: "Servicio no encontrado" });
+      }
+      
+      // Verificar ownership para abastecedor
+      if (req.user?.role === "abastecedor" && service.userId !== req.user.userId) {
+        return res.status(403).json({ error: "No tienes permiso para ver este servicio" });
+      }
+      
+      // Obtener productos cargados, efectivo e incidencias en paralelo
+      const [loadedProducts, cashCollected, issues] = await Promise.all([
+        db.select({
+          id: productLoads.id,
+          productId: productLoads.productId,
+          quantity: productLoads.quantity,
+          loadType: productLoads.loadType,
+          createdAt: productLoads.createdAt,
+          productName: products.name,
+          productCode: products.code,
+        })
+          .from(productLoads)
+          .leftJoin(products, eq(productLoads.productId, products.id))
+          .where(eq(productLoads.serviceRecordId, req.params.id)),
+        
+        db.select({
+          id: cashCollections.id,
+          expectedAmount: cashCollections.expectedAmount,
+          actualAmount: cashCollections.actualAmount,
+          difference: cashCollections.difference,
+          createdAt: cashCollections.createdAt,
+        })
+          .from(cashCollections)
+          .where(eq(cashCollections.serviceRecordId, req.params.id)),
+        
+        db.select({
+          id: issueReports.id,
+          type: issueReports.issueType,
+          priority: issueReports.priority,
+          description: issueReports.description,
+          status: issueReports.status,
+          photoUrl: issueReports.photoUrl,
+          createdAt: issueReports.createdAt,
+        })
+          .from(issueReports)
+          .where(eq(issueReports.serviceRecordId, req.params.id)),
+      ]);
+      
+      // Calcular totales
+      const totalCashCollected = cashCollected.reduce((sum, c) => sum + parseFloat(c.actualAmount || "0"), 0);
+      const totalProductsLoaded = loadedProducts.reduce((sum, p) => sum + (p.quantity || 0), 0);
+      
+      // Parsear checklist si existe
+      let checklistItems: any[] = [];
+      let checklistProgress = 0;
+      if (service.checklistData) {
+        try {
+          checklistItems = JSON.parse(service.checklistData);
+          const checked = checklistItems.filter((item: any) => item.checked).length;
+          checklistProgress = checklistItems.length > 0 ? Math.round((checked / checklistItems.length) * 100) : 0;
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      
+      // Construir cronología de eventos
+      const timeline: any[] = [];
+      
+      // Inicio del servicio
+      if (service.startTime) {
+        timeline.push({
+          type: "service_start",
+          timestamp: service.startTime,
+          description: "Servicio iniciado",
+        });
+      }
+      
+      // Productos cargados
+      for (const load of loadedProducts) {
+        timeline.push({
+          type: "product_load",
+          timestamp: load.createdAt,
+          description: `${load.loadType === "carga" ? "Cargó" : "Retiró"} ${load.quantity} unidades de ${load.productName}`,
+        });
+      }
+      
+      // Efectivo recolectado
+      for (const cash of cashCollected) {
+        timeline.push({
+          type: "cash_collection",
+          timestamp: cash.createdAt,
+          description: `Recolectó RD$${parseFloat(cash.actualAmount || "0").toFixed(2)}`,
+        });
+      }
+      
+      // Incidencias reportadas
+      for (const issue of issues) {
+        timeline.push({
+          type: "issue_report",
+          timestamp: issue.createdAt,
+          description: `Reportó incidencia: ${issue.type} (${issue.priority})`,
+          priority: issue.priority,
+        });
+      }
+      
+      // Fin del servicio
+      if (service.endTime) {
+        timeline.push({
+          type: "service_end",
+          timestamp: service.endTime,
+          description: service.status === "cancelado" ? "Servicio cancelado" : "Servicio finalizado",
+        });
+      }
+      
+      // Ordenar cronología por timestamp
+      timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      
+      res.json({
+        ...service,
+        loadedProducts,
+        cashCollected,
+        issues,
+        totalCashCollected,
+        totalProductsLoaded,
+        checklistItems,
+        checklistProgress,
+        hasSignature: !!service.signature,
+        timeline,
+        duration: service.endTime 
+          ? Math.round((new Date(service.endTime).getTime() - new Date(service.startTime!).getTime()) / 60000)
+          : service.startTime 
+            ? Math.round((Date.now() - new Date(service.startTime).getTime()) / 60000)
+            : 0,
+      });
+    } catch (error) {
+      console.error("Error getting service full status:", error);
+      res.status(500).json({ error: "Error al obtener estado del servicio" });
+    }
+  });
+
+  // Lista de servicios activos (para panel de monitoreo admin/supervisor)
+  app.get("/api/admin/active-services", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { serviceRecords, machines, users, routeStops, routes, productLoads, cashCollections, issueReports } = await import("@shared/schema");
+      
+      // Obtener todos los servicios activos (en_progreso)
+      const activeServices = await db.select({
+        id: serviceRecords.id,
+        status: serviceRecords.status,
+        startTime: serviceRecords.startTime,
+        checklistData: serviceRecords.checklistData,
+        machineId: serviceRecords.machineId,
+        userId: serviceRecords.userId,
+        routeStopId: serviceRecords.routeStopId,
+        machineName: machines.name,
+        machineCode: machines.code,
+        userName: users.fullName,
+        userEmail: users.email,
+        userPhone: users.phone,
+        routeId: routes.id,
+        routeDate: routes.date,
+      })
+        .from(serviceRecords)
+        .leftJoin(machines, eq(serviceRecords.machineId, machines.id))
+        .leftJoin(users, eq(serviceRecords.userId, users.id))
+        .leftJoin(routeStops, eq(serviceRecords.routeStopId, routeStops.id))
+        .leftJoin(routes, eq(routeStops.routeId, routes.id))
+        .where(eq(serviceRecords.status, "en_progreso"))
+        .orderBy(desc(serviceRecords.startTime));
+      
+      // Enriquecer con datos agregados
+      const enrichedServices = await Promise.all(activeServices.map(async (service) => {
+        // Obtener conteos en paralelo
+        const [productsLoaded, cashCount, issuesCount] = await Promise.all([
+          db.select({ total: sql<number>`COALESCE(SUM(${productLoads.quantity}), 0)` })
+            .from(productLoads)
+            .where(eq(productLoads.serviceRecordId, service.id)),
+          
+          db.select({ total: sql<number>`COALESCE(SUM(CAST(${cashCollections.actualAmount} AS DECIMAL)), 0)` })
+            .from(cashCollections)
+            .where(eq(cashCollections.serviceRecordId, service.id)),
+          
+          db.select({ count: sql<number>`COUNT(*)` })
+            .from(issueReports)
+            .where(eq(issueReports.serviceRecordId, service.id)),
+        ]);
+        
+        // Calcular progreso del checklist
+        let checklistProgress = 0;
+        if (service.checklistData) {
+          try {
+            const items = JSON.parse(service.checklistData);
+            const checked = items.filter((item: any) => item.checked).length;
+            checklistProgress = items.length > 0 ? Math.round((checked / items.length) * 100) : 0;
+          } catch (e) {
+            // Ignore
+          }
+        }
+        
+        // Calcular duración en minutos
+        const duration = service.startTime 
+          ? Math.round((Date.now() - new Date(service.startTime).getTime()) / 60000)
+          : 0;
+        
+        return {
+          ...service,
+          totalProductsLoaded: Number(productsLoaded[0]?.total || 0),
+          totalCashCollected: Number(cashCount[0]?.total || 0),
+          issuesReported: Number(issuesCount[0]?.count || 0),
+          checklistProgress,
+          duration,
+        };
+      }));
+      
+      res.json({
+        activeCount: enrichedServices.length,
+        services: enrichedServices,
+      });
+    } catch (error) {
+      console.error("Error getting active services:", error);
+      res.status(500).json({ error: "Error al obtener servicios activos" });
+    }
+  });
+
   // Recolección de Efectivo
   app.get("/api/supplier/cash", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -1801,7 +2052,7 @@ export async function registerRoutes(
     try {
       const data = insertCashCollectionSchema.parse(req.body);
       // Abastecedor solo puede crear recolecciones para sí mismo
-      if (req.user?.role === "abastecedor" && data.collectedBy !== req.user.userId) {
+      if (req.user?.role === "abastecedor" && data.userId !== req.user.userId) {
         return res.status(403).json({ error: "No tienes permiso para registrar recolecciones para otros usuarios" });
       }
       const collection = await storage.createCashCollection(data);
@@ -1888,7 +2139,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Reporte no encontrado" });
       }
       // Abastecedor solo puede ver sus propios reportes
-      if (req.user?.role === "abastecedor" && issue.reportedBy !== req.user.userId) {
+      if (req.user?.role === "abastecedor" && issue.userId !== req.user.userId) {
         return res.status(403).json({ error: "No tienes permiso para ver este reporte" });
       }
       res.json(issue);
@@ -1901,7 +2152,7 @@ export async function registerRoutes(
     try {
       const data = insertIssueReportSchema.parse(req.body);
       // Abastecedor solo puede crear reportes para sí mismo
-      if (req.user?.role === "abastecedor" && data.reportedBy !== req.user.userId) {
+      if (req.user?.role === "abastecedor" && data.userId !== req.user.userId) {
         return res.status(403).json({ error: "No tienes permiso para crear reportes para otros usuarios" });
       }
       const issue = await storage.createIssueReport(data);

@@ -1376,6 +1376,7 @@ export function SupplierPage() {
                           size="sm" 
                           variant="outline"
                           onClick={() => callContact(currentStop.machine.location!.contactPhone!)}
+                          data-testid="button-call-contact-service"
                         >
                           Llamar
                         </Button>
@@ -2029,12 +2030,13 @@ export function SupplierPage() {
                 Total a cargar: <span className="font-bold">{productsToLoad.reduce((sum, p) => sum + p.quantity, 0)} unidades</span>
               </p>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setIsLoadDialogOpen(false)}>
+                <Button variant="outline" onClick={() => setIsLoadDialogOpen(false)} data-testid="button-cancel-load">
                   Cancelar
                 </Button>
                 <Button 
                   onClick={handleLoadProducts}
                   disabled={productsToLoad.every(p => p.quantity === 0) || loadProductsMutation.isPending}
+                  data-testid="button-submit-load"
                 >
                   {loadProductsMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                   Confirmar Carga
@@ -2117,13 +2119,14 @@ export function SupplierPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setIsCancelDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setIsCancelDialogOpen(false)} data-testid="button-keep-service">
               No, continuar servicio
             </Button>
             <Button 
               variant="destructive" 
               onClick={handleCancelService}
               disabled={cancelServiceMutation.isPending}
+              data-testid="button-confirm-cancel-service"
             >
               {cancelServiceMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Sí, cancelar servicio
@@ -2196,10 +2199,10 @@ export function SupplierPage() {
             )}
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setIsSummaryDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setIsSummaryDialogOpen(false)} data-testid="button-back-summary">
               Volver
             </Button>
-            <Button onClick={handleProceedToSignature}>
+            <Button onClick={handleProceedToSignature} data-testid="button-proceed-signature">
               Continuar a Firma
             </Button>
           </DialogFooter>
@@ -2244,10 +2247,11 @@ export function SupplierPage() {
                   onTouchStart={startDrawing}
                   onTouchMove={draw}
                   onTouchEnd={stopDrawing}
+                  data-testid="canvas-signature"
                 />
               </div>
               <div className="flex justify-end">
-                <Button variant="ghost" size="sm" onClick={clearSignature}>
+                <Button variant="ghost" size="sm" onClick={clearSignature} data-testid="button-clear-signature">
                   Limpiar firma
                 </Button>
               </div>
@@ -2257,12 +2261,13 @@ export function SupplierPage() {
               <Button variant="outline" onClick={() => {
                 setIsSignatureDialogOpen(false);
                 handleConfirmServiceEnd();
-              }}>
+              }} data-testid="button-skip-signature">
                 Omitir firma
               </Button>
               <Button 
                 onClick={handleConfirmServiceEnd}
                 disabled={endServiceMutation.isPending}
+                data-testid="button-finish-service"
               >
                 {endServiceMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Finalizar Servicio

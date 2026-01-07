@@ -35,6 +35,7 @@ import { ContabilidadPanelPage } from "@/pages/contabilidad-panel";
 import { ProductsPage } from "@/pages/products";
 import RoutesPage from "@/pages/routes";
 import { SuppliersManagementPage } from "@/pages/suppliers-management";
+import { ServiceMonitoringPage } from "@/pages/service-monitoring";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
@@ -224,6 +225,7 @@ function ProtectedRoutes() {
               <Route path="/rh">{() => <ProtectedRoute path="/rh" component={HRPage} />}</Route>
               <Route path="/reportes">{() => <ProtectedRoute path="/reportes" component={ReportsPage} />}</Route>
               <Route path="/supervisores">{() => <ProtectedRoute path="/supervisores" component={SupervisorsPage} />}</Route>
+              <Route path="/monitoreo-servicios">{() => <ProtectedRoute path="/monitoreo-servicios" component={ServiceMonitoringPage} />}</Route>
               <Route path="/usuarios">{() => <ProtectedRoute path="/usuarios" component={UsersPage} />}</Route>
               <Route path="/rutas">{() => <ProtectedRoute path="/rutas" component={RoutesPage} />}</Route>
               <Route path="/abastecedores">{() => <ProtectedRoute path="/abastecedores" component={SuppliersManagementPage} />}</Route>
