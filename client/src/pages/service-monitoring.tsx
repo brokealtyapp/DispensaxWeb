@@ -101,7 +101,7 @@ export function ServiceMonitoringPage() {
   });
 
   const { data: serviceDetail, isLoading: isLoadingDetail } = useQuery<ServiceFullStatus>({
-    queryKey: ["/api/services", selectedServiceId, "full-status"],
+    queryKey: [`/api/services/${selectedServiceId}/full-status`],
     enabled: !!selectedServiceId && isDetailDialogOpen,
   });
 
