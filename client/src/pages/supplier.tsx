@@ -297,14 +297,7 @@ export function SupplierPage() {
   const weekDates = getWeekDates();
 
   const { data: weeklyStats, isLoading: isLoadingWeeklyStats } = useQuery<any>({
-    queryKey: ["/api/supplier/stats", supplierId, "weekly", weekDates.startOfWeek.toISOString(), weekDates.endOfWeek.toISOString()],
-    queryFn: async () => {
-      const response = await fetch(
-        `/api/supplier/stats/${supplierId}?startDate=${weekDates.startOfWeek.toISOString()}&endDate=${weekDates.endOfWeek.toISOString()}`
-      );
-      if (!response.ok) throw new Error("Error fetching weekly stats");
-      return response.json();
-    },
+    queryKey: [`/api/supplier/stats/${supplierId}?startDate=${weekDates.startOfWeek.toISOString()}&endDate=${weekDates.endOfWeek.toISOString()}`],
     enabled: !!supplierId,
   });
 
