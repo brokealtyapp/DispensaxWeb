@@ -10,6 +10,8 @@ import {
   hashRefreshToken, 
   authenticateJWT, 
   authorizeRoles,
+  authorizeOwnership,
+  getEffectiveUserId,
   optionalAuth,
   REFRESH_TOKEN_COOKIE,
   REFRESH_TOKEN_COOKIE_OPTIONS,
@@ -1212,9 +1214,11 @@ export async function registerRoutes(
   // Rutas
   app.get("/api/supplier/routes", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, date, status } = req.query;
+      const { date, status } = req.query;
+      // Abastecedor solo ve sus propias rutas
+      const effectiveUserId = getEffectiveUserId(req, "userId");
       const routes = await storage.getRoutes(
-        userId as string | undefined,
+        effectiveUserId,
         date ? new Date(date as string) : undefined,
         status as string | undefined
       );
@@ -1237,7 +1241,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/supplier/today-route/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/supplier/today-route/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), authorizeOwnership("userId"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const route = await storage.getTodayRoute(req.params.userId);
       if (!route) {
@@ -1389,6 +1393,49 @@ export async function registerRoutes(
     }
   });
 
+  // Endpoint de recuperación: cancela parada inconsistente (en_progreso sin servicio activo)
+  app.post("/api/supplier/stops/:id/recover", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { db } = await import("./db");
+      const { routeStops, serviceRecords } = await import("@shared/schema");
+      const { eq, and, isNull } = await import("drizzle-orm");
+      
+      // Buscar la parada
+      const [stop] = await db.select().from(routeStops).where(eq(routeStops.id, req.params.id));
+      if (!stop) {
+        return res.status(404).json({ error: "Parada no encontrada" });
+      }
+      
+      // Verificar que está en estado inconsistente (en_progreso)
+      if (stop.status !== "en_progreso") {
+        return res.status(400).json({ error: "La parada no está en estado en_progreso" });
+      }
+      
+      // Verificar que no hay servicio activo asociado
+      const [activeService] = await db.select()
+        .from(serviceRecords)
+        .where(and(
+          eq(serviceRecords.routeStopId, req.params.id),
+          isNull(serviceRecords.endTime)
+        ));
+      
+      if (activeService) {
+        return res.status(400).json({ error: "La parada tiene un servicio activo, no se puede recuperar" });
+      }
+      
+      // Resetear la parada a estado pendiente
+      const [recovered] = await db.update(routeStops)
+        .set({ status: "pendiente", startTime: null, endTime: null })
+        .where(eq(routeStops.id, req.params.id))
+        .returning();
+      
+      res.json({ message: "Parada recuperada exitosamente", stop: recovered });
+    } catch (error) {
+      console.error("Error recovering stop:", error);
+      res.status(500).json({ error: "Error al recuperar parada" });
+    }
+  });
+
   app.delete("/api/supplier/routes/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const route = await storage.getRoute(req.params.id);
@@ -1420,9 +1467,11 @@ export async function registerRoutes(
   // Registros de Servicio
   app.get("/api/supplier/services", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, machineId, limit } = req.query;
+      const { machineId, limit } = req.query;
+      // Abastecedor solo ve sus propios servicios
+      const effectiveUserId = getEffectiveUserId(req, "userId");
       const services = await storage.getServiceRecords(
-        userId as string | undefined,
+        effectiveUserId,
         machineId as string | undefined,
         limit ? parseInt(limit as string) : undefined
       );
@@ -1444,7 +1493,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/supplier/active-service/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/supplier/active-service/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), authorizeOwnership("userId"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const routeStopId = req.query.routeStopId as string | undefined;
       const service = await storage.getActiveService(req.params.userId, routeStopId);
@@ -1454,6 +1503,7 @@ export async function registerRoutes(
     }
   });
 
+  // Creación de servicio idempotente: si ya existe uno activo para la parada, lo devuelve
   app.post("/api/supplier/services", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const body = {
@@ -1461,6 +1511,16 @@ export async function registerRoutes(
         startTime: req.body.startTime ? new Date(req.body.startTime) : new Date(),
       };
       const data = insertServiceRecordSchema.parse(body);
+      
+      // Verificar si ya existe un servicio activo para esta parada
+      if (data.routeStopId) {
+        const existingService = await storage.getActiveService(data.userId, data.routeStopId);
+        if (existingService) {
+          // Devolver el servicio existente (idempotencia)
+          return res.status(200).json(existingService);
+        }
+      }
+      
       const service = await storage.startService(data);
       res.status(201).json(service);
     } catch (error) {
@@ -1576,9 +1636,11 @@ export async function registerRoutes(
   // Recolección de Efectivo
   app.get("/api/supplier/cash", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, machineId, startDate, endDate } = req.query;
+      const { machineId, startDate, endDate } = req.query;
+      // Abastecedor solo ve sus propias recolecciones
+      const effectiveUserId = getEffectiveUserId(req, "userId");
       const collections = await storage.getCashCollections(
-        userId as string | undefined,
+        effectiveUserId,
         machineId as string | undefined,
         startDate ? new Date(startDate as string) : undefined,
         endDate ? new Date(endDate as string) : undefined
@@ -1603,7 +1665,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/supplier/cash/summary/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/supplier/cash/summary/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad"), authorizeOwnership("userId"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const summary = await storage.getCashCollectionsSummary(
@@ -1648,11 +1710,13 @@ export async function registerRoutes(
   // Reportes de Problemas
   app.get("/api/supplier/issues", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { machineId, status, userId } = req.query;
+      const { machineId, status } = req.query;
+      // Abastecedor solo ve sus propios reportes
+      const effectiveUserId = getEffectiveUserId(req, "userId");
       const issues = await storage.getIssueReports(
         machineId as string | undefined,
         status as string | undefined,
-        userId as string | undefined
+        effectiveUserId
       );
       res.json(issues);
     } catch (error) {
@@ -1704,7 +1768,7 @@ export async function registerRoutes(
   });
 
   // Inventario del Abastecedor
-  app.get("/api/supplier/inventory/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/supplier/inventory/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "almacen"), authorizeOwnership("userId"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const inventory = await storage.getSupplierInventory(req.params.userId);
       res.json(inventory);
@@ -1863,7 +1927,7 @@ export async function registerRoutes(
   });
 
   // Estadísticas del Abastecedor
-  app.get("/api/supplier/stats/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/supplier/stats/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "rh"), authorizeOwnership("userId"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const stats = await storage.getSupplierStats(
@@ -2839,11 +2903,13 @@ export async function registerRoutes(
   // Vehículos
   app.get("/api/vehicles", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { status, type, assignedUserId } = req.query;
+      const { status, type } = req.query;
+      // Abastecedor solo ve vehículos asignados a él
+      const effectiveUserId = getEffectiveUserId(req, "assignedUserId");
       const vehicles = await storage.getVehicles({
         status: status as string,
         type: type as string,
-        assignedUserId: assignedUserId as string
+        assignedUserId: effectiveUserId as string
       });
       res.json(vehicles);
     } catch (error) {
@@ -3485,13 +3551,15 @@ export async function registerRoutes(
 
   // ==================== MÓDULO TAREAS ====================
 
-  app.get("/api/tasks", async (req: Request, res: Response) => {
+  app.get("/api/tasks", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { status, priority, assignedUserId, startDate, endDate, type } = req.query;
+      const { status, priority, startDate, endDate, type } = req.query;
+      // Abastecedor solo ve sus propias tareas
+      const effectiveUserId = getEffectiveUserId(req, "assignedUserId");
       const tasks = await storage.getTasks({
         status: status as string | undefined,
         priority: priority as string | undefined,
-        assignedUserId: assignedUserId as string | undefined,
+        assignedUserId: effectiveUserId,
         type: type as string | undefined,
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined
@@ -3503,10 +3571,11 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/tasks/today", async (req: Request, res: Response) => {
+  app.get("/api/tasks/today", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId } = req.query;
-      const tasks = await storage.getTasksForToday(userId as string | undefined);
+      // Abastecedor solo ve sus propias tareas
+      const effectiveUserId = getEffectiveUserId(req, "userId");
+      const tasks = await storage.getTasksForToday(effectiveUserId);
       res.json(tasks);
     } catch (error) {
       console.error("Error getting today tasks:", error);
@@ -3514,11 +3583,13 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/tasks/stats", async (req: Request, res: Response) => {
+  app.get("/api/tasks/stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, startDate, endDate } = req.query;
+      const { startDate, endDate } = req.query;
+      // Abastecedor solo ve sus propias estadísticas
+      const effectiveUserId = getEffectiveUserId(req, "userId");
       const stats = await storage.getTaskStats({
-        userId: userId as string | undefined,
+        userId: effectiveUserId,
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined
       });

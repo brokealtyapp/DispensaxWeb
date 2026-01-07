@@ -78,6 +78,7 @@ import {
   TrendingUp,
   Target,
   Award,
+  RotateCcw,
 } from "lucide-react";
 
 interface MachineLocation {
@@ -526,6 +527,20 @@ export function SupplierPage() {
       setActiveServiceId(null);
       setActiveTab("ruta");
       setIsCancelDialogOpen(false);
+    },
+  });
+
+  // Mutación para recuperar parada inconsistente (en_progreso sin servicio)
+  const recoverStopMutation = useMutation({
+    mutationFn: async (stopId: string) => {
+      return apiRequest("POST", `/api/supplier/stops/${stopId}/recover`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/supplier/today-route/${supplierId}`] });
+      toast({ title: "Parada recuperada", description: "La parada ha vuelto a estado pendiente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo recuperar la parada", variant: "destructive" });
     },
   });
 
@@ -1129,6 +1144,27 @@ export function SupplierPage() {
                                     <>
                                       <Play className="h-4 w-4" />
                                       {stop.status === "en_progreso" ? "Continuar Servicio" : "Iniciar Servicio"}
+                                    </>
+                                  )}
+                                </Button>
+                              )}
+                              {/* Botón para recuperar parada inconsistente */}
+                              {todayRoute.status === "en_progreso" && 
+                               stop.status === "en_progreso" && !isServiceActive && (
+                                <Button 
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-2 text-orange-600 border-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950"
+                                  onClick={() => recoverStopMutation.mutate(stop.id)}
+                                  disabled={recoverStopMutation.isPending}
+                                  data-testid={`button-recover-stop-${stop.id}`}
+                                >
+                                  {recoverStopMutation.isPending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <RotateCcw className="h-4 w-4" />
+                                      Recuperar Parada
                                     </>
                                   )}
                                 </Button>

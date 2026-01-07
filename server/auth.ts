@@ -89,6 +89,58 @@ export function optionalAuth(req: AuthenticatedRequest, res: Response, next: Nex
   next();
 }
 
+/**
+ * Middleware que valida propiedad de datos: 
+ * - Admin y Supervisor pueden ver datos de cualquier usuario
+ * - Abastecedor solo puede ver sus propios datos
+ * @param paramName - Nombre del parámetro de ruta que contiene el userId (default: 'userId')
+ */
+export function authorizeOwnership(paramName: string = "userId") {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ error: "No autenticado" });
+    }
+    
+    const targetUserId = req.params[paramName];
+    const currentUserId = req.user.userId;
+    const currentRole = req.user.role;
+    
+    // Admin y supervisor pueden ver datos de cualquier usuario
+    if (currentRole === "admin" || currentRole === "supervisor") {
+      return next();
+    }
+    
+    // Abastecedor solo puede ver sus propios datos
+    if (targetUserId && targetUserId !== currentUserId) {
+      return res.status(403).json({ 
+        error: "No tienes permiso para acceder a datos de otro usuario" 
+      });
+    }
+    
+    next();
+  };
+}
+
+/**
+ * Helper para obtener el userId efectivo para consultas:
+ * - Si es admin/supervisor, usa el userId del parámetro (o todos si no hay)
+ * - Si es abastecedor, siempre usa su propio userId del token
+ */
+export function getEffectiveUserId(req: AuthenticatedRequest, paramName: string = "userId"): string | undefined {
+  if (!req.user) return undefined;
+  
+  const targetUserId = req.params[paramName] || req.query[paramName] as string;
+  const currentRole = req.user.role;
+  
+  // Admin y supervisor pueden consultar cualquier usuario
+  if (currentRole === "admin" || currentRole === "supervisor") {
+    return targetUserId || undefined; // undefined = todos
+  }
+  
+  // Abastecedor siempre ve solo sus propios datos
+  return req.user.userId;
+}
+
 export const REFRESH_TOKEN_COOKIE = "refreshToken";
 export const REFRESH_TOKEN_COOKIE_OPTIONS = {
   httpOnly: true,
