@@ -324,14 +324,7 @@ export function SupplierPage() {
 
   // Query para obtener el vehículo asignado al abastecedor
   const { data: assignedVehicles = [] } = useQuery<any[]>({
-    queryKey: ["/api/vehicles", { assignedUserId: supplierId }],
-    queryFn: async () => {
-      const response = await fetch(`/api/vehicles?assignedUserId=${supplierId}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error("Error fetching vehicles");
-      return response.json();
-    },
+    queryKey: [`/api/vehicles?assignedUserId=${supplierId}`],
     enabled: !!supplierId && !isViewingOther,
   });
 
@@ -339,27 +332,13 @@ export function SupplierPage() {
 
   // Query para registros de combustible del vehículo asignado
   const { data: fuelRecords = [], refetch: refetchFuelRecords } = useQuery<any[]>({
-    queryKey: ["/api/fuel-records", { vehicleId: assignedVehicle?.id }],
-    queryFn: async () => {
-      const response = await fetch(`/api/fuel-records?vehicleId=${assignedVehicle?.id}&limit=10`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error("Error fetching fuel records");
-      return response.json();
-    },
+    queryKey: [`/api/fuel-records?vehicleId=${assignedVehicle?.id}&limit=10`],
     enabled: !!assignedVehicle?.id,
   });
 
   // Query para estadísticas de combustible del vehículo
   const { data: vehicleFuelStats } = useQuery<any>({
-    queryKey: ["/api/vehicles", assignedVehicle?.id, "fuel-stats"],
-    queryFn: async () => {
-      const response = await fetch(`/api/vehicles/${assignedVehicle?.id}/fuel-stats`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error("Error fetching fuel stats");
-      return response.json();
-    },
+    queryKey: [`/api/vehicles/${assignedVehicle?.id}/fuel-stats`],
     enabled: !!assignedVehicle?.id,
   });
 
