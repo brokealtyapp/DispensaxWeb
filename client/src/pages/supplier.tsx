@@ -79,6 +79,7 @@ import {
   Target,
   Award,
   RotateCcw,
+  Fuel,
 } from "lucide-react";
 
 interface MachineLocation {
@@ -198,6 +199,13 @@ export function SupplierPage() {
   const [issuePriority, setIssuePriority] = useState("media");
   const [issuePhotoUrl, setIssuePhotoUrl] = useState<string | null>(null);
   const [checklist, setChecklist] = useState<ServiceChecklist[]>(defaultChecklist);
+  // Estados para registro de combustible
+  const [isFuelDialogOpen, setIsFuelDialogOpen] = useState(false);
+  const [fuelLiters, setFuelLiters] = useState("");
+  const [fuelAmount, setFuelAmount] = useState("");
+  const [fuelOdometer, setFuelOdometer] = useState("");
+  const [fuelStation, setFuelStation] = useState("");
+  const [fuelType, setFuelType] = useState("gasolina_regular");
   const [productsToLoad, setProductsToLoad] = useState<ProductToLoad[]>([]);
   const [expandedStop, setExpandedStop] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -312,6 +320,41 @@ export function SupplierPage() {
 
   const { data: products } = useQuery<any[]>({
     queryKey: ["/api/products"],
+  });
+
+  // Query para obtener el vehículo asignado al abastecedor
+  const { data: assignedVehicles = [] } = useQuery<any[]>({
+    queryKey: ["/api/vehicles", { assignedUserId: supplierId }],
+    queryFn: async () => {
+      const response = await fetch(`/api/vehicles?assignedUserId=${supplierId}`);
+      if (!response.ok) throw new Error("Error fetching vehicles");
+      return response.json();
+    },
+    enabled: !!supplierId && !isViewingOther,
+  });
+
+  const assignedVehicle = assignedVehicles?.[0] || null;
+
+  // Query para registros de combustible del vehículo asignado
+  const { data: fuelRecords = [], refetch: refetchFuelRecords } = useQuery<any[]>({
+    queryKey: ["/api/fuel-records", { vehicleId: assignedVehicle?.id }],
+    queryFn: async () => {
+      const response = await fetch(`/api/fuel-records?vehicleId=${assignedVehicle?.id}&limit=10`);
+      if (!response.ok) throw new Error("Error fetching fuel records");
+      return response.json();
+    },
+    enabled: !!assignedVehicle?.id,
+  });
+
+  // Query para estadísticas de combustible del vehículo
+  const { data: vehicleFuelStats } = useQuery<any>({
+    queryKey: ["/api/vehicles", assignedVehicle?.id, "fuel-stats"],
+    queryFn: async () => {
+      const response = await fetch(`/api/vehicles/${assignedVehicle?.id}/fuel-stats`);
+      if (!response.ok) throw new Error("Error fetching fuel stats");
+      return response.json();
+    },
+    enabled: !!assignedVehicle?.id,
   });
 
   const { data: machineHistory } = useQuery<any[]>({
@@ -515,6 +558,26 @@ export function SupplierPage() {
     },
   });
 
+  // Mutación para registrar carga de combustible
+  const createFuelRecordMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return apiRequest("POST", "/api/fuel-records", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/fuel-records", { vehicleId: assignedVehicle?.id }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", assignedVehicle?.id, "fuel-stats"] });
+      toast({ title: "Combustible registrado", description: `${fuelLiters}L cargados exitosamente` });
+      setFuelLiters("");
+      setFuelAmount("");
+      setFuelOdometer("");
+      setFuelStation("");
+      setIsFuelDialogOpen(false);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo registrar la carga de combustible", variant: "destructive" });
+    },
+  });
+
   const loadProductsMutation = useMutation({
     mutationFn: async (data: { machineId: string; products: { productId: string; quantity: number }[]; serviceRecordId?: string }) => {
       return apiRequest("POST", "/api/supplier/load-products", data);
@@ -685,6 +748,21 @@ export function SupplierPage() {
       serviceRecordId: activeServiceId,
       actualAmount: cashAmount,
       expectedAmount: expectedAmount || undefined,
+    });
+  };
+
+  const handleFuelRecord = () => {
+    if (!supplierId || !assignedVehicle) return;
+    
+    createFuelRecordMutation.mutate({
+      vehicleId: assignedVehicle.id,
+      userId: supplierId,
+      liters: parseFloat(fuelLiters),
+      totalAmount: parseFloat(fuelAmount),
+      currentOdometer: parseInt(fuelOdometer),
+      fuelType: fuelType,
+      gasStation: fuelStation || undefined,
+      recordDate: new Date(),
     });
   };
 
@@ -1414,55 +1492,180 @@ export function SupplierPage() {
           )}
         </TabsContent>
 
-        {/* TAB: Inventario del Vehículo */}
+        {/* TAB: Mi Vehículo (antes Inventario) */}
         <TabsContent value="inventario" className="mt-4 md:mt-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
+          <div className="space-y-6">
+            {/* Información del Vehículo Asignado */}
+            {assignedVehicle ? (
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Truck className="h-5 w-5" />
+                        {assignedVehicle.brand} {assignedVehicle.model}
+                      </CardTitle>
+                      <CardDescription>Placa: {assignedVehicle.plate} • Año: {assignedVehicle.year}</CardDescription>
+                    </div>
+                    <Badge variant={assignedVehicle.status === "activo" ? "default" : "secondary"} data-testid="badge-vehicle-status">
+                      {assignedVehicle.status === "activo" ? "Activo" : assignedVehicle.status}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center p-3 bg-muted/30 rounded-lg">
+                      <p className="text-2xl font-bold">{assignedVehicle.currentOdometer?.toLocaleString() || "—"}</p>
+                      <p className="text-xs text-muted-foreground">Odómetro (km)</p>
+                    </div>
+                    <div className="text-center p-3 bg-muted/30 rounded-lg">
+                      <p className="text-2xl font-bold">{vehicleFuelStats?.averageMileage?.toFixed(1) || "—"}</p>
+                      <p className="text-xs text-muted-foreground">km/L promedio</p>
+                    </div>
+                    <div className="text-center p-3 bg-muted/30 rounded-lg">
+                      <p className="text-2xl font-bold">{assignedVehicle.tankCapacity || "—"}</p>
+                      <p className="text-xs text-muted-foreground">Capacidad (L)</p>
+                    </div>
+                    <div className="text-center p-3 bg-muted/30 rounded-lg">
+                      <p className="text-2xl font-bold capitalize">{assignedVehicle.fuelType?.replace("_", " ") || "—"}</p>
+                      <p className="text-xs text-muted-foreground">Combustible</p>
+                    </div>
+                  </div>
+
+                  {/* Próximo servicio / mantenimiento */}
+                  {assignedVehicle.nextServiceOdometer && (
+                    <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center gap-3">
+                      <AlertTriangle className="h-5 w-5 text-amber-500" />
+                      <div>
+                        <p className="text-sm font-medium">Próximo servicio</p>
+                        <p className="text-xs text-muted-foreground">
+                          A los {assignedVehicle.nextServiceOdometer.toLocaleString()} km 
+                          {assignedVehicle.currentOdometer && (
+                            <span> (faltan {(assignedVehicle.nextServiceOdometer - assignedVehicle.currentOdometer).toLocaleString()} km)</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <Truck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium">Sin vehículo asignado</p>
+                  <p className="text-sm text-muted-foreground">Contacta a tu supervisor para asignar un vehículo</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Registros de Combustible */}
+            {assignedVehicle && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Fuel className="h-5 w-5" />
+                        Cargas de Combustible
+                      </CardTitle>
+                      <CardDescription>Últimas cargas registradas</CardDescription>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      onClick={() => setIsFuelDialogOpen(true)}
+                      data-testid="button-add-fuel"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Registrar Carga
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {fuelRecords.length > 0 ? (
+                    <div className="space-y-3">
+                      {fuelRecords.slice(0, 5).map((record: any) => (
+                        <div key={record.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg" data-testid={`fuel-record-${record.id}`}>
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-primary/10 rounded-full">
+                              <Fuel className="h-4 w-4 text-primary" />
+                            </div>
+                            <div>
+                              <p className="font-medium">{parseFloat(record.liters || 0).toFixed(1)} L</p>
+                              <p className="text-xs text-muted-foreground">
+                                {record.gasStation || "Estación no especificada"} • {formatDate(record.recordDate)}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-medium">{formatCurrency(parseFloat(record.totalAmount || 0))}</p>
+                            {record.distanceTraveled && (
+                              <p className="text-xs text-muted-foreground">
+                                {record.distanceTraveled} km • {record.mileage?.toFixed(1) || "—"} km/L
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Fuel className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                      <p className="font-medium">Sin registros de combustible</p>
+                      <p className="text-sm">Registra tu primera carga de combustible</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Inventario de Productos */}
+            <Card>
+              <CardHeader className="pb-3">
                 <div>
                   <CardTitle className="flex items-center gap-2">
-                    <Truck className="h-5 w-5" />
-                    Inventario del Vehículo
+                    <Package className="h-5 w-5" />
+                    Inventario de Productos
                   </CardTitle>
                   <CardDescription>Productos disponibles para cargar en máquinas</CardDescription>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {supplierInventory && supplierInventory.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {supplierInventory.map((item: any) => (
-                    <Card key={item.id} className="bg-muted/30">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium">{item.product?.name || "Producto"}</p>
-                            <p className="text-sm text-muted-foreground">{item.product?.code}</p>
+              </CardHeader>
+              <CardContent>
+                {supplierInventory && supplierInventory.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {supplierInventory.map((item: any) => (
+                      <Card key={item.id} className="bg-muted/30" data-testid={`inventory-item-${item.id}`}>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium">{item.product?.name || "Producto"}</p>
+                              <p className="text-sm text-muted-foreground">{item.product?.code}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-2xl font-bold">{item.quantity}</p>
+                              <p className="text-xs text-muted-foreground">unidades</p>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-2xl font-bold">{item.quantity}</p>
-                            <p className="text-xs text-muted-foreground">unidades</p>
-                          </div>
-                        </div>
-                        {item.quantity <= 10 && (
-                          <Badge variant="destructive" className="mt-2 gap-1">
-                            <AlertTriangle className="h-3 w-3" />
-                            Stock bajo
-                          </Badge>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Truck className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium">Sin productos cargados</p>
-                  <p className="text-sm">Visita el almacén para cargar productos en tu vehículo</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                          {item.quantity <= 10 && (
+                            <Badge variant="destructive" className="mt-2 gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              Stock bajo
+                            </Badge>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Package className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                    <p className="font-medium">Sin productos cargados</p>
+                    <p className="text-sm">Visita el almacén para cargar productos en tu vehículo</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* TAB: Mi Rendimiento */}
@@ -1991,6 +2194,104 @@ export function SupplierPage() {
                 data-testid="button-submit-cash"
               >
                 {createCashCollectionMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Registrar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOGO: Registro de Combustible */}
+      <Dialog open={isFuelDialogOpen} onOpenChange={setIsFuelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Fuel className="h-5 w-5" />
+              Registrar Carga de Combustible
+            </DialogTitle>
+            <DialogDescription>
+              Ingresa los datos de la carga de combustible
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Litros</Label>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  step="0.01"
+                  value={fuelLiters}
+                  onChange={(e) => setFuelLiters(e.target.value)}
+                  data-testid="input-fuel-liters"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Monto Total (RD$)</Label>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  step="0.01"
+                  value={fuelAmount}
+                  onChange={(e) => setFuelAmount(e.target.value)}
+                  data-testid="input-fuel-amount"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Odómetro actual (km)</Label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={fuelOdometer}
+                onChange={(e) => setFuelOdometer(e.target.value)}
+                data-testid="input-fuel-odometer"
+              />
+              {assignedVehicle?.currentOdometer && (
+                <p className="text-xs text-muted-foreground">
+                  Último registro: {assignedVehicle.currentOdometer.toLocaleString()} km
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Tipo de combustible</Label>
+              <Select value={fuelType} onValueChange={setFuelType}>
+                <SelectTrigger data-testid="select-fuel-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="gasolina_regular">Gasolina Regular</SelectItem>
+                  <SelectItem value="gasolina_premium">Gasolina Premium</SelectItem>
+                  <SelectItem value="diesel">Diesel</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Estación (opcional)</Label>
+              <Input
+                placeholder="Nombre de la estación"
+                value={fuelStation}
+                onChange={(e) => setFuelStation(e.target.value)}
+                data-testid="input-fuel-station"
+              />
+            </div>
+            {fuelLiters && fuelAmount && (
+              <div className="p-3 bg-muted/50 rounded-lg">
+                <p className="text-sm">
+                  Precio por litro: <span className="font-bold">{formatCurrency(parseFloat(fuelAmount) / parseFloat(fuelLiters))}/L</span>
+                </p>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsFuelDialogOpen(false)} data-testid="button-cancel-fuel">
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleFuelRecord} 
+                disabled={!fuelLiters || !fuelAmount || !fuelOdometer || createFuelRecordMutation.isPending}
+                data-testid="button-submit-fuel"
+              >
+                {createFuelRecordMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Registrar
               </Button>
             </div>
