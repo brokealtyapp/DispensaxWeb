@@ -427,7 +427,10 @@ export function SupplierPage() {
 
   const startServiceMutation = useMutation({
     mutationFn: async (data: { userId: string; machineId: string; routeStopId?: string }) => {
-      return apiRequest("POST", "/api/supplier/services", data);
+      return apiRequest("POST", "/api/supplier/services", {
+        ...data,
+        startTime: new Date(),
+      });
     },
     onSuccess: (data: any) => {
       setActiveServiceId(data.id);

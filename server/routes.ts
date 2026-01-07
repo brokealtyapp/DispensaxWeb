@@ -1456,7 +1456,11 @@ export async function registerRoutes(
 
   app.post("/api/supplier/services", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertServiceRecordSchema.parse(req.body);
+      const body = {
+        ...req.body,
+        startTime: req.body.startTime ? new Date(req.body.startTime) : new Date(),
+      };
+      const data = insertServiceRecordSchema.parse(body);
       const service = await storage.startService(data);
       res.status(201).json(service);
     } catch (error) {
