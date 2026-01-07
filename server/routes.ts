@@ -3701,6 +3701,9 @@ export async function registerRoutes(
       };
       const data = insertTaskSchema.partial().parse(bodyWithParsedDate);
       const task = await storage.updateTask(req.params.id, data);
+      if (!task) {
+        return res.status(404).json({ error: "Tarea no encontrada" });
+      }
       res.json(task);
     } catch (error) {
       if (error instanceof z.ZodError) {
