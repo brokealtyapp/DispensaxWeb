@@ -17,6 +17,7 @@ import {
   REFRESH_TOKEN_COOKIE_OPTIONS,
   type AuthenticatedRequest 
 } from "./auth";
+import { authorizeAction, checkPermission } from "./permissions";
 import { getSummaryCache, getDashboardCache, isCacheValid, isSummaryCacheValid, isDashboardCacheValid, refreshSummaryCacheIfStale, refreshDashboardCacheIfStale } from "./cache";
 import { 
   insertLocationSchema, 
@@ -527,7 +528,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/machines", async (req: Request, res: Response) => {
+  app.post("/api/machines", authenticateJWT, authorizeAction("machines", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertMachineSchema.parse(req.body);
       const machine = await storage.createMachine(data);
@@ -541,7 +542,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/machines/:id", async (req: Request, res: Response) => {
+  app.patch("/api/machines/:id", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertMachineSchema.partial().parse(req.body);
       const machine = await storage.updateMachine(req.params.id, data);
@@ -557,7 +558,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/machines/:id", async (req: Request, res: Response) => {
+  app.delete("/api/machines/:id", authenticateJWT, authorizeAction("machines", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.deleteMachine(req.params.id);
       res.status(204).send();
@@ -1537,7 +1538,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/supplier/routes/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/supplier/routes/:id", authenticateJWT, authorizeAction("routes", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const route = await storage.getRoute(req.params.id);
       if (!route) {
@@ -1553,7 +1554,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/supplier/stops/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/supplier/stops/:id", authenticateJWT, authorizeAction("stops", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const success = await storage.deleteRouteStop(req.params.id);
       if (!success) {
@@ -3418,7 +3419,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/vehicles", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/vehicles", authenticateJWT, authorizeAction("vehicles", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const validated = insertVehicleSchema.parse(req.body);
       const vehicle = await storage.createVehicle(validated);
@@ -3432,7 +3433,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/vehicles/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/vehicles/:id", authenticateJWT, authorizeAction("vehicles", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const validated = insertVehicleSchema.partial().parse(req.body);
       const vehicle = await storage.updateVehicle(req.params.id, validated);
@@ -3448,7 +3449,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/vehicles/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/vehicles/:id", authenticateJWT, authorizeAction("vehicles", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.deleteVehicle(req.params.id);
       res.json({ success: true });

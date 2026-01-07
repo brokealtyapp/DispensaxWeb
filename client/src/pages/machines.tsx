@@ -55,6 +55,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Machine, Location } from "@shared/schema";
 import { formatDate as formatDateUtil } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const statusLabels: Record<string, string> = {
   operando: "Operando",
@@ -121,6 +122,7 @@ export function MachinesPage() {
   const [deletingMachineId, setDeletingMachineId] = useState<string | null>(null);
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { canCreate, canEdit, canDelete } = usePermissions();
 
   // Read zone filter from URL on mount
   useEffect(() => {
@@ -414,12 +416,14 @@ export function MachinesPage() {
             setIsAddDialogOpen(open); 
             if (!open) setEditingMachine(null); 
           }}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-add-machine" onClick={() => handleOpenMachineDialog()}>
-                <Plus className="h-4 w-4 mr-2" />
-                Nueva Máquina
-              </Button>
-            </DialogTrigger>
+            {canCreate("machines") && (
+              <DialogTrigger asChild>
+                <Button data-testid="button-add-machine" onClick={() => handleOpenMachineDialog()}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nueva Máquina
+                </Button>
+              </DialogTrigger>
+            )}
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{editingMachine ? "Editar Máquina" : "Agregar Nueva Máquina"}</DialogTitle>
@@ -870,24 +874,28 @@ export function MachinesPage() {
                     <Wrench className="h-4 w-4 mr-1" />
                     Servicio
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-white hover:bg-white/10"
-                    onClick={(e) => { e.stopPropagation(); handleOpenMachineDialog(machine); }}
-                    data-testid={`button-edit-machine-${machine.id}`}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-white hover:bg-red-500/20 hover:text-red-300"
-                    onClick={(e) => { e.stopPropagation(); setDeletingMachineId(machine.id); }}
-                    data-testid={`button-delete-machine-${machine.id}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {canEdit("machines") && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-white hover:bg-white/10"
+                      onClick={(e) => { e.stopPropagation(); handleOpenMachineDialog(machine); }}
+                      data-testid={`button-edit-machine-${machine.id}`}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {canDelete("machines") && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-white hover:bg-red-500/20 hover:text-red-300"
+                      onClick={(e) => { e.stopPropagation(); setDeletingMachineId(machine.id); }}
+                      data-testid={`button-delete-machine-${machine.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -935,23 +943,27 @@ export function MachinesPage() {
                               Ver
                             </Button>
                           </Link>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleOpenMachineDialog(machine)}
-                            data-testid={`button-edit-list-${machine.id}`}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => setDeletingMachineId(machine.id)}
-                            data-testid={`button-delete-list-${machine.id}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {canEdit("machines") && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleOpenMachineDialog(machine)}
+                              data-testid={`button-edit-list-${machine.id}`}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {canDelete("machines") && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="hover:bg-destructive/10 hover:text-destructive"
+                              onClick={() => setDeletingMachineId(machine.id)}
+                              data-testid={`button-delete-list-${machine.id}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -971,7 +983,7 @@ export function MachinesPage() {
                 ? "No hay máquinas registradas"
                 : "No se encontraron máquinas con los filtros seleccionados"}
             </p>
-            {machines.length === 0 && (
+            {machines.length === 0 && canCreate("machines") && (
               <Button onClick={() => handleOpenMachineDialog()} data-testid="button-add-first-machine">
                 <Plus className="h-4 w-4 mr-2" />
                 Agregar primera máquina
