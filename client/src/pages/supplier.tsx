@@ -354,31 +354,17 @@ export function SupplierPage() {
   }, [todayRoute, isViewingOther]);
 
   // Query para obtener servicio activo al cargar la página (busca por routeStopId si hay parada en progreso)
+  const activeServiceUrl = inProgressStop?.id 
+    ? `/api/supplier/active-service/${supplierId}?routeStopId=${inProgressStop.id}`
+    : `/api/supplier/active-service/${supplierId}`;
   const { data: activeService } = useQuery<{ id: string; routeStopId: string; checklistData?: string } | null>({
-    queryKey: ["/api/supplier/active-service", supplierId, inProgressStop?.id],
-    queryFn: async () => {
-      const url = inProgressStop?.id 
-        ? `/api/supplier/active-service/${supplierId}?routeStopId=${inProgressStop.id}`
-        : `/api/supplier/active-service/${supplierId}`;
-      const response = await fetch(url, {
-        credentials: "include",
-      });
-      if (!response.ok) return null;
-      return response.json();
-    },
+    queryKey: [activeServiceUrl],
     enabled: !!supplierId && !isViewingOther && !!inProgressStop,
   });
 
   // Query para productos cargados en el servicio actual
   const { data: loadedProducts = [] } = useQuery<any[]>({
-    queryKey: ["/api/supplier/services", activeServiceId, "products"],
-    queryFn: async () => {
-      const response = await fetch(`/api/supplier/services/${activeServiceId}/products`, {
-        credentials: "include",
-      });
-      if (!response.ok) return [];
-      return response.json();
-    },
+    queryKey: [`/api/supplier/services/${activeServiceId}/products`],
     enabled: !!activeServiceId && isServiceActive,
   });
 
@@ -455,7 +441,7 @@ export function SupplierPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/services"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/supplier/services", activeServiceId, "products"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/supplier/services/${activeServiceId}/products`] });
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo finalizar el servicio", variant: "destructive" });
@@ -501,7 +487,7 @@ export function SupplierPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/machines", currentStop?.machine?.id, "inventory"] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/stats", supplierId] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/inventory", supplierId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/supplier/services", activeServiceId, "products"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/supplier/services/${activeServiceId}/products`] });
       toast({ title: "Productos cargados", description: "El inventario ha sido actualizado" });
       setProductsToLoad([]);
       setIsLoadDialogOpen(false);
