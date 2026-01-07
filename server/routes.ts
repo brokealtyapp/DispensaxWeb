@@ -3637,11 +3637,15 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/tasks/:id", async (req: Request, res: Response) => {
+  app.get("/api/tasks/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Tarea no encontrada" });
+      }
+      // Abastecedor solo puede ver sus propias tareas
+      if (req.user?.role === "abastecedor" && task.assignedUserId !== req.user.id) {
+        return res.status(403).json({ error: "No tienes permiso para ver esta tarea" });
       }
       res.json(task);
     } catch (error) {
@@ -3650,11 +3654,12 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/tasks", async (req: Request, res: Response) => {
+  app.post("/api/tasks", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const bodyWithParsedDate = {
         ...req.body,
-        dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined
+        dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
+        createdBy: req.user?.id
       };
       const data = insertTaskSchema.parse(bodyWithParsedDate);
       const task = await storage.createTask(data);
@@ -3668,17 +3673,34 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/tasks/:id", async (req: Request, res: Response) => {
+  app.patch("/api/tasks/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // Verificar ownership para abastecedores
+      const existingTask = await storage.getTask(req.params.id);
+      if (!existingTask) {
+        return res.status(404).json({ error: "Tarea no encontrada" });
+      }
+      
+      // Abastecedor solo puede modificar sus propias tareas y solo campos limitados
+      if (req.user?.role === "abastecedor") {
+        if (existingTask.assignedUserId !== req.user.id) {
+          return res.status(403).json({ error: "No tienes permiso para modificar esta tarea" });
+        }
+        // Abastecedor solo puede cambiar status y notes
+        const allowedFields = ["status", "notes"];
+        const requestedFields = Object.keys(req.body);
+        const invalidFields = requestedFields.filter(f => !allowedFields.includes(f));
+        if (invalidFields.length > 0) {
+          return res.status(403).json({ error: "No tienes permiso para modificar estos campos" });
+        }
+      }
+      
       const bodyWithParsedDate = {
         ...req.body,
         dueDate: req.body.dueDate ? new Date(req.body.dueDate) : req.body.dueDate
       };
       const data = insertTaskSchema.partial().parse(bodyWithParsedDate);
       const task = await storage.updateTask(req.params.id, data);
-      if (!task) {
-        return res.status(404).json({ error: "Tarea no encontrada" });
-      }
       res.json(task);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -3689,16 +3711,25 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/tasks/:id/complete", async (req: Request, res: Response) => {
+  app.post("/api/tasks/:id/complete", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { completedBy } = req.body;
+      // Verificar ownership para abastecedores
+      const existingTask = await storage.getTask(req.params.id);
+      if (!existingTask) {
+        return res.status(404).json({ error: "Tarea no encontrada" });
+      }
+      
+      // Abastecedor solo puede completar sus propias tareas
+      if (req.user?.role === "abastecedor" && existingTask.assignedUserId !== req.user.id) {
+        return res.status(403).json({ error: "No tienes permiso para completar esta tarea" });
+      }
+      
+      // Usar el usuario autenticado como completedBy
+      const completedBy = req.user?.id || req.body.completedBy;
       if (!completedBy) {
         return res.status(400).json({ error: "Se requiere completedBy" });
       }
       const task = await storage.completeTask(req.params.id, completedBy);
-      if (!task) {
-        return res.status(404).json({ error: "Tarea no encontrada" });
-      }
       res.json(task);
     } catch (error) {
       console.error("Error completing task:", error);
@@ -3706,16 +3737,25 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/tasks/:id/cancel", async (req: Request, res: Response) => {
+  app.post("/api/tasks/:id/cancel", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { cancelledBy } = req.body;
+      // Verificar ownership para abastecedores
+      const existingTask = await storage.getTask(req.params.id);
+      if (!existingTask) {
+        return res.status(404).json({ error: "Tarea no encontrada" });
+      }
+      
+      // Abastecedor solo puede cancelar sus propias tareas
+      if (req.user?.role === "abastecedor" && existingTask.assignedUserId !== req.user.id) {
+        return res.status(403).json({ error: "No tienes permiso para cancelar esta tarea" });
+      }
+      
+      // Usar el usuario autenticado como cancelledBy
+      const cancelledBy = req.user?.id || req.body.cancelledBy;
       if (!cancelledBy) {
         return res.status(400).json({ error: "Se requiere cancelledBy" });
       }
       const task = await storage.cancelTask(req.params.id, cancelledBy);
-      if (!task) {
-        return res.status(404).json({ error: "Tarea no encontrada" });
-      }
       res.json(task);
     } catch (error) {
       console.error("Error cancelling task:", error);
@@ -3723,7 +3763,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/tasks/:id", async (req: Request, res: Response) => {
+  app.delete("/api/tasks/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.deleteTask(req.params.id);
       res.json({ success: true });
