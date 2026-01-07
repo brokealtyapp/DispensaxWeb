@@ -185,6 +185,8 @@ export function SupplierPage() {
   const [isLoadDialogOpen, setIsLoadDialogOpen] = useState(false);
   const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
   const [isSignatureDialogOpen, setIsSignatureDialogOpen] = useState(false);
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+  const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
   const [cashAmount, setCashAmount] = useState("");
   const [expectedAmount, setExpectedAmount] = useState("");
   const [issueType, setIssueType] = useState("");
@@ -352,7 +354,7 @@ export function SupplierPage() {
   }, [todayRoute, isViewingOther]);
 
   // Query para obtener servicio activo al cargar la página (busca por routeStopId si hay parada en progreso)
-  const { data: activeService } = useQuery<{ id: string; routeStopId: string } | null>({
+  const { data: activeService } = useQuery<{ id: string; routeStopId: string; checklistData?: string } | null>({
     queryKey: ["/api/supplier/active-service", supplierId, inProgressStop?.id],
     queryFn: async () => {
       const url = inProgressStop?.id 
@@ -367,6 +369,19 @@ export function SupplierPage() {
     enabled: !!supplierId && !isViewingOther && !!inProgressStop,
   });
 
+  // Query para productos cargados en el servicio actual
+  const { data: loadedProducts = [] } = useQuery<any[]>({
+    queryKey: ["/api/supplier/services", activeServiceId, "products"],
+    queryFn: async () => {
+      const response = await fetch(`/api/supplier/services/${activeServiceId}/products`, {
+        credentials: "include",
+      });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!activeServiceId && isServiceActive,
+  });
+
   // Restaurar estado del servicio activo al cargar la página
   useEffect(() => {
     if (!inProgressStop || isViewingOther || isServiceActive) return;
@@ -376,7 +391,19 @@ export function SupplierPage() {
       setCurrentStop(inProgressStop);
       setActiveServiceId(activeService.id);
       setIsServiceActive(true);
-      setChecklist(defaultChecklist.map(item => ({ ...item, checked: false })));
+      
+      // Restaurar checklist si existe
+      if (activeService.checklistData) {
+        try {
+          const savedChecklist = JSON.parse(activeService.checklistData);
+          setChecklist(savedChecklist);
+        } catch {
+          setChecklist(defaultChecklist.map(item => ({ ...item, checked: false })));
+        }
+      } else {
+        setChecklist(defaultChecklist.map(item => ({ ...item, checked: false })));
+      }
+      
       // Cambiar automáticamente al tab de servicio activo
       if (activeTab === "ruta") {
         handleTabChange("servicio");
@@ -423,12 +450,16 @@ export function SupplierPage() {
   });
 
   const endServiceMutation = useMutation({
-    mutationFn: async ({ serviceId, notes, signature, responsibleName }: { serviceId: string; notes?: string; signature?: string; responsibleName?: string }) => {
-      return apiRequest("POST", `/api/supplier/services/${serviceId}/end`, { notes, signature, responsibleName });
+    mutationFn: async ({ serviceId, notes, signature, responsibleName, checklistData }: { serviceId: string; notes?: string; signature?: string; responsibleName?: string; checklistData?: string }) => {
+      return apiRequest("POST", `/api/supplier/services/${serviceId}/end`, { notes, signature, responsibleName, checklistData });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/services"] });
-      toast({ title: "Servicio finalizado" });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/services", activeServiceId, "products"] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo finalizar el servicio", variant: "destructive" });
+      setIsSignatureDialogOpen(false);
     },
   });
 
@@ -463,15 +494,49 @@ export function SupplierPage() {
   });
 
   const loadProductsMutation = useMutation({
-    mutationFn: async (data: { machineId: string; products: { productId: string; quantity: number }[] }) => {
+    mutationFn: async (data: { machineId: string; products: { productId: string; quantity: number }[]; serviceRecordId?: string }) => {
       return apiRequest("POST", "/api/supplier/load-products", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/machines", currentStop?.machine?.id, "inventory"] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/stats", supplierId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/inventory", supplierId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/services", activeServiceId, "products"] });
       toast({ title: "Productos cargados", description: "El inventario ha sido actualizado" });
       setProductsToLoad([]);
       setIsLoadDialogOpen(false);
+    },
+    onError: (error: any) => {
+      if (error?.insufficientProducts) {
+        toast({ 
+          title: "Inventario insuficiente", 
+          description: "No tienes suficientes productos en tu vehículo",
+          variant: "destructive" 
+        });
+      } else {
+        toast({ title: "Error", description: "No se pudieron cargar los productos", variant: "destructive" });
+      }
+    },
+  });
+
+  const saveChecklistMutation = useMutation({
+    mutationFn: async (data: { serviceId: string; checklistData: ServiceChecklist[] }) => {
+      return apiRequest("PATCH", `/api/supplier/services/${data.serviceId}/checklist`, { checklistData: data.checklistData });
+    },
+  });
+
+  const cancelServiceMutation = useMutation({
+    mutationFn: async (serviceId: string) => {
+      return apiRequest("POST", `/api/supplier/services/${serviceId}/cancel`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route", supplierId] });
+      toast({ title: "Servicio cancelado", description: "La parada ha vuelto a estado pendiente" });
+      setIsServiceActive(false);
+      setCurrentStop(null);
+      setActiveServiceId(null);
+      setActiveTab("ruta");
+      setIsCancelDialogOpen(false);
     },
   });
 
@@ -508,6 +573,12 @@ export function SupplierPage() {
       return;
     }
     
+    // Mostrar resumen antes de finalizar
+    setIsSummaryDialogOpen(true);
+  };
+
+  const handleProceedToSignature = () => {
+    setIsSummaryDialogOpen(false);
     setIsSignatureDialogOpen(true);
   };
 
@@ -518,6 +589,7 @@ export function SupplierPage() {
       serviceId: activeServiceId,
       signature: signatureData || undefined,
       responsibleName: responsibleName || undefined,
+      checklistData: JSON.stringify(checklist),
     });
     await completeStopMutation.mutateAsync(currentStop.id);
     
@@ -574,6 +646,7 @@ export function SupplierPage() {
     loadProductsMutation.mutate({
       machineId: currentStop.machine.id,
       products: productsWithQuantity.map(p => ({ productId: p.productId, quantity: p.quantity })),
+      serviceRecordId: activeServiceId || undefined,
     });
   };
 
@@ -721,9 +794,22 @@ export function SupplierPage() {
   };
 
   const toggleChecklistItem = (id: string) => {
-    setChecklist(prev => prev.map(item => 
-      item.id === id ? { ...item, checked: !item.checked } : item
-    ));
+    setChecklist(prev => {
+      const updated = prev.map(item => 
+        item.id === id ? { ...item, checked: !item.checked } : item
+      );
+      // Guardar automáticamente en el servidor
+      if (activeServiceId) {
+        saveChecklistMutation.mutate({ serviceId: activeServiceId, checklistData: updated });
+      }
+      return updated;
+    });
+  };
+
+  const handleCancelService = () => {
+    if (activeServiceId) {
+      cancelServiceMutation.mutate(activeServiceId);
+    }
   };
 
   const completedStops = todayRoute?.completedStops || 0;
@@ -1093,6 +1179,20 @@ export function SupplierPage() {
                   onPause={() => {}}
                   onStop={handleStopService}
                 />
+                
+                {/* Botón cancelar servicio */}
+                <div className="flex justify-end">
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setIsCancelDialogOpen(true)}
+                    data-testid="button-cancel-service"
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    Cancelar Servicio
+                  </Button>
+                </div>
 
                 {/* Checklist de servicio */}
                 <Card>
@@ -1948,6 +2048,108 @@ export function SupplierPage() {
               </div>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOGO: Cancelar Servicio */}
+      <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-5 w-5" />
+              Cancelar Servicio
+            </DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas cancelar este servicio? La parada volverá a estado pendiente y perderás el progreso actual.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsCancelDialogOpen(false)}>
+              No, continuar servicio
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleCancelService}
+              disabled={cancelServiceMutation.isPending}
+            >
+              {cancelServiceMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Sí, cancelar servicio
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOGO: Resumen del Servicio */}
+      <Dialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Resumen del Servicio
+            </DialogTitle>
+            <DialogDescription>
+              Revisa el resumen antes de finalizar el servicio
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+            {/* Máquina */}
+            <div className="p-3 rounded-lg bg-muted/50">
+              <p className="text-sm font-medium mb-1">Máquina</p>
+              <p className="text-sm text-muted-foreground">{currentStop?.machine?.name}</p>
+            </div>
+
+            {/* Checklist completado */}
+            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+              <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                Checklist Completado
+              </p>
+              <div className="space-y-1">
+                {checklist.filter(c => c.checked).map(item => (
+                  <p key={item.id} className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Check className="h-3 w-3 text-emerald-500" />
+                    {item.label}
+                  </p>
+                ))}
+              </div>
+            </div>
+
+            {/* Productos cargados */}
+            {loadedProducts.length > 0 && (
+              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                  <Package className="h-4 w-4 text-blue-500" />
+                  Productos Cargados ({loadedProducts.reduce((sum: number, p: any) => sum + p.quantity, 0)} unidades)
+                </p>
+                <div className="space-y-1">
+                  {loadedProducts.map((p: any) => (
+                    <p key={p.id} className="text-xs text-muted-foreground flex justify-between">
+                      <span>{p.productName || "Producto"}</span>
+                      <span className="font-medium">+{p.quantity}</span>
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Sin productos cargados */}
+            {loadedProducts.length === 0 && (
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <p className="text-sm text-amber-600 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  No se cargaron productos en este servicio
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsSummaryDialogOpen(false)}>
+              Volver
+            </Button>
+            <Button onClick={handleProceedToSignature}>
+              Continuar a Firma
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

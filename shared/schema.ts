@@ -526,6 +526,7 @@ export const serviceRecords = pgTable("service_records", {
   notes: text("notes"),
   signature: text("signature"),
   responsibleName: text("responsible_name"),
+  checklistData: text("checklist_data"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

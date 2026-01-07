@@ -1470,14 +1470,102 @@ export async function registerRoutes(
 
   app.post("/api/supplier/services/:id/end", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { notes, signature, responsibleName } = req.body;
-      const service = await storage.endService(req.params.id, notes, signature, responsibleName);
+      const { notes, signature, responsibleName, checklistData } = req.body;
+      const service = await storage.endService(req.params.id, notes, signature, responsibleName, checklistData);
       if (!service) {
         return res.status(404).json({ error: "Servicio no encontrado" });
       }
       res.json(service);
     } catch (error) {
       res.status(500).json({ error: "Error al finalizar servicio" });
+    }
+  });
+
+  // Actualizar checklist del servicio
+  app.patch("/api/supplier/services/:id/checklist", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { checklistData } = req.body;
+      const { db } = await import("./db");
+      const { serviceRecords } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      const [updated] = await db.update(serviceRecords)
+        .set({ checklistData: JSON.stringify(checklistData) })
+        .where(eq(serviceRecords.id, req.params.id))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: "Servicio no encontrado" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating checklist:", error);
+      res.status(500).json({ error: "Error al actualizar checklist" });
+    }
+  });
+
+  // Cancelar servicio activo
+  app.post("/api/supplier/services/:id/cancel", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { db } = await import("./db");
+      const { serviceRecords, routeStops } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      // Obtener el servicio
+      const [service] = await db.select().from(serviceRecords)
+        .where(eq(serviceRecords.id, req.params.id));
+      
+      if (!service) {
+        return res.status(404).json({ error: "Servicio no encontrado" });
+      }
+      
+      if (service.status !== "en_progreso") {
+        return res.status(400).json({ error: "Solo se pueden cancelar servicios en progreso" });
+      }
+      
+      // Cancelar el servicio
+      await db.update(serviceRecords)
+        .set({ status: "cancelado", endTime: new Date() })
+        .where(eq(serviceRecords.id, req.params.id));
+      
+      // Revertir la parada a pendiente si existe
+      if (service.routeStopId) {
+        await db.update(routeStops)
+          .set({ status: "pendiente", actualArrival: null })
+          .where(eq(routeStops.id, service.routeStopId));
+      }
+      
+      res.json({ message: "Servicio cancelado exitosamente" });
+    } catch (error) {
+      console.error("Error cancelling service:", error);
+      res.status(500).json({ error: "Error al cancelar servicio" });
+    }
+  });
+
+  // Obtener productos cargados en un servicio
+  app.get("/api/supplier/services/:id/products", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { db } = await import("./db");
+      const { productLoads, products } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      
+      const loads = await db.select({
+        id: productLoads.id,
+        productId: productLoads.productId,
+        quantity: productLoads.quantity,
+        loadType: productLoads.loadType,
+        createdAt: productLoads.createdAt,
+        productName: products.name,
+        productCode: products.code,
+      })
+        .from(productLoads)
+        .leftJoin(products, eq(productLoads.productId, products.id))
+        .where(eq(productLoads.serviceRecordId, req.params.id));
+      
+      res.json(loads);
+    } catch (error) {
+      console.error("Error getting service products:", error);
+      res.status(500).json({ error: "Error al obtener productos del servicio" });
     }
   });
 
@@ -1658,18 +1746,68 @@ export async function registerRoutes(
   // Cargar múltiples productos a máquina (desde el panel del abastecedor)
   app.post("/api/supplier/load-products", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { machineId, products } = req.body;
-      if (!machineId || !products || !Array.isArray(products)) {
+      const { machineId, products, serviceRecordId } = req.body;
+      const userId = req.user?.userId;
+      
+      if (!machineId || !products || !Array.isArray(products) || !userId) {
         return res.status(400).json({ error: "Faltan campos requeridos" });
       }
       
       const { db } = await import("./db");
-      const { machineInventory } = await import("@shared/schema");
+      const { machineInventory, supplierInventory, productLoads } = await import("@shared/schema");
       const { eq, and } = await import("drizzle-orm");
       
-      let totalLoaded = 0;
+      // 1. Validar que el abastecedor tiene suficiente inventario para cada producto
+      const insufficientProducts: { productId: string; requested: number; available: number }[] = [];
+      
       for (const product of products) {
         if (product.quantity > 0) {
+          const [supplierInv] = await db.select().from(supplierInventory)
+            .where(and(
+              eq(supplierInventory.userId, userId),
+              eq(supplierInventory.productId, product.productId)
+            ));
+          
+          const available = supplierInv?.quantity || 0;
+          if (available < product.quantity) {
+            insufficientProducts.push({
+              productId: product.productId,
+              requested: product.quantity,
+              available
+            });
+          }
+        }
+      }
+      
+      if (insufficientProducts.length > 0) {
+        return res.status(400).json({ 
+          error: "Inventario insuficiente en vehículo",
+          insufficientProducts 
+        });
+      }
+      
+      let totalLoaded = 0;
+      const loadedProducts: { productId: string; quantity: number }[] = [];
+      
+      for (const product of products) {
+        if (product.quantity > 0) {
+          // 2. Descontar del inventario del abastecedor
+          const [supplierInv] = await db.select().from(supplierInventory)
+            .where(and(
+              eq(supplierInventory.userId, userId),
+              eq(supplierInventory.productId, product.productId)
+            ));
+          
+          if (supplierInv) {
+            await db.update(supplierInventory)
+              .set({ 
+                quantity: (supplierInv.quantity || 0) - product.quantity,
+                lastUpdated: new Date()
+              })
+              .where(eq(supplierInventory.id, supplierInv.id));
+          }
+          
+          // 3. Agregar al inventario de la máquina
           const [existing] = await db.select().from(machineInventory)
             .where(and(
               eq(machineInventory.machineId, machineId),
@@ -1692,11 +1830,28 @@ export async function registerRoutes(
               minLevel: 5,
             });
           }
+          
+          // 4. Registrar en product_loads
+          await db.insert(productLoads).values({
+            serviceRecordId: serviceRecordId || null,
+            machineId,
+            productId: product.productId,
+            userId,
+            loadType: "cargado",
+            quantity: product.quantity,
+            lotId: supplierInv?.lotId || null,
+          });
+          
           totalLoaded += product.quantity;
+          loadedProducts.push({ productId: product.productId, quantity: product.quantity });
         }
       }
       
-      res.status(201).json({ message: "Productos cargados exitosamente", totalLoaded });
+      res.status(201).json({ 
+        message: "Productos cargados exitosamente", 
+        totalLoaded,
+        loadedProducts 
+      });
     } catch (error) {
       console.error("Error loading products to machine:", error);
       res.status(500).json({ error: "Error al cargar productos" });
