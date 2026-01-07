@@ -495,18 +495,27 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/machines", async (req: Request, res: Response) => {
+  app.get("/api/machines", optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { status, zone } = req.query;
       
+      // Si es supervisor, filtrar automáticamente por su zona asignada
+      let effectiveZone = zone as string | undefined;
+      if (req.user?.role === "supervisor") {
+        const fullUser = await storage.getUser(req.user.userId);
+        if (fullUser?.assignedZone) {
+          effectiveZone = fullUser.assignedZone;
+        }
+      }
+      
       const cache = getDashboardCache();
-      if (cache && isCacheValid() && !status && !zone) {
+      if (cache && isCacheValid() && !status && !effectiveZone) {
         return res.json(cache.machinesList);
       }
       
       const filters = {
         status: status as string | undefined,
-        zone: zone as string | undefined,
+        zone: effectiveZone,
       };
       const machines = await storage.getMachines(filters);
       res.json(machines);
