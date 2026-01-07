@@ -3470,8 +3470,9 @@ export async function registerRoutes(
   });
 
   // ==================== MÓDULO RRHH ====================
+  // Solo admin, supervisor y rh pueden gestionar empleados
 
-  app.get("/api/hr/employees", async (req: Request, res: Response) => {
+  app.get("/api/hr/employees", authenticateJWT, authorizeRoles("admin", "supervisor", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { role, isActive, search } = req.query;
       const employees = await storage.getEmployees({
@@ -3486,7 +3487,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/employees/:id", async (req: Request, res: Response) => {
+  app.get("/api/hr/employees/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const employee = await storage.getEmployee(req.params.id);
       if (!employee) {
@@ -3499,7 +3500,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/employees", async (req: Request, res: Response) => {
+  app.post("/api/hr/employees", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertEmployeeSchema.parse(req.body);
       const employee = await storage.createEmployee(data);
@@ -3513,7 +3514,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/employees/:id", async (req: Request, res: Response) => {
+  app.patch("/api/hr/employees/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertEmployeeSchema.partial().parse(req.body);
       const employee = await storage.updateEmployee(req.params.id, data);
@@ -3530,7 +3531,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/hr/employees/:id", async (req: Request, res: Response) => {
+  app.delete("/api/hr/employees/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const success = await storage.deleteEmployee(req.params.id);
       if (!success) {
