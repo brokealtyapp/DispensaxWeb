@@ -16,13 +16,31 @@ import {
  */
 export function usePermissions() {
   const { user } = useAuth();
+  const isLoading = user === undefined;
+  const isAuthenticated = user !== null && user !== undefined;
   const role = (user?.role || "abastecedor") as UserRole;
 
   return {
     /**
+     * Indica si los permisos están cargando
+     */
+    isLoading,
+
+    /**
+     * Indica si el usuario está autenticado
+     */
+    isAuthenticated,
+
+    /**
+     * Indica si los permisos están listos para usar
+     */
+    isReady: !isLoading,
+
+    /**
      * Verifica si el usuario puede realizar una acción en un recurso
      */
     can: (resource: Resource, action: Action): boolean => {
+      if (!isAuthenticated) return false;
       return canPerformAction(role, resource, action);
     },
 
@@ -30,6 +48,7 @@ export function usePermissions() {
      * Verifica si el usuario puede ver un recurso
      */
     canView: (resource: Resource): boolean => {
+      if (!isAuthenticated) return false;
       return canPerformAction(role, resource, "view");
     },
 
@@ -37,6 +56,7 @@ export function usePermissions() {
      * Verifica si el usuario puede crear en un recurso
      */
     canCreate: (resource: Resource): boolean => {
+      if (!isAuthenticated) return false;
       return canPerformAction(role, resource, "create");
     },
 
@@ -44,6 +64,7 @@ export function usePermissions() {
      * Verifica si el usuario puede editar un recurso
      */
     canEdit: (resource: Resource): boolean => {
+      if (!isAuthenticated) return false;
       return canPerformAction(role, resource, "edit");
     },
 
@@ -51,6 +72,7 @@ export function usePermissions() {
      * Verifica si el usuario puede eliminar en un recurso
      */
     canDelete: (resource: Resource): boolean => {
+      if (!isAuthenticated) return false;
       return canPerformAction(role, resource, "delete");
     },
 
@@ -58,6 +80,7 @@ export function usePermissions() {
      * Verifica si el usuario puede aprobar en un recurso
      */
     canApprove: (resource: Resource): boolean => {
+      if (!isAuthenticated) return false;
       return canPerformAction(role, resource, "approve");
     },
 
@@ -65,6 +88,7 @@ export function usePermissions() {
      * Verifica si el usuario puede exportar un recurso
      */
     canExport: (resource: Resource): boolean => {
+      if (!isAuthenticated) return false;
       return canPerformAction(role, resource, "export");
     },
 
@@ -72,6 +96,7 @@ export function usePermissions() {
      * Obtiene todas las acciones permitidas para un recurso
      */
     getAllowedActions: (resource: Resource): Action[] => {
+      if (!isAuthenticated) return [];
       return getAllowedActions(role, resource);
     },
 
@@ -79,23 +104,24 @@ export function usePermissions() {
      * Verifica si el usuario tiene acceso a un recurso
      */
     hasAccess: (resource: Resource): boolean => {
+      if (!isAuthenticated) return false;
       return canAccessResource(role, resource);
     },
 
     /**
      * Verifica si el usuario es administrador
      */
-    isAdmin: isAdminRole(role),
+    isAdmin: isAuthenticated && isAdminRole(role),
 
     /**
      * Verifica si el usuario puede supervisar a otros
      */
-    canSupervise: canSuperviseUsers(role),
+    canSupervise: isAuthenticated && canSuperviseUsers(role),
 
     /**
      * Obtiene los recursos accesibles
      */
-    accessibleResources: getAccessibleResources(role),
+    accessibleResources: isAuthenticated ? getAccessibleResources(role) : [],
 
     /**
      * Rol actual del usuario
