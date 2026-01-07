@@ -3644,7 +3644,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Tarea no encontrada" });
       }
       // Abastecedor solo puede ver sus propias tareas
-      if (req.user?.role === "abastecedor" && task.assignedUserId !== req.user.id) {
+      if (req.user?.role === "abastecedor" && task.assignedUserId !== req.user.userId) {
         return res.status(403).json({ error: "No tienes permiso para ver esta tarea" });
       }
       res.json(task);
@@ -3659,7 +3659,7 @@ export async function registerRoutes(
       const bodyWithParsedDate = {
         ...req.body,
         dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
-        createdBy: req.user?.id
+        createdBy: req.user?.userId
       };
       const data = insertTaskSchema.parse(bodyWithParsedDate);
       const task = await storage.createTask(data);
@@ -3683,7 +3683,7 @@ export async function registerRoutes(
       
       // Abastecedor solo puede modificar sus propias tareas y solo campos limitados
       if (req.user?.role === "abastecedor") {
-        if (existingTask.assignedUserId !== req.user.id) {
+        if (existingTask.assignedUserId !== req.user.userId) {
           return res.status(403).json({ error: "No tienes permiso para modificar esta tarea" });
         }
         // Abastecedor solo puede cambiar status y notes
@@ -3720,12 +3720,12 @@ export async function registerRoutes(
       }
       
       // Abastecedor solo puede completar sus propias tareas
-      if (req.user?.role === "abastecedor" && existingTask.assignedUserId !== req.user.id) {
+      if (req.user?.role === "abastecedor" && existingTask.assignedUserId !== req.user.userId) {
         return res.status(403).json({ error: "No tienes permiso para completar esta tarea" });
       }
       
       // Usar el usuario autenticado como completedBy
-      const completedBy = req.user?.id || req.body.completedBy;
+      const completedBy = req.user?.userId || req.body.completedBy;
       if (!completedBy) {
         return res.status(400).json({ error: "Se requiere completedBy" });
       }
@@ -3746,12 +3746,12 @@ export async function registerRoutes(
       }
       
       // Abastecedor solo puede cancelar sus propias tareas
-      if (req.user?.role === "abastecedor" && existingTask.assignedUserId !== req.user.id) {
+      if (req.user?.role === "abastecedor" && existingTask.assignedUserId !== req.user.userId) {
         return res.status(403).json({ error: "No tienes permiso para cancelar esta tarea" });
       }
       
       // Usar el usuario autenticado como cancelledBy
-      const cancelledBy = req.user?.id || req.body.cancelledBy;
+      const cancelledBy = req.user?.userId || req.body.cancelledBy;
       if (!cancelledBy) {
         return res.status(400).json({ error: "Se requiere cancelledBy" });
       }
