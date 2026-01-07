@@ -1264,6 +1264,10 @@ export async function registerRoutes(
       if (!route) {
         return res.status(404).json({ error: "Ruta no encontrada" });
       }
+      // Abastecedor solo puede ver sus propias rutas
+      if (req.user?.role === "abastecedor" && route.supplierId !== req.user.userId) {
+        return res.status(403).json({ error: "No tienes permiso para ver esta ruta" });
+      }
       res.json(route);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener ruta" });
@@ -1315,10 +1319,15 @@ export async function registerRoutes(
 
   app.post("/api/supplier/routes/:id/start", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const route = await storage.startRoute(req.params.id);
-      if (!route) {
+      // Verificar ownership para abastecedor
+      const existingRoute = await storage.getRoute(req.params.id);
+      if (!existingRoute) {
         return res.status(404).json({ error: "Ruta no encontrada" });
       }
+      if (req.user?.role === "abastecedor" && existingRoute.supplierId !== req.user.userId) {
+        return res.status(403).json({ error: "No tienes permiso para iniciar esta ruta" });
+      }
+      const route = await storage.startRoute(req.params.id);
       res.json(route);
     } catch (error) {
       res.status(500).json({ error: "Error al iniciar ruta" });
@@ -1327,10 +1336,15 @@ export async function registerRoutes(
 
   app.post("/api/supplier/routes/:id/complete", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const route = await storage.completeRoute(req.params.id);
-      if (!route) {
+      // Verificar ownership para abastecedor
+      const existingRoute = await storage.getRoute(req.params.id);
+      if (!existingRoute) {
         return res.status(404).json({ error: "Ruta no encontrada" });
       }
+      if (req.user?.role === "abastecedor" && existingRoute.supplierId !== req.user.userId) {
+        return res.status(403).json({ error: "No tienes permiso para completar esta ruta" });
+      }
+      const route = await storage.completeRoute(req.params.id);
       res.json(route);
     } catch (error) {
       res.status(500).json({ error: "Error al completar ruta" });
@@ -1340,6 +1354,16 @@ export async function registerRoutes(
   // Paradas de Ruta
   app.get("/api/supplier/routes/:routeId/stops", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // Verificar ownership para abastecedor
+      if (req.user?.role === "abastecedor") {
+        const route = await storage.getRoute(req.params.routeId);
+        if (!route) {
+          return res.status(404).json({ error: "Ruta no encontrada" });
+        }
+        if (route.supplierId !== req.user.userId) {
+          return res.status(403).json({ error: "No tienes permiso para ver las paradas de esta ruta" });
+        }
+      }
       const stops = await storage.getRouteStops(req.params.routeId);
       res.json(stops);
     } catch (error) {
@@ -1400,6 +1424,17 @@ export async function registerRoutes(
 
   app.post("/api/supplier/stops/:id/start", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // Verificar ownership para abastecedor
+      if (req.user?.role === "abastecedor") {
+        const existingStop = await storage.getRouteStop(req.params.id);
+        if (!existingStop) {
+          return res.status(404).json({ error: "Parada no encontrada" });
+        }
+        const route = await storage.getRoute(existingStop.routeId);
+        if (!route || route.supplierId !== req.user.userId) {
+          return res.status(403).json({ error: "No tienes permiso para iniciar esta parada" });
+        }
+      }
       const stop = await storage.startStop(req.params.id);
       if (!stop) {
         return res.status(404).json({ error: "Parada no encontrada" });
@@ -1412,6 +1447,17 @@ export async function registerRoutes(
 
   app.post("/api/supplier/stops/:id/complete", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // Verificar ownership para abastecedor
+      if (req.user?.role === "abastecedor") {
+        const existingStop = await storage.getRouteStop(req.params.id);
+        if (!existingStop) {
+          return res.status(404).json({ error: "Parada no encontrada" });
+        }
+        const route = await storage.getRoute(existingStop.routeId);
+        if (!route || route.supplierId !== req.user.userId) {
+          return res.status(403).json({ error: "No tienes permiso para completar esta parada" });
+        }
+      }
       const stop = await storage.completeStop(req.params.id);
       if (!stop) {
         return res.status(404).json({ error: "Parada no encontrada" });
@@ -1433,6 +1479,14 @@ export async function registerRoutes(
       const [stop] = await db.select().from(routeStops).where(eq(routeStops.id, req.params.id));
       if (!stop) {
         return res.status(404).json({ error: "Parada no encontrada" });
+      }
+      
+      // Verificar ownership para abastecedor
+      if (req.user?.role === "abastecedor") {
+        const route = await storage.getRoute(stop.routeId);
+        if (!route || route.supplierId !== req.user.userId) {
+          return res.status(403).json({ error: "No tienes permiso para recuperar esta parada" });
+        }
       }
       
       // Verificar que está en estado inconsistente (en_progreso)
