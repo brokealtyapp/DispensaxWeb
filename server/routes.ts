@@ -1378,6 +1378,17 @@ export async function registerRoutes(
       if (!Array.isArray(routeIds)) {
         return res.status(400).json({ error: "Se requiere un array de routeIds" });
       }
+      
+      // Verificar ownership para abastecedor - solo puede obtener paradas de sus propias rutas
+      if (req.user?.role === "abastecedor") {
+        for (const routeId of routeIds) {
+          const route = await storage.getRoute(routeId);
+          if (!route || route.supplierId !== req.user.userId) {
+            return res.status(403).json({ error: "No tienes permiso para ver las paradas de una o más rutas" });
+          }
+        }
+      }
+      
       const stopsMap = await storage.getRouteStopsBatch(routeIds);
       res.json(stopsMap);
     } catch (error) {
@@ -1391,6 +1402,13 @@ export async function registerRoutes(
       const stop = await storage.getRouteStop(req.params.id);
       if (!stop) {
         return res.status(404).json({ error: "Parada no encontrada" });
+      }
+      // Verificar ownership para abastecedor
+      if (req.user?.role === "abastecedor") {
+        const route = await storage.getRoute(stop.routeId);
+        if (!route || route.supplierId !== req.user.userId) {
+          return res.status(403).json({ error: "No tienes permiso para ver esta parada" });
+        }
       }
       res.json(stop);
     } catch (error) {
@@ -1570,6 +1588,10 @@ export async function registerRoutes(
       if (!service) {
         return res.status(404).json({ error: "Servicio no encontrado" });
       }
+      // Abastecedor solo puede ver sus propios servicios
+      if (req.user?.role === "abastecedor" && service.userId !== req.user.userId) {
+        return res.status(403).json({ error: "No tienes permiso para ver este servicio" });
+      }
       res.json(service);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener servicio" });
@@ -1595,6 +1617,11 @@ export async function registerRoutes(
       };
       const data = insertServiceRecordSchema.parse(body);
       
+      // Abastecedor solo puede crear servicios para sí mismo
+      if (req.user?.role === "abastecedor" && data.userId !== req.user.userId) {
+        return res.status(403).json({ error: "No tienes permiso para crear servicios para otros usuarios" });
+      }
+      
       // Verificar si ya existe un servicio activo para esta parada
       if (data.routeStopId) {
         const existingService = await storage.getActiveService(data.userId, data.routeStopId);
@@ -1617,6 +1644,16 @@ export async function registerRoutes(
 
   app.post("/api/supplier/services/:id/end", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // Verificar ownership para abastecedor
+      if (req.user?.role === "abastecedor") {
+        const existingService = await storage.getServiceRecord(req.params.id);
+        if (!existingService) {
+          return res.status(404).json({ error: "Servicio no encontrado" });
+        }
+        if (existingService.userId !== req.user.userId) {
+          return res.status(403).json({ error: "No tienes permiso para finalizar este servicio" });
+        }
+      }
       const { notes, signature, responsibleName, checklistData } = req.body;
       const service = await storage.endService(req.params.id, notes, signature, responsibleName, checklistData);
       if (!service) {
@@ -1631,6 +1668,16 @@ export async function registerRoutes(
   // Actualizar checklist del servicio
   app.patch("/api/supplier/services/:id/checklist", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // Verificar ownership para abastecedor
+      if (req.user?.role === "abastecedor") {
+        const existingService = await storage.getServiceRecord(req.params.id);
+        if (!existingService) {
+          return res.status(404).json({ error: "Servicio no encontrado" });
+        }
+        if (existingService.userId !== req.user.userId) {
+          return res.status(403).json({ error: "No tienes permiso para modificar este servicio" });
+        }
+      }
       const { checklistData } = req.body;
       const { db } = await import("./db");
       const { serviceRecords } = await import("@shared/schema");
@@ -1666,6 +1713,11 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Servicio no encontrado" });
       }
       
+      // Verificar ownership para abastecedor
+      if (req.user?.role === "abastecedor" && service.userId !== req.user.userId) {
+        return res.status(403).json({ error: "No tienes permiso para cancelar este servicio" });
+      }
+      
       if (service.status !== "en_progreso") {
         return res.status(400).json({ error: "Solo se pueden cancelar servicios en progreso" });
       }
@@ -1692,6 +1744,17 @@ export async function registerRoutes(
   // Obtener productos cargados en un servicio
   app.get("/api/supplier/services/:id/products", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // Verificar ownership para abastecedor
+      if (req.user?.role === "abastecedor") {
+        const service = await storage.getServiceRecord(req.params.id);
+        if (!service) {
+          return res.status(404).json({ error: "Servicio no encontrado" });
+        }
+        if (service.userId !== req.user.userId) {
+          return res.status(403).json({ error: "No tienes permiso para ver los productos de este servicio" });
+        }
+      }
+      
       const { db } = await import("./db");
       const { productLoads, products } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
@@ -1737,6 +1800,10 @@ export async function registerRoutes(
   app.post("/api/supplier/cash", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertCashCollectionSchema.parse(req.body);
+      // Abastecedor solo puede crear recolecciones para sí mismo
+      if (req.user?.role === "abastecedor" && data.collectedBy !== req.user.userId) {
+        return res.status(403).json({ error: "No tienes permiso para registrar recolecciones para otros usuarios" });
+      }
       const collection = await storage.createCashCollection(data);
       res.status(201).json(collection);
     } catch (error) {
@@ -1782,6 +1849,10 @@ export async function registerRoutes(
   app.post("/api/supplier/loads", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertProductLoadSchema.parse(req.body);
+      // Abastecedor solo puede crear cargas para sí mismo
+      if (req.user?.role === "abastecedor" && data.userId !== req.user.userId) {
+        return res.status(403).json({ error: "No tienes permiso para registrar cargas para otros usuarios" });
+      }
       const load = await storage.createProductLoad(data);
       res.status(201).json(load);
     } catch (error) {
@@ -1816,6 +1887,10 @@ export async function registerRoutes(
       if (!issue) {
         return res.status(404).json({ error: "Reporte no encontrado" });
       }
+      // Abastecedor solo puede ver sus propios reportes
+      if (req.user?.role === "abastecedor" && issue.reportedBy !== req.user.userId) {
+        return res.status(403).json({ error: "No tienes permiso para ver este reporte" });
+      }
       res.json(issue);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener reporte" });
@@ -1825,6 +1900,10 @@ export async function registerRoutes(
   app.post("/api/supplier/issues", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertIssueReportSchema.parse(req.body);
+      // Abastecedor solo puede crear reportes para sí mismo
+      if (req.user?.role === "abastecedor" && data.reportedBy !== req.user.userId) {
+        return res.status(403).json({ error: "No tienes permiso para crear reportes para otros usuarios" });
+      }
       const issue = await storage.createIssueReport(data);
       res.status(201).json(issue);
     } catch (error) {
@@ -1885,6 +1964,10 @@ export async function registerRoutes(
       const { userId, machineId, productId, quantity } = req.body;
       if (!userId || !machineId || !productId || !quantity) {
         return res.status(400).json({ error: "Faltan campos requeridos" });
+      }
+      // Abastecedor solo puede descargar su propio inventario
+      if (req.user?.role === "abastecedor" && userId !== req.user.userId) {
+        return res.status(403).json({ error: "No tienes permiso para descargar inventario de otros usuarios" });
       }
       await storage.unloadProductsToMachine(userId, machineId, productId, parseInt(quantity));
       res.status(201).json({ message: "Productos descargados exitosamente" });

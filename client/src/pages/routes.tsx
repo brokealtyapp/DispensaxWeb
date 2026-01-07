@@ -1,8 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useLocation } from "wouter";
+import { useAuth } from "@/lib/auth-context";
 import { formatDateShort, formatDate, formatTime, getDateKeyInTimezone, getTodayInTimezone } from "@/lib/utils";
 import { 
   Route, MapPin, Plus, Search, Filter, Edit2, Trash2, Eye, 
@@ -100,6 +102,16 @@ const ITEMS_PER_PAGE = 20;
 
 export default function RoutesPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const [, setLocation] = useLocation();
+  
+  // Redirigir abastecedores a su página - no tienen acceso a gestión de rutas
+  useEffect(() => {
+    if (user?.role === "abastecedor") {
+      setLocation("/abastecedor?tab=ruta");
+    }
+  }, [user, setLocation]);
+  
   const [activeTab, setActiveTab] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
