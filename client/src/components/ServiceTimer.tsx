@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -6,16 +6,34 @@ import { Play, Pause, Square, Clock } from "lucide-react";
 
 interface ServiceTimerProps {
   machineName: string;
-  onStart?: () => void;
+  initialStartTime?: Date | string | null;
+  autoStart?: boolean;
   onPause?: () => void;
   onStop?: (duration: number) => void;
 }
 
-export function ServiceTimer({ machineName, onStart, onPause, onStop }: ServiceTimerProps) {
+export function ServiceTimer({ machineName, initialStartTime, autoStart = false, onPause, onStop }: ServiceTimerProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [startTime, setStartTime] = useState<Date | null>(null);
+  const hasInitialized = useRef(false);
+
+  useEffect(() => {
+    if (hasInitialized.current) return;
+    
+    if (initialStartTime || autoStart) {
+      const start = initialStartTime ? new Date(initialStartTime) : new Date();
+      const now = new Date();
+      const elapsedSeconds = Math.max(0, Math.floor((now.getTime() - start.getTime()) / 1000));
+      
+      setStartTime(start);
+      setSeconds(elapsedSeconds);
+      setIsRunning(true);
+      setIsPaused(false);
+      hasInitialized.current = true;
+    }
+  }, [initialStartTime, autoStart]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -38,7 +56,6 @@ export function ServiceTimer({ machineName, onStart, onPause, onStop }: ServiceT
     setIsRunning(true);
     setIsPaused(false);
     setStartTime(new Date());
-    onStart?.();
   };
 
   const handlePause = () => {

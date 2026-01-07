@@ -390,6 +390,7 @@ export function SupplierPage() {
   const { data: activeService } = useQuery<{ 
     id: string; 
     routeStopId: string; 
+    startTime?: string;
     checklistData?: string;
     cashCollections?: any[];
     productLoads?: any[];
@@ -1309,8 +1310,8 @@ export function SupplierPage() {
               <div className="lg:col-span-2 space-y-4 md:space-y-6">
                 <ServiceTimer
                   machineName={currentStop.machine?.name || "Máquina"}
-                  onStart={() => {}}
-                  onPause={() => {}}
+                  initialStartTime={activeService?.startTime}
+                  autoStart={true}
                   onStop={handleStopService}
                 />
                 
@@ -1468,6 +1469,18 @@ export function SupplierPage() {
                 )}
               </div>
             </div>
+          )}
+          
+          {/* Estado de carga cuando hay servicio activo pero aún no se cargó la parada */}
+          {isServiceActive && !currentStop && (
+            <Card>
+              <CardContent className="py-12">
+                <div className="flex flex-col items-center gap-4">
+                  <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Cargando servicio activo...</p>
+                </div>
+              </CardContent>
+            </Card>
           )}
           
           {/* Estado vacío cuando no hay servicio activo */}
