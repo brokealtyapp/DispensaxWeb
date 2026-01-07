@@ -80,6 +80,7 @@ import {
   Award,
   RotateCcw,
   Fuel,
+  Wrench,
 } from "lucide-react";
 
 interface MachineLocation {
@@ -1467,6 +1468,33 @@ export function SupplierPage() {
                 )}
               </div>
             </div>
+          )}
+          
+          {/* Estado vacío cuando no hay servicio activo */}
+          {!isServiceActive && (
+            <Card className="border-dashed">
+              <CardContent className="py-12 text-center">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="p-4 rounded-full bg-muted">
+                    <Wrench className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold">No hay servicio activo</h3>
+                    <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                      Para iniciar un servicio, ve a "Mi Ruta" y selecciona una máquina de tu lista de paradas.
+                    </p>
+                  </div>
+                  <Button 
+                    onClick={() => setActiveTab("ruta")}
+                    className="mt-2"
+                    data-testid="button-go-to-route"
+                  >
+                    <Navigation className="h-4 w-4 mr-2" />
+                    Ir a Mi Ruta
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
 
