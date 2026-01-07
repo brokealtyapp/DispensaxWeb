@@ -202,6 +202,7 @@ export function SupplierPage() {
   const [responsibleName, setResponsibleName] = useState("");
   const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
+  const hasInitialRedirected = useRef(false); // Evitar redirección automática después de la carga inicial
   const { toast } = useToast();
   const { user, isLoading: isAuthLoading } = useAuth();
 
@@ -391,8 +392,10 @@ export function SupplierPage() {
         setChecklist(defaultChecklist.map(item => ({ ...item, checked: false })));
       }
       
-      // Cambiar automáticamente al tab de servicio activo
-      if (activeTab === "ruta") {
+      // Cambiar automáticamente al tab de servicio activo SOLO en la carga inicial
+      // No redirigir si el usuario navegó explícitamente desde el sidebar
+      if (activeTab === "ruta" && !hasInitialRedirected.current) {
+        hasInitialRedirected.current = true;
         handleTabChange("servicio");
       }
     }
