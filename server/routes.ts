@@ -1644,23 +1644,68 @@ export async function registerRoutes(
 
   app.post("/api/supplier/services/:id/end", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // Obtener el servicio actual
+      const existingService = await storage.getServiceRecord(req.params.id);
+      if (!existingService) {
+        return res.status(404).json({ error: "Servicio no encontrado" });
+      }
+      
       // Verificar ownership para abastecedor
-      if (req.user?.role === "abastecedor") {
-        const existingService = await storage.getServiceRecord(req.params.id);
-        if (!existingService) {
-          return res.status(404).json({ error: "Servicio no encontrado" });
-        }
-        if (existingService.userId !== req.user.userId) {
-          return res.status(403).json({ error: "No tienes permiso para finalizar este servicio" });
+      if (req.user?.role === "abastecedor" && existingService.userId !== req.user.userId) {
+        return res.status(403).json({ error: "No tienes permiso para finalizar este servicio" });
+      }
+      
+      // Verificar que el servicio esté en progreso
+      if (existingService.status !== "en_progreso") {
+        return res.status(400).json({ error: "Solo se pueden finalizar servicios en progreso" });
+      }
+      
+      const { notes, signature, responsibleName, checklistData } = req.body;
+      
+      // Validar checklist - verificar que esté completo
+      let checklistWarnings: string[] = [];
+      if (checklistData) {
+        try {
+          const items = typeof checklistData === "string" ? JSON.parse(checklistData) : checklistData;
+          if (Array.isArray(items)) {
+            const uncheckedItems = items.filter((item: any) => !item.checked);
+            if (uncheckedItems.length > 0) {
+              checklistWarnings.push(`${uncheckedItems.length} item(s) del checklist sin completar`);
+            }
+          }
+        } catch (e) {
+          return res.status(400).json({ error: "Formato de checklist inválido" });
         }
       }
-      const { notes, signature, responsibleName, checklistData } = req.body;
+      
+      // Validar firma - requerida para finalización
+      if (!signature) {
+        return res.status(400).json({ 
+          error: "La firma es requerida para finalizar el servicio",
+          code: "SIGNATURE_REQUIRED"
+        });
+      }
+      
+      // Validar nombre del responsable si hay firma
+      if (signature && !responsibleName?.trim()) {
+        return res.status(400).json({ 
+          error: "El nombre del responsable es requerido con la firma",
+          code: "RESPONSIBLE_NAME_REQUIRED"
+        });
+      }
+      
       const service = await storage.endService(req.params.id, notes, signature, responsibleName, checklistData);
       if (!service) {
         return res.status(404).json({ error: "Servicio no encontrado" });
       }
-      res.json(service);
+      
+      // Incluir advertencias en la respuesta si hay
+      res.json({
+        ...service,
+        warnings: checklistWarnings.length > 0 ? checklistWarnings : undefined
+      });
     } catch (error) {
+      console.error("Error ending service:", error);
       res.status(500).json({ error: "Error al finalizar servicio" });
     }
   });
