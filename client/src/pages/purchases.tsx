@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDateShort, formatCurrency } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
 import { 
   Package, Building2, FileText, Truck, History, Plus, Search, Filter,
   Edit2, Trash2, Eye, Send, X, Check, AlertTriangle, DollarSign,
@@ -70,6 +71,7 @@ const receptionItemSchema = z.object({
 
 export default function PurchasesPage() {
   const { toast } = useToast();
+  const { canCreate, canEdit, canDelete, canApprove } = usePermissions();
   const [activeTab, setActiveTab] = useState("suppliers");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -507,10 +509,12 @@ export default function PurchasesPage() {
                 data-testid="input-search-supplier"
               />
             </div>
-            <Button onClick={() => { supplierForm.reset(); setIsNewSupplierOpen(true); }} data-testid="button-new-supplier">
-              <Plus className="h-4 w-4 mr-2" />
-              Nuevo Proveedor
-            </Button>
+{canCreate("suppliers") && (
+              <Button onClick={() => { supplierForm.reset(); setIsNewSupplierOpen(true); }} data-testid="button-new-supplier">
+                <Plus className="h-4 w-4 mr-2" />
+                Nuevo Proveedor
+              </Button>
+            )}
           </div>
 
           <Card>
@@ -549,12 +553,16 @@ export default function PurchasesPage() {
                           <Button variant="ghost" size="icon" onClick={() => handleSupplierHistory(supplier)} data-testid={`button-history-${supplier.id}`}>
                             <History className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleEditSupplier(supplier)} data-testid={`button-edit-${supplier.id}`}>
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => { setSupplierToDelete(supplier); setIsDeleteSupplierOpen(true); }} data-testid={`button-delete-${supplier.id}`}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          {canEdit("suppliers") && (
+                            <Button variant="ghost" size="icon" onClick={() => handleEditSupplier(supplier)} data-testid={`button-edit-${supplier.id}`}>
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {canDelete("suppliers") && (
+                            <Button variant="ghost" size="icon" onClick={() => { setSupplierToDelete(supplier); setIsDeleteSupplierOpen(true); }} data-testid={`button-delete-${supplier.id}`}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -603,10 +611,12 @@ export default function PurchasesPage() {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={() => { orderForm.reset(); setIsNewOrderOpen(true); }} data-testid="button-new-order">
-              <Plus className="h-4 w-4 mr-2" />
-              Nueva Orden
-            </Button>
+{canCreate("purchase_orders") && (
+              <Button onClick={() => { orderForm.reset(); setIsNewOrderOpen(true); }} data-testid="button-new-order">
+                <Plus className="h-4 w-4 mr-2" />
+                Nueva Orden
+              </Button>
+            )}
           </div>
 
           <Card>
@@ -649,7 +659,7 @@ export default function PurchasesPage() {
                           <Button variant="ghost" size="icon" onClick={() => handleViewOrder(order)} data-testid={`button-view-${order.id}`}>
                             <Eye className="h-4 w-4" />
                           </Button>
-                          {(order.status === "enviada" || order.status === "parcialmente_recibida") && (
+                          {canApprove("purchase_orders") && (order.status === "enviada" || order.status === "parcialmente_recibida") && (
                             <Button variant="ghost" size="icon" onClick={() => handleReceiveOrder(order)} data-testid={`button-receive-${order.id}`}>
                               <PackageOpen className="h-4 w-4 text-green-600" />
                             </Button>
@@ -1130,9 +1140,11 @@ export default function PurchasesPage() {
                       <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(item.subtotal)}</TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => removeOrderItemMutation.mutate(item.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        {canEdit("purchase_orders") && (
+                          <Button variant="ghost" size="icon" onClick={() => removeOrderItemMutation.mutate(item.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1154,7 +1166,7 @@ export default function PurchasesPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddItemOpen(false)}>Cerrar</Button>
-            {selectedOrder?.status === "borrador" && selectedOrder?.items?.length > 0 && (
+            {canApprove("purchase_orders") && selectedOrder?.status === "borrador" && selectedOrder?.items?.length > 0 && (
               <Button onClick={() => {
                 updateOrderStatusMutation.mutate({ id: selectedOrder.id, status: "enviada" });
                 setIsAddItemOpen(false);
@@ -1245,18 +1257,22 @@ export default function PurchasesPage() {
             <Button variant="outline" onClick={() => setIsOrderDetailOpen(false)}>Cerrar</Button>
             {selectedOrder?.status === "borrador" && (
               <>
-                <Button variant="destructive" onClick={() => { setOrderToDelete(selectedOrder); setIsDeleteOrderOpen(true); }}>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Eliminar
-                </Button>
-                <Button onClick={() => {
-                  setIsOrderDetailOpen(false);
-                  setIsAddItemOpen(true);
-                }}>
-                  <Edit2 className="h-4 w-4 mr-2" />
-                  Editar
-                </Button>
-                {selectedOrder?.items?.length > 0 && (
+                {canDelete("purchase_orders") && (
+                  <Button variant="destructive" onClick={() => { setOrderToDelete(selectedOrder); setIsDeleteOrderOpen(true); }}>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Eliminar
+                  </Button>
+                )}
+                {canEdit("purchase_orders") && (
+                  <Button onClick={() => {
+                    setIsOrderDetailOpen(false);
+                    setIsAddItemOpen(true);
+                  }}>
+                    <Edit2 className="h-4 w-4 mr-2" />
+                    Editar
+                  </Button>
+                )}
+                {canApprove("purchase_orders") && selectedOrder?.items?.length > 0 && (
                   <Button onClick={() => updateOrderStatusMutation.mutate({ id: selectedOrder.id, status: "enviada" })}>
                     <Send className="h-4 w-4 mr-2" />
                     Enviar
@@ -1266,14 +1282,18 @@ export default function PurchasesPage() {
             )}
             {selectedOrder?.status === "enviada" && (
               <>
-                <Button variant="destructive" onClick={() => updateOrderStatusMutation.mutate({ id: selectedOrder.id, status: "cancelada", reason: "Cancelada por usuario" })}>
-                  <X className="h-4 w-4 mr-2" />
-                  Cancelar
-                </Button>
-                <Button onClick={() => { setIsOrderDetailOpen(false); handleReceiveOrder(selectedOrder); }}>
-                  <PackageOpen className="h-4 w-4 mr-2" />
-                  Recibir Mercancía
-                </Button>
+                {canApprove("purchase_orders") && (
+                  <Button variant="destructive" onClick={() => updateOrderStatusMutation.mutate({ id: selectedOrder.id, status: "cancelada", reason: "Cancelada por usuario" })}>
+                    <X className="h-4 w-4 mr-2" />
+                    Cancelar
+                  </Button>
+                )}
+                {canApprove("purchase_orders") && (
+                  <Button onClick={() => { setIsOrderDetailOpen(false); handleReceiveOrder(selectedOrder); }}>
+                    <PackageOpen className="h-4 w-4 mr-2" />
+                    Recibir Mercancía
+                  </Button>
+                )}
               </>
             )}
           </DialogFooter>

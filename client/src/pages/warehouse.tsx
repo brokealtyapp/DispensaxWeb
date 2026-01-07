@@ -52,6 +52,7 @@ import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Product, Supplier, WarehouseInventory, WarehouseMovement, ProductLot } from "@shared/schema";
 import { formatDateShort, formatTime, formatCurrency } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
 
 interface WarehouseStats {
   totalProducts: number;
@@ -137,6 +138,8 @@ export function WarehousePage() {
   const [selectedMovementTypeFilter, setSelectedMovementTypeFilter] = useState<string>("all");
   const [movementsPage, setMovementsPage] = useState(1);
   const MOVEMENTS_PER_PAGE = 20;
+
+  const { canCreate, canEdit, canDelete } = usePermissions();
 
   const { data: stats, isLoading: statsLoading } = useQuery<WarehouseStats>({
     queryKey: ["/api/warehouse/stats"],
@@ -308,26 +311,30 @@ export function WarehousePage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => {
-              entryForm.setValue("lotNumber", generateLotNumber());
-              setIsEntryDialogOpen(true);
-            }}
-            className="bg-emerald-600 hover:bg-emerald-700"
-            data-testid="button-new-entry"
-          >
-            <ArrowDownCircle className="w-4 h-4 mr-2" />
-            Entrada
-          </Button>
-          <Button
-            onClick={() => setIsExitDialogOpen(true)}
-            variant="outline"
-            className="border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
-            data-testid="button-new-exit"
-          >
-            <ArrowUpCircle className="w-4 h-4 mr-2" />
-            Salida
-          </Button>
+          {canCreate("warehouse_movements") && (
+            <Button
+              onClick={() => {
+                entryForm.setValue("lotNumber", generateLotNumber());
+                setIsEntryDialogOpen(true);
+              }}
+              className="bg-emerald-600 hover:bg-emerald-700"
+              data-testid="button-new-entry"
+            >
+              <ArrowDownCircle className="w-4 h-4 mr-2" />
+              Entrada
+            </Button>
+          )}
+          {canCreate("warehouse_movements") && (
+            <Button
+              onClick={() => setIsExitDialogOpen(true)}
+              variant="outline"
+              className="border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
+              data-testid="button-new-exit"
+            >
+              <ArrowUpCircle className="w-4 h-4 mr-2" />
+              Salida
+            </Button>
+          )}
           <Select onValueChange={(type) => {
             const url = `/api/warehouse/export/${type}`;
             window.open(url, "_blank");
@@ -580,14 +587,16 @@ export function WarehousePage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsAdjustmentDialogOpen(true)}
-                  data-testid="button-adjustment"
-                >
-                  <Edit className="w-4 h-4 mr-2" />
-                  Ajuste
-                </Button>
+                {canEdit("warehouse") && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsAdjustmentDialogOpen(true)}
+                    data-testid="button-adjustment"
+                  >
+                    <Edit className="w-4 h-4 mr-2" />
+                    Ajuste
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>

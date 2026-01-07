@@ -40,6 +40,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -137,6 +138,7 @@ export function HRPage() {
   const [timePage, setTimePage] = useState(1);
   const [performancePage, setPerformancePage] = useState(1);
   const { toast } = useToast();
+  const { canCreate, canEdit, canDelete } = usePermissions();
 
   const form = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeSchema),
@@ -334,29 +336,36 @@ export function HRPage() {
     {
       key: "id",
       header: "",
-      render: (item) => (
-        <div className="flex items-center gap-1">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => openEditEmployee(item)}
-            data-testid={`button-edit-${item.id}`}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          {item.isActive && (
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={() => setDeletingEmployeeId(item.id)}
-              className="text-destructive hover:text-destructive"
-              data-testid={`button-delete-${item.id}`}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      ),
+      render: (item) => {
+        const showEdit = canEdit("employees");
+        const showDelete = canDelete("employees") && item.isActive;
+        if (!showEdit && !showDelete) return null;
+        return (
+          <div className="flex items-center gap-1">
+            {showEdit && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => openEditEmployee(item)}
+                data-testid={`button-edit-${item.id}`}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+            {showDelete && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setDeletingEmployeeId(item.id)}
+                className="text-destructive hover:text-destructive"
+                data-testid={`button-delete-${item.id}`}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -430,13 +439,14 @@ export function HRPage() {
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Recursos Humanos</h1>
           <p className="text-muted-foreground">Gestión de personal y control de tiempos</p>
         </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-employee">
-              <UserPlus className="h-4 w-4 mr-2" />
-              Nuevo Empleado
-            </Button>
-          </DialogTrigger>
+        {canCreate("employees") && (
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-employee">
+                <UserPlus className="h-4 w-4 mr-2" />
+                Nuevo Empleado
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Agregar Empleado</DialogTitle>
@@ -544,7 +554,8 @@ export function HRPage() {
               </form>
             </Form>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

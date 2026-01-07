@@ -35,6 +35,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -71,6 +72,7 @@ export function PettyCashPage() {
   const [isNewExpenseOpen, setIsNewExpenseOpen] = useState(false);
   const [isReplenishOpen, setIsReplenishOpen] = useState(false);
   const [isInitFundOpen, setIsInitFundOpen] = useState(false);
+  const { canCreate, canEdit, canApprove } = usePermissions();
 
   const fundForm = useForm<FundFormData>({
     resolver: zodResolver(fundFormSchema),
@@ -290,10 +292,12 @@ export function PettyCashPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
-            <Button onClick={() => setIsInitFundOpen(true)} data-testid="button-init-fund">
-              <Plus className="h-4 w-4 mr-2" />
-              Inicializar Fondo
-            </Button>
+            {canCreate("petty_cash") && (
+              <Button onClick={() => setIsInitFundOpen(true)} data-testid="button-init-fund">
+                <Plus className="h-4 w-4 mr-2" />
+                Inicializar Fondo
+              </Button>
+            )}
           </CardContent>
         </Card>
 
@@ -385,25 +389,29 @@ export function PettyCashPage() {
             <p className="text-muted-foreground" data-testid="text-page-subtitle">Gestión de gastos menores y fondo de caja chica</p>
           </div>
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                const suggestedAmount = (fundLimit - fundBalance).toFixed(2);
-                replenishForm.setValue("amount", suggestedAmount);
-                setIsReplenishOpen(true);
-              }}
-              data-testid="button-replenish"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Reponer Fondo
-            </Button>
-            <Button 
-              onClick={() => setIsNewExpenseOpen(true)}
-              data-testid="button-new-expense"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Nuevo Gasto
-            </Button>
+            {canEdit("petty_cash") && (
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  const suggestedAmount = (fundLimit - fundBalance).toFixed(2);
+                  replenishForm.setValue("amount", suggestedAmount);
+                  setIsReplenishOpen(true);
+                }}
+                data-testid="button-replenish"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Reponer Fondo
+              </Button>
+            )}
+            {canCreate("petty_cash") && (
+              <Button 
+                onClick={() => setIsNewExpenseOpen(true)}
+                data-testid="button-new-expense"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Nuevo Gasto
+              </Button>
+            )}
           </div>
         </div>
 
@@ -589,7 +597,7 @@ export function PettyCashPage() {
                               <p className="text-sm text-muted-foreground mt-2 pl-14">{expense.reason}</p>
                             )}
                             <div className="flex gap-2 mt-3 pl-14">
-                              {expense.status === "pendiente" && (
+                              {expense.status === "pendiente" && canApprove("petty_cash_approval") && (
                                 <>
                                   <Button 
                                     size="sm" 
