@@ -326,7 +326,9 @@ export function SupplierPage() {
   const { data: assignedVehicles = [] } = useQuery<any[]>({
     queryKey: ["/api/vehicles", { assignedUserId: supplierId }],
     queryFn: async () => {
-      const response = await fetch(`/api/vehicles?assignedUserId=${supplierId}`);
+      const response = await fetch(`/api/vehicles?assignedUserId=${supplierId}`, {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error("Error fetching vehicles");
       return response.json();
     },
@@ -339,7 +341,9 @@ export function SupplierPage() {
   const { data: fuelRecords = [], refetch: refetchFuelRecords } = useQuery<any[]>({
     queryKey: ["/api/fuel-records", { vehicleId: assignedVehicle?.id }],
     queryFn: async () => {
-      const response = await fetch(`/api/fuel-records?vehicleId=${assignedVehicle?.id}&limit=10`);
+      const response = await fetch(`/api/fuel-records?vehicleId=${assignedVehicle?.id}&limit=10`, {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error("Error fetching fuel records");
       return response.json();
     },
@@ -350,7 +354,9 @@ export function SupplierPage() {
   const { data: vehicleFuelStats } = useQuery<any>({
     queryKey: ["/api/vehicles", assignedVehicle?.id, "fuel-stats"],
     queryFn: async () => {
-      const response = await fetch(`/api/vehicles/${assignedVehicle?.id}/fuel-stats`);
+      const response = await fetch(`/api/vehicles/${assignedVehicle?.id}/fuel-stats`, {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error("Error fetching fuel stats");
       return response.json();
     },
