@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import { formatDateShort, formatDate, formatTime, getDateKeyInTimezone, getTodayInTimezone } from "@/lib/utils";
 import { 
   Route, MapPin, Plus, Search, Filter, Edit2, Trash2, Eye, 
@@ -103,6 +104,7 @@ const ITEMS_PER_PAGE = 20;
 export default function RoutesPage() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { canCreate, canEdit, canDelete } = usePermissions();
   const [, setLocation] = useLocation();
   
   // Redirigir abastecedores a su página - no tienen acceso a gestión de rutas
@@ -464,10 +466,12 @@ export default function RoutesPage() {
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Gestión de Rutas</h1>
           <p className="text-muted-foreground">Planifica y administra las rutas de abastecimiento</p>
         </div>
-        <Button onClick={() => setIsNewRouteOpen(true)} className="gap-2" data-testid="button-new-route">
-          <Plus className="h-4 w-4" />
-          Nueva Ruta
-        </Button>
+        {canCreate("routes") && (
+          <Button onClick={() => setIsNewRouteOpen(true)} className="gap-2" data-testid="button-new-route">
+            <Plus className="h-4 w-4" />
+            Nueva Ruta
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
@@ -677,14 +681,16 @@ export default function RoutesPage() {
                                 </Button>
                                 {route.status === "pendiente" && (
                                   <>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => handleEditRoute(route)}
-                                      data-testid={`button-edit-route-${route.id}`}
-                                    >
-                                      <Edit2 className="h-4 w-4" />
-                                    </Button>
+                                    {canEdit("routes") && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handleEditRoute(route)}
+                                        data-testid={`button-edit-route-${route.id}`}
+                                      >
+                                        <Edit2 className="h-4 w-4" />
+                                      </Button>
+                                    )}
                                     <Button
                                       variant="ghost"
                                       size="icon"
@@ -697,17 +703,19 @@ export default function RoutesPage() {
                                     >
                                       <XCircle className="h-4 w-4 text-orange-500" />
                                     </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => {
-                                        setRouteToDelete(route);
-                                        setIsDeleteRouteOpen(true);
-                                      }}
-                                      data-testid={`button-delete-route-${route.id}`}
-                                    >
-                                      <Trash2 className="h-4 w-4 text-destructive" />
-                                    </Button>
+                                    {canDelete("routes") && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => {
+                                          setRouteToDelete(route);
+                                          setIsDeleteRouteOpen(true);
+                                        }}
+                                        data-testid={`button-delete-route-${route.id}`}
+                                      >
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                      </Button>
+                                    )}
                                   </>
                                 )}
                                 {route.status === "en_progreso" && (

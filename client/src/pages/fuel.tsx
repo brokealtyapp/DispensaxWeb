@@ -6,6 +6,7 @@ import { z } from "zod";
 import { insertVehicleSchema, insertFuelRecordSchema } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -137,6 +138,7 @@ export function FuelPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   
   const { toast } = useToast();
+  const { canCreate, canEdit, canDelete } = usePermissions();
 
   const { data: vehicles = [], isLoading: loadingVehicles } = useQuery<any[]>({
     queryKey: ["/api/vehicles"],
@@ -536,12 +538,14 @@ export function FuelPage() {
               if (!open) closeVehicleDialog();
               else setVehicleDialogOpen(true);
             }}>
-              <DialogTrigger asChild>
-                <Button variant="outline" data-testid="button-add-vehicle">
-                  <Car className="mr-2 h-4 w-4" />
-                  Agregar Vehículo
-                </Button>
-              </DialogTrigger>
+              {canCreate("vehicles") && (
+                <DialogTrigger asChild>
+                  <Button variant="outline" data-testid="button-add-vehicle">
+                    <Car className="mr-2 h-4 w-4" />
+                    Agregar Vehículo
+                  </Button>
+                </DialogTrigger>
+              )}
               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>{editingVehicle ? "Editar Vehículo" : "Nuevo Vehículo"}</DialogTitle>
@@ -1129,10 +1133,12 @@ export function FuelPage() {
                   <Car className="h-12 w-12 text-muted-foreground mb-4" />
                   <p className="text-lg font-medium">No hay vehículos registrados</p>
                   <p className="text-muted-foreground mb-4">Agrega el primer vehículo de tu flota</p>
-                  <Button onClick={() => setVehicleDialogOpen(true)} data-testid="button-add-first-vehicle">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Agregar Vehículo
-                  </Button>
+                  {canCreate("vehicles") && (
+                    <Button onClick={() => setVehicleDialogOpen(true)} data-testid="button-add-first-vehicle">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Agregar Vehículo
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ) : (
@@ -1145,26 +1151,29 @@ export function FuelPage() {
                           <CardTitle className="text-lg" data-testid={`text-vehicle-plate-${vehicle.id}`}>{vehicle.plate}</CardTitle>
                           <div className="flex items-center gap-1">
                             {getStatusBadge(vehicle.status)}
-                            <Button 
-                              size="icon" 
-                              variant="ghost" 
-                              onClick={() => openEditVehicle(vehicle)}
-                              data-testid={`button-edit-vehicle-${vehicle.id}`}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <AlertDialog open={vehicleToDelete === vehicle.id} onOpenChange={(open) => !open && setVehicleToDelete(null)}>
-                              <AlertDialogTrigger asChild>
-                                <Button 
-                                  size="icon" 
-                                  variant="ghost" 
-                                  className="text-destructive hover:text-destructive"
-                                  onClick={() => setVehicleToDelete(vehicle.id)}
-                                  data-testid={`button-delete-vehicle-${vehicle.id}`}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
+                            {canEdit("vehicles") && (
+                              <Button 
+                                size="icon" 
+                                variant="ghost" 
+                                onClick={() => openEditVehicle(vehicle)}
+                                data-testid={`button-edit-vehicle-${vehicle.id}`}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {canDelete("vehicles") && (
+                              <AlertDialog open={vehicleToDelete === vehicle.id} onOpenChange={(open) => !open && setVehicleToDelete(null)}>
+                                <AlertDialogTrigger asChild>
+                                  <Button 
+                                    size="icon" 
+                                    variant="ghost" 
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => setVehicleToDelete(vehicle.id)}
+                                    data-testid={`button-delete-vehicle-${vehicle.id}`}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>¿Eliminar vehículo?</AlertDialogTitle>
@@ -1183,7 +1192,8 @@ export function FuelPage() {
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
-                            </AlertDialog>
+                              </AlertDialog>
+                            )}
                           </div>
                         </div>
                         <CardDescription data-testid={`text-vehicle-model-${vehicle.id}`}>

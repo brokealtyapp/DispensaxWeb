@@ -61,7 +61,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
   
   supervisor: {
     machines: { view: true, create: false, edit: true, delete: false },
-    routes: { view: true, create: true, edit: true, delete: false },
+    routes: { view: true, create: false, edit: true, delete: false },
     stops: { view: true, create: true, edit: true, delete: true },
     employees: { view: true, create: false, edit: false, delete: false },
     users: { view: false, create: false, edit: false, delete: false },
