@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/lib/auth-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import { 
   CheckSquare,
   Plus,
@@ -96,6 +97,7 @@ const typeConfig: Record<string, { label: string; icon: any }> = {
 export function TasksPage() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { canCreate, canEdit, canDelete } = usePermissions();
   const [activeTab, setActiveTab] = useState("all");
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [isEditTaskOpen, setIsEditTaskOpen] = useState(false);
@@ -303,17 +305,19 @@ export function TasksPage() {
               Administra y organiza todas las tareas del equipo
             </p>
           </div>
-          <Button
-            onClick={() => {
-              taskForm.reset();
-              setIsNewTaskOpen(true);
-            }}
-            className="gap-2"
-            data-testid="button-new-task"
-          >
-            <Plus className="h-4 w-4" />
-            Nueva Tarea
-          </Button>
+          {canCreate("tasks") && (
+            <Button
+              onClick={() => {
+                taskForm.reset();
+                setIsNewTaskOpen(true);
+              }}
+              className="gap-2"
+              data-testid="button-new-task"
+            >
+              <Plus className="h-4 w-4" />
+              Nueva Tarea
+            </Button>
+          )}
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -556,11 +560,13 @@ export function TasksPage() {
                                       </DropdownMenuItem>
                                     </>
                                   )}
-                                  <DropdownMenuItem onClick={() => handleEditTask(task)}>
-                                    <Edit className="h-4 w-4 mr-2" />
-                                    Editar
-                                  </DropdownMenuItem>
-                                  {task.status !== "completada" && task.status !== "cancelada" && (
+                                  {canEdit("tasks") && (
+                                    <DropdownMenuItem onClick={() => handleEditTask(task)}>
+                                      <Edit className="h-4 w-4 mr-2" />
+                                      Editar
+                                    </DropdownMenuItem>
+                                  )}
+                                  {canEdit("tasks") && task.status !== "completada" && task.status !== "cancelada" && (
                                     <DropdownMenuItem 
                                       onClick={() => cancelTaskMutation.mutate(task.id)}
                                       className="text-orange-600"
@@ -569,13 +575,15 @@ export function TasksPage() {
                                       Cancelar
                                     </DropdownMenuItem>
                                   )}
-                                  <DropdownMenuItem 
-                                    onClick={() => deleteTaskMutation.mutate(task.id)}
-                                    className="text-red-600"
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Eliminar
-                                  </DropdownMenuItem>
+                                  {canDelete("tasks") && (
+                                    <DropdownMenuItem 
+                                      onClick={() => deleteTaskMutation.mutate(task.id)}
+                                      className="text-red-600"
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Eliminar
+                                    </DropdownMenuItem>
+                                  )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>

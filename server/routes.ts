@@ -829,7 +829,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/suppliers", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/suppliers", authenticateJWT, authorizeAction("suppliers", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertSupplierSchema.parse(req.body);
       const supplier = await storage.createSupplier(data);
@@ -842,7 +842,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/suppliers/:id", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/suppliers/:id", authenticateJWT, authorizeAction("suppliers", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertSupplierSchema.partial().parse(req.body);
       const supplier = await storage.updateSupplier(req.params.id, data);
@@ -858,7 +858,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/suppliers/:id", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/suppliers/:id", authenticateJWT, authorizeAction("suppliers", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.deleteSupplier(req.params.id);
       res.status(204).send();
@@ -886,7 +886,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/warehouse/inventory/:productId", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/warehouse/inventory/:productId", authenticateJWT, authorizeAction("warehouse", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { quantity, minStock, maxStock, reorderPoint } = req.body;
       const inventory = await storage.updateWarehouseInventory(req.params.productId, {
@@ -922,7 +922,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/warehouse/lots", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/warehouse/lots", authenticateJWT, authorizeAction("warehouse_movements", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertProductLotSchema.parse(req.body);
       const lot = await storage.createProductLot(data);
@@ -950,7 +950,7 @@ export async function registerRoutes(
   });
 
   // Entrada de mercancía - solo admin y almacen pueden registrar entradas
-  app.post("/api/warehouse/entry", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/warehouse/entry", authenticateJWT, authorizeAction("warehouse_movements", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { productId, quantity, unitCost, supplierId, lotNumber, expirationDate, notes } = req.body;
       
@@ -977,7 +977,7 @@ export async function registerRoutes(
   });
 
   // Salida hacia abastecedor - solo admin y almacen pueden registrar salidas
-  app.post("/api/warehouse/exit", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/warehouse/exit", authenticateJWT, authorizeAction("warehouse_movements", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { productId, quantity, destinationUserId, notes } = req.body;
       
@@ -1004,7 +1004,7 @@ export async function registerRoutes(
   });
 
   // Ajuste de inventario - solo admin y almacen pueden ajustar
-  app.post("/api/warehouse/adjustment", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/warehouse/adjustment", authenticateJWT, authorizeAction("warehouse", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { productId, physicalCount, notes, reason } = req.body;
       
@@ -1105,7 +1105,7 @@ export async function registerRoutes(
   });
 
   // Configurar alertas de inventario por producto
-  app.patch("/api/warehouse/inventory/:productId/alerts", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/warehouse/inventory/:productId/alerts", authenticateJWT, authorizeAction("warehouse", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { productId } = req.params;
       const { minStock, maxStock, reorderPoint } = req.body;
@@ -2484,7 +2484,7 @@ export async function registerRoutes(
     phone: z.string().optional(),
   }).strict();
 
-  app.patch("/api/users/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/users/:id", authenticateJWT, authorizeAction("users", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!req.user) {
         return res.status(401).json({ error: "No autenticado" });
@@ -2583,7 +2583,7 @@ export async function registerRoutes(
   });
 
   // Crear usuario (solo admin)
-  app.post("/api/admin/users", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/admin/users", authenticateJWT, authorizeAction("users", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const validatedData = adminUserSchema.parse(req.body);
       
@@ -2627,7 +2627,7 @@ export async function registerRoutes(
   });
 
   // Actualizar usuario (solo admin - todos los campos)
-  app.patch("/api/admin/users/:id", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/admin/users/:id", authenticateJWT, authorizeAction("users", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const validatedData = adminUserSchema.partial().parse(req.body);
       
@@ -2908,7 +2908,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/shrinkage", authenticateJWT, authorizeRoles("admin", "almacen", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/shrinkage", authenticateJWT, authorizeAction("warehouse_movements", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertShrinkageRecordSchema.parse({
         ...req.body,
@@ -2952,7 +2952,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/shrinkage/:id/approve", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/shrinkage/:id/approve", authenticateJWT, authorizeAction("warehouse_movements", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const record = await storage.approveShrinkage(req.params.id, req.user!.userId);
       if (!record) {
@@ -3019,7 +3019,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/petty-cash/expenses", async (req: Request, res: Response) => {
+  app.post("/api/petty-cash/expenses", authenticateJWT, authorizeAction("petty_cash", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertPettyCashExpenseSchema.parse(req.body);
       const expense = await storage.createPettyCashExpense(data);
@@ -3032,7 +3032,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/petty-cash/expenses/:id/approve", async (req: Request, res: Response) => {
+  app.post("/api/petty-cash/expenses/:id/approve", authenticateJWT, authorizeAction("petty_cash_approval", "approve"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId } = req.body;
       if (!userId) {
@@ -3048,7 +3048,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/petty-cash/expenses/:id/reject", async (req: Request, res: Response) => {
+  app.post("/api/petty-cash/expenses/:id/reject", authenticateJWT, authorizeAction("petty_cash_approval", "approve"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, reason } = req.body;
       if (!userId || !reason) {
@@ -3064,7 +3064,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/petty-cash/expenses/:id/pay", async (req: Request, res: Response) => {
+  app.post("/api/petty-cash/expenses/:id/pay", authenticateJWT, authorizeAction("petty_cash", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const expense = await storage.markPettyCashExpenseAsPaid(req.params.id);
       if (!expense) {
@@ -3086,7 +3086,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/petty-cash/fund", async (req: Request, res: Response) => {
+  app.post("/api/petty-cash/fund", authenticateJWT, authorizeAction("petty_cash", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertPettyCashFundSchema.parse(req.body);
       const fund = await storage.initializePettyCashFund(data);
@@ -3099,7 +3099,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/petty-cash/fund/replenish", async (req: Request, res: Response) => {
+  app.post("/api/petty-cash/fund/replenish", authenticateJWT, authorizeAction("petty_cash", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { amount, userId } = req.body;
       if (!amount || !userId) {
@@ -3200,7 +3200,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/purchase-orders", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/purchase-orders", authenticateJWT, authorizeAction("purchase_orders", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertPurchaseOrderSchema.omit({ orderNumber: true }).parse(req.body);
       const orderNumber = await storage.getNextOrderNumber();
@@ -3219,7 +3219,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/purchase-orders/:id", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/purchase-orders/:id", authenticateJWT, authorizeAction("purchase_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertPurchaseOrderSchema.partial().parse(req.body);
       const order = await storage.updatePurchaseOrder(req.params.id, data);
@@ -3235,7 +3235,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/purchase-orders/:id/status", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/purchase-orders/:id/status", authenticateJWT, authorizeAction("purchase_orders", "approve"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const statusSchema = z.object({
         status: z.enum(["borrador", "enviada", "parcialmente_recibida", "recibida", "cancelada"]),
@@ -3255,7 +3255,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/purchase-orders/:id", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/purchase-orders/:id", authenticateJWT, authorizeAction("purchase_orders", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const deleted = await storage.deletePurchaseOrder(req.params.id);
       if (!deleted) {
@@ -3277,7 +3277,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/purchase-orders/:id/items", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/purchase-orders/:id/items", authenticateJWT, authorizeAction("purchase_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertPurchaseOrderItemSchema.omit({ orderId: true }).parse(req.body);
       const item = await storage.addPurchaseOrderItem({
@@ -3511,7 +3511,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/fuel-records", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/fuel-records", authenticateJWT, authorizeAction("fuel", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const validated = insertFuelRecordSchema.parse(req.body);
       const record = await storage.createFuelRecord(validated);
@@ -3525,7 +3525,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/fuel-records/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/fuel-records/:id", authenticateJWT, authorizeAction("fuel", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const validated = insertFuelRecordSchema.partial().parse(req.body);
       const record = await storage.updateFuelRecord(req.params.id, validated);
@@ -3541,7 +3541,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/fuel-records/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/fuel-records/:id", authenticateJWT, authorizeAction("fuel", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.deleteFuelRecord(req.params.id);
       res.json({ success: true });
@@ -3967,7 +3967,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/hr/employees", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/hr/employees", authenticateJWT, authorizeAction("employees", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertEmployeeSchema.parse(req.body);
       const employee = await storage.createEmployee(data);
@@ -3981,7 +3981,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/hr/employees/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/hr/employees/:id", authenticateJWT, authorizeAction("employees", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertEmployeeSchema.partial().parse(req.body);
       const employee = await storage.updateEmployee(req.params.id, data);
@@ -3998,7 +3998,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/hr/employees/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/hr/employees/:id", authenticateJWT, authorizeAction("employees", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const success = await storage.deleteEmployee(req.params.id);
       if (!success) {
@@ -4143,7 +4143,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/tasks", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/tasks", authenticateJWT, authorizeAction("tasks", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const bodyWithParsedDate = {
         ...req.body,
@@ -4162,7 +4162,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/tasks/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/tasks/:id", authenticateJWT, authorizeAction("tasks", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       // Verificar ownership para abastecedores
       const existingTask = await storage.getTask(req.params.id);
@@ -4203,7 +4203,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/tasks/:id/complete", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/tasks/:id/complete", authenticateJWT, authorizeAction("tasks", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       // Verificar ownership para abastecedores
       const existingTask = await storage.getTask(req.params.id);
@@ -4229,7 +4229,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/tasks/:id/cancel", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/tasks/:id/cancel", authenticateJWT, authorizeAction("tasks", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       // Verificar ownership para abastecedores
       const existingTask = await storage.getTask(req.params.id);
@@ -4255,7 +4255,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/tasks/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/tasks/:id", authenticateJWT, authorizeAction("tasks", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.deleteTask(req.params.id);
       res.json({ success: true });
@@ -4296,7 +4296,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/calendar/events", async (req: Request, res: Response) => {
+  app.post("/api/calendar/events", authenticateJWT, authorizeAction("tasks", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertCalendarEventSchema.parse(req.body);
       const event = await storage.createCalendarEvent(data);
@@ -4310,7 +4310,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/calendar/events/:id", async (req: Request, res: Response) => {
+  app.patch("/api/calendar/events/:id", authenticateJWT, authorizeAction("tasks", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertCalendarEventSchema.partial().parse(req.body);
       const event = await storage.updateCalendarEvent(req.params.id, data);
@@ -4327,7 +4327,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/calendar/events/:id", async (req: Request, res: Response) => {
+  app.delete("/api/calendar/events/:id", authenticateJWT, authorizeAction("tasks", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.deleteCalendarEvent(req.params.id);
       res.json({ success: true });

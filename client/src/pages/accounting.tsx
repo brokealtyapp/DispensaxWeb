@@ -21,6 +21,7 @@ import { DataTable, Column } from "@/components/DataTable";
 import { StatsCard } from "@/components/StatsCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { formatCurrency } from "@/lib/utils";
 import {
   DollarSign,
@@ -123,6 +124,7 @@ export function AccountingPage() {
   const [selectedUser, setSelectedUser] = useState("all");
   const dateRange = useMemo(() => getDateRange(period), [period]);
   const { toast } = useToast();
+  const { canCreate, canEdit, canDelete, canApprove, canExport } = usePermissions();
 
   const buildUrl = (base: string, params: Record<string, string | undefined>) => {
     const searchParams = new URLSearchParams();
@@ -362,25 +364,27 @@ export function AccountingPage() {
               <SelectItem value="year">Este Año</SelectItem>
             </SelectContent>
           </Select>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2" data-testid="button-export">
-                <Download className="h-4 w-4" />
-                Exportar
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={handleExportSales} data-testid="export-ventas">
-                Ventas por Máquina
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportExpenses} data-testid="export-gastos">
-                Gastos
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportCashCut} data-testid="export-corte">
-                Corte de Caja
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {canExport("accounting") && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2" data-testid="button-export">
+                  <Download className="h-4 w-4" />
+                  Exportar
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={handleExportSales} data-testid="export-ventas">
+                  Ventas por Máquina
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportExpenses} data-testid="export-gastos">
+                  Gastos
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportCashCut} data-testid="export-corte">
+                  Corte de Caja
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
@@ -636,10 +640,12 @@ export function AccountingPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Button onClick={handleGenerarCorte} data-testid="button-generar-corte">
-                  <FileCheck className="h-4 w-4 mr-2" />
-                  Generar Corte
-                </Button>
+                {canApprove("cash_collections") && (
+                  <Button onClick={handleGenerarCorte} data-testid="button-generar-corte">
+                    <FileCheck className="h-4 w-4 mr-2" />
+                    Generar Corte
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>

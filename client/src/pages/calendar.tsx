@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -81,6 +82,8 @@ export function CalendarPage() {
   const [isEditEventOpen, setIsEditEventOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
   const [viewMode, setViewMode] = useState<"month" | "week">("month");
+
+  const { canCreate, canEdit, canDelete } = usePermissions();
 
   const eventForm = useForm<EventFormData>({
     resolver: zodResolver(eventFormSchema),
@@ -252,17 +255,19 @@ export function CalendarPage() {
               Visualiza y gestiona eventos y tareas programadas
             </p>
           </div>
-          <Button
-            onClick={() => {
-              eventForm.reset({ startDate: new Date() });
-              setIsNewEventOpen(true);
-            }}
-            className="gap-2"
-            data-testid="button-new-event"
-          >
-            <Plus className="h-4 w-4" />
-            Nuevo Evento
-          </Button>
+          {canCreate("tasks") && (
+            <Button
+              onClick={() => {
+                eventForm.reset({ startDate: new Date() });
+                setIsNewEventOpen(true);
+              }}
+              className="gap-2"
+              data-testid="button-new-event"
+            >
+              <Plus className="h-4 w-4" />
+              Nuevo Evento
+            </Button>
+          )}
         </div>
 
         <Card>
@@ -409,24 +414,28 @@ export function CalendarPage() {
                               )}
                             </div>
                           </div>
-                          {!(item as any).isTask && (
+                          {!(item as any).isTask && (canEdit("tasks") || canDelete("tasks")) && (
                             <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleEditEvent(item)}
-                                data-testid={`button-edit-event-${item.id}`}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => deleteEventMutation.mutate(item.id)}
-                                data-testid={`button-delete-event-${item.id}`}
-                              >
-                                <Trash2 className="h-4 w-4 text-red-500" />
-                              </Button>
+                              {canEdit("tasks") && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleEditEvent(item)}
+                                  data-testid={`button-edit-event-${item.id}`}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {canDelete("tasks") && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => deleteEventMutation.mutate(item.id)}
+                                  data-testid={`button-delete-event-${item.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4 text-red-500" />
+                                </Button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -441,14 +450,16 @@ export function CalendarPage() {
                     </div>
                   )}
 
-                  <Button
-                    className="w-full gap-2"
-                    onClick={() => handleAddEventOnDate(selectedDate)}
-                    data-testid="button-add-event-day"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Agregar Evento
-                  </Button>
+                  {canCreate("tasks") && (
+                    <Button
+                      className="w-full gap-2"
+                      onClick={() => handleAddEventOnDate(selectedDate)}
+                      data-testid="button-add-event-day"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Agregar Evento
+                    </Button>
+                  )}
                 </>
               )}
             </div>

@@ -69,6 +69,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { formatDateShort } from "@/lib/utils";
 import type { User } from "@shared/schema";
 
@@ -195,6 +196,8 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showCreatePassword, setShowCreatePassword] = useState(false);
   const [showEditPassword, setShowEditPassword] = useState(false);
+
+  const { canCreate, canEdit, canDelete } = usePermissions();
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ["/api/users"],
@@ -426,10 +429,12 @@ export default function UsersPage() {
             Administra todos los usuarios del sistema
           </p>
         </div>
+{canCreate("users") && (
         <Button onClick={handleOpenCreate} className="gap-2" data-testid="button-create-user">
           <Plus className="h-4 w-4" />
           Nuevo Usuario
         </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -614,6 +619,7 @@ export default function UsersPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
+                      {canEdit("users") && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -622,6 +628,8 @@ export default function UsersPage() {
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
+                      )}
+                      {canEdit("users") && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -634,6 +642,7 @@ export default function UsersPage() {
                           <CheckCircle2 className="h-4 w-4 text-green-600" />
                         )}
                       </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
