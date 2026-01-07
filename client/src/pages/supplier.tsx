@@ -365,9 +365,16 @@ export function SupplierPage() {
   const activeServiceUrl = inProgressStop?.id 
     ? `/api/supplier/active-service/${supplierId}?routeStopId=${inProgressStop.id}`
     : `/api/supplier/active-service/${supplierId}`;
-  const { data: activeService } = useQuery<{ id: string; routeStopId: string; checklistData?: string } | null>({
+  const { data: activeService } = useQuery<{ 
+    id: string; 
+    routeStopId: string; 
+    checklistData?: string;
+    cashCollections?: any[];
+    productLoads?: any[];
+    issueReports?: any[];
+  } | null>({
     queryKey: [activeServiceUrl],
-    enabled: !!supplierId && !isViewingOther && !!inProgressStop,
+    enabled: !!supplierId && !isViewingOther,
   });
 
   // Query para productos cargados en el servicio actual
@@ -378,13 +385,25 @@ export function SupplierPage() {
 
   // Restaurar estado del servicio activo al cargar la página
   useEffect(() => {
-    if (!inProgressStop || isViewingOther || isServiceActive) return;
+    if (isViewingOther || isServiceActive) return;
     
     if (activeService?.id) {
-      // Hay un servicio activo exacto - restaurar estado
-      setCurrentStop(inProgressStop);
+      // Hay un servicio activo - restaurar estado
+      // Buscar la parada correspondiente en todayRoute
+      let targetStop: RouteStop | null = inProgressStop;
+      
+      if (!targetStop && activeService.routeStopId && todayRoute?.stops) {
+        targetStop = todayRoute.stops.find((stop: RouteStop) => stop.id === activeService.routeStopId) || null;
+      }
+      
+      // Siempre restaurar el servicio activo, incluso si no hay parada asociada
       setActiveServiceId(activeService.id);
       setIsServiceActive(true);
+      
+      // Establecer la parada si existe
+      if (targetStop) {
+        setCurrentStop(targetStop);
+      }
       
       // Restaurar checklist si existe
       if (activeService.checklistData) {
@@ -399,12 +418,11 @@ export function SupplierPage() {
       }
       
       // Cambiar automáticamente al tab de servicio activo SOLO si el usuario NO navegó explícitamente
-      // Esto permite que el usuario pueda ir a "Mi Ruta" desde el sidebar sin ser redirigido
       if (activeTab === "ruta" && !userNavigatedExplicitly.current) {
         handleTabChange("servicio");
       }
     }
-  }, [inProgressStop, activeService, isViewingOther, isServiceActive, activeTab, handleTabChange]);
+  }, [inProgressStop, activeService, isViewingOther, isServiceActive, activeTab, handleTabChange, todayRoute]);
 
   const startRouteMutation = useMutation({
     mutationFn: async (routeId: string) => {

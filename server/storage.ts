@@ -1369,6 +1369,13 @@ export class DatabaseStorage implements IStorage {
       .set({ lastVisit: new Date() })
       .where(eq(machines.id, data.machineId));
     
+    // Actualizar estado de la parada si existe
+    if (data.routeStopId) {
+      await db.update(routeStops)
+        .set({ status: "en_progreso", actualArrival: new Date() })
+        .where(eq(routeStops.id, data.routeStopId));
+    }
+    
     return record;
   }
 
@@ -1391,6 +1398,27 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(serviceRecords.id, id))
       .returning();
+    
+    // Actualizar estado de la parada si existe
+    if (record.routeStopId) {
+      const [stop] = await db.select().from(routeStops).where(eq(routeStops.id, record.routeStopId));
+      if (stop && stop.actualArrival) {
+        const actualDeparture = new Date();
+        const stopDuration = Math.round((actualDeparture.getTime() - new Date(stop.actualArrival).getTime()) / 60000);
+        
+        await db.update(routeStops)
+          .set({ status: "completada", actualDeparture, durationMinutes: stopDuration })
+          .where(eq(routeStops.id, record.routeStopId));
+        
+        // Actualizar contador de paradas completadas en la ruta
+        const routeData = await this.getRoute(stop.routeId);
+        if (routeData) {
+          await db.update(routes)
+            .set({ completedStops: (routeData.completedStops || 0) + 1 })
+            .where(eq(routes.id, stop.routeId));
+        }
+      }
+    }
     
     return updated;
   }
@@ -1551,6 +1579,18 @@ export class DatabaseStorage implements IStorage {
     }));
     
     return reportsWithDetails;
+  }
+  
+  async getIssueReportsByService(serviceRecordId: string): Promise<any[]> {
+    const reports = await db.select().from(issueReports)
+      .where(eq(issueReports.serviceRecordId, serviceRecordId))
+      .orderBy(desc(issueReports.createdAt));
+    
+    return Promise.all(reports.map(async (report) => {
+      const machine = await this.getMachine(report.machineId);
+      const user = await this.getUser(report.userId);
+      return { ...report, machine, user };
+    }));
   }
 
   async getIssueReport(id: string): Promise<any> {

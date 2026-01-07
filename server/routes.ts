@@ -1602,8 +1602,29 @@ export async function registerRoutes(
     try {
       const routeStopId = req.query.routeStopId as string | undefined;
       const service = await storage.getActiveService(req.params.userId, routeStopId);
-      res.json(service || null);
+      
+      if (!service) {
+        return res.json(null);
+      }
+      
+      // Obtener datos completos del servicio activo (checklist, efectivo, cargas, incidencias)
+      const [cashCollections, productLoads, serviceIssues] = await Promise.all([
+        storage.getCashCollections(undefined, undefined, undefined, undefined, 100),
+        storage.getProductLoads(service.id),
+        storage.getIssueReportsByService(service.id)
+      ]);
+      
+      // Filtrar solo las colecciones de efectivo para este servicio
+      const serviceCash = cashCollections.filter((c: any) => c.serviceRecordId === service.id);
+      
+      res.json({
+        ...service,
+        cashCollections: serviceCash,
+        productLoads,
+        issueReports: serviceIssues
+      });
     } catch (error) {
+      console.error("Error getting active service:", error);
       res.status(500).json({ error: "Error al obtener servicio activo" });
     }
   });
