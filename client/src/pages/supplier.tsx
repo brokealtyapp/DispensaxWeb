@@ -167,13 +167,16 @@ export function SupplierPage() {
   const [, navigate] = useLocation();
   
   // Extraer tab y id del query string (se recalcula cuando searchString cambia)
-  const { tabFromUrl, supplierIdFromUrl } = useMemo(() => {
+  const validTabs = ["ruta", "servicio", "inventario", "rendimiento", "analisis"];
+  const { tabFromUrl, supplierIdFromUrl, hasExplicitTab } = useMemo(() => {
     const params = new URLSearchParams(searchString);
     const tab = params.get("tab");
     const id = params.get("id");
+    const isValidTab = tab !== null && validTabs.includes(tab);
     return {
-      tabFromUrl: tab && ["ruta", "servicio", "inventario", "rendimiento", "analisis"].includes(tab) ? tab : (id ? "analisis" : "ruta"),
-      supplierIdFromUrl: id || null
+      tabFromUrl: isValidTab ? tab : (id ? "analisis" : "ruta"),
+      supplierIdFromUrl: id || null,
+      hasExplicitTab: isValidTab // Indica si la URL tiene un tab explícito válido
     };
   }, [searchString]);
   
@@ -202,7 +205,8 @@ export function SupplierPage() {
   const [responsibleName, setResponsibleName] = useState("");
   const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
-  const userNavigatedExplicitly = useRef(false); // Evitar redirección automática cuando el usuario navega desde el sidebar
+  // Inicializar con hasExplicitTab para evitar redirección cuando vienes de otra página con ?tab=ruta
+  const userNavigatedExplicitly = useRef(hasExplicitTab);
   const { toast } = useToast();
   const { user, isLoading: isAuthLoading } = useAuth();
 
