@@ -3620,6 +3620,28 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/tasks/my-history", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { limit } = req.query;
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: "Usuario no autenticado" });
+      }
+      const tasks = await storage.getTasks({
+        assignedUserId: userId
+      });
+      // Filtrar solo tareas completadas o canceladas y limitar resultados
+      const maxResults = limit ? parseInt(limit as string) : 20;
+      const historyTasks = tasks
+        .filter(t => t.status === "completada" || t.status === "cancelada")
+        .slice(0, maxResults);
+      res.json(historyTasks);
+    } catch (error) {
+      console.error("Error getting task history:", error);
+      res.status(500).json({ error: "Error al obtener historial de tareas" });
+    }
+  });
+
   app.get("/api/tasks/stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;

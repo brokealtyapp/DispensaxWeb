@@ -70,6 +70,11 @@ export function TasksTodayPage() {
     queryKey: ["/api/tasks/today"],
   });
 
+  const { data: historyTasks, isLoading: historyLoading } = useQuery<any[]>({
+    queryKey: ["/api/tasks/my-history"],
+    enabled: user?.role === "abastecedor",
+  });
+
   const completeTaskMutation = useMutation({
     mutationFn: async (id: string) => {
       return apiRequest("POST", `/api/tasks/${id}/complete`, { completedBy: user?.id || "system" });
@@ -77,6 +82,7 @@ export function TasksTodayPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks/today"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/my-history"] });
       toast({ title: "Tarea completada", description: "La tarea ha sido marcada como completada" });
     },
     onError: () => {
@@ -91,6 +97,7 @@ export function TasksTodayPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks/today"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/my-history"] });
       toast({ title: "Estado actualizado" });
     },
     onError: () => {
@@ -237,12 +244,14 @@ export function TasksTodayPage() {
               {formatDate(today)}
             </p>
           </div>
-          <Link href="/todas-tareas">
-            <Button variant="outline" className="gap-2" data-testid="link-all-tasks">
-              Ver Todas las Tareas
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </Link>
+{user?.role !== "abastecedor" && (
+            <Link href="/todas-tareas">
+              <Button variant="outline" className="gap-2" data-testid="link-all-tasks">
+                Ver Todas las Tareas
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          )}
         </div>
 
         <Card>
@@ -276,13 +285,17 @@ export function TasksTodayPage() {
               <CheckSquare className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
               <h3 className="text-xl font-semibold mb-2">No hay tareas para hoy</h3>
               <p className="text-muted-foreground mb-4">
-                ¡Excelente! No tienes tareas programadas para hoy.
+                {user?.role === "abastecedor" 
+                  ? "No tienes tareas asignadas para hoy. Las tareas serán asignadas por tu supervisor."
+                  : "¡Excelente! No tienes tareas programadas para hoy."}
               </p>
-              <Link href="/todas-tareas">
-                <Button data-testid="button-create-task">
-                  Crear Nueva Tarea
-                </Button>
-              </Link>
+              {user?.role !== "abastecedor" && (
+                <Link href="/todas-tareas">
+                  <Button data-testid="button-create-task">
+                    Crear Nueva Tarea
+                  </Button>
+                </Link>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -327,6 +340,68 @@ export function TasksTodayPage() {
                   ))}
                 </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {user?.role === "abastecedor" && (
+          <div className="mt-8 space-y-4">
+            <Separator />
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">Mi Historial de Tareas</h2>
+            </div>
+            {historyLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : historyTasks && historyTasks.length > 0 ? (
+              <div className="space-y-2">
+                {historyTasks.map((task) => {
+                  const type = typeConfig[task.type as keyof typeof typeConfig] || typeConfig.otro;
+                  const TypeIcon = type.icon;
+                  const isCompleted = task.status === "completada";
+                  return (
+                    <Card key={task.id} className="opacity-75" data-testid={`card-history-task-${task.id}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-4">
+                          <div className={`h-6 w-6 rounded-full flex items-center justify-center ${
+                            isCompleted ? "bg-green-500 text-white" : "bg-red-500 text-white"
+                          }`}>
+                            {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-medium line-through text-muted-foreground">
+                                {task.title}
+                              </h3>
+                              <Badge className={type.color} variant="secondary">
+                                <TypeIcon className="h-3 w-3 mr-1" />
+                                {type.label}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {task.dueDate ? formatDate(new Date(task.dueDate)) : "Sin fecha"}
+                            </p>
+                          </div>
+                          <Badge variant={isCompleted ? "default" : "destructive"}>
+                            {isCompleted ? "Completada" : "Cancelada"}
+                          </Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="py-8 text-center">
+                  <Clock className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+                  <p className="text-muted-foreground">No tienes tareas en tu historial todavía</p>
+                </CardContent>
+              </Card>
             )}
           </div>
         )}
