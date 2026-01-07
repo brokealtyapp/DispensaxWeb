@@ -538,17 +538,35 @@ export function SupplierPage() {
   const handleStartService = async (stop: RouteStop) => {
     if (!supplierId) return;
     
-    setCurrentStop(stop);
-    setIsServiceActive(true);
-    setActiveTab("servicio");
-    setChecklist(defaultChecklist.map(item => ({ ...item, checked: false })));
-    
-    await startStopMutation.mutateAsync(stop.id);
-    await startServiceMutation.mutateAsync({
-      userId: supplierId,
-      machineId: stop.machine.id,
-      routeStopId: stop.id,
-    });
+    try {
+      // Solo iniciar parada si está pendiente
+      if (stop.status === "pendiente") {
+        await startStopMutation.mutateAsync(stop.id);
+      }
+      
+      // Crear el servicio
+      await startServiceMutation.mutateAsync({
+        userId: supplierId,
+        machineId: stop.machine.id,
+        routeStopId: stop.id,
+      });
+      
+      // Solo cambiar estado local si ambas mutaciones tuvieron éxito
+      setCurrentStop(stop);
+      setIsServiceActive(true);
+      setActiveTab("servicio");
+      setChecklist(defaultChecklist.map(item => ({ ...item, checked: false })));
+      
+    } catch (error) {
+      console.error("Error al iniciar servicio:", error);
+      toast({
+        title: "Error al iniciar servicio",
+        description: "Hubo un problema al iniciar el servicio. Por favor intenta de nuevo.",
+        variant: "destructive",
+      });
+      // Refrescar datos para sincronizar con el servidor
+      refetchRoute();
+    }
   };
 
   const handleStopService = async (duration: number) => {
@@ -1095,20 +1113,22 @@ export function SupplierPage() {
                                 Navegar
                               </Button>
                               
-                              {stop.status === "pendiente" && todayRoute.status === "en_progreso" && (
+                              {/* Mostrar botón si: parada pendiente, o parada en_progreso sin servicio activo */}
+                              {todayRoute.status === "en_progreso" && 
+                               (stop.status === "pendiente" || (stop.status === "en_progreso" && !isServiceActive)) && (
                                 <Button 
                                   size="sm"
                                   className="gap-2"
                                   onClick={() => handleStartService(stop)}
-                                  disabled={startServiceMutation.isPending}
+                                  disabled={startServiceMutation.isPending || startStopMutation.isPending}
                                   data-testid={`button-start-service-${stop.id}`}
                                 >
-                                  {startServiceMutation.isPending ? (
+                                  {(startServiceMutation.isPending || startStopMutation.isPending) ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                   ) : (
                                     <>
                                       <Play className="h-4 w-4" />
-                                      Iniciar Servicio
+                                      {stop.status === "en_progreso" ? "Continuar Servicio" : "Iniciar Servicio"}
                                     </>
                                   )}
                                 </Button>
