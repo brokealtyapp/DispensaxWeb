@@ -202,7 +202,7 @@ export function SupplierPage() {
   const [responsibleName, setResponsibleName] = useState("");
   const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
-  const hasInitialRedirected = useRef(false); // Evitar redirección automática después de la carga inicial
+  const userNavigatedExplicitly = useRef(false); // Evitar redirección automática cuando el usuario navega desde el sidebar
   const { toast } = useToast();
   const { user, isLoading: isAuthLoading } = useAuth();
 
@@ -224,8 +224,10 @@ export function SupplierPage() {
   });
 
   // Sincronizar activeTab cuando cambie tabFromUrl (navegación del sidebar)
+  // Marcar que el usuario navegó explícitamente para evitar redirección automática
   useEffect(() => {
     if (tabFromUrl !== activeTab) {
+      userNavigatedExplicitly.current = true;
       setActiveTab(tabFromUrl);
     }
   }, [tabFromUrl]);
@@ -392,10 +394,9 @@ export function SupplierPage() {
         setChecklist(defaultChecklist.map(item => ({ ...item, checked: false })));
       }
       
-      // Cambiar automáticamente al tab de servicio activo SOLO en la carga inicial
-      // No redirigir si el usuario navegó explícitamente desde el sidebar
-      if (activeTab === "ruta" && !hasInitialRedirected.current) {
-        hasInitialRedirected.current = true;
+      // Cambiar automáticamente al tab de servicio activo SOLO si el usuario NO navegó explícitamente
+      // Esto permite que el usuario pueda ir a "Mi Ruta" desde el sidebar sin ser redirigido
+      if (activeTab === "ruta" && !userNavigatedExplicitly.current) {
         handleTabChange("servicio");
       }
     }
