@@ -1601,11 +1601,14 @@ export async function registerRoutes(
   app.get("/api/supplier/active-service/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), authorizeOwnership("userId"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const routeStopId = req.query.routeStopId as string | undefined;
+      console.log(`[active-service] Looking for active service for userId=${req.params.userId}, routeStopId=${routeStopId || 'not specified'}`);
       const service = await storage.getActiveService(req.params.userId, routeStopId);
       
       if (!service) {
+        console.log(`[active-service] No active service found for userId=${req.params.userId}`);
         return res.json(null);
       }
+      console.log(`[active-service] Found service: id=${service.id}, status=${service.status}`);
       
       // Obtener datos completos del servicio activo (checklist, efectivo, cargas, incidencias)
       const [cashCollections, productLoads, serviceIssues] = await Promise.all([

@@ -387,16 +387,20 @@ export function SupplierPage() {
   useEffect(() => {
     if (isViewingOther || isServiceActive) return;
     
+    // Primero verificar si hay una parada "en_progreso" en la ruta de hoy
+    const stopEnProgreso = todayRoute?.stops?.find((stop: RouteStop) => stop.status === "en_progreso");
+    
     if (activeService?.id) {
-      // Hay un servicio activo - restaurar estado
-      // Buscar la parada correspondiente en todayRoute
-      let targetStop: RouteStop | null = inProgressStop;
+      // Hay un servicio activo en backend - restaurar estado
+      // Usar múltiples fuentes para encontrar la parada correspondiente
+      let targetStop: RouteStop | null = inProgressStop || stopEnProgreso || null;
       
+      // Si no encontramos por estado, buscar por ID del routeStop del servicio
       if (!targetStop && activeService.routeStopId && todayRoute?.stops) {
         targetStop = todayRoute.stops.find((stop: RouteStop) => stop.id === activeService.routeStopId) || null;
       }
       
-      // Siempre restaurar el servicio activo, incluso si no hay parada asociada
+      // Siempre restaurar el servicio activo (tenemos un ID válido del backend)
       setActiveServiceId(activeService.id);
       setIsServiceActive(true);
       
@@ -422,6 +426,8 @@ export function SupplierPage() {
         handleTabChange("servicio");
       }
     }
+    // NOTA: No creamos estado fantasma cuando hay parada en progreso pero no hay servicio activo
+    // El usuario debe iniciar el servicio manualmente desde la tarjeta de la parada
   }, [inProgressStop, activeService, isViewingOther, isServiceActive, activeTab, handleTabChange, todayRoute]);
 
   const startRouteMutation = useMutation({
