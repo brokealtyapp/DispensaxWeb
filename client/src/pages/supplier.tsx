@@ -1269,6 +1269,7 @@ export function SupplierPage() {
                         <Checkbox 
                           checked={item.checked} 
                           onCheckedChange={() => toggleChecklistItem(item.id)}
+                          onClick={(e) => e.stopPropagation()}
                           data-testid={`checkbox-${item.id}`}
                         />
                         <span className={`text-sm flex-1 ${item.checked ? "line-through text-muted-foreground" : ""}`}>
