@@ -621,23 +621,52 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/alerts", async (req: Request, res: Response) => {
+  app.get("/api/alerts", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { resolved } = req.query;
+      const userRole = req.user?.role;
+      const userId = req.user?.userId;
       
-      if (!resolved || resolved === "false") {
-        const cache = getDashboardCache();
-        if (cache && isCacheValid()) {
-          return res.json(cache.recentAlerts);
+      // Admin, supervisor y contabilidad ven todas las alertas
+      if (userRole === "admin" || userRole === "supervisor" || userRole === "contabilidad") {
+        if (!resolved || resolved === "false") {
+          const cache = getDashboardCache();
+          if (cache && isCacheValid()) {
+            return res.json(cache.recentAlerts);
+          }
         }
+        
+        const alerts = await storage.getMachineAlerts(
+          undefined,
+          resolved === "true" ? true : resolved === "false" ? false : undefined
+        );
+        if (res.headersSent) return;
+        return res.json(alerts);
       }
       
-      const alerts = await storage.getMachineAlerts(
-        undefined,
-        resolved === "true" ? true : resolved === "false" ? false : undefined
-      );
-      if (res.headersSent) return;
-      res.json(alerts);
+      // Abastecedor solo ve alertas de máquinas en su ruta de hoy
+      if (userRole === "abastecedor" && userId) {
+        const todayRoute = await storage.getTodayRoute(userId);
+        if (!todayRoute || !todayRoute.stops || todayRoute.stops.length === 0) {
+          return res.json([]);
+        }
+        
+        // Obtener IDs de máquinas en la ruta
+        const machineIds = todayRoute.stops.map((stop: any) => stop.machineId);
+        
+        // Filtrar alertas por máquinas de la ruta
+        const allAlerts = await storage.getMachineAlerts(
+          undefined,
+          resolved === "true" ? true : resolved === "false" ? false : undefined
+        );
+        const filteredAlerts = allAlerts.filter((alert: any) => machineIds.includes(alert.machineId));
+        
+        if (res.headersSent) return;
+        return res.json(filteredAlerts);
+      }
+      
+      // Otros roles no ven alertas
+      res.json([]);
     } catch (error) {
       if (res.headersSent) return;
       res.status(500).json({ error: "Error al obtener alertas" });
@@ -1425,7 +1454,7 @@ export async function registerRoutes(
       
       // Resetear la parada a estado pendiente
       const [recovered] = await db.update(routeStops)
-        .set({ status: "pendiente", startTime: null, endTime: null })
+        .set({ status: "pendiente", actualArrival: null, actualDeparture: null })
         .where(eq(routeStops.id, req.params.id))
         .returning();
       
@@ -1683,9 +1712,12 @@ export async function registerRoutes(
   app.get("/api/supplier/loads", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { serviceRecordId, machineId } = req.query;
+      // Abastecedor solo ve sus propias cargas
+      const effectiveUserId = getEffectiveUserId(req, "userId");
       const loads = await storage.getProductLoads(
         serviceRecordId as string | undefined,
-        machineId as string | undefined
+        machineId as string | undefined,
+        effectiveUserId
       );
       res.json(loads);
     } catch (error) {
@@ -3511,11 +3543,13 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/time-tracking", async (req: Request, res: Response) => {
+  app.get("/api/hr/time-tracking", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, startDate, endDate } = req.query;
+      const { startDate, endDate } = req.query;
+      // Abastecedor solo ve su propio control de tiempos
+      const effectiveUserId = getEffectiveUserId(req, "userId");
       const records = await storage.getTimeTracking({
-        userId: userId as string | undefined,
+        userId: effectiveUserId,
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined
       });
@@ -3530,11 +3564,13 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hr/performance", async (req: Request, res: Response) => {
+  app.get("/api/hr/performance", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, startDate, endDate } = req.query;
+      const { startDate, endDate } = req.query;
+      // Abastecedor solo ve su propio rendimiento
+      const effectiveUserId = getEffectiveUserId(req, "userId");
       const performance = await storage.getEmployeePerformance({
-        userId: userId as string | undefined,
+        userId: effectiveUserId,
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined
       });

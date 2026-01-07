@@ -169,7 +169,7 @@ export interface IStorage {
   getCashCollectionsSummary(userId: string, startDate?: Date, endDate?: Date): Promise<{ total: number; count: number; difference: number }>;
   
   // Carga/Retiro de Productos
-  getProductLoads(serviceRecordId?: string, machineId?: string): Promise<any[]>;
+  getProductLoads(serviceRecordId?: string, machineId?: string, userId?: string): Promise<any[]>;
   createProductLoad(load: InsertProductLoad): Promise<ProductLoad>;
   
   // Reportes de Problemas
@@ -1462,11 +1462,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Carga/Retiro de Productos
-  async getProductLoads(serviceRecordId?: string, machineId?: string): Promise<any[]> {
+  async getProductLoads(serviceRecordId?: string, machineId?: string, userId?: string): Promise<any[]> {
     let conditions: any[] = [];
     
     if (serviceRecordId) conditions.push(eq(productLoads.serviceRecordId, serviceRecordId));
     if (machineId) conditions.push(eq(productLoads.machineId, machineId));
+    if (userId) conditions.push(eq(productLoads.userId, userId));
     
     const query = conditions.length > 0
       ? db.select().from(productLoads).where(and(...conditions))
