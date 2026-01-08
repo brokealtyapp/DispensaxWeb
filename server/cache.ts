@@ -79,6 +79,7 @@ interface SummaryCache {
     completedStops: number;
     pendingStops: number;
     avgServiceTimeMinutes: number;
+    recentRoutes: { id: string; name: string; date: string; status: string; stopsCount: number }[];
   };
   purchases: {
     openOrders: number;
@@ -133,7 +134,7 @@ const defaultSummaryCache: SummaryCache = {
   warehouse: { totalProducts: 0, lowStockCount: 0, expiringCount: 0, recentMovements: [] },
   pettyCash: { currentBalance: "0", initialAmount: "0", weekExpenses: 0, pendingCount: 0, approvedCount: 0, recentExpenses: [] },
   reconciliation: { weekTransfers: 0, pendingTransfers: 0, weekShrinkage: 0, shrinkageRecords: 0, weekCollections: 0, collectionsCount: 0, recentDiscrepancies: [] },
-  routes: { activeRoutes: 0, totalRoutes: 0, todayStops: 0, completedStops: 0, pendingStops: 0, avgServiceTimeMinutes: 0 },
+  routes: { activeRoutes: 0, totalRoutes: 0, todayStops: 0, completedStops: 0, pendingStops: 0, avgServiceTimeMinutes: 0, recentRoutes: [] },
   purchases: { openOrders: 0, totalOrders: 0, monthSpending: 0, pendingReceptions: 0 },
   fuel: { totalVehicles: 0, activeVehicles: 0, monthCost: 0, monthLiters: 0, avgEfficiency: "0", lowEfficiencyAlerts: 0 },
   hr: { totalEmployees: 0, activeEmployees: 0, weekVisits: 0, weekTasksCompleted: 0, topPerformers: [], byRole: { technicians: 0, admins: 0, supervisors: 0 } },
@@ -394,6 +395,8 @@ async function computeReconciliationSummary() {
 async function computeRoutesSummary() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
 
@@ -420,6 +423,40 @@ async function computeRoutesSummary() {
     .from(serviceRecords)
     .where(gte(serviceRecords.createdAt, weekAgo));
 
+  // Obtener rutas del día con conteo de paradas
+  const todayRoutes = await db
+    .select({
+      id: routes.id,
+      date: routes.date,
+      status: routes.status,
+      totalStops: routes.totalStops,
+      supplierId: routes.supplierId,
+    })
+    .from(routes)
+    .where(and(gte(routes.date, today), sql`${routes.date} < ${tomorrow}`))
+    .orderBy(desc(routes.date))
+    .limit(10);
+
+  // Obtener nombres de usuarios para las rutas
+  const supplierIds = Array.from(new Set(todayRoutes.map(r => r.supplierId).filter(Boolean)));
+  const userNames: Map<string, string> = new Map();
+  
+  if (supplierIds.length > 0) {
+    const usersData = await db
+      .select({ id: users.id, fullName: users.fullName })
+      .from(users)
+      .where(inArray(users.id, supplierIds as string[]));
+    usersData.forEach(u => userNames.set(u.id, u.fullName || 'Sin nombre'));
+  }
+
+  const recentRoutes = todayRoutes.map(r => ({
+    id: r.id,
+    name: r.supplierId ? `Ruta de ${userNames.get(r.supplierId) || 'Desconocido'}` : `Ruta ${r.id.slice(-4)}`,
+    date: r.date?.toISOString() || new Date().toISOString(),
+    status: r.status || 'pendiente',
+    stopsCount: r.totalStops || 0,
+  }));
+
   return {
     activeRoutes: Number(routeStats[0]?.active) || 0,
     totalRoutes: routeStats[0]?.total || 0,
@@ -427,6 +464,7 @@ async function computeRoutesSummary() {
     completedStops: Number(todayStops[0]?.completed) || 0,
     pendingStops: (todayStops[0]?.total || 0) - (Number(todayStops[0]?.completed) || 0),
     avgServiceTimeMinutes: Math.round(Number(serviceStats[0]?.avgTime) || 0),
+    recentRoutes,
   };
 }
 

@@ -4241,11 +4241,10 @@ export class DatabaseStorage implements IStorage {
     const day = todayInTZ.getDate();
     
     // Create dates that will match UTC midnight representation of the target date
-    const targetDateUTC = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
     const nextDateUTC = new Date(Date.UTC(year, month, day + 1, 0, 0, 0, 0));
 
+    // Include today's tasks AND overdue tasks (pending/in_progress from past days)
     const conditions: any[] = [
-      gte(tasks.dueDate, targetDateUTC),
       lte(tasks.dueDate, nextDateUTC),
       or(eq(tasks.status, "pendiente"), eq(tasks.status, "en_progreso"))
     ];
@@ -4257,9 +4256,11 @@ export class DatabaseStorage implements IStorage {
     const taskList = await db.select().from(tasks)
       .where(and(...conditions))
       .orderBy(
+        asc(tasks.dueDate), // Overdue first
         sql`CASE tasks.priority WHEN 'urgente' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END`,
         asc(tasks.startTime)
-      );
+      )
+      .limit(20);
 
     return Promise.all(taskList.map(async (task) => {
       const assignedUser = task.assignedUserId ? await this.getUser(task.assignedUserId) : null;
