@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, asc, or } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, asc, or, inArray } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { 
   signAccessToken, 
@@ -420,7 +420,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/products", async (req: Request, res: Response) => {
+  app.get("/api/products", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const products = await storage.getProducts();
       res.json(products);
@@ -429,7 +429,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/products/:id", async (req: Request, res: Response) => {
+  app.get("/api/products/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const product = await storage.getProduct(req.params.id);
       if (!product) {
@@ -441,7 +441,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/products", async (req: Request, res: Response) => {
+  app.post("/api/products", authenticateJWT, authorizeAction("products", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertProductSchema.parse(req.body);
       const product = await storage.createProduct(data);
@@ -454,7 +454,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/products/:id", async (req: Request, res: Response) => {
+  app.patch("/api/products/:id", authenticateJWT, authorizeAction("products", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertProductSchema.partial().parse(req.body);
       const product = await storage.updateProduct(req.params.id, data);
@@ -470,7 +470,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/products/:id", async (req: Request, res: Response) => {
+  app.delete("/api/products/:id", authenticateJWT, authorizeAction("products", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.deleteProduct(req.params.id);
       res.status(204).send();
@@ -2031,7 +2031,20 @@ export async function registerRoutes(
     try {
       const { serviceRecords, machines, users, routeStops, routes, productLoads, cashCollections, issueReports } = await import("@shared/schema");
       
-      // Obtener todos los servicios activos (en_progreso)
+      // Si es supervisor, filtrar por usuarios de su zona
+      const supervisorZone = await getSupervisorZone(req);
+      let zoneUserIds: string[] | null = null;
+      if (supervisorZone) {
+        zoneUserIds = await storage.getUserIdsByZone(supervisorZone);
+      }
+      
+      // Construir condiciones de filtro
+      const conditions = [eq(serviceRecords.status, "en_progreso")];
+      if (zoneUserIds && zoneUserIds.length > 0) {
+        conditions.push(inArray(serviceRecords.userId, zoneUserIds));
+      }
+      
+      // Obtener servicios activos (en_progreso), filtrados por zona si es supervisor
       const activeServices = await db.select({
         id: serviceRecords.id,
         status: serviceRecords.status,
@@ -2053,7 +2066,7 @@ export async function registerRoutes(
         .leftJoin(users, eq(serviceRecords.userId, users.id))
         .leftJoin(routeStops, eq(serviceRecords.routeStopId, routeStops.id))
         .leftJoin(routes, eq(routeStops.routeId, routes.id))
-        .where(eq(serviceRecords.status, "en_progreso"))
+        .where(and(...conditions))
         .orderBy(desc(serviceRecords.startTime));
       
       // Enriquecer con datos agregados
