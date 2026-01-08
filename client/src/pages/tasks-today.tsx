@@ -149,10 +149,15 @@ export function TasksTodayPage() {
 
   const createTaskMutation = useMutation({
     mutationFn: async (data: TaskFormData) => {
+      // Para rol RH, auto-asignar la tarea al usuario actual
+      const effectiveAssignedUserId = user?.role === "rh" 
+        ? user.id 
+        : (data.assignedUserId && data.assignedUserId !== "" ? data.assignedUserId : undefined);
+      
       return apiRequest("POST", "/api/tasks", {
         ...data,
         dueDate: data.dueDate?.toISOString(),
-        assignedUserId: data.assignedUserId && data.assignedUserId !== "" ? data.assignedUserId : undefined,
+        assignedUserId: effectiveAssignedUserId,
         machineId: data.machineId && data.machineId !== "" ? data.machineId : undefined,
         routeId: data.routeId && data.routeId !== "" ? data.routeId : undefined,
       });
@@ -356,9 +361,9 @@ export function TasksTodayPage() {
               </Button>
             )}
             {user?.role !== "abastecedor" && (
-              <Link href="/todas-tareas">
+              <Link href={user?.role === "rh" ? "/mis-tareas" : "/todas-tareas"}>
                 <Button variant="outline" className="gap-2" data-testid="link-all-tasks">
-                  Ver Todas las Tareas
+                  {user?.role === "rh" ? "Ver Mis Tareas" : "Ver Todas las Tareas"}
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </Link>
@@ -674,34 +679,37 @@ export function TasksTodayPage() {
                 />
               </div>
 
-              <FormField
-                control={taskForm.control}
-                name="assignedUserId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Asignar a</FormLabel>
-                    <Select 
-                      onValueChange={(val) => field.onChange(val === "unassigned" ? "" : val)} 
-                      defaultValue={field.value || "unassigned"}
-                    >
-                      <FormControl>
-                        <SelectTrigger data-testid="select-task-assigned">
-                          <SelectValue placeholder="Seleccionar usuario" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="unassigned">Sin asignar</SelectItem>
-                        {users?.map((u) => (
-                          <SelectItem key={u.id} value={u.id}>
-                            {u.fullName || u.username}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* RH solo puede asignarse tareas a sí mismo, se oculta el selector */}
+              {user?.role !== "rh" && (
+                <FormField
+                  control={taskForm.control}
+                  name="assignedUserId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Asignar a</FormLabel>
+                      <Select 
+                        onValueChange={(val) => field.onChange(val === "unassigned" ? "" : val)} 
+                        defaultValue={field.value || "unassigned"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-task-assigned">
+                            <SelectValue placeholder="Seleccionar usuario" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Sin asignar</SelectItem>
+                          {users?.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.fullName || u.username}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <FormField

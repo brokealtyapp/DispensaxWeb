@@ -25,6 +25,7 @@ import { FuelPage } from "@/pages/fuel";
 import { ReportsPage } from "@/pages/reports";
 import { TasksPage } from "@/pages/tasks";
 import { TasksTodayPage } from "@/pages/tasks-today";
+import { MyTasksPage } from "@/pages/my-tasks";
 import { CalendarPage } from "@/pages/calendar";
 import { ResetPasswordPage } from "@/pages/reset-password";
 import { SupervisorPage } from "@/pages/supervisor";
@@ -213,6 +214,7 @@ function ProtectedRoutes() {
               <Route path="/maquinas/:id">{() => <ProtectedRoute path="/maquinas" component={MachineDetailPage} />}</Route>
               <Route path="/tareas">{() => <ProtectedRoute path="/tareas" component={TasksTodayPage} />}</Route>
               <Route path="/todas-tareas">{() => <ProtectedRoute path="/todas-tareas" component={TasksPage} />}</Route>
+              <Route path="/mis-tareas">{() => <ProtectedRoute path="/mis-tareas" component={MyTasksPage} />}</Route>
               <Route path="/calendario">{() => <ProtectedRoute path="/calendario" component={CalendarPage} />}</Route>
               <Route path="/abastecedor">{() => <ProtectedRoute path="/abastecedor" component={SupplierPage} />}</Route>
               <Route path="/almacen">{() => <ProtectedRoute path="/almacen" component={WarehousePage} />}</Route>

@@ -282,7 +282,7 @@ export function canAccessRoute(role: UserRole, route: string): boolean {
   
   const contabilidadRoutes = ["/contabilidad", "/contabilidad-panel", "/caja-chica", "/dinero-productos", "/tareas", "/calendario", "/configuracion"];
   
-  const rhRoutes = ["/rh", "/tareas", "/calendario", "/configuracion"];
+  const rhRoutes = ["/rh", "/tareas", "/mis-tareas", "/calendario", "/configuracion"];
 
   const routePermissions: Record<UserRole, string[]> = {
     admin: adminRoutes,

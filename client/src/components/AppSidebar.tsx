@@ -63,6 +63,7 @@ const menuItems: MenuItem[] = [
   { icon: Box, label: "Máquinas", href: "/maquinas", roles: ["admin", "supervisor"] },
   { icon: ClipboardList, label: "Tareas Hoy", href: "/tareas", roles: ["admin", "supervisor", "almacen", "contabilidad", "rh", "abastecedor"] },
   { icon: ListTodo, label: "Todas las Tareas", href: "/todas-tareas", roles: ["admin", "supervisor"] },
+  { icon: ListTodo, label: "Mis Tareas", href: "/mis-tareas", roles: ["rh"] },
   { icon: Calendar, label: "Calendario", href: "/calendario", roles: ["admin", "supervisor", "almacen", "contabilidad", "rh"] },
 ];
 
