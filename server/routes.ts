@@ -363,7 +363,7 @@ export async function registerRoutes(
   // LOCATION ROUTES
   // =====================
 
-  app.get("/api/locations", async (req: Request, res: Response) => {
+  app.get("/api/locations", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const locations = await storage.getLocations();
       res.json(locations);
@@ -372,7 +372,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/locations/:id", async (req: Request, res: Response) => {
+  app.get("/api/locations/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const location = await storage.getLocation(req.params.id);
       if (!location) {
@@ -481,7 +481,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/machines/summary", async (req: Request, res: Response) => {
+  app.get("/api/machines/summary", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const cache = getDashboardCache();
       res.json({
@@ -528,7 +528,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/machines/:id", async (req: Request, res: Response) => {
+  app.get("/api/machines/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const machine = await storage.getMachineWithDetails(req.params.id);
       if (!machine) {
@@ -579,7 +579,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/machines/:id/inventory", async (req: Request, res: Response) => {
+  app.get("/api/machines/:id/inventory", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const inventory = await storage.getMachineInventory(req.params.id);
       res.json(inventory);
@@ -588,7 +588,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/machines/:id/inventory", async (req: Request, res: Response) => {
+  app.post("/api/machines/:id/inventory", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertMachineInventorySchema.parse({
         ...req.body,
@@ -604,7 +604,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/machines/:id/inventory/:productId", async (req: Request, res: Response) => {
+  app.patch("/api/machines/:id/inventory/:productId", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { quantity } = req.body;
       const inventory = await storage.updateMachineInventory(
@@ -621,7 +621,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/machines/:id/alerts", async (req: Request, res: Response) => {
+  app.get("/api/machines/:id/alerts", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { resolved } = req.query;
       const alerts = await storage.getMachineAlerts(
@@ -686,7 +686,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/machines/:id/alerts", async (req: Request, res: Response) => {
+  app.post("/api/machines/:id/alerts", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertMachineAlertSchema.parse({
         ...req.body,
@@ -702,7 +702,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/alerts/:id/resolve", async (req: Request, res: Response) => {
+  app.patch("/api/alerts/:id/resolve", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const alert = await storage.resolveAlertSimple(req.params.id);
       if (!alert) {
@@ -714,7 +714,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/machines/:id/visits", async (req: Request, res: Response) => {
+  app.get("/api/machines/:id/visits", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const visits = await storage.getMachineVisits(req.params.id);
       res.json(visits);
@@ -723,7 +723,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/machines/:id/visits", async (req: Request, res: Response) => {
+  app.post("/api/machines/:id/visits", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const body = {
         ...req.body,
@@ -741,7 +741,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/visits/:id/end", async (req: Request, res: Response) => {
+  app.patch("/api/visits/:id/end", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { endTime, notes } = req.body;
       const visit = await storage.endMachineVisit(
@@ -758,7 +758,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/machines/:id/sales", async (req: Request, res: Response) => {
+  app.get("/api/machines/:id/sales", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const sales = await storage.getMachineSales(
@@ -772,7 +772,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/machines/:id/sales", async (req: Request, res: Response) => {
+  app.post("/api/machines/:id/sales", authenticateJWT, authorizeAction("accounting", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertMachineSaleSchema.parse({
         ...req.body,
@@ -788,7 +788,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/machines/:id/sales/summary", async (req: Request, res: Response) => {
+  app.get("/api/machines/:id/sales/summary", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const summary = await storage.getMachineSalesSummary(req.params.id);
       res.json(summary);
@@ -797,7 +797,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/stats/zones", async (req: Request, res: Response) => {
+  app.get("/api/stats/zones", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const machines = await storage.getMachines();
       const zonesSet = new Set(machines.map(m => m.zone).filter(Boolean));
@@ -2493,8 +2493,13 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/users/:id", async (req: Request, res: Response) => {
+  app.get("/api/users/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // Solo admin puede ver cualquier usuario, otros solo pueden ver su propio perfil
+      if (req.user?.role !== "admin" && req.user?.userId !== req.params.id) {
+        return res.status(403).json({ error: "No tienes permiso para ver este usuario" });
+      }
+      
       const user = await storage.getUser(req.params.id);
       if (!user) {
         return res.status(404).json({ error: "Usuario no encontrado" });
@@ -5070,7 +5075,7 @@ export async function registerRoutes(
   // ============ SUMMARY ENDPOINTS FOR DASHBOARD ============
 
   // Routes/Supplier Summary (con cache)
-  app.get("/api/summary/routes", async (req: Request, res: Response) => {
+  app.get("/api/summary/routes", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const cache = getSummaryCache();
       res.json(cache.routes);
@@ -5085,7 +5090,7 @@ export async function registerRoutes(
   });
 
   // Warehouse Summary
-  app.get("/api/summary/warehouse", async (req: Request, res: Response) => {
+  app.get("/api/summary/warehouse", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const products = await storage.getProducts();
       const productLots = await storage.getProductLots();
@@ -5136,7 +5141,7 @@ export async function registerRoutes(
   });
 
   // Accounting Summary
-  app.get("/api/summary/accounting", async (req: Request, res: Response) => {
+  app.get("/api/summary/accounting", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const machineSales = await storage.getAllMachineSales();
       const cashMovements = await storage.getCashMovements();
@@ -5205,7 +5210,7 @@ export async function registerRoutes(
   });
 
   // Petty Cash Summary (con cache)
-  app.get("/api/summary/petty-cash", async (req: Request, res: Response) => {
+  app.get("/api/summary/petty-cash", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const cache = getSummaryCache();
       res.json(cache.pettyCash);
@@ -5219,7 +5224,7 @@ export async function registerRoutes(
   });
 
   // Purchases Summary (con cache)
-  app.get("/api/summary/purchases", async (req: Request, res: Response) => {
+  app.get("/api/summary/purchases", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const cache = getSummaryCache();
       res.json(cache.purchases);
@@ -5234,7 +5239,7 @@ export async function registerRoutes(
   });
 
   // Fuel Summary (con cache)
-  app.get("/api/summary/fuel", async (req: Request, res: Response) => {
+  app.get("/api/summary/fuel", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const cache = getSummaryCache();
       res.json(cache.fuel);
@@ -5249,7 +5254,7 @@ export async function registerRoutes(
   });
 
   // HR Summary (con cache)
-  app.get("/api/summary/hr", async (req: Request, res: Response) => {
+  app.get("/api/summary/hr", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const cache = getSummaryCache();
       res.json(cache.hr);
@@ -5264,7 +5269,7 @@ export async function registerRoutes(
   });
 
   // Money & Products Reconciliation Summary (con cache)
-  app.get("/api/summary/reconciliation", async (req: Request, res: Response) => {
+  app.get("/api/summary/reconciliation", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const cache = getSummaryCache();
       res.json(cache.reconciliation);
@@ -5278,7 +5283,7 @@ export async function registerRoutes(
   });
 
   // Products Summary
-  app.get("/api/summary/products", async (req: Request, res: Response) => {
+  app.get("/api/summary/products", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const products = await storage.getProducts();
       const productLots = await storage.getProductLots();
@@ -5364,7 +5369,7 @@ export async function registerRoutes(
   });
 
   // Machines Summary
-  app.get("/api/summary/machines", async (req: Request, res: Response) => {
+  app.get("/api/summary/machines", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const dashCache = getDashboardCache();
       const machines = dashCache.machinesList;
@@ -5426,7 +5431,7 @@ export async function registerRoutes(
   });
 
   // Supervisors management endpoints
-  app.get("/api/supervisors", async (req: Request, res: Response) => {
+  app.get("/api/supervisors", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { db } = await import("./db");
       const { routes: routesTable, users: usersTable } = await import("@shared/schema");
@@ -5488,7 +5493,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/supervisors/:id", async (req: Request, res: Response) => {
+  app.get("/api/supervisors/:id", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { db } = await import("./db");
       const { routes: routesTable, users: usersTable } = await import("@shared/schema");
@@ -5564,7 +5569,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/supervisors/:id/zone", async (req: Request, res: Response) => {
+  app.patch("/api/supervisors/:id/zone", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { db } = await import("./db");
       const { users: usersTable } = await import("@shared/schema");
@@ -5588,7 +5593,7 @@ export async function registerRoutes(
   });
 
   // Global search endpoint
-  app.get("/api/search", async (req: Request, res: Response) => {
+  app.get("/api/search", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { q } = req.query;
       const query = (q as string || "").toLowerCase().trim();

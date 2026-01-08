@@ -2,7 +2,11 @@ import jwt from "jsonwebtoken";
 import { createHash, randomBytes } from "crypto";
 import type { Request, Response, NextFunction } from "express";
 
-const JWT_SECRET = process.env.SESSION_SECRET || "dispensax-jwt-secret-change-in-production";
+if (!process.env.SESSION_SECRET) {
+  throw new Error("CRITICAL: SESSION_SECRET environment variable is required for security. Please set it before starting the application.");
+}
+
+const JWT_SECRET = process.env.SESSION_SECRET;
 const ACCESS_TOKEN_EXPIRY = "15m";
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 
