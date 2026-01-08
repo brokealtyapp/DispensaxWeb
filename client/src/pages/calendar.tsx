@@ -679,14 +679,14 @@ export function CalendarPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Asignar a (opcional)</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <Select onValueChange={(val) => field.onChange(val === "unassigned" ? undefined : val)} value={field.value || "unassigned"}>
                         <FormControl>
                           <SelectTrigger data-testid="select-event-user">
                             <SelectValue placeholder="Seleccionar usuario" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">Sin asignar</SelectItem>
+                          <SelectItem value="unassigned">Sin asignar</SelectItem>
                           {users?.map((user) => (
                             <SelectItem key={user.id} value={user.id}>
                               {user.fullName || user.username}
@@ -896,14 +896,14 @@ export function CalendarPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Asignar a (opcional)</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <Select onValueChange={(val) => field.onChange(val === "unassigned" ? undefined : val)} value={field.value || "unassigned"}>
                         <FormControl>
                           <SelectTrigger data-testid="select-edit-event-user">
                             <SelectValue placeholder="Seleccionar usuario" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">Sin asignar</SelectItem>
+                          <SelectItem value="unassigned">Sin asignar</SelectItem>
                           {users?.map((user) => (
                             <SelectItem key={user.id} value={user.id}>
                               {user.fullName || user.username}
