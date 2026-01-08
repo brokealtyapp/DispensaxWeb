@@ -2741,7 +2741,7 @@ export async function registerRoutes(
   // ==================== MÓDULO PRODUCTOS Y DINERO ====================
 
   // Movimientos de Efectivo
-  app.get("/api/cash-movements", async (req: Request, res: Response) => {
+  app.get("/api/cash-movements", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, type, status, startDate, endDate } = req.query;
       const filters = {
@@ -2758,7 +2758,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/cash-movements/summary", async (req: Request, res: Response) => {
+  app.get("/api/cash-movements/summary", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const summary = await storage.getCashMovementsSummary(
@@ -2771,7 +2771,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/cash-movements/:id", async (req: Request, res: Response) => {
+  app.get("/api/cash-movements/:id", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const movement = await storage.getCashMovement(req.params.id);
       if (!movement) {
@@ -2783,7 +2783,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/cash-movements", async (req: Request, res: Response) => {
+  app.post("/api/cash-movements", authenticateJWT, authorizeAction("cash_collections", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertCashMovementSchema.parse(req.body);
       const movement = await storage.createCashMovement(data);
@@ -2796,7 +2796,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/cash-movements/:id/status", async (req: Request, res: Response) => {
+  app.patch("/api/cash-movements/:id/status", authenticateJWT, authorizeAction("cash_collections", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { status } = req.body;
       if (!status) {
@@ -2812,13 +2812,13 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/cash-movements/:id/reconcile", async (req: Request, res: Response) => {
+  app.post("/api/cash-movements/:id/reconcile", authenticateJWT, authorizeAction("cash_collections", "approve"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId } = req.body;
-      if (!userId) {
-        return res.status(400).json({ error: "Falta el usuario que concilia" });
+      const reconcilerUserId = req.user?.userId;
+      if (!reconcilerUserId) {
+        return res.status(401).json({ error: "Usuario no autenticado" });
       }
-      const movement = await storage.reconcileCashMovement(req.params.id, userId);
+      const movement = await storage.reconcileCashMovement(req.params.id, reconcilerUserId);
       if (!movement) {
         return res.status(404).json({ error: "Movimiento no encontrado" });
       }
@@ -2829,7 +2829,7 @@ export async function registerRoutes(
   });
 
   // Depósitos Bancarios
-  app.get("/api/bank-deposits", async (req: Request, res: Response) => {
+  app.get("/api/bank-deposits", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, status, startDate, endDate } = req.query;
       const filters = {
@@ -2845,7 +2845,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/bank-deposits/:id", async (req: Request, res: Response) => {
+  app.get("/api/bank-deposits/:id", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const deposit = await storage.getBankDeposit(req.params.id);
       if (!deposit) {
@@ -2857,7 +2857,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bank-deposits", async (req: Request, res: Response) => {
+  app.post("/api/bank-deposits", authenticateJWT, authorizeAction("cash_collections", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertBankDepositSchema.parse(req.body);
       const deposit = await storage.createBankDeposit(data);
@@ -2870,7 +2870,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bank-deposits/:id/reconcile", async (req: Request, res: Response) => {
+  app.post("/api/bank-deposits/:id/reconcile", authenticateJWT, authorizeAction("cash_collections", "approve"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { amount } = req.body;
       if (amount === undefined) {
@@ -3028,7 +3028,7 @@ export async function registerRoutes(
   });
 
   // Conciliación
-  app.get("/api/reconciliation/daily", async (req: Request, res: Response) => {
+  app.get("/api/reconciliation/daily", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { date } = req.query;
       const targetDate = date ? new Date(date as string) : new Date();
@@ -3039,7 +3039,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/reconciliation/supplier/:userId", async (req: Request, res: Response) => {
+  app.get("/api/reconciliation/supplier/:userId", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { date } = req.query;
       const targetDate = date ? new Date(date as string) : new Date();
@@ -3053,7 +3053,7 @@ export async function registerRoutes(
   // ==================== MÓDULO CAJA CHICA ====================
 
   // Gastos de Caja Chica
-  app.get("/api/petty-cash/expenses", async (req: Request, res: Response) => {
+  app.get("/api/petty-cash/expenses", authenticateJWT, authorizeAction("petty_cash", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, category, status, startDate, endDate } = req.query;
       const filters = {
@@ -3070,7 +3070,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/petty-cash/expenses/:id", async (req: Request, res: Response) => {
+  app.get("/api/petty-cash/expenses/:id", authenticateJWT, authorizeAction("petty_cash", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const expense = await storage.getPettyCashExpense(req.params.id);
       if (!expense) {
@@ -3140,7 +3140,7 @@ export async function registerRoutes(
   });
 
   // Fondo de Caja Chica
-  app.get("/api/petty-cash/fund", async (req: Request, res: Response) => {
+  app.get("/api/petty-cash/fund", authenticateJWT, authorizeAction("petty_cash", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const fund = await storage.getPettyCashFund();
       res.json(fund || { initialized: false });
@@ -3179,7 +3179,7 @@ export async function registerRoutes(
   });
 
   // Transacciones de Caja Chica
-  app.get("/api/petty-cash/transactions", async (req: Request, res: Response) => {
+  app.get("/api/petty-cash/transactions", authenticateJWT, authorizeAction("petty_cash", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { limit } = req.query;
       const transactions = await storage.getPettyCashTransactions(
@@ -3192,7 +3192,7 @@ export async function registerRoutes(
   });
 
   // Estadísticas de Caja Chica
-  app.get("/api/petty-cash/stats", async (req: Request, res: Response) => {
+  app.get("/api/petty-cash/stats", authenticateJWT, authorizeAction("petty_cash", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const stats = await storage.getPettyCashStats();
       res.json(stats);
@@ -3867,7 +3867,7 @@ export async function registerRoutes(
 
   // ==================== MÓDULO CONTABILIDAD ====================
 
-  app.get("/api/accounting/overview", async (req: Request, res: Response) => {
+  app.get("/api/accounting/overview", authenticateJWT, authorizeAction("accounting", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const overview = await storage.getAccountingOverview(
@@ -3881,7 +3881,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/accounting/machine-sales", async (req: Request, res: Response) => {
+  app.get("/api/accounting/machine-sales", authenticateJWT, authorizeAction("accounting", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const sales = await storage.getMachineSalesReport(
@@ -3895,7 +3895,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/accounting/expenses", async (req: Request, res: Response) => {
+  app.get("/api/accounting/expenses", authenticateJWT, authorizeAction("accounting", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, category } = req.query;
       const expenses = await storage.getExpensesReport({
@@ -3910,7 +3910,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/accounting/cash-cut", async (req: Request, res: Response) => {
+  app.get("/api/accounting/cash-cut", authenticateJWT, authorizeAction("accounting", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const report = await storage.getCashCutReport(
@@ -3971,7 +3971,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/accounting/cash-summary", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/accounting/cash-summary", authenticateJWT, authorizeAction("accounting", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const collectionsData = await db.select().from(cashCollections)
         .orderBy(desc(cashCollections.createdAt))

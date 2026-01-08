@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { startOfMonth, endOfMonth } from "date-fns";
 import { formatDateShort, formatCurrency } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
 import type { CashMovement, BankDeposit, PettyCashExpense, MachineSale } from "@shared/schema";
 
 interface SalesStats {
@@ -46,6 +47,7 @@ interface PettyCashStats {
 }
 
 export function ContabilidadPanelPage() {
+  const { canView } = usePermissions();
   const currentMonth = {
     start: startOfMonth(new Date()).toISOString().split('T')[0],
     end: endOfMonth(new Date()).toISOString().split('T')[0],
@@ -94,18 +96,22 @@ export function ContabilidadPanelPage() {
             <p className="text-muted-foreground">Resumen financiero del mes actual</p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <Link href="/contabilidad">
-              <Button variant="outline" data-testid="button-goto-full-accounting">
-                <Receipt className="h-4 w-4 mr-2" />
-                Contabilidad Completa
-              </Button>
-            </Link>
-            <Link href="/caja-chica">
-              <Button data-testid="button-goto-petty-cash">
-                <PiggyBank className="h-4 w-4 mr-2" />
-                Caja Chica
-              </Button>
-            </Link>
+            {canView("accounting") && (
+              <Link href="/contabilidad">
+                <Button variant="outline" data-testid="button-goto-full-accounting">
+                  <Receipt className="h-4 w-4 mr-2" />
+                  Contabilidad Completa
+                </Button>
+              </Link>
+            )}
+            {canView("petty_cash") && (
+              <Link href="/caja-chica">
+                <Button data-testid="button-goto-petty-cash">
+                  <PiggyBank className="h-4 w-4 mr-2" />
+                  Caja Chica
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
 
