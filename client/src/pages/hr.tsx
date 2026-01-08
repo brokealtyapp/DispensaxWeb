@@ -82,7 +82,7 @@ interface AttendanceRecord {
   date: string;
   checkIn: string | null;
   checkOut: string | null;
-  hoursWorked: number | null;
+  hoursWorked: string | number | null;
   status: string;
   notes: string | null;
   user?: { fullName: string; username: string };
@@ -92,10 +92,10 @@ interface PayrollRecord {
   id: string;
   userId: string;
   period: string;
-  baseSalary: number;
-  bonuses: number;
-  deductions: number;
-  netSalary: number;
+  baseSalary: string | number;
+  bonuses: string | number;
+  deductions: string | number;
+  netSalary: string | number;
   status: string;
   processedAt: string | null;
   user?: { fullName: string; username: string };
@@ -119,11 +119,11 @@ interface PerformanceReview {
   userId: string;
   reviewerId: string;
   period: string;
-  overallRating: number;
-  productivity: number;
-  quality: number;
-  punctuality: number;
-  teamwork: number;
+  overallRating: string | number;
+  productivity: string | number;
+  quality: string | number;
+  punctuality: string | number;
+  teamwork: string | number;
   comments: string | null;
   user?: { fullName: string; username: string };
   reviewer?: { fullName: string };
@@ -218,10 +218,16 @@ const roleLabels: Record<string, string> = {
 
 const attendanceStatusLabels: Record<string, string> = {
   present: "Presente",
+  presente: "Presente",
   absent: "Ausente",
+  ausente: "Ausente",
   late: "Tardanza",
+  tarde: "Tardanza",
   vacation: "Vacaciones",
+  vacaciones: "Vacaciones",
   sick: "Enfermedad",
+  enfermedad: "Enfermedad",
+  permiso: "Permiso",
 };
 
 const payrollStatusLabels: Record<string, string> = {
@@ -551,9 +557,9 @@ export function HRPage() {
     payrollForm.reset({
       userId: record.userId,
       period: record.period,
-      baseSalary: record.baseSalary,
-      bonuses: record.bonuses,
-      deductions: record.deductions,
+      baseSalary: Number(record.baseSalary) || 0,
+      bonuses: Number(record.bonuses) || 0,
+      deductions: Number(record.deductions) || 0,
     });
     setIsPayrollDialogOpen(true);
   };
@@ -563,11 +569,11 @@ export function HRPage() {
     reviewForm.reset({
       userId: review.userId,
       period: review.period,
-      overallRating: review.overallRating,
-      productivity: review.productivity,
-      quality: review.quality,
-      punctuality: review.punctuality,
-      teamwork: review.teamwork,
+      overallRating: Number(review.overallRating) || 3,
+      productivity: Number(review.productivity) || 3,
+      quality: Number(review.quality) || 3,
+      punctuality: Number(review.punctuality) || 3,
+      teamwork: Number(review.teamwork) || 3,
       comments: review.comments || "",
     });
     setIsReviewDialogOpen(true);
@@ -642,7 +648,7 @@ export function HRPage() {
   const pendingVacations = (vacationRequests || []).filter((v) => v.status === "pending").length;
   const pendingPayroll = (payrollRecords || []).filter((p) => p.status === "pending").length;
   const avgRating = performanceReviews?.length
-    ? (performanceReviews.reduce((acc, p) => acc + (p.overallRating || 0), 0) / performanceReviews.length).toFixed(1)
+    ? (performanceReviews.reduce((acc, p) => acc + (Number(p.overallRating) || 0), 0) / performanceReviews.length).toFixed(1)
     : "0";
 
   const employeeColumns: Column<Employee>[] = [
@@ -704,7 +710,7 @@ export function HRPage() {
     { key: "userId", header: "Empleado", render: (item) => item.user?.fullName || item.user?.username || "-" },
     { key: "checkIn", header: "Entrada", render: (item) => item.checkIn || "-" },
     { key: "checkOut", header: "Salida", render: (item) => item.checkOut || "-" },
-    { key: "hoursWorked", header: "Horas", render: (item) => item.hoursWorked ? `${item.hoursWorked.toFixed(1)}h` : "-" },
+    { key: "hoursWorked", header: "Horas", render: (item) => item.hoursWorked ? `${parseFloat(String(item.hoursWorked)).toFixed(1)}h` : "-" },
     {
       key: "status",
       header: "Estado",
