@@ -178,7 +178,12 @@ const vacationSchema = z.object({
   startDate: z.string().min(1, "Fecha de inicio requerida"),
   endDate: z.string().min(1, "Fecha de fin requerida"),
   reason: z.string().optional(),
-});
+}).refine((data) => {
+  if (data.startDate && data.endDate) {
+    return new Date(data.endDate) >= new Date(data.startDate);
+  }
+  return true;
+}, { message: "La fecha de fin debe ser posterior a la fecha de inicio", path: ["endDate"] });
 
 const reviewSchema = z.object({
   userId: z.string().min(1, "Selecciona un empleado"),
@@ -1174,9 +1179,20 @@ export function HRPage() {
           <Form {...vacationForm}>
             <form onSubmit={vacationForm.handleSubmit((data) => createVacationMutation.mutate(data))} className="space-y-4">
               <FormField control={vacationForm.control} name="userId" render={({ field }) => (
-                <FormItem><FormLabel>Empleado (opcional - dejar vacío para ti mismo)</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona empleado" /></SelectTrigger></FormControl>
-                    <SelectContent>{(employees || []).filter(e => e.isActive).map((emp) => (<SelectItem key={emp.id} value={emp.id}>{emp.fullName || emp.username}</SelectItem>))}</SelectContent></Select>
+                <FormItem><FormLabel>Empleado</FormLabel>
+                  <div className="flex gap-2">
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl><SelectTrigger className="flex-1"><SelectValue placeholder="Para mí mismo" /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        {(employees || []).filter(e => e.isActive).map((emp) => (<SelectItem key={emp.id} value={emp.id}>{emp.fullName || emp.username}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                    {field.value && (
+                      <Button type="button" variant="outline" size="icon" onClick={() => field.onChange("")} data-testid="button-clear-employee">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 <FormMessage /></FormItem>
               )} />
               <div className="grid grid-cols-2 gap-4">
