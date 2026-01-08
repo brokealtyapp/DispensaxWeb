@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatDate } from "@/lib/utils";
@@ -64,6 +64,145 @@ const typeConfig: Record<string, { label: string; icon: any; color: string }> = 
   otro: { label: "Otro", icon: Coffee, color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400" },
 };
 
+interface TaskItemProps {
+  task: any;
+  onStartTask: (id: string) => void;
+  onCompleteTask: (id: string) => void;
+  onCancelTask: (id: string) => void;
+}
+
+const TaskItem = memo(function TaskItem({ task, onStartTask, onCompleteTask, onCancelTask }: TaskItemProps) {
+  const priority = priorityConfig[task.priority as keyof typeof priorityConfig] || priorityConfig.media;
+  const status = statusConfig[task.status as keyof typeof statusConfig] || statusConfig.pendiente;
+  const type = typeConfig[task.type as keyof typeof typeConfig] || typeConfig.otro;
+  const TypeIcon = type.icon;
+  const StatusIcon = status.icon;
+
+  return (
+    <Card 
+      className="hover-elevate transition-all"
+      data-testid={`card-my-task-${task.id}`}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start gap-4">
+          {(task.priority === "urgente" || task.priority === "alta") && (
+            <div className={`w-1 self-stretch rounded-full ${
+              task.priority === "urgente" ? "bg-red-500" : "bg-orange-500"
+            }`} />
+          )}
+          <button
+            onClick={() => {
+              if (task.status === "pendiente") {
+                onStartTask(task.id);
+              } else if (task.status === "en_progreso") {
+                onCompleteTask(task.id);
+              }
+            }}
+            disabled={task.status === "completada" || task.status === "cancelada"}
+            className={`mt-1 h-6 w-6 rounded-full border-2 flex items-center justify-center transition-colors ${
+              task.status === "completada" 
+                ? "bg-green-500 border-green-500 text-white" 
+                : task.status === "en_progreso"
+                ? "bg-blue-500 border-blue-500 text-white"
+                : task.status === "cancelada"
+                ? "bg-red-500 border-red-500 text-white"
+                : "border-muted-foreground/30 hover:border-primary"
+            }`}
+            data-testid={`button-toggle-mytask-${task.id}`}
+          >
+            {task.status === "completada" && <CheckCircle2 className="h-4 w-4" />}
+            {task.status === "en_progreso" && <PlayCircle className="h-4 w-4" />}
+            {task.status === "cancelada" && <XCircle className="h-4 w-4" />}
+          </button>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2 flex-wrap">
+              <div>
+                <h3 className={`font-semibold ${
+                  task.status === "completada" || task.status === "cancelada" ? "line-through text-muted-foreground" : ""
+                }`} data-testid={`text-mytask-title-${task.id}`}>
+                  {task.title}
+                </h3>
+                {task.description && (
+                  <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                    {task.description}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className={type.color} variant="secondary">
+                  <TypeIcon className="h-3 w-3 mr-1" />
+                  {type.label}
+                </Badge>
+                <Badge className={status.color}>
+                  <StatusIcon className="h-3 w-3 mr-1" />
+                  {status.label}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 mt-3">
+              {task.dueDate && (
+                <div className="flex items-center gap-1 text-sm">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium">{formatDate(new Date(task.dueDate))}</span>
+                </div>
+              )}
+              {task.startTime && (
+                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                  <span>{task.startTime}</span>
+                  {task.endTime && <span>- {task.endTime}</span>}
+                </div>
+              )}
+              {task.machine && (
+                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                  <MapPin className="h-4 w-4" />
+                  <span>{task.machine.name}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {(task.status === "pendiente" || task.status === "en_progreso") && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" data-testid={`button-mytask-menu-${task.id}`}>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {task.status === "pendiente" && (
+                  <DropdownMenuItem 
+                    onClick={() => onStartTask(task.id)}
+                    data-testid={`menu-item-start-${task.id}`}
+                  >
+                    <PlayCircle className="h-4 w-4 mr-2" />
+                    Iniciar
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem 
+                  onClick={() => onCompleteTask(task.id)}
+                  data-testid={`menu-item-complete-${task.id}`}
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Completar
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => onCancelTask(task.id)}
+                  data-testid={`menu-item-cancel-${task.id}`}
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Cancelar
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+});
+
 export function MyTasksPage() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -110,6 +249,18 @@ export function MyTasksPage() {
     },
   });
 
+  const handleStartTask = (id: string) => {
+    changeStatusMutation.mutate({ id, status: "en_progreso" });
+  };
+
+  const handleCompleteTask = (id: string) => {
+    completeTaskMutation.mutate(id);
+  };
+
+  const handleCancelTask = (id: string) => {
+    changeStatusMutation.mutate({ id, status: "cancelada" });
+  };
+
   const filteredTasks = tasks?.filter(task => {
     const matchesStatus = statusFilter === "all" || task.status === statusFilter;
     const matchesSearch = !searchTerm || 
@@ -121,138 +272,6 @@ export function MyTasksPage() {
   const pendingCount = tasks?.filter(t => t.status === "pendiente").length || 0;
   const inProgressCount = tasks?.filter(t => t.status === "en_progreso").length || 0;
   const completedCount = tasks?.filter(t => t.status === "completada").length || 0;
-
-  const TaskItem = ({ task }: { task: any }) => {
-    const priority = priorityConfig[task.priority as keyof typeof priorityConfig] || priorityConfig.media;
-    const status = statusConfig[task.status as keyof typeof statusConfig] || statusConfig.pendiente;
-    const type = typeConfig[task.type as keyof typeof typeConfig] || typeConfig.otro;
-    const TypeIcon = type.icon;
-    const StatusIcon = status.icon;
-
-    return (
-      <Card 
-        className="hover-elevate transition-all"
-        data-testid={`card-my-task-${task.id}`}
-      >
-        <CardContent className="p-4">
-          <div className="flex items-start gap-4">
-            {(task.priority === "urgente" || task.priority === "alta") && (
-              <div className={`w-1 self-stretch rounded-full ${
-                task.priority === "urgente" ? "bg-red-500" : "bg-orange-500"
-              }`} />
-            )}
-            <button
-              onClick={() => {
-                if (task.status === "pendiente") {
-                  changeStatusMutation.mutate({ id: task.id, status: "en_progreso" });
-                } else if (task.status === "en_progreso") {
-                  completeTaskMutation.mutate(task.id);
-                }
-              }}
-              disabled={task.status === "completada" || task.status === "cancelada"}
-              className={`mt-1 h-6 w-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                task.status === "completada" 
-                  ? "bg-green-500 border-green-500 text-white" 
-                  : task.status === "en_progreso"
-                  ? "bg-blue-500 border-blue-500 text-white"
-                  : task.status === "cancelada"
-                  ? "bg-red-500 border-red-500 text-white"
-                  : "border-muted-foreground/30 hover:border-primary"
-              }`}
-              data-testid={`button-toggle-mytask-${task.id}`}
-            >
-              {task.status === "completada" && <CheckCircle2 className="h-4 w-4" />}
-              {task.status === "en_progreso" && <PlayCircle className="h-4 w-4" />}
-              {task.status === "cancelada" && <XCircle className="h-4 w-4" />}
-            </button>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2 flex-wrap">
-                <div>
-                  <h3 className={`font-semibold ${
-                    task.status === "completada" || task.status === "cancelada" ? "line-through text-muted-foreground" : ""
-                  }`} data-testid={`text-mytask-title-${task.id}`}>
-                    {task.title}
-                  </h3>
-                  {task.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-                      {task.description}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge className={type.color} variant="secondary">
-                    <TypeIcon className="h-3 w-3 mr-1" />
-                    {type.label}
-                  </Badge>
-                  <Badge className={status.color}>
-                    <StatusIcon className="h-3 w-3 mr-1" />
-                    {status.label}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-4 mt-3">
-                {task.dueDate && (
-                  <div className="flex items-center gap-1 text-sm">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">{formatDate(new Date(task.dueDate))}</span>
-                  </div>
-                )}
-                {task.startTime && (
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <span>{task.startTime}</span>
-                    {task.endTime && <span>- {task.endTime}</span>}
-                  </div>
-                )}
-                {task.machine && (
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <MapPin className="h-4 w-4" />
-                    <span>{task.machine.name}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {(task.status === "pendiente" || task.status === "en_progreso") && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" data-testid={`button-mytask-menu-${task.id}`}>
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {task.status === "pendiente" && (
-                    <DropdownMenuItem 
-                      onClick={() => changeStatusMutation.mutate({ id: task.id, status: "en_progreso" })}
-                      data-testid={`menu-item-start-${task.id}`}
-                    >
-                      <PlayCircle className="h-4 w-4 mr-2" />
-                      Iniciar
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem 
-                    onClick={() => completeTaskMutation.mutate(task.id)}
-                    data-testid={`menu-item-complete-${task.id}`}
-                  >
-                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                    Completar
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={() => changeStatusMutation.mutate({ id: task.id, status: "cancelada" })}
-                    data-testid={`menu-item-cancel-${task.id}`}
-                  >
-                    <XCircle className="h-4 w-4 mr-2" />
-                    Cancelar
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
 
   return (
     <ScrollArea className="h-full">
@@ -374,7 +393,13 @@ export function MyTasksPage() {
         ) : (
           <div className="space-y-3">
             {filteredTasks.map((task) => (
-              <TaskItem key={task.id} task={task} />
+              <TaskItem 
+                key={task.id} 
+                task={task} 
+                onStartTask={handleStartTask}
+                onCompleteTask={handleCompleteTask}
+                onCancelTask={handleCancelTask}
+              />
             ))}
           </div>
         )}
