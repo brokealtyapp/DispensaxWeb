@@ -1,7 +1,12 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatDate } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { usePermissions } from "@/hooks/use-permissions";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { 
   CheckSquare,
   Clock,
@@ -22,7 +27,9 @@ import {
   Coffee,
   Users,
   CalendarDays,
-  ChevronRight
+  ChevronRight,
+  Plus,
+  Calendar
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,6 +42,29 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { Link } from "wouter";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+
+const taskFormSchema = z.object({
+  title: z.string().min(1, "Título requerido"),
+  description: z.string().optional(),
+  type: z.string().min(1, "Tipo requerido"),
+  priority: z.string().min(1, "Prioridad requerida"),
+  dueDate: z.date().optional(),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
+  assignedUserId: z.string().optional(),
+  machineId: z.string().optional(),
+  routeId: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+type TaskFormData = z.infer<typeof taskFormSchema>;
 
 const priorityConfig = {
   urgente: { label: "Urgente", color: "bg-red-500 text-white", textColor: "text-red-500" },
@@ -64,7 +94,25 @@ const typeConfig: Record<string, { label: string; icon: any; color: string }> = 
 export function TasksTodayPage() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { canCreate } = usePermissions();
   const today = new Date();
+  const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
+
+  const taskForm = useForm<TaskFormData>({
+    resolver: zodResolver(taskFormSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      type: "otro",
+      priority: "media",
+      startTime: "",
+      endTime: "",
+      assignedUserId: "",
+      machineId: "",
+      routeId: "",
+      notes: "",
+    },
+  });
 
   const { data: tasks, isLoading: tasksLoading } = useQuery<any[]>({
     queryKey: ["/api/tasks/today"],
@@ -74,6 +122,55 @@ export function TasksTodayPage() {
     queryKey: ["/api/tasks/my-history"],
     enabled: user?.role === "abastecedor",
   });
+
+  const { data: users } = useQuery<any[]>({
+    queryKey: ["/api/users"],
+    enabled: isNewTaskOpen,
+  });
+
+  const { data: machines } = useQuery<any[]>({
+    queryKey: ["/api/machines"],
+    enabled: isNewTaskOpen,
+  });
+
+  const { data: routes } = useQuery<any[]>({
+    queryKey: ["/api/routes"],
+    enabled: isNewTaskOpen,
+  });
+
+  const invalidateTaskQueries = () => {
+    queryClient.invalidateQueries({ 
+      predicate: (query) => {
+        const key = query.queryKey[0];
+        return typeof key === "string" && key.startsWith("/api/tasks");
+      }
+    });
+  };
+
+  const createTaskMutation = useMutation({
+    mutationFn: async (data: TaskFormData) => {
+      return apiRequest("POST", "/api/tasks", {
+        ...data,
+        dueDate: data.dueDate?.toISOString(),
+        assignedUserId: data.assignedUserId && data.assignedUserId !== "" ? data.assignedUserId : undefined,
+        machineId: data.machineId && data.machineId !== "" ? data.machineId : undefined,
+        routeId: data.routeId && data.routeId !== "" ? data.routeId : undefined,
+      });
+    },
+    onSuccess: () => {
+      invalidateTaskQueries();
+      toast({ title: "Tarea creada", description: "La tarea se ha creado correctamente" });
+      setIsNewTaskOpen(false);
+      taskForm.reset();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo crear la tarea", variant: "destructive" });
+    },
+  });
+
+  const onTaskSubmit = (data: TaskFormData) => {
+    createTaskMutation.mutate(data);
+  };
 
   const completeTaskMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -244,14 +341,29 @@ export function TasksTodayPage() {
               {formatDate(today)}
             </p>
           </div>
-{user?.role !== "abastecedor" && (
-            <Link href="/todas-tareas">
-              <Button variant="outline" className="gap-2" data-testid="link-all-tasks">
-                Ver Todas las Tareas
-                <ChevronRight className="h-4 w-4" />
+          <div className="flex items-center gap-2">
+            {canCreate("tasks") && (
+              <Button
+                onClick={() => {
+                  taskForm.reset();
+                  setIsNewTaskOpen(true);
+                }}
+                className="gap-2"
+                data-testid="button-new-task"
+              >
+                <Plus className="h-4 w-4" />
+                Nueva Tarea
               </Button>
-            </Link>
-          )}
+            )}
+            {user?.role !== "abastecedor" && (
+              <Link href="/todas-tareas">
+                <Button variant="outline" className="gap-2" data-testid="link-all-tasks">
+                  Ver Todas las Tareas
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
 
         <Card>
@@ -289,12 +401,17 @@ export function TasksTodayPage() {
                   ? "No tienes tareas asignadas para hoy. Las tareas serán asignadas por tu supervisor."
                   : "¡Excelente! No tienes tareas programadas para hoy."}
               </p>
-              {user?.role !== "abastecedor" && (
-                <Link href="/todas-tareas">
-                  <Button data-testid="button-create-task">
-                    Crear Nueva Tarea
-                  </Button>
-                </Link>
+              {canCreate("tasks") && (
+                <Button 
+                  onClick={() => {
+                    taskForm.reset();
+                    setIsNewTaskOpen(true);
+                  }}
+                  data-testid="button-create-task"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Crear Nueva Tarea
+                </Button>
               )}
             </CardContent>
           </Card>
@@ -406,6 +523,272 @@ export function TasksTodayPage() {
           </div>
         )}
       </div>
+
+      <Dialog open={isNewTaskOpen} onOpenChange={setIsNewTaskOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Nueva Tarea</DialogTitle>
+            <DialogDescription>
+              Crea una nueva tarea para el equipo
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...taskForm}>
+            <form onSubmit={taskForm.handleSubmit(onTaskSubmit)} className="space-y-4">
+              <FormField
+                control={taskForm.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Título</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Título de la tarea" {...field} data-testid="input-task-title" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={taskForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Descripción</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Descripción detallada..." {...field} data-testid="input-task-description" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={taskForm.control}
+                  name="type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-task-type">
+                            <SelectValue placeholder="Seleccionar tipo" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {Object.entries(typeConfig).map(([key, config]) => (
+                            <SelectItem key={key} value={key}>{config.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={taskForm.control}
+                  name="priority"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Prioridad</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-task-priority">
+                            <SelectValue placeholder="Seleccionar prioridad" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="baja">Baja</SelectItem>
+                          <SelectItem value="media">Media</SelectItem>
+                          <SelectItem value="alta">Alta</SelectItem>
+                          <SelectItem value="urgente">Urgente</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <FormField
+                  control={taskForm.control}
+                  name="dueDate"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Fecha</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              className="justify-start text-left font-normal"
+                              data-testid="button-task-date"
+                            >
+                              <Calendar className="mr-2 h-4 w-4" />
+                              {field.value ? formatDate(field.value) : "Seleccionar"}
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <CalendarComponent
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={taskForm.control}
+                  name="startTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Hora Inicio</FormLabel>
+                      <FormControl>
+                        <Input type="time" {...field} data-testid="input-task-start-time" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={taskForm.control}
+                  name="endTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Hora Fin</FormLabel>
+                      <FormControl>
+                        <Input type="time" {...field} data-testid="input-task-end-time" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={taskForm.control}
+                name="assignedUserId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Asignar a</FormLabel>
+                    <Select 
+                      onValueChange={(val) => field.onChange(val === "unassigned" ? "" : val)} 
+                      defaultValue={field.value || "unassigned"}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-task-assigned">
+                          <SelectValue placeholder="Seleccionar usuario" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="unassigned">Sin asignar</SelectItem>
+                        {users?.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.fullName || u.username}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={taskForm.control}
+                  name="machineId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Máquina (opcional)</FormLabel>
+                      <Select 
+                        onValueChange={(val) => field.onChange(val === "none" ? "" : val)} 
+                        defaultValue={field.value || "none"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-task-machine">
+                            <SelectValue placeholder="Seleccionar máquina" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Ninguna</SelectItem>
+                          {machines?.map((machine) => (
+                            <SelectItem key={machine.id} value={machine.id}>
+                              {machine.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={taskForm.control}
+                  name="routeId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Ruta (opcional)</FormLabel>
+                      <Select 
+                        onValueChange={(val) => field.onChange(val === "none" ? "" : val)} 
+                        defaultValue={field.value || "none"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-task-route">
+                            <SelectValue placeholder="Seleccionar ruta" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Ninguna</SelectItem>
+                          {routes?.map((route) => (
+                            <SelectItem key={route.id} value={route.id}>
+                              {route.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={taskForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notas adicionales</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Notas adicionales..." {...field} data-testid="input-task-notes" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsNewTaskOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={createTaskMutation.isPending} data-testid="button-submit-task">
+                  {createTaskMutation.isPending ? "Creando..." : "Crear Tarea"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </ScrollArea>
   );
 }
