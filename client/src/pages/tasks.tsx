@@ -761,14 +761,17 @@ export function TasksPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Asignar a</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select 
+                          onValueChange={(val) => field.onChange(val === "unassigned" ? "" : val)} 
+                          defaultValue={field.value || "unassigned"}
+                        >
                           <FormControl>
                             <SelectTrigger data-testid="select-task-assigned">
                               <SelectValue placeholder="Seleccionar usuario" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">Sin asignar</SelectItem>
+                            <SelectItem value="unassigned">Sin asignar</SelectItem>
                             {users?.map((u) => (
                               <SelectItem key={u.id} value={u.id}>
                                 {u.fullName || u.username}
@@ -787,14 +790,17 @@ export function TasksPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Máquina (opcional)</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select 
+                          onValueChange={(val) => field.onChange(val === "none" ? "" : val)} 
+                          defaultValue={field.value || "none"}
+                        >
                           <FormControl>
                             <SelectTrigger data-testid="select-task-machine">
                               <SelectValue placeholder="Seleccionar máquina" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">Ninguna</SelectItem>
+                            <SelectItem value="none">Ninguna</SelectItem>
                             {machines?.map((machine) => (
                               <SelectItem key={machine.id} value={machine.id}>
                                 {machine.name}
@@ -992,14 +998,17 @@ export function TasksPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Asignar a</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select 
+                          onValueChange={(val) => field.onChange(val === "unassigned" ? "" : val)} 
+                          value={field.value || "unassigned"}
+                        >
                           <FormControl>
                             <SelectTrigger data-testid="select-edit-task-assigned">
                               <SelectValue placeholder="Seleccionar usuario" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">Sin asignar</SelectItem>
+                            <SelectItem value="unassigned">Sin asignar</SelectItem>
                             {users?.map((u) => (
                               <SelectItem key={u.id} value={u.id}>
                                 {u.fullName || u.username}
@@ -1018,14 +1027,17 @@ export function TasksPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Máquina (opcional)</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select 
+                          onValueChange={(val) => field.onChange(val === "none" ? "" : val)} 
+                          value={field.value || "none"}
+                        >
                           <FormControl>
                             <SelectTrigger data-testid="select-edit-task-machine">
                               <SelectValue placeholder="Seleccionar máquina" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">Ninguna</SelectItem>
+                            <SelectItem value="none">Ninguna</SelectItem>
                             {machines?.map((machine) => (
                               <SelectItem key={machine.id} value={machine.id}>
                                 {machine.name}
