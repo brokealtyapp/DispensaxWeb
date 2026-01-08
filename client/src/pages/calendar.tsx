@@ -85,7 +85,19 @@ export function CalendarPage() {
 
   const { canCreate, canEdit, canDelete } = usePermissions();
 
-  const eventForm = useForm<EventFormData>({
+  const createForm = useForm<EventFormData>({
+    resolver: zodResolver(eventFormSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      eventType: "otro",
+      allDay: false,
+      color: "blue",
+      userId: "",
+    },
+  });
+
+  const editForm = useForm<EventFormData>({
     resolver: zodResolver(eventFormSchema),
     defaultValues: {
       title: "",
@@ -130,10 +142,12 @@ export function CalendarPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/calendar/events"] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => (query.queryKey[0] as string)?.startsWith("/api/calendar/events") 
+      });
       toast({ title: "Evento creado", description: "El evento se ha agregado al calendario" });
       setIsNewEventOpen(false);
-      eventForm.reset();
+      createForm.reset();
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo crear el evento", variant: "destructive" });
@@ -146,10 +160,13 @@ export function CalendarPage() {
         ...data,
         startDate: data.startDate?.toISOString(),
         endDate: data.endDate?.toISOString(),
+        userId: data.userId || undefined,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/calendar/events"] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => (query.queryKey[0] as string)?.startsWith("/api/calendar/events") 
+      });
       toast({ title: "Evento actualizado" });
       setIsEditEventOpen(false);
       setSelectedEvent(null);
@@ -164,8 +181,11 @@ export function CalendarPage() {
       return apiRequest("DELETE", `/api/calendar/events/${id}`, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/calendar/events"] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => (query.queryKey[0] as string)?.startsWith("/api/calendar/events") 
+      });
       toast({ title: "Evento eliminado" });
+      setSelectedDate(null);
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo eliminar el evento", variant: "destructive" });
@@ -202,13 +222,14 @@ export function CalendarPage() {
   };
 
   const handleAddEventOnDate = (date: Date) => {
-    eventForm.reset({
+    createForm.reset({
       title: "",
       description: "",
       eventType: "otro",
       startDate: date,
       allDay: false,
       color: "blue",
+      userId: "",
     });
     setIsNewEventOpen(true);
     setSelectedDate(null);
@@ -216,7 +237,7 @@ export function CalendarPage() {
 
   const handleEditEvent = (event: any) => {
     setSelectedEvent(event);
-    eventForm.reset({
+    editForm.reset({
       title: event.title,
       description: event.description || "",
       eventType: event.eventType || "otro",
@@ -230,7 +251,7 @@ export function CalendarPage() {
     setSelectedDate(null);
   };
 
-  const onEventSubmit = (data: EventFormData) => {
+  const onCreateSubmit = (data: EventFormData) => {
     createEventMutation.mutate(data);
   };
 
@@ -258,7 +279,15 @@ export function CalendarPage() {
           {canCreate("tasks") && (
             <Button
               onClick={() => {
-                eventForm.reset({ startDate: new Date() });
+                createForm.reset({ 
+                  title: "",
+                  description: "",
+                  eventType: "otro",
+                  startDate: new Date(),
+                  allDay: false,
+                  color: "blue",
+                  userId: "",
+                });
                 setIsNewEventOpen(true);
               }}
               className="gap-2"
@@ -474,10 +503,10 @@ export function CalendarPage() {
                 Agrega un nuevo evento al calendario
               </DialogDescription>
             </DialogHeader>
-            <Form {...eventForm}>
-              <form onSubmit={eventForm.handleSubmit(onEventSubmit)} className="space-y-4">
+            <Form {...createForm}>
+              <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4">
                 <FormField
-                  control={eventForm.control}
+                  control={createForm.control}
                   name="title"
                   render={({ field }) => (
                     <FormItem>
@@ -491,7 +520,7 @@ export function CalendarPage() {
                 />
 
                 <FormField
-                  control={eventForm.control}
+                  control={createForm.control}
                   name="description"
                   render={({ field }) => (
                     <FormItem>
@@ -506,7 +535,7 @@ export function CalendarPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
-                    control={eventForm.control}
+                    control={createForm.control}
                     name="eventType"
                     render={({ field }) => (
                       <FormItem>
@@ -529,7 +558,7 @@ export function CalendarPage() {
                   />
 
                   <FormField
-                    control={eventForm.control}
+                    control={createForm.control}
                     name="color"
                     render={({ field }) => (
                       <FormItem>
@@ -559,7 +588,7 @@ export function CalendarPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
-                    control={eventForm.control}
+                    control={createForm.control}
                     name="startDate"
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
@@ -592,7 +621,7 @@ export function CalendarPage() {
                   />
 
                   <FormField
-                    control={eventForm.control}
+                    control={createForm.control}
                     name="endDate"
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
@@ -626,7 +655,7 @@ export function CalendarPage() {
                 </div>
 
                 <FormField
-                  control={eventForm.control}
+                  control={createForm.control}
                   name="allDay"
                   render={({ field }) => (
                     <FormItem className="flex flex-row items-center space-x-3 space-y-0">
@@ -645,7 +674,7 @@ export function CalendarPage() {
                 />
 
                 <FormField
-                  control={eventForm.control}
+                  control={createForm.control}
                   name="userId"
                   render={({ field }) => (
                     <FormItem>
@@ -691,10 +720,10 @@ export function CalendarPage() {
                 Modifica los detalles del evento
               </DialogDescription>
             </DialogHeader>
-            <Form {...eventForm}>
-              <form onSubmit={eventForm.handleSubmit(onEditSubmit)} className="space-y-4">
+            <Form {...editForm}>
+              <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
                 <FormField
-                  control={eventForm.control}
+                  control={editForm.control}
                   name="title"
                   render={({ field }) => (
                     <FormItem>
@@ -708,7 +737,7 @@ export function CalendarPage() {
                 />
 
                 <FormField
-                  control={eventForm.control}
+                  control={editForm.control}
                   name="description"
                   render={({ field }) => (
                     <FormItem>
@@ -723,7 +752,7 @@ export function CalendarPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
-                    control={eventForm.control}
+                    control={editForm.control}
                     name="eventType"
                     render={({ field }) => (
                       <FormItem>
@@ -746,7 +775,7 @@ export function CalendarPage() {
                   />
 
                   <FormField
-                    control={eventForm.control}
+                    control={editForm.control}
                     name="color"
                     render={({ field }) => (
                       <FormItem>
@@ -773,6 +802,119 @@ export function CalendarPage() {
                     )}
                   />
                 </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={editForm.control}
+                    name="startDate"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Fecha de Inicio</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                className="justify-start text-left font-normal"
+                                data-testid="button-edit-event-start-date"
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {field.value ? formatDate(field.value) : "Seleccionar"}
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <CalendarComponent
+                              mode="single"
+                              selected={field.value}
+                              onSelect={field.onChange}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={editForm.control}
+                    name="endDate"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Fecha de Fin (opcional)</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                className="justify-start text-left font-normal"
+                                data-testid="button-edit-event-end-date"
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {field.value ? formatDate(field.value) : "Seleccionar"}
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <CalendarComponent
+                              mode="single"
+                              selected={field.value}
+                              onSelect={field.onChange}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={editForm.control}
+                  name="allDay"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          data-testid="checkbox-edit-all-day"
+                        />
+                      </FormControl>
+                      <FormLabel className="font-normal">
+                        Evento de todo el día
+                      </FormLabel>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={editForm.control}
+                  name="userId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Asignar a (opcional)</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-edit-event-user">
+                            <SelectValue placeholder="Seleccionar usuario" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="">Sin asignar</SelectItem>
+                          {users?.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.fullName || user.username}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setIsEditEventOpen(false)}>
