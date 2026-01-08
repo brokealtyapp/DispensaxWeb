@@ -151,19 +151,27 @@ export function TasksPage() {
     queryKey: ["/api/routes"],
   });
 
+  const invalidateTaskQueries = () => {
+    queryClient.invalidateQueries({ 
+      predicate: (query) => {
+        const key = query.queryKey[0];
+        return typeof key === "string" && key.startsWith("/api/tasks");
+      }
+    });
+  };
+
   const createTaskMutation = useMutation({
     mutationFn: async (data: TaskFormData) => {
       return apiRequest("POST", "/api/tasks", {
         ...data,
         dueDate: data.dueDate?.toISOString(),
-        assignedUserId: data.assignedUserId || undefined,
-        machineId: data.machineId || undefined,
-        routeId: data.routeId || undefined,
+        assignedUserId: data.assignedUserId && data.assignedUserId !== "" ? data.assignedUserId : undefined,
+        machineId: data.machineId && data.machineId !== "" ? data.machineId : undefined,
+        routeId: data.routeId && data.routeId !== "" ? data.routeId : undefined,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks/stats"] });
+      invalidateTaskQueries();
       toast({ title: "Tarea creada", description: "La tarea se ha creado correctamente" });
       setIsNewTaskOpen(false);
       taskForm.reset();
@@ -178,11 +186,13 @@ export function TasksPage() {
       return apiRequest("PATCH", `/api/tasks/${id}`, {
         ...data,
         dueDate: data.dueDate?.toISOString(),
+        assignedUserId: data.assignedUserId && data.assignedUserId !== "" ? data.assignedUserId : undefined,
+        machineId: data.machineId && data.machineId !== "" ? data.machineId : undefined,
+        routeId: data.routeId && data.routeId !== "" ? data.routeId : undefined,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks/stats"] });
+      invalidateTaskQueries();
       toast({ title: "Tarea actualizada", description: "La tarea se ha actualizado correctamente" });
       setIsEditTaskOpen(false);
       setSelectedTask(null);
@@ -197,8 +207,7 @@ export function TasksPage() {
       return apiRequest("POST", `/api/tasks/${id}/complete`, { completedBy: user?.id || "system" });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks/stats"] });
+      invalidateTaskQueries();
       toast({ title: "Tarea completada", description: "La tarea ha sido marcada como completada" });
     },
     onError: () => {
@@ -211,8 +220,7 @@ export function TasksPage() {
       return apiRequest("DELETE", `/api/tasks/${id}`, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks/stats"] });
+      invalidateTaskQueries();
       toast({ title: "Tarea eliminada", description: "La tarea ha sido eliminada" });
     },
     onError: () => {
@@ -225,8 +233,7 @@ export function TasksPage() {
       return apiRequest("POST", `/api/tasks/${id}/cancel`, { cancelledBy: user?.id || "system" });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks/stats"] });
+      invalidateTaskQueries();
       toast({ title: "Tarea cancelada", description: "La tarea ha sido cancelada" });
     },
     onError: () => {
@@ -239,8 +246,7 @@ export function TasksPage() {
       return apiRequest("PATCH", `/api/tasks/${id}`, { status });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks/stats"] });
+      invalidateTaskQueries();
       toast({ title: "Estado actualizado", description: "El estado de la tarea ha sido actualizado" });
     },
     onError: () => {
@@ -546,7 +552,7 @@ export function TasksPage() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  {task.status !== "completada" && (
+                                  {canEdit("tasks") && task.status !== "completada" && (
                                     <>
                                       {task.status === "pendiente" && (
                                         <DropdownMenuItem onClick={() => changeStatusMutation.mutate({ id: task.id, status: "en_progreso" })}>
@@ -762,10 +768,10 @@ export function TasksPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="none">Sin asignar</SelectItem>
-                            {users?.map((user) => (
-                              <SelectItem key={user.id} value={user.id}>
-                                {user.fullName || user.username}
+                            <SelectItem value="">Sin asignar</SelectItem>
+                            {users?.map((u) => (
+                              <SelectItem key={u.id} value={u.id}>
+                                {u.fullName || u.username}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -788,7 +794,7 @@ export function TasksPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="none">Ninguna</SelectItem>
+                            <SelectItem value="">Ninguna</SelectItem>
                             {machines?.map((machine) => (
                               <SelectItem key={machine.id} value={machine.id}>
                                 {machine.name}
@@ -830,7 +836,7 @@ export function TasksPage() {
         </Dialog>
 
         <Dialog open={isEditTaskOpen} onOpenChange={setIsEditTaskOpen}>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Editar Tarea</DialogTitle>
               <DialogDescription>
@@ -915,6 +921,137 @@ export function TasksPage() {
                     )}
                   />
                 </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <FormField
+                    control={taskForm.control}
+                    name="dueDate"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Fecha</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                className="justify-start text-left font-normal"
+                                data-testid="button-edit-task-date"
+                              >
+                                <Calendar className="mr-2 h-4 w-4" />
+                                {field.value ? formatDate(field.value) : "Seleccionar"}
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <CalendarComponent
+                              mode="single"
+                              selected={field.value}
+                              onSelect={field.onChange}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={taskForm.control}
+                    name="startTime"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Hora Inicio</FormLabel>
+                        <FormControl>
+                          <Input type="time" {...field} data-testid="input-edit-task-start-time" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={taskForm.control}
+                    name="endTime"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Hora Fin</FormLabel>
+                        <FormControl>
+                          <Input type="time" {...field} data-testid="input-edit-task-end-time" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={taskForm.control}
+                    name="assignedUserId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Asignar a</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-edit-task-assigned">
+                              <SelectValue placeholder="Seleccionar usuario" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="">Sin asignar</SelectItem>
+                            {users?.map((u) => (
+                              <SelectItem key={u.id} value={u.id}>
+                                {u.fullName || u.username}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={taskForm.control}
+                    name="machineId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Máquina (opcional)</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-edit-task-machine">
+                              <SelectValue placeholder="Seleccionar máquina" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="">Ninguna</SelectItem>
+                            {machines?.map((machine) => (
+                              <SelectItem key={machine.id} value={machine.id}>
+                                {machine.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={taskForm.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notas adicionales</FormLabel>
+                      <FormControl>
+                        <Textarea placeholder="Notas adicionales..." {...field} data-testid="input-edit-task-notes" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setIsEditTaskOpen(false)}>

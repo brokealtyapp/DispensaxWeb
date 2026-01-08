@@ -82,7 +82,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     purchase_orders: { view: true, create: false, edit: false, delete: false, approve: false },
     reports: { view: true, export: false },
     settings: { view: true, edit: false },
-    tasks: { view: true, create: true, edit: true, delete: true },
+    tasks: { view: true, create: true, edit: true, delete: false },
     service_records: { view: true, create: false, edit: false, delete: false },
   },
   
