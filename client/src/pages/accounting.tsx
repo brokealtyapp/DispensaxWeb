@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { getQueryFn } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -159,61 +160,24 @@ export function AccountingPage() {
     toast({ title: "Exportación completada" });
   }, [toast]);
 
-  const overviewUrl = buildUrl("/api/accounting/overview", {
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate,
-  });
-
   const { data: overview, isLoading: loadingOverview, isError: errorOverview } = useQuery<AccountingOverview>({
-    queryKey: ["/api/accounting/overview", dateRange.startDate, dateRange.endDate],
-    queryFn: async () => {
-      const res = await fetch(overviewUrl);
-      if (!res.ok) throw new Error("Error al cargar resumen contable");
-      return res.json();
-    },
-  });
-
-  const salesUrl = buildUrl("/api/accounting/machine-sales", {
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate,
+    queryKey: ["/api/accounting/overview", { startDate: dateRange.startDate, endDate: dateRange.endDate }],
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 
   const { data: machineSales, isLoading: loadingSales, isError: errorSales } = useQuery<MachineSale[]>({
-    queryKey: ["/api/accounting/machine-sales", dateRange.startDate, dateRange.endDate],
-    queryFn: async () => {
-      const res = await fetch(salesUrl);
-      if (!res.ok) throw new Error("Error al cargar ventas por máquina");
-      return res.json();
-    },
-  });
-
-  const expensesUrl = buildUrl("/api/accounting/expenses", {
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate,
+    queryKey: ["/api/accounting/machine-sales", { startDate: dateRange.startDate, endDate: dateRange.endDate }],
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 
   const { data: expenses, isLoading: loadingExpenses, isError: errorExpenses } = useQuery<ExpenseItem[]>({
-    queryKey: ["/api/accounting/expenses", dateRange.startDate, dateRange.endDate],
-    queryFn: async () => {
-      const res = await fetch(expensesUrl);
-      if (!res.ok) throw new Error("Error al cargar gastos");
-      return res.json();
-    },
-  });
-
-  const cashCutUrl = buildUrl("/api/accounting/cash-cut", {
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate,
-    userId: selectedUser !== "all" ? selectedUser : undefined,
+    queryKey: ["/api/accounting/expenses", { startDate: dateRange.startDate, endDate: dateRange.endDate }],
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 
   const { data: cashCut, isLoading: loadingCashCut, isError: errorCashCut } = useQuery<CashCutReport>({
-    queryKey: ["/api/accounting/cash-cut", dateRange.startDate, dateRange.endDate, selectedUser],
-    queryFn: async () => {
-      const res = await fetch(cashCutUrl);
-      if (!res.ok) throw new Error("Error al cargar corte de caja");
-      return res.json();
-    },
+    queryKey: ["/api/accounting/cash-cut", { startDate: dateRange.startDate, endDate: dateRange.endDate, userId: selectedUser !== "all" ? selectedUser : undefined }],
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 
   const { data: employees } = useQuery<any[]>({
