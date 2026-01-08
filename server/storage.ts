@@ -55,6 +55,19 @@ import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc, or, inArray } from "drizzle-orm";
 
 // =====================
+// SECURITY: User without password for API responses
+// =====================
+export type SafeUser = Omit<User, 'password'>;
+
+function excludePassword(user: User): SafeUser;
+function excludePassword(user: User | null | undefined): SafeUser | undefined;
+function excludePassword(user: User | null | undefined): SafeUser | undefined {
+  if (!user) return undefined;
+  const { password, ...safeUser } = user;
+  return safeUser;
+}
+
+// =====================
 // TIMEZONE UTILITIES (GMT-4 / America/Santo_Domingo)
 // =====================
 const TIMEZONE = 'America/Santo_Domingo';
@@ -386,21 +399,21 @@ export interface IStorage {
   
   // ==================== MÓDULO RRHH ====================
   
-  // Empleados
-  getEmployees(filters?: { role?: string; isActive?: boolean; search?: string }): Promise<User[]>;
-  getEmployee(id: string): Promise<User | undefined>;
-  createEmployee(employee: InsertEmployee): Promise<User>;
-  updateEmployee(id: string, data: Partial<InsertEmployee>): Promise<User | undefined>;
+  // Empleados (SafeUser excluye password para seguridad)
+  getEmployees(filters?: { role?: string; isActive?: boolean; search?: string }): Promise<SafeUser[]>;
+  getEmployee(id: string): Promise<SafeUser | undefined>;
+  createEmployee(employee: InsertEmployee): Promise<SafeUser>;
+  updateEmployee(id: string, data: Partial<InsertEmployee>): Promise<SafeUser | undefined>;
   deleteEmployee(id: string): Promise<boolean>;
   
   // Perfiles de empleados
   getEmployeeProfile(userId: string): Promise<EmployeeProfile | undefined>;
-  getEmployeeProfiles(): Promise<(EmployeeProfile & { user: User })[]>;
+  getEmployeeProfiles(): Promise<(EmployeeProfile & { user: SafeUser })[]>;
   createEmployeeProfile(profile: InsertEmployeeProfile): Promise<EmployeeProfile>;
   updateEmployeeProfile(userId: string, data: Partial<InsertEmployeeProfile>): Promise<EmployeeProfile | undefined>;
   
   // Asistencia
-  getAttendance(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(EmployeeAttendance & { user: User })[]>;
+  getAttendance(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(EmployeeAttendance & { user: SafeUser })[]>;
   getAttendanceRecord(id: string): Promise<EmployeeAttendance | undefined>;
   createAttendance(attendance: InsertEmployeeAttendance): Promise<EmployeeAttendance>;
   updateAttendance(id: string, data: Partial<InsertEmployeeAttendance>): Promise<EmployeeAttendance | undefined>;
@@ -417,7 +430,7 @@ export interface IStorage {
   }>;
   
   // Nómina
-  getPayrollRecords(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(PayrollRecord & { user: User })[]>;
+  getPayrollRecords(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(PayrollRecord & { user: SafeUser })[]>;
   getPayrollRecord(id: string): Promise<PayrollRecord | undefined>;
   createPayrollRecord(record: InsertPayrollRecord): Promise<PayrollRecord>;
   updatePayrollRecord(id: string, data: Partial<InsertPayrollRecord>): Promise<PayrollRecord | undefined>;
@@ -425,7 +438,7 @@ export interface IStorage {
   processPayroll(id: string, processedBy: string): Promise<PayrollRecord | undefined>;
   
   // Vacaciones
-  getVacationRequests(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<(VacationRequest & { user: User })[]>;
+  getVacationRequests(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<(VacationRequest & { user: SafeUser })[]>;
   getVacationRequest(id: string): Promise<VacationRequest | undefined>;
   createVacationRequest(request: InsertVacationRequest): Promise<VacationRequest>;
   updateVacationRequest(id: string, data: Partial<InsertVacationRequest>): Promise<VacationRequest | undefined>;
@@ -434,14 +447,14 @@ export interface IStorage {
   cancelVacation(id: string): Promise<VacationRequest | undefined>;
   
   // Evaluaciones de desempeño
-  getPerformanceReviews(filters?: { userId?: string; reviewerId?: string; status?: string; period?: string }): Promise<(PerformanceReview & { user: User; reviewer: User })[]>;
+  getPerformanceReviews(filters?: { userId?: string; reviewerId?: string; status?: string; period?: string }): Promise<(PerformanceReview & { user: SafeUser; reviewer: SafeUser })[]>;
   getPerformanceReview(id: string): Promise<PerformanceReview | undefined>;
   createPerformanceReview(review: InsertPerformanceReview): Promise<PerformanceReview>;
   updatePerformanceReview(id: string, data: Partial<InsertPerformanceReview>): Promise<PerformanceReview | undefined>;
   deletePerformanceReview(id: string): Promise<boolean>;
   
   // Documentos
-  getEmployeeDocuments(filters?: { userId?: string; documentType?: string }): Promise<(EmployeeDocument & { user: User })[]>;
+  getEmployeeDocuments(filters?: { userId?: string; documentType?: string }): Promise<(EmployeeDocument & { user: SafeUser })[]>;
   getEmployeeDocument(id: string): Promise<EmployeeDocument | undefined>;
   createEmployeeDocument(document: InsertEmployeeDocument): Promise<EmployeeDocument>;
   updateEmployeeDocument(id: string, data: Partial<InsertEmployeeDocument>): Promise<EmployeeDocument | undefined>;
@@ -4106,7 +4119,7 @@ export class DatabaseStorage implements IStorage {
 
   // ==================== MÓDULO RRHH ====================
 
-  async getEmployees(filters?: { role?: string; isActive?: boolean; search?: string }): Promise<User[]> {
+  async getEmployees(filters?: { role?: string; isActive?: boolean; search?: string }): Promise<SafeUser[]> {
     const conditions: any[] = [];
     
     if (filters?.role) {
@@ -4124,31 +4137,32 @@ export class DatabaseStorage implements IStorage {
     
     const result = await query.orderBy(asc(users.fullName));
     
+    let filtered = result;
     if (filters?.search) {
       const searchLower = filters.search.toLowerCase();
-      return result.filter(u => 
+      filtered = result.filter(u => 
         u.fullName?.toLowerCase().includes(searchLower) ||
         u.username.toLowerCase().includes(searchLower) ||
         u.email?.toLowerCase().includes(searchLower)
       );
     }
     
-    return result;
+    return filtered.map(u => excludePassword(u));
   }
 
-  async getEmployee(id: string): Promise<User | undefined> {
+  async getEmployee(id: string): Promise<SafeUser | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+    return excludePassword(user);
   }
 
-  async createEmployee(employee: InsertEmployee): Promise<User> {
+  async createEmployee(employee: InsertEmployee): Promise<SafeUser> {
     const [created] = await db.insert(users).values(employee).returning();
-    return created;
+    return excludePassword(created);
   }
 
-  async updateEmployee(id: string, data: Partial<InsertEmployee>): Promise<User | undefined> {
+  async updateEmployee(id: string, data: Partial<InsertEmployee>): Promise<SafeUser | undefined> {
     const [updated] = await db.update(users).set(data).where(eq(users.id, id)).returning();
-    return updated;
+    return excludePassword(updated);
   }
 
   async deleteEmployee(id: string): Promise<boolean> {
@@ -4290,7 +4304,7 @@ export class DatabaseStorage implements IStorage {
     return profile;
   }
 
-  async getEmployeeProfiles(): Promise<(EmployeeProfile & { user: User })[]> {
+  async getEmployeeProfiles(): Promise<(EmployeeProfile & { user: SafeUser })[]> {
     const result = await db.select({
       profile: employeeProfiles,
       user: users
@@ -4299,7 +4313,7 @@ export class DatabaseStorage implements IStorage {
     .leftJoin(users, eq(employeeProfiles.userId, users.id))
     .orderBy(asc(users.fullName));
     
-    return result.map(r => ({ ...r.profile, user: r.user! }));
+    return result.map(r => ({ ...r.profile, user: excludePassword(r.user!)! }));
   }
 
   async createEmployeeProfile(profile: InsertEmployeeProfile): Promise<EmployeeProfile> {
@@ -4316,7 +4330,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Asistencia
-  async getAttendance(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(EmployeeAttendance & { user: User })[]> {
+  async getAttendance(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(EmployeeAttendance & { user: SafeUser })[]> {
     const conditions: any[] = [];
     
     if (filters?.userId) {
@@ -4339,9 +4353,10 @@ export class DatabaseStorage implements IStorage {
     .from(employeeAttendance)
     .leftJoin(users, eq(employeeAttendance.userId, users.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(employeeAttendance.date));
+    .orderBy(desc(employeeAttendance.date))
+    .limit(200);
     
-    return result.map(r => ({ ...r.attendance, user: r.user! }));
+    return result.map(r => ({ ...r.attendance, user: excludePassword(r.user!)! }));
   }
 
   async getAttendanceRecord(id: string): Promise<EmployeeAttendance | undefined> {
@@ -4451,7 +4466,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Nómina
-  async getPayrollRecords(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(PayrollRecord & { user: User })[]> {
+  async getPayrollRecords(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(PayrollRecord & { user: SafeUser })[]> {
     const conditions: any[] = [];
     
     if (filters?.userId) {
@@ -4474,9 +4489,10 @@ export class DatabaseStorage implements IStorage {
     .from(payrollRecords)
     .leftJoin(users, eq(payrollRecords.userId, users.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(payrollRecords.periodStart));
+    .orderBy(desc(payrollRecords.periodStart))
+    .limit(100);
     
-    return result.map(r => ({ ...r.payroll, user: r.user! }));
+    return result.map(r => ({ ...r.payroll, user: excludePassword(r.user!)! }));
   }
 
   async getPayrollRecord(id: string): Promise<PayrollRecord | undefined> {
@@ -4511,7 +4527,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Vacaciones
-  async getVacationRequests(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<(VacationRequest & { user: User })[]> {
+  async getVacationRequests(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<(VacationRequest & { user: SafeUser })[]> {
     const conditions: any[] = [];
     
     if (filters?.userId) {
@@ -4534,9 +4550,10 @@ export class DatabaseStorage implements IStorage {
     .from(vacationRequests)
     .leftJoin(users, eq(vacationRequests.userId, users.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(vacationRequests.createdAt));
+    .orderBy(desc(vacationRequests.createdAt))
+    .limit(100);
     
-    return result.map(r => ({ ...r.vacation, user: r.user! }));
+    return result.map(r => ({ ...r.vacation, user: excludePassword(r.user!)! }));
   }
 
   async getVacationRequest(id: string): Promise<VacationRequest | undefined> {
@@ -4592,7 +4609,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Evaluaciones de desempeño
-  async getPerformanceReviews(filters?: { userId?: string; reviewerId?: string; status?: string; period?: string }): Promise<(PerformanceReview & { user: User; reviewer: User })[]> {
+  async getPerformanceReviews(filters?: { userId?: string; reviewerId?: string; status?: string; period?: string }): Promise<(PerformanceReview & { user: SafeUser; reviewer: SafeUser })[]> {
     const conditions: any[] = [];
     
     if (filters?.userId) {
@@ -4608,8 +4625,6 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(performanceReviews.reviewPeriod, filters.period));
     }
     
-    const reviewerAlias = sql`reviewer`;
-    
     const result = await db.select({
       review: performanceReviews,
       user: users
@@ -4617,11 +4632,19 @@ export class DatabaseStorage implements IStorage {
     .from(performanceReviews)
     .leftJoin(users, eq(performanceReviews.userId, users.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(performanceReviews.createdAt));
+    .orderBy(desc(performanceReviews.createdAt))
+    .limit(100);
     
-    return Promise.all(result.map(async r => {
-      const reviewer = await this.getUser(r.review.reviewerId);
-      return { ...r.review, user: r.user!, reviewer: reviewer! };
+    const reviewerIds = Array.from(new Set(result.map(r => r.review.reviewerId)));
+    const reviewers = reviewerIds.length > 0 
+      ? await db.select().from(users).where(inArray(users.id, reviewerIds))
+      : [];
+    const reviewerMap = new Map(reviewers.map(r => [r.id, excludePassword(r)!]));
+    
+    return result.map(r => ({
+      ...r.review,
+      user: excludePassword(r.user!)!,
+      reviewer: reviewerMap.get(r.review.reviewerId)!
     }));
   }
 
@@ -4649,7 +4672,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Documentos de empleados
-  async getEmployeeDocuments(filters?: { userId?: string; documentType?: string }): Promise<(EmployeeDocument & { user: User })[]> {
+  async getEmployeeDocuments(filters?: { userId?: string; documentType?: string }): Promise<(EmployeeDocument & { user: SafeUser })[]> {
     const conditions: any[] = [];
     
     if (filters?.userId) {
@@ -4666,9 +4689,10 @@ export class DatabaseStorage implements IStorage {
     .from(employeeDocuments)
     .leftJoin(users, eq(employeeDocuments.userId, users.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(employeeDocuments.createdAt));
+    .orderBy(desc(employeeDocuments.createdAt))
+    .limit(200);
     
-    return result.map(r => ({ ...r.document, user: r.user! }));
+    return result.map(r => ({ ...r.document, user: excludePassword(r.user!)! }));
   }
 
   async getEmployeeDocument(id: string): Promise<EmployeeDocument | undefined> {
