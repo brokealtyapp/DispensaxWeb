@@ -4090,17 +4090,11 @@ export async function registerRoutes(
       
       // Si es supervisor con zona asignada, filtrar tareas por usuarios de su zona
       if (supervisorZone && !effectiveUserId) {
-        const { db } = await import("./db");
-        const { users } = await import("@shared/schema");
-        const { eq } = await import("drizzle-orm");
-        
-        const zoneUsers = await db.select({ id: users.id })
-          .from(users)
-          .where(eq(users.assignedZone, supervisorZone));
-        const zoneUserIds = new Set(zoneUsers.map(u => u.id));
+        const zoneUserIds = await storage.getUserIdsByZone(supervisorZone);
+        const zoneUserIdsSet = new Set(zoneUserIds);
         
         tasks = tasks.filter(task => 
-          !task.assignedUserId || zoneUserIds.has(task.assignedUserId)
+          !task.assignedUserId || zoneUserIdsSet.has(task.assignedUserId)
         );
       }
       
@@ -4303,15 +4297,30 @@ export async function registerRoutes(
 
   // ==================== MÓDULO CALENDARIO ====================
 
-  app.get("/api/calendar/events", async (req: Request, res: Response) => {
+  app.get("/api/calendar/events", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, startDate, endDate, eventType } = req.query;
-      const events = await storage.getCalendarEvents({
+      
+      // Supervisor solo ve eventos de usuarios de su zona
+      const supervisorZone = await getSupervisorZone(req);
+      
+      let events = await storage.getCalendarEvents({
         userId: userId as string | undefined,
         eventType: eventType as string | undefined,
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined
       });
+      
+      // Filtrar por zona si es supervisor usando storage layer
+      if (supervisorZone) {
+        const zoneUserIds = await storage.getUserIdsByZone(supervisorZone);
+        const zoneUserIdsSet = new Set(zoneUserIds);
+        
+        events = events.filter(event => 
+          !event.userId || zoneUserIdsSet.has(event.userId)
+        );
+      }
+      
       res.json(events);
     } catch (error) {
       console.error("Error getting calendar events:", error);
@@ -4319,12 +4328,22 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/calendar/events/:id", async (req: Request, res: Response) => {
+  app.get("/api/calendar/events/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const event = await storage.getCalendarEvent(req.params.id);
       if (!event) {
         return res.status(404).json({ error: "Evento no encontrado" });
       }
+      
+      // Supervisor solo puede ver eventos de su zona
+      const supervisorZone = await getSupervisorZone(req);
+      if (supervisorZone && event.userId) {
+        const eventUser = await storage.getUser(event.userId);
+        if (eventUser && eventUser.assignedZone !== supervisorZone) {
+          return res.status(403).json({ error: "No autorizado para ver este evento" });
+        }
+      }
+      
       res.json(event);
     } catch (error) {
       console.error("Error getting calendar event:", error);

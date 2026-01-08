@@ -68,6 +68,7 @@ function getTodayInTimezone(): Date {
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserIdsByZone(zone: string): Promise<string[]>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, data: { fullName?: string; email?: string; username?: string; phone?: string }): Promise<User | undefined>;
   
@@ -455,6 +456,13 @@ export class DatabaseStorage implements IStorage {
   async updateUser(id: string, data: { fullName?: string; email?: string; username?: string; phone?: string }): Promise<User | undefined> {
     const [updated] = await db.update(users).set(data).where(eq(users.id, id)).returning();
     return updated;
+  }
+
+  async getUserIdsByZone(zone: string): Promise<string[]> {
+    const result = await db.select({ id: users.id })
+      .from(users)
+      .where(eq(users.assignedZone, zone));
+    return result.map(u => u.id);
   }
 
   async getLocations(): Promise<Location[]> {
