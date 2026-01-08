@@ -87,7 +87,8 @@ export function SettingsPage() {
 
   const updateProfileMutation = useMutation({
     mutationFn: async (data: typeof profileData) => {
-      return apiRequest("PATCH", `/api/users/${user?.id}`, data);
+      // Usa endpoint self-service que no requiere permiso users.edit
+      return apiRequest("PATCH", "/api/users/me", data);
     },
     onSuccess: () => {
       toast({

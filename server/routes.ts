@@ -2512,6 +2512,41 @@ export async function registerRoutes(
     phone: z.string().optional(),
   }).strict();
 
+  // Self-service endpoint - permite a cualquier usuario autenticado actualizar su propio perfil
+  app.patch("/api/users/me", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "No autenticado" });
+      }
+      
+      // Validar que solo se actualicen campos permitidos
+      const validatedData = updateProfileSchema.parse(req.body);
+      
+      const updateData: { fullName?: string; email?: string; username?: string; phone?: string } = {};
+      if (validatedData.fullName !== undefined) updateData.fullName = validatedData.fullName;
+      if (validatedData.email !== undefined) updateData.email = validatedData.email;
+      if (validatedData.username !== undefined) updateData.username = validatedData.username;
+      if (validatedData.phone !== undefined) updateData.phone = validatedData.phone;
+      
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ error: "No se proporcionaron campos válidos para actualizar" });
+      }
+      
+      const user = await storage.updateUser(req.user.userId, updateData);
+      if (!user) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+      }
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error updating own profile:", error);
+      res.status(500).json({ error: "Error al actualizar perfil" });
+    }
+  });
+
   app.patch("/api/users/:id", authenticateJWT, authorizeAction("users", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!req.user) {
