@@ -35,6 +35,12 @@ import {
   type CalendarEvent, type InsertCalendarEvent,
   type PasswordResetToken,
   type RefreshToken, type InsertRefreshToken,
+  type EmployeeAttendance, type InsertEmployeeAttendance,
+  type PayrollRecord, type InsertPayrollRecord,
+  type VacationRequest, type InsertVacationRequest,
+  type PerformanceReview, type InsertPerformanceReview,
+  type EmployeeDocument, type InsertEmployeeDocument,
+  type EmployeeProfile, type InsertEmployeeProfile,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
@@ -42,7 +48,8 @@ import {
   pettyCashExpenses, pettyCashFund, pettyCashTransactions,
   purchaseOrders, purchaseOrderItems, purchaseReceptions, receptionItems,
   vehicles, fuelRecords,
-  tasks, calendarEvents, passwordResetTokens, refreshTokens
+  tasks, calendarEvents, passwordResetTokens, refreshTokens,
+  employeeAttendance, payrollRecords, vacationRequests, performanceReviews, employeeDocuments, employeeProfiles
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc, or, inArray } from "drizzle-orm";
@@ -379,18 +386,78 @@ export interface IStorage {
   
   // ==================== MÓDULO RRHH ====================
   
+  // Empleados
   getEmployees(filters?: { role?: string; isActive?: boolean; search?: string }): Promise<User[]>;
-  
   getEmployee(id: string): Promise<User | undefined>;
-  
   createEmployee(employee: InsertEmployee): Promise<User>;
-  
   updateEmployee(id: string, data: Partial<InsertEmployee>): Promise<User | undefined>;
-  
   deleteEmployee(id: string): Promise<boolean>;
   
-  getTimeTracking(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  // Perfiles de empleados
+  getEmployeeProfile(userId: string): Promise<EmployeeProfile | undefined>;
+  getEmployeeProfiles(): Promise<(EmployeeProfile & { user: User })[]>;
+  createEmployeeProfile(profile: InsertEmployeeProfile): Promise<EmployeeProfile>;
+  updateEmployeeProfile(userId: string, data: Partial<InsertEmployeeProfile>): Promise<EmployeeProfile | undefined>;
   
+  // Asistencia
+  getAttendance(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(EmployeeAttendance & { user: User })[]>;
+  getAttendanceRecord(id: string): Promise<EmployeeAttendance | undefined>;
+  createAttendance(attendance: InsertEmployeeAttendance): Promise<EmployeeAttendance>;
+  updateAttendance(id: string, data: Partial<InsertEmployeeAttendance>): Promise<EmployeeAttendance | undefined>;
+  deleteAttendance(id: string): Promise<boolean>;
+  checkIn(userId: string, date: Date): Promise<EmployeeAttendance>;
+  checkOut(userId: string, date: Date): Promise<EmployeeAttendance | undefined>;
+  getAttendanceSummary(userId: string, startDate: Date, endDate: Date): Promise<{
+    totalDays: number;
+    presentDays: number;
+    absentDays: number;
+    lateDays: number;
+    totalHours: number;
+    overtimeHours: number;
+  }>;
+  
+  // Nómina
+  getPayrollRecords(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(PayrollRecord & { user: User })[]>;
+  getPayrollRecord(id: string): Promise<PayrollRecord | undefined>;
+  createPayrollRecord(record: InsertPayrollRecord): Promise<PayrollRecord>;
+  updatePayrollRecord(id: string, data: Partial<InsertPayrollRecord>): Promise<PayrollRecord | undefined>;
+  deletePayrollRecord(id: string): Promise<boolean>;
+  processPayroll(id: string, processedBy: string): Promise<PayrollRecord | undefined>;
+  
+  // Vacaciones
+  getVacationRequests(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<(VacationRequest & { user: User })[]>;
+  getVacationRequest(id: string): Promise<VacationRequest | undefined>;
+  createVacationRequest(request: InsertVacationRequest): Promise<VacationRequest>;
+  updateVacationRequest(id: string, data: Partial<InsertVacationRequest>): Promise<VacationRequest | undefined>;
+  approveVacation(id: string, approvedBy: string): Promise<VacationRequest | undefined>;
+  rejectVacation(id: string, approvedBy: string, reason: string): Promise<VacationRequest | undefined>;
+  cancelVacation(id: string): Promise<VacationRequest | undefined>;
+  
+  // Evaluaciones de desempeño
+  getPerformanceReviews(filters?: { userId?: string; reviewerId?: string; status?: string; period?: string }): Promise<(PerformanceReview & { user: User; reviewer: User })[]>;
+  getPerformanceReview(id: string): Promise<PerformanceReview | undefined>;
+  createPerformanceReview(review: InsertPerformanceReview): Promise<PerformanceReview>;
+  updatePerformanceReview(id: string, data: Partial<InsertPerformanceReview>): Promise<PerformanceReview | undefined>;
+  deletePerformanceReview(id: string): Promise<boolean>;
+  
+  // Documentos
+  getEmployeeDocuments(filters?: { userId?: string; documentType?: string }): Promise<(EmployeeDocument & { user: User })[]>;
+  getEmployeeDocument(id: string): Promise<EmployeeDocument | undefined>;
+  createEmployeeDocument(document: InsertEmployeeDocument): Promise<EmployeeDocument>;
+  updateEmployeeDocument(id: string, data: Partial<InsertEmployeeDocument>): Promise<EmployeeDocument | undefined>;
+  deleteEmployeeDocument(id: string): Promise<boolean>;
+  
+  // Estadísticas RRHH
+  getHRStats(): Promise<{
+    totalEmployees: number;
+    activeEmployees: number;
+    pendingVacations: number;
+    todayAttendance: number;
+    pendingPayrolls: number;
+  }>;
+  
+  // Legacy compatibility
+  getTimeTracking(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
   getEmployeePerformance(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
   
   // ==================== MÓDULO TAREAS ====================
@@ -4215,6 +4282,458 @@ export class DatabaseStorage implements IStorage {
     });
 
     return result.sort((a, b) => b.efficiency - a.efficiency);
+  }
+
+  // Perfiles de empleados
+  async getEmployeeProfile(userId: string): Promise<EmployeeProfile | undefined> {
+    const [profile] = await db.select().from(employeeProfiles).where(eq(employeeProfiles.userId, userId));
+    return profile;
+  }
+
+  async getEmployeeProfiles(): Promise<(EmployeeProfile & { user: User })[]> {
+    const result = await db.select({
+      profile: employeeProfiles,
+      user: users
+    })
+    .from(employeeProfiles)
+    .leftJoin(users, eq(employeeProfiles.userId, users.id))
+    .orderBy(asc(users.fullName));
+    
+    return result.map(r => ({ ...r.profile, user: r.user! }));
+  }
+
+  async createEmployeeProfile(profile: InsertEmployeeProfile): Promise<EmployeeProfile> {
+    const [created] = await db.insert(employeeProfiles).values(profile).returning();
+    return created;
+  }
+
+  async updateEmployeeProfile(userId: string, data: Partial<InsertEmployeeProfile>): Promise<EmployeeProfile | undefined> {
+    const [updated] = await db.update(employeeProfiles)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(employeeProfiles.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  // Asistencia
+  async getAttendance(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(EmployeeAttendance & { user: User })[]> {
+    const conditions: any[] = [];
+    
+    if (filters?.userId) {
+      conditions.push(eq(employeeAttendance.userId, filters.userId));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(employeeAttendance.date, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(employeeAttendance.date, filters.endDate));
+    }
+    if (filters?.status) {
+      conditions.push(eq(employeeAttendance.status, filters.status));
+    }
+    
+    const result = await db.select({
+      attendance: employeeAttendance,
+      user: users
+    })
+    .from(employeeAttendance)
+    .leftJoin(users, eq(employeeAttendance.userId, users.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(employeeAttendance.date));
+    
+    return result.map(r => ({ ...r.attendance, user: r.user! }));
+  }
+
+  async getAttendanceRecord(id: string): Promise<EmployeeAttendance | undefined> {
+    const [record] = await db.select().from(employeeAttendance).where(eq(employeeAttendance.id, id));
+    return record;
+  }
+
+  async createAttendance(attendance: InsertEmployeeAttendance): Promise<EmployeeAttendance> {
+    const [created] = await db.insert(employeeAttendance).values(attendance).returning();
+    return created;
+  }
+
+  async updateAttendance(id: string, data: Partial<InsertEmployeeAttendance>): Promise<EmployeeAttendance | undefined> {
+    const [updated] = await db.update(employeeAttendance)
+      .set(data)
+      .where(eq(employeeAttendance.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteAttendance(id: string): Promise<boolean> {
+    await db.delete(employeeAttendance).where(eq(employeeAttendance.id, id));
+    return true;
+  }
+
+  async checkIn(userId: string, date: Date): Promise<EmployeeAttendance> {
+    const today = new Date(date);
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const [existing] = await db.select().from(employeeAttendance)
+      .where(and(
+        eq(employeeAttendance.userId, userId),
+        gte(employeeAttendance.date, today),
+        lte(employeeAttendance.date, tomorrow)
+      ));
+    
+    if (existing) {
+      const [updated] = await db.update(employeeAttendance)
+        .set({ checkIn: date })
+        .where(eq(employeeAttendance.id, existing.id))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db.insert(employeeAttendance).values({
+      userId,
+      date: today,
+      checkIn: date,
+      status: "presente"
+    }).returning();
+    return created;
+  }
+
+  async checkOut(userId: string, date: Date): Promise<EmployeeAttendance | undefined> {
+    const today = new Date(date);
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const [existing] = await db.select().from(employeeAttendance)
+      .where(and(
+        eq(employeeAttendance.userId, userId),
+        gte(employeeAttendance.date, today),
+        lte(employeeAttendance.date, tomorrow)
+      ));
+    
+    if (!existing) return undefined;
+    
+    let hoursWorked = "0";
+    if (existing.checkIn) {
+      const diff = date.getTime() - new Date(existing.checkIn).getTime();
+      hoursWorked = (diff / (1000 * 60 * 60)).toFixed(2);
+    }
+    
+    const [updated] = await db.update(employeeAttendance)
+      .set({ checkOut: date, hoursWorked })
+      .where(eq(employeeAttendance.id, existing.id))
+      .returning();
+    return updated;
+  }
+
+  async getAttendanceSummary(userId: string, startDate: Date, endDate: Date): Promise<{
+    totalDays: number;
+    presentDays: number;
+    absentDays: number;
+    lateDays: number;
+    totalHours: number;
+    overtimeHours: number;
+  }> {
+    const records = await db.select().from(employeeAttendance)
+      .where(and(
+        eq(employeeAttendance.userId, userId),
+        gte(employeeAttendance.date, startDate),
+        lte(employeeAttendance.date, endDate)
+      ));
+    
+    const totalDays = records.length;
+    const presentDays = records.filter(r => r.status === "presente").length;
+    const absentDays = records.filter(r => r.status === "ausente").length;
+    const lateDays = records.filter(r => r.status === "tarde").length;
+    const totalHours = records.reduce((acc, r) => acc + parseFloat(r.hoursWorked?.toString() || "0"), 0);
+    const overtimeHours = records.reduce((acc, r) => acc + parseFloat(r.overtimeHours?.toString() || "0"), 0);
+    
+    return { totalDays, presentDays, absentDays, lateDays, totalHours, overtimeHours };
+  }
+
+  // Nómina
+  async getPayrollRecords(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(PayrollRecord & { user: User })[]> {
+    const conditions: any[] = [];
+    
+    if (filters?.userId) {
+      conditions.push(eq(payrollRecords.userId, filters.userId));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(payrollRecords.periodStart, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(payrollRecords.periodEnd, filters.endDate));
+    }
+    if (filters?.status) {
+      conditions.push(eq(payrollRecords.status, filters.status));
+    }
+    
+    const result = await db.select({
+      payroll: payrollRecords,
+      user: users
+    })
+    .from(payrollRecords)
+    .leftJoin(users, eq(payrollRecords.userId, users.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(payrollRecords.periodStart));
+    
+    return result.map(r => ({ ...r.payroll, user: r.user! }));
+  }
+
+  async getPayrollRecord(id: string): Promise<PayrollRecord | undefined> {
+    const [record] = await db.select().from(payrollRecords).where(eq(payrollRecords.id, id));
+    return record;
+  }
+
+  async createPayrollRecord(record: InsertPayrollRecord): Promise<PayrollRecord> {
+    const [created] = await db.insert(payrollRecords).values(record).returning();
+    return created;
+  }
+
+  async updatePayrollRecord(id: string, data: Partial<InsertPayrollRecord>): Promise<PayrollRecord | undefined> {
+    const [updated] = await db.update(payrollRecords)
+      .set(data)
+      .where(eq(payrollRecords.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deletePayrollRecord(id: string): Promise<boolean> {
+    await db.delete(payrollRecords).where(eq(payrollRecords.id, id));
+    return true;
+  }
+
+  async processPayroll(id: string, processedBy: string): Promise<PayrollRecord | undefined> {
+    const [updated] = await db.update(payrollRecords)
+      .set({ status: "procesado", processedBy, paymentDate: new Date() })
+      .where(eq(payrollRecords.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Vacaciones
+  async getVacationRequests(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<(VacationRequest & { user: User })[]> {
+    const conditions: any[] = [];
+    
+    if (filters?.userId) {
+      conditions.push(eq(vacationRequests.userId, filters.userId));
+    }
+    if (filters?.status) {
+      conditions.push(eq(vacationRequests.status, filters.status));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(vacationRequests.startDate, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(vacationRequests.endDate, filters.endDate));
+    }
+    
+    const result = await db.select({
+      vacation: vacationRequests,
+      user: users
+    })
+    .from(vacationRequests)
+    .leftJoin(users, eq(vacationRequests.userId, users.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(vacationRequests.createdAt));
+    
+    return result.map(r => ({ ...r.vacation, user: r.user! }));
+  }
+
+  async getVacationRequest(id: string): Promise<VacationRequest | undefined> {
+    const [request] = await db.select().from(vacationRequests).where(eq(vacationRequests.id, id));
+    return request;
+  }
+
+  async createVacationRequest(request: InsertVacationRequest): Promise<VacationRequest> {
+    const [created] = await db.insert(vacationRequests).values(request).returning();
+    return created;
+  }
+
+  async updateVacationRequest(id: string, data: Partial<InsertVacationRequest>): Promise<VacationRequest | undefined> {
+    const [updated] = await db.update(vacationRequests)
+      .set(data)
+      .where(eq(vacationRequests.id, id))
+      .returning();
+    return updated;
+  }
+
+  async approveVacation(id: string, approvedBy: string): Promise<VacationRequest | undefined> {
+    const [updated] = await db.update(vacationRequests)
+      .set({ status: "aprobado", approvedBy, approvedAt: new Date() })
+      .where(eq(vacationRequests.id, id))
+      .returning();
+    
+    if (updated) {
+      const profile = await this.getEmployeeProfile(updated.userId);
+      if (profile) {
+        await this.updateEmployeeProfile(updated.userId, {
+          vacationDaysUsed: (profile.vacationDaysUsed || 0) + updated.daysRequested
+        });
+      }
+    }
+    
+    return updated;
+  }
+
+  async rejectVacation(id: string, approvedBy: string, reason: string): Promise<VacationRequest | undefined> {
+    const [updated] = await db.update(vacationRequests)
+      .set({ status: "rechazado", approvedBy, approvedAt: new Date(), rejectionReason: reason })
+      .where(eq(vacationRequests.id, id))
+      .returning();
+    return updated;
+  }
+
+  async cancelVacation(id: string): Promise<VacationRequest | undefined> {
+    const [updated] = await db.update(vacationRequests)
+      .set({ status: "cancelado" })
+      .where(eq(vacationRequests.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Evaluaciones de desempeño
+  async getPerformanceReviews(filters?: { userId?: string; reviewerId?: string; status?: string; period?: string }): Promise<(PerformanceReview & { user: User; reviewer: User })[]> {
+    const conditions: any[] = [];
+    
+    if (filters?.userId) {
+      conditions.push(eq(performanceReviews.userId, filters.userId));
+    }
+    if (filters?.reviewerId) {
+      conditions.push(eq(performanceReviews.reviewerId, filters.reviewerId));
+    }
+    if (filters?.status) {
+      conditions.push(eq(performanceReviews.status, filters.status));
+    }
+    if (filters?.period) {
+      conditions.push(eq(performanceReviews.reviewPeriod, filters.period));
+    }
+    
+    const reviewerAlias = sql`reviewer`;
+    
+    const result = await db.select({
+      review: performanceReviews,
+      user: users
+    })
+    .from(performanceReviews)
+    .leftJoin(users, eq(performanceReviews.userId, users.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(performanceReviews.createdAt));
+    
+    return Promise.all(result.map(async r => {
+      const reviewer = await this.getUser(r.review.reviewerId);
+      return { ...r.review, user: r.user!, reviewer: reviewer! };
+    }));
+  }
+
+  async getPerformanceReview(id: string): Promise<PerformanceReview | undefined> {
+    const [review] = await db.select().from(performanceReviews).where(eq(performanceReviews.id, id));
+    return review;
+  }
+
+  async createPerformanceReview(review: InsertPerformanceReview): Promise<PerformanceReview> {
+    const [created] = await db.insert(performanceReviews).values(review).returning();
+    return created;
+  }
+
+  async updatePerformanceReview(id: string, data: Partial<InsertPerformanceReview>): Promise<PerformanceReview | undefined> {
+    const [updated] = await db.update(performanceReviews)
+      .set(data)
+      .where(eq(performanceReviews.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deletePerformanceReview(id: string): Promise<boolean> {
+    await db.delete(performanceReviews).where(eq(performanceReviews.id, id));
+    return true;
+  }
+
+  // Documentos de empleados
+  async getEmployeeDocuments(filters?: { userId?: string; documentType?: string }): Promise<(EmployeeDocument & { user: User })[]> {
+    const conditions: any[] = [];
+    
+    if (filters?.userId) {
+      conditions.push(eq(employeeDocuments.userId, filters.userId));
+    }
+    if (filters?.documentType) {
+      conditions.push(eq(employeeDocuments.documentType, filters.documentType));
+    }
+    
+    const result = await db.select({
+      document: employeeDocuments,
+      user: users
+    })
+    .from(employeeDocuments)
+    .leftJoin(users, eq(employeeDocuments.userId, users.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(employeeDocuments.createdAt));
+    
+    return result.map(r => ({ ...r.document, user: r.user! }));
+  }
+
+  async getEmployeeDocument(id: string): Promise<EmployeeDocument | undefined> {
+    const [document] = await db.select().from(employeeDocuments).where(eq(employeeDocuments.id, id));
+    return document;
+  }
+
+  async createEmployeeDocument(document: InsertEmployeeDocument): Promise<EmployeeDocument> {
+    const [created] = await db.insert(employeeDocuments).values(document).returning();
+    return created;
+  }
+
+  async updateEmployeeDocument(id: string, data: Partial<InsertEmployeeDocument>): Promise<EmployeeDocument | undefined> {
+    const [updated] = await db.update(employeeDocuments)
+      .set(data)
+      .where(eq(employeeDocuments.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteEmployeeDocument(id: string): Promise<boolean> {
+    await db.delete(employeeDocuments).where(eq(employeeDocuments.id, id));
+    return true;
+  }
+
+  // Estadísticas RRHH
+  async getHRStats(): Promise<{
+    totalEmployees: number;
+    activeEmployees: number;
+    pendingVacations: number;
+    todayAttendance: number;
+    pendingPayrolls: number;
+  }> {
+    const today = getTodayInTimezone();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const [employeeStats] = await db.select({
+      total: sql<number>`count(*)::int`,
+      active: sql<number>`sum(case when ${users.isActive} = true then 1 else 0 end)::int`
+    }).from(users);
+    
+    const [vacationStats] = await db.select({
+      pending: sql<number>`count(*)::int`
+    }).from(vacationRequests).where(eq(vacationRequests.status, "pendiente"));
+    
+    const [attendanceStats] = await db.select({
+      today: sql<number>`count(*)::int`
+    }).from(employeeAttendance)
+    .where(and(
+      gte(employeeAttendance.date, today),
+      lte(employeeAttendance.date, tomorrow)
+    ));
+    
+    const [payrollStats] = await db.select({
+      pending: sql<number>`count(*)::int`
+    }).from(payrollRecords).where(eq(payrollRecords.status, "pendiente"));
+    
+    return {
+      totalEmployees: employeeStats?.total || 0,
+      activeEmployees: employeeStats?.active || 0,
+      pendingVacations: vacationStats?.pending || 0,
+      todayAttendance: attendanceStats?.today || 0,
+      pendingPayrolls: payrollStats?.pending || 0
+    };
   }
 
   // ==================== MÓDULO TAREAS ====================
