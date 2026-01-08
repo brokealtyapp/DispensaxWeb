@@ -408,10 +408,12 @@ export function MachinesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => handleOpenLocationDialog()} data-testid="button-manage-locations">
-            <Settings2 className="h-4 w-4 mr-2" />
-            Ubicaciones
-          </Button>
+          {(canCreate("locations") || canEdit("locations")) && (
+            <Button variant="outline" onClick={() => handleOpenLocationDialog()} data-testid="button-manage-locations">
+              <Settings2 className="h-4 w-4 mr-2" />
+              Ubicaciones
+            </Button>
+          )}
           <Dialog open={isAddDialogOpen} onOpenChange={(open) => { 
             setIsAddDialogOpen(open); 
             if (!open) setEditingMachine(null); 
@@ -540,8 +542,14 @@ export function MachinesPage() {
                   >
                     Cancelar
                   </Button>
-                  <Button type="submit" disabled={createMachineMutation.isPending} data-testid="button-submit-machine">
-                    {createMachineMutation.isPending ? "Guardando..." : "Agregar Máquina"}
+                  <Button 
+                    type="submit" 
+                    disabled={createMachineMutation.isPending || updateMachineMutation.isPending} 
+                    data-testid="button-submit-machine"
+                  >
+                    {(createMachineMutation.isPending || updateMachineMutation.isPending) 
+                      ? "Guardando..." 
+                      : editingMachine ? "Guardar Cambios" : "Agregar Máquina"}
                   </Button>
                 </div>
               </form>
@@ -695,22 +703,26 @@ export function MachinesPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleOpenLocationDialog(loc)}
-                        data-testid={`button-edit-location-${loc.id}`}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeletingLocationId(loc.id)}
-                        data-testid={`button-delete-location-${loc.id}`}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      {canEdit("locations") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleOpenLocationDialog(loc)}
+                          data-testid={`button-edit-location-${loc.id}`}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canDelete("locations") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeletingLocationId(loc.id)}
+                          data-testid={`button-delete-location-${loc.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}

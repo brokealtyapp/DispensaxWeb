@@ -381,7 +381,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/locations", async (req: Request, res: Response) => {
+  app.post("/api/locations", authenticateJWT, authorizeAction("locations", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertLocationSchema.parse(req.body);
       const location = await storage.createLocation(data);
@@ -394,7 +394,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/locations/:id", async (req: Request, res: Response) => {
+  app.patch("/api/locations/:id", authenticateJWT, authorizeAction("locations", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertLocationSchema.partial().parse(req.body);
       const location = await storage.updateLocation(req.params.id, data);
@@ -410,7 +410,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/locations/:id", async (req: Request, res: Response) => {
+  app.delete("/api/locations/:id", authenticateJWT, authorizeAction("locations", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       await storage.deleteLocation(req.params.id);
       res.status(204).send();

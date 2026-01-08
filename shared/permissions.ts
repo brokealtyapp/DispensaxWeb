@@ -9,6 +9,7 @@ export type Action = "view" | "create" | "edit" | "delete" | "approve" | "export
 
 export type Resource = 
   | "machines"
+  | "locations"
   | "routes" 
   | "stops"
   | "employees"
@@ -37,6 +38,7 @@ export type Resource =
 const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action, boolean>>>> = {
   admin: {
     machines: { view: true, create: true, edit: true, delete: true },
+    locations: { view: true, create: true, edit: true, delete: true },
     routes: { view: true, create: true, edit: true, delete: true },
     stops: { view: true, create: true, edit: true, delete: true },
     employees: { view: true, create: true, edit: true, delete: true },
@@ -61,6 +63,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
   
   supervisor: {
     machines: { view: true, create: false, edit: true, delete: false },
+    locations: { view: true, create: false, edit: false, delete: false },
     routes: { view: true, create: false, edit: true, delete: false },
     stops: { view: true, create: true, edit: true, delete: true },
     employees: { view: true, create: false, edit: false, delete: false },
@@ -85,6 +88,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
   
   abastecedor: {
     machines: { view: true, create: false, edit: false, delete: false },
+    locations: { view: true, create: false, edit: false, delete: false },
     routes: { view: true, create: false, edit: false, delete: false },
     stops: { view: true, create: false, edit: true, delete: false },
     employees: { view: false, create: false, edit: false, delete: false },
@@ -109,6 +113,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
   
   almacen: {
     machines: { view: false, create: false, edit: false, delete: false },
+    locations: { view: false, create: false, edit: false, delete: false },
     routes: { view: false, create: false, edit: false, delete: false },
     stops: { view: false, create: false, edit: false, delete: false },
     employees: { view: false, create: false, edit: false, delete: false },
@@ -133,6 +138,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
   
   contabilidad: {
     machines: { view: true, create: false, edit: false, delete: false },
+    locations: { view: true, create: false, edit: false, delete: false },
     routes: { view: false, create: false, edit: false, delete: false },
     stops: { view: false, create: false, edit: false, delete: false },
     employees: { view: true, create: false, edit: false, delete: false },
@@ -157,6 +163,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
   
   rh: {
     machines: { view: false, create: false, edit: false, delete: false },
+    locations: { view: false, create: false, edit: false, delete: false },
     routes: { view: false, create: false, edit: false, delete: false },
     stops: { view: false, create: false, edit: false, delete: false },
     employees: { view: true, create: true, edit: true, delete: true },
