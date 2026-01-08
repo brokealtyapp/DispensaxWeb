@@ -327,11 +327,9 @@ export async function registerRoutes(
 
       res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, REFRESH_TOKEN_COOKIE_OPTIONS);
 
-      const { password: _, ...userWithoutPassword } = newUser;
-
       res.status(201).json({
         accessToken,
-        user: userWithoutPassword,
+        user: newUser,
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -354,9 +352,7 @@ export async function registerRoutes(
         return res.status(401).json({ error: "Usuario no encontrado" });
       }
 
-      const { password: _, ...userWithoutPassword } = user;
-
-      res.json({ user: userWithoutPassword });
+      res.json({ user });
     } catch (error) {
       console.error("Auth me error:", error);
       res.status(401).json({ error: "Token inválido o expirado" });
@@ -4057,8 +4053,7 @@ export async function registerRoutes(
       const hashedPassword = await bcrypt.hash(data.password, 10);
       const employee = await storage.createEmployee({ ...data, password: hashedPassword });
       
-      const { password: _, ...employeeWithoutPassword } = employee;
-      res.status(201).json(employeeWithoutPassword);
+      res.status(201).json(employee);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
