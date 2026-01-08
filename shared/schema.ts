@@ -1583,3 +1583,228 @@ export const passwordResetTokensRelations = relations(passwordResetTokens, ({ on
     references: [users.id],
   }),
 }));
+
+// =====================
+// MÓDULO RECURSOS HUMANOS
+// =====================
+
+// Registro de asistencia de empleados
+export const employeeAttendance = pgTable("employee_attendance", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  date: timestamp("date").notNull(),
+  checkIn: timestamp("check_in"),
+  checkOut: timestamp("check_out"),
+  status: text("status").default("presente"), // presente, ausente, tarde, permiso, vacaciones, incapacidad
+  hoursWorked: decimal("hours_worked", { precision: 5, scale: 2 }),
+  overtimeHours: decimal("overtime_hours", { precision: 5, scale: 2 }).default("0"),
+  notes: text("notes"),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEmployeeAttendanceSchema = createInsertSchema(employeeAttendance).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEmployeeAttendance = z.infer<typeof insertEmployeeAttendanceSchema>;
+export type EmployeeAttendance = typeof employeeAttendance.$inferSelect;
+
+export const employeeAttendanceRelations = relations(employeeAttendance, ({ one }) => ({
+  user: one(users, {
+    fields: [employeeAttendance.userId],
+    references: [users.id],
+  }),
+  approver: one(users, {
+    fields: [employeeAttendance.approvedBy],
+    references: [users.id],
+  }),
+}));
+
+// Registros de nómina
+export const payrollRecords = pgTable("payroll_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  baseSalary: decimal("base_salary", { precision: 12, scale: 2 }).notNull(),
+  overtimePay: decimal("overtime_pay", { precision: 10, scale: 2 }).default("0"),
+  bonuses: decimal("bonuses", { precision: 10, scale: 2 }).default("0"),
+  deductions: decimal("deductions", { precision: 10, scale: 2 }).default("0"),
+  taxWithholding: decimal("tax_withholding", { precision: 10, scale: 2 }).default("0"),
+  socialSecurity: decimal("social_security", { precision: 10, scale: 2 }).default("0"),
+  netPay: decimal("net_pay", { precision: 12, scale: 2 }).notNull(),
+  status: text("status").default("pendiente"), // pendiente, procesado, pagado
+  paymentDate: timestamp("payment_date"),
+  paymentMethod: text("payment_method").default("transferencia"), // transferencia, cheque, efectivo
+  notes: text("notes"),
+  processedBy: varchar("processed_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPayrollRecordSchema = createInsertSchema(payrollRecords).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPayrollRecord = z.infer<typeof insertPayrollRecordSchema>;
+export type PayrollRecord = typeof payrollRecords.$inferSelect;
+
+export const payrollRecordsRelations = relations(payrollRecords, ({ one }) => ({
+  user: one(users, {
+    fields: [payrollRecords.userId],
+    references: [users.id],
+  }),
+  processor: one(users, {
+    fields: [payrollRecords.processedBy],
+    references: [users.id],
+  }),
+}));
+
+// Solicitudes de vacaciones
+export const vacationRequests = pgTable("vacation_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  daysRequested: integer("days_requested").notNull(),
+  reason: text("reason"),
+  status: text("status").default("pendiente"), // pendiente, aprobado, rechazado, cancelado
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertVacationRequestSchema = createInsertSchema(vacationRequests).omit({
+  id: true,
+  createdAt: true,
+  approvedBy: true,
+  approvedAt: true,
+});
+
+export type InsertVacationRequest = z.infer<typeof insertVacationRequestSchema>;
+export type VacationRequest = typeof vacationRequests.$inferSelect;
+
+export const vacationRequestsRelations = relations(vacationRequests, ({ one }) => ({
+  user: one(users, {
+    fields: [vacationRequests.userId],
+    references: [users.id],
+  }),
+  approver: one(users, {
+    fields: [vacationRequests.approvedBy],
+    references: [users.id],
+  }),
+}));
+
+// Evaluaciones de desempeño
+export const performanceReviews = pgTable("performance_reviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  reviewerId: varchar("reviewer_id").references(() => users.id).notNull(),
+  reviewPeriod: text("review_period").notNull(), // "Q1 2026", "Anual 2025"
+  overallScore: decimal("overall_score", { precision: 3, scale: 1 }), // 1.0 - 5.0
+  punctualityScore: decimal("punctuality_score", { precision: 3, scale: 1 }),
+  productivityScore: decimal("productivity_score", { precision: 3, scale: 1 }),
+  teamworkScore: decimal("teamwork_score", { precision: 3, scale: 1 }),
+  initiativeScore: decimal("initiative_score", { precision: 3, scale: 1 }),
+  strengths: text("strengths"),
+  areasToImprove: text("areas_to_improve"),
+  goals: text("goals"),
+  comments: text("comments"),
+  status: text("status").default("borrador"), // borrador, completado, revisado
+  reviewDate: timestamp("review_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPerformanceReviewSchema = createInsertSchema(performanceReviews).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPerformanceReview = z.infer<typeof insertPerformanceReviewSchema>;
+export type PerformanceReview = typeof performanceReviews.$inferSelect;
+
+export const performanceReviewsRelations = relations(performanceReviews, ({ one }) => ({
+  user: one(users, {
+    fields: [performanceReviews.userId],
+    references: [users.id],
+  }),
+  reviewer: one(users, {
+    fields: [performanceReviews.reviewerId],
+    references: [users.id],
+  }),
+}));
+
+// Documentos de empleados
+export const employeeDocuments = pgTable("employee_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  documentType: text("document_type").notNull(), // contrato, identificacion, curriculum, certificado, otro
+  name: text("name").notNull(),
+  fileUrl: text("file_url"),
+  fileSize: integer("file_size"),
+  mimeType: text("mime_type"),
+  expirationDate: timestamp("expiration_date"),
+  notes: text("notes"),
+  uploadedBy: varchar("uploaded_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEmployeeDocumentSchema = createInsertSchema(employeeDocuments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEmployeeDocument = z.infer<typeof insertEmployeeDocumentSchema>;
+export type EmployeeDocument = typeof employeeDocuments.$inferSelect;
+
+export const employeeDocumentsRelations = relations(employeeDocuments, ({ one }) => ({
+  user: one(users, {
+    fields: [employeeDocuments.userId],
+    references: [users.id],
+  }),
+  uploader: one(users, {
+    fields: [employeeDocuments.uploadedBy],
+    references: [users.id],
+  }),
+}));
+
+// Información extendida de empleados (datos adicionales de RRHH)
+export const employeeProfiles = pgTable("employee_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull().unique(),
+  employeeCode: text("employee_code").unique(),
+  department: text("department"),
+  position: text("position"),
+  hireDate: timestamp("hire_date"),
+  birthDate: timestamp("birth_date"),
+  address: text("address"),
+  emergencyContact: text("emergency_contact"),
+  emergencyPhone: text("emergency_phone"),
+  bankName: text("bank_name"),
+  bankAccount: text("bank_account"),
+  baseSalary: decimal("base_salary", { precision: 12, scale: 2 }),
+  contractType: text("contract_type").default("indefinido"), // indefinido, temporal, prueba
+  vacationDaysAvailable: integer("vacation_days_available").default(14),
+  vacationDaysUsed: integer("vacation_days_used").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEmployeeProfileSchema = createInsertSchema(employeeProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertEmployeeProfile = z.infer<typeof insertEmployeeProfileSchema>;
+export type EmployeeProfile = typeof employeeProfiles.$inferSelect;
+
+export const employeeProfilesRelations = relations(employeeProfiles, ({ one }) => ({
+  user: one(users, {
+    fields: [employeeProfiles.userId],
+    references: [users.id],
+  }),
+}));
