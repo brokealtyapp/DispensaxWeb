@@ -498,7 +498,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/machines", optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/machines", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { status, zone } = req.query;
       
