@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatDateTime, formatCurrency } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -54,6 +55,7 @@ type ShrinkageFormData = z.infer<typeof shrinkageFormSchema>;
 
 export function MoneyProductsPage() {
   const { toast } = useToast();
+  const { canCreate } = usePermissions();
   const [activeTab, setActiveTab] = useState("cash");
   const [isNewMovementOpen, setIsNewMovementOpen] = useState(false);
   const [isNewShrinkageOpen, setIsNewShrinkageOpen] = useState(false);
@@ -218,21 +220,25 @@ export function MoneyProductsPage() {
             <p className="text-muted-foreground" data-testid="text-page-subtitle">Control transversal de efectivo, productos y mermas</p>
           </div>
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => setIsNewShrinkageOpen(true)}
-              data-testid="button-new-shrinkage"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Registrar Merma
-            </Button>
-            <Button 
-              onClick={() => setIsNewMovementOpen(true)}
-              data-testid="button-new-movement"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Nuevo Movimiento
-            </Button>
+            {canCreate("warehouse_movements") && (
+              <Button 
+                variant="outline" 
+                onClick={() => setIsNewShrinkageOpen(true)}
+                data-testid="button-new-shrinkage"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Registrar Merma
+              </Button>
+            )}
+            {canCreate("cash_collections") && (
+              <Button 
+                onClick={() => setIsNewMovementOpen(true)}
+                data-testid="button-new-movement"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Nuevo Movimiento
+              </Button>
+            )}
           </div>
         </div>
 

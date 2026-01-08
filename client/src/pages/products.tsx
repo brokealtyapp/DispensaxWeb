@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,6 +119,7 @@ const movementTypeColors: Record<string, string> = {
 
 export function ProductsPage() {
   const { toast } = useToast();
+  const { canCreate, canEdit, canDelete } = usePermissions();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -335,10 +337,12 @@ export function ProductsPage() {
             Gestiona el catálogo de productos disponibles
           </p>
         </div>
-        <Button onClick={handleOpenCreate} data-testid="button-add-product">
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Producto
-        </Button>
+        {canCreate("products") && (
+          <Button onClick={handleOpenCreate} data-testid="button-add-product">
+            <Plus className="h-4 w-4 mr-2" />
+            Nuevo Producto
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -511,28 +515,32 @@ export function ProductsPage() {
                     >
                       <History className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenEdit(product);
-                      }}
-                      data-testid={`button-edit-product-${product.id}`}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeletingProduct(product);
-                      }}
-                      data-testid={`button-delete-product-${product.id}`}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    {canEdit("products") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEdit(product);
+                        }}
+                        data-testid={`button-edit-product-${product.id}`}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {canDelete("products") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingProduct(product);
+                        }}
+                        data-testid={`button-delete-product-${product.id}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -546,7 +554,7 @@ export function ProductsPage() {
                   ? "No se encontraron productos con los filtros aplicados"
                   : "No hay productos registrados"}
               </p>
-              {!searchQuery && categoryFilter === "all" && statusFilter === "all" && (
+              {!searchQuery && categoryFilter === "all" && statusFilter === "all" && canCreate("products") && (
                 <Button
                   variant="outline"
                   className="mt-4"
@@ -609,22 +617,26 @@ export function ProductsPage() {
                       >
                         <History className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleOpenEdit(product)}
-                        data-testid={`button-edit-product-list-${product.id}`}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeletingProduct(product)}
-                        data-testid={`button-delete-product-list-${product.id}`}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      {canEdit("products") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleOpenEdit(product)}
+                          data-testid={`button-edit-product-list-${product.id}`}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canDelete("products") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeletingProduct(product)}
+                          data-testid={`button-delete-product-list-${product.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
