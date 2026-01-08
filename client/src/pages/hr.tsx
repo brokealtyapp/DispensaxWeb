@@ -167,12 +167,12 @@ export function HRPage() {
     queryKey: ["/api/hr/employees"],
   });
 
-  const { data: timeRecords, isLoading: loadingTime } = useQuery<TimeRecord[]>({
-    queryKey: ["/api/hr/time-tracking"],
+  const { data: attendanceRecords, isLoading: loadingAttendance } = useQuery<any[]>({
+    queryKey: ["/api/hr/attendance"],
   });
 
-  const { data: performance, isLoading: loadingPerformance } = useQuery<PerformanceRecord[]>({
-    queryKey: ["/api/hr/performance"],
+  const { data: performanceReviews, isLoading: loadingReviews } = useQuery<any[]>({
+    queryKey: ["/api/hr/reviews"],
   });
 
   const createEmployeeMutation = useMutation({
@@ -257,15 +257,15 @@ export function HRPage() {
     return filteredEmployees.slice(start, start + ITEMS_PER_PAGE);
   }, [filteredEmployees, employeesPage]);
 
-  const paginatedTime = useMemo(() => {
+  const paginatedAttendance = useMemo(() => {
     const start = (timePage - 1) * ITEMS_PER_PAGE;
-    return (timeRecords || []).slice(start, start + ITEMS_PER_PAGE);
-  }, [timeRecords, timePage]);
+    return (attendanceRecords || []).slice(start, start + ITEMS_PER_PAGE);
+  }, [attendanceRecords, timePage]);
 
-  const paginatedPerformance = useMemo(() => {
+  const paginatedReviews = useMemo(() => {
     const start = (performancePage - 1) * ITEMS_PER_PAGE;
-    return (performance || []).slice(start, start + ITEMS_PER_PAGE);
-  }, [performance, performancePage]);
+    return (performanceReviews || []).slice(start, start + ITEMS_PER_PAGE);
+  }, [performanceReviews, performancePage]);
 
   const clearFilters = () => {
     setSearchQuery("");
@@ -277,11 +277,11 @@ export function HRPage() {
   const hasActiveFilters = searchQuery || roleFilter !== "all" || statusFilter !== "all";
 
   const activeEmployees = (employees || []).filter((e) => e.isActive).length;
-  const avgHours = timeRecords?.length 
-    ? (timeRecords.reduce((acc, r) => acc + r.hours, 0) / timeRecords.length).toFixed(1)
+  const avgHours = attendanceRecords?.length 
+    ? (attendanceRecords.reduce((acc, r) => acc + (r.hoursWorked || 0), 0) / attendanceRecords.length).toFixed(1)
     : "0";
-  const avgEfficiency = performance?.length
-    ? (performance.reduce((acc, p) => acc + p.efficiency, 0) / performance.length).toFixed(0)
+  const avgRating = performanceReviews?.length
+    ? (performanceReviews.reduce((acc, p) => acc + (p.overallRating || 0), 0) / performanceReviews.length).toFixed(1)
     : "0";
 
   const employeeColumns: Column<Employee>[] = [
@@ -582,9 +582,9 @@ export function HRPage() {
               iconColor="purple"
             />
             <StatsCard
-              title="Eficiencia Promedio"
-              value={`${avgEfficiency}%`}
-              subtitle="Abastecedores"
+              title="Calificación Promedio"
+              value={`${avgRating}/5`}
+              subtitle="Evaluaciones"
               icon={TrendingUp}
               iconColor="success"
             />
@@ -686,19 +686,19 @@ export function HRPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {loadingTime ? (
+              {loadingAttendance ? (
                 <Skeleton className="h-64 w-full" />
               ) : (
                 <>
                   <DataTable
-                    data={paginatedTime}
+                    data={paginatedAttendance}
                     columns={timeColumns}
                     searchPlaceholder="Buscar..."
                     searchKeys={["employee"]}
                   />
                   <DataPagination
                     currentPage={timePage}
-                    totalItems={(timeRecords || []).length}
+                    totalItems={(attendanceRecords || []).length}
                     itemsPerPage={ITEMS_PER_PAGE}
                     onPageChange={setTimePage}
                     className="mt-4"
@@ -715,19 +715,19 @@ export function HRPage() {
               <CardTitle>Rendimiento por Abastecedor</CardTitle>
             </CardHeader>
             <CardContent>
-              {loadingPerformance ? (
+              {loadingReviews ? (
                 <Skeleton className="h-64 w-full" />
               ) : (
                 <>
                   <DataTable
-                    data={paginatedPerformance}
+                    data={paginatedReviews}
                     columns={performanceColumns}
                     searchPlaceholder="Buscar..."
                     searchKeys={["employee"]}
                   />
                   <DataPagination
                     currentPage={performancePage}
-                    totalItems={(performance || []).length}
+                    totalItems={(performanceReviews || []).length}
                     itemsPerPage={ITEMS_PER_PAGE}
                     onPageChange={setPerformancePage}
                     className="mt-4"
