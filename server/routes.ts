@@ -12,6 +12,7 @@ import {
   authorizeRoles,
   authorizeOwnership,
   getEffectiveUserId,
+  getSupervisorZone,
   optionalAuth,
   REFRESH_TOKEN_COOKIE,
   REFRESH_TOKEN_COOKIE_OPTIONS,
@@ -2442,19 +2443,33 @@ export async function registerRoutes(
   });
 
   // Usuarios (para demo)
-  app.get("/api/users", async (req: Request, res: Response) => {
+  app.get("/api/users", optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { db } = await import("./db");
       const { users } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
+      const { eq, and } = await import("drizzle-orm");
       const { role } = req.query;
       
+      // Si es supervisor, filtrar por su zona asignada
+      const supervisorZone = await getSupervisorZone(req);
+      
       let allUsers;
+      const conditions = [];
+      
       if (role && typeof role === 'string') {
-        allUsers = await db.select().from(users).where(eq(users.role, role));
+        conditions.push(eq(users.role, role));
+      }
+      
+      if (supervisorZone) {
+        conditions.push(eq(users.assignedZone, supervisorZone));
+      }
+      
+      if (conditions.length > 0) {
+        allUsers = await db.select().from(users).where(and(...conditions));
       } else {
         allUsers = await db.select().from(users);
       }
+      
       // Omitir password de la respuesta por seguridad
       const usersWithoutPassword = allUsers.map(({ password, ...user }) => user);
       res.json(usersWithoutPassword);
@@ -4060,7 +4075,11 @@ export async function registerRoutes(
       const { status, priority, startDate, endDate, type } = req.query;
       // Abastecedor solo ve sus propias tareas
       const effectiveUserId = getEffectiveUserId(req, "assignedUserId");
-      const tasks = await storage.getTasks({
+      
+      // Supervisor solo ve tareas de usuarios de su zona
+      const supervisorZone = await getSupervisorZone(req);
+      
+      let tasks = await storage.getTasks({
         status: status as string | undefined,
         priority: priority as string | undefined,
         assignedUserId: effectiveUserId,
@@ -4068,6 +4087,23 @@ export async function registerRoutes(
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined
       });
+      
+      // Si es supervisor con zona asignada, filtrar tareas por usuarios de su zona
+      if (supervisorZone && !effectiveUserId) {
+        const { db } = await import("./db");
+        const { users } = await import("@shared/schema");
+        const { eq } = await import("drizzle-orm");
+        
+        const zoneUsers = await db.select({ id: users.id })
+          .from(users)
+          .where(eq(users.assignedZone, supervisorZone));
+        const zoneUserIds = new Set(zoneUsers.map(u => u.id));
+        
+        tasks = tasks.filter(task => 
+          !task.assignedUserId || zoneUserIds.has(task.assignedUserId)
+        );
+      }
+      
       res.json(tasks);
     } catch (error) {
       console.error("Error getting tasks:", error);

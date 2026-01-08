@@ -149,3 +149,17 @@ export const REFRESH_TOKEN_COOKIE_OPTIONS = {
   maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
   path: "/api/auth",
 };
+
+/**
+ * Helper para obtener la zona asignada del supervisor actual.
+ * Retorna undefined si el usuario no es supervisor o no tiene zona asignada.
+ */
+export async function getSupervisorZone(req: AuthenticatedRequest): Promise<string | undefined> {
+  if (!req.user || req.user.role !== "supervisor") {
+    return undefined;
+  }
+  
+  const { storage } = await import("./storage");
+  const fullUser = await storage.getUser(req.user.userId);
+  return fullUser?.assignedZone || undefined;
+}
