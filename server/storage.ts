@@ -4368,7 +4368,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async checkIn(userId: string, date: Date): Promise<EmployeeAttendance> {
-    const today = new Date(date);
+    const today = getTodayInTimezone();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -4398,7 +4398,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async checkOut(userId: string, date: Date): Promise<EmployeeAttendance | undefined> {
-    const today = new Date(date);
+    const today = getTodayInTimezone();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);

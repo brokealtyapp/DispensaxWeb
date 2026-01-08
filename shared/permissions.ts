@@ -29,7 +29,13 @@ export type Resource =
   | "reports"
   | "settings"
   | "tasks"
-  | "service_records";
+  | "service_records"
+  | "attendance"
+  | "payroll"
+  | "vacations"
+  | "performance_reviews"
+  | "employee_documents"
+  | "employee_profiles";
 
 /**
  * Matriz de permisos: define qué acciones puede realizar cada rol en cada recurso
@@ -59,6 +65,12 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     settings: { view: true, edit: true },
     tasks: { view: true, create: true, edit: true, delete: true },
     service_records: { view: true, create: true, edit: true, delete: true },
+    attendance: { view: true, create: true, edit: true, delete: true, approve: true },
+    payroll: { view: true, create: true, edit: true, delete: true, approve: true },
+    vacations: { view: true, create: true, edit: true, delete: true, approve: true },
+    performance_reviews: { view: true, create: true, edit: true, delete: true },
+    employee_documents: { view: true, create: true, edit: true, delete: true },
+    employee_profiles: { view: true, create: true, edit: true, delete: true },
   },
   
   supervisor: {
@@ -84,6 +96,12 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     settings: { view: true, edit: false },
     tasks: { view: true, create: true, edit: true, delete: false },
     service_records: { view: true, create: false, edit: false, delete: false },
+    attendance: { view: true, create: false, edit: true, delete: false },
+    payroll: { view: true, create: false, edit: false, delete: false },
+    vacations: { view: true, create: false, edit: true, delete: false },
+    performance_reviews: { view: true, create: false, edit: true, delete: false },
+    employee_documents: { view: true, create: false, edit: true, delete: false },
+    employee_profiles: { view: true, create: false, edit: true, delete: false },
   },
   
   abastecedor: {
@@ -109,6 +127,12 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     settings: { view: true, edit: false },
     tasks: { view: true, create: false, edit: true, delete: false },
     service_records: { view: true, create: true, edit: true, delete: false },
+    attendance: { view: false, create: false, edit: false, delete: false },
+    payroll: { view: false, create: false, edit: false, delete: false },
+    vacations: { view: true, create: true, edit: false, delete: false },
+    performance_reviews: { view: false, create: false, edit: false, delete: false },
+    employee_documents: { view: false, create: false, edit: false, delete: false },
+    employee_profiles: { view: false, create: false, edit: false, delete: false },
   },
   
   almacen: {
@@ -134,6 +158,12 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     settings: { view: true, edit: false },
     tasks: { view: true, create: true, edit: true, delete: true },
     service_records: { view: false, create: false, edit: false, delete: false },
+    attendance: { view: false, create: false, edit: false, delete: false },
+    payroll: { view: false, create: false, edit: false, delete: false },
+    vacations: { view: true, create: true, edit: false, delete: false },
+    performance_reviews: { view: false, create: false, edit: false, delete: false },
+    employee_documents: { view: false, create: false, edit: false, delete: false },
+    employee_profiles: { view: false, create: false, edit: false, delete: false },
   },
   
   contabilidad: {
@@ -159,6 +189,12 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     settings: { view: true, edit: false },
     tasks: { view: true, create: true, edit: true, delete: true },
     service_records: { view: false, create: false, edit: false, delete: false },
+    attendance: { view: false, create: false, edit: false, delete: false },
+    payroll: { view: true, create: false, edit: false, delete: false },
+    vacations: { view: true, create: true, edit: false, delete: false },
+    performance_reviews: { view: false, create: false, edit: false, delete: false },
+    employee_documents: { view: false, create: false, edit: false, delete: false },
+    employee_profiles: { view: false, create: false, edit: false, delete: false },
   },
   
   rh: {
@@ -184,6 +220,12 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     settings: { view: true, edit: false },
     tasks: { view: true, create: true, edit: true, delete: true },
     service_records: { view: false, create: false, edit: false, delete: false },
+    attendance: { view: true, create: true, edit: true, delete: true, approve: true },
+    payroll: { view: true, create: true, edit: true, delete: true, approve: true },
+    vacations: { view: true, create: true, edit: true, delete: true, approve: true },
+    performance_reviews: { view: true, create: true, edit: true, delete: true },
+    employee_documents: { view: true, create: true, edit: true, delete: true },
+    employee_profiles: { view: true, create: true, edit: true, delete: true },
   },
 };
 

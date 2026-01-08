@@ -51,6 +51,12 @@ import {
   insertEmployeeSchema,
   insertTaskSchema,
   insertCalendarEventSchema,
+  insertEmployeeAttendanceSchema,
+  insertPayrollRecordSchema,
+  insertVacationRequestSchema,
+  insertPerformanceReviewSchema,
+  insertEmployeeDocumentSchema,
+  insertEmployeeProfileSchema,
   machines,
   machineSales,
   cashCollections,
@@ -4038,8 +4044,21 @@ export async function registerRoutes(
   app.post("/api/hr/employees", authenticateJWT, authorizeAction("employees", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const data = insertEmployeeSchema.parse(req.body);
-      const employee = await storage.createEmployee(data);
-      res.status(201).json(employee);
+      
+      if (!data.password || data.password.length < 6) {
+        return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
+      }
+      
+      const existingUser = await storage.getUserByUsername(data.username);
+      if (existingUser) {
+        return res.status(400).json({ error: "El nombre de usuario ya existe" });
+      }
+      
+      const hashedPassword = await bcrypt.hash(data.password, 10);
+      const employee = await storage.createEmployee({ ...data, password: hashedPassword });
+      
+      const { password: _, ...employeeWithoutPassword } = employee;
+      res.status(201).json(employeeWithoutPassword);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
@@ -4118,6 +4137,518 @@ export async function registerRoutes(
       if (!res.headersSent) {
         res.status(500).json({ error: "Error al obtener rendimiento" });
       }
+    }
+  });
+
+  // HR Stats
+  app.get("/api/hr/stats", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const stats = await storage.getHRStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Error getting HR stats:", error);
+      res.status(500).json({ error: "Error al obtener estadísticas de RRHH" });
+    }
+  });
+
+  // Employee Profiles
+  app.get("/api/hr/profiles", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const profiles = await storage.getEmployeeProfiles();
+      res.json(profiles);
+    } catch (error) {
+      console.error("Error getting employee profiles:", error);
+      res.status(500).json({ error: "Error al obtener perfiles de empleados" });
+    }
+  });
+
+  app.get("/api/hr/profiles/:userId", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const profile = await storage.getEmployeeProfile(req.params.userId);
+      if (!profile) {
+        return res.status(404).json({ error: "Perfil no encontrado" });
+      }
+      res.json(profile);
+    } catch (error) {
+      console.error("Error getting employee profile:", error);
+      res.status(500).json({ error: "Error al obtener perfil de empleado" });
+    }
+  });
+
+  app.post("/api/hr/profiles", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = insertEmployeeProfileSchema.parse(req.body);
+      const profile = await storage.createEmployeeProfile(data);
+      res.status(201).json(profile);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating employee profile:", error);
+      res.status(500).json({ error: "Error al crear perfil de empleado" });
+    }
+  });
+
+  app.patch("/api/hr/profiles/:userId", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = insertEmployeeProfileSchema.partial().parse(req.body);
+      const profile = await storage.updateEmployeeProfile(req.params.userId, data);
+      if (!profile) {
+        return res.status(404).json({ error: "Perfil no encontrado" });
+      }
+      res.json(profile);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error updating employee profile:", error);
+      res.status(500).json({ error: "Error al actualizar perfil de empleado" });
+    }
+  });
+
+  // Asistencia
+  app.get("/api/hr/attendance", authenticateJWT, authorizeRoles("admin", "rh", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId, startDate, endDate, status } = req.query;
+      const attendance = await storage.getAttendance({
+        userId: userId as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+        status: status as string | undefined
+      });
+      res.json(attendance);
+    } catch (error) {
+      console.error("Error getting attendance:", error);
+      res.status(500).json({ error: "Error al obtener asistencia" });
+    }
+  });
+
+  app.get("/api/hr/attendance/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const record = await storage.getAttendanceRecord(req.params.id);
+      if (!record) {
+        return res.status(404).json({ error: "Registro no encontrado" });
+      }
+      res.json(record);
+    } catch (error) {
+      console.error("Error getting attendance record:", error);
+      res.status(500).json({ error: "Error al obtener registro de asistencia" });
+    }
+  });
+
+  app.post("/api/hr/attendance", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = insertEmployeeAttendanceSchema.parse(req.body);
+      const attendance = await storage.createAttendance(data);
+      res.status(201).json(attendance);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating attendance:", error);
+      res.status(500).json({ error: "Error al crear registro de asistencia" });
+    }
+  });
+
+  app.patch("/api/hr/attendance/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = insertEmployeeAttendanceSchema.partial().parse(req.body);
+      const attendance = await storage.updateAttendance(req.params.id, data);
+      if (!attendance) {
+        return res.status(404).json({ error: "Registro no encontrado" });
+      }
+      res.json(attendance);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error updating attendance:", error);
+      res.status(500).json({ error: "Error al actualizar registro de asistencia" });
+    }
+  });
+
+  app.delete("/api/hr/attendance/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const success = await storage.deleteAttendance(req.params.id);
+      res.json({ success });
+    } catch (error) {
+      console.error("Error deleting attendance:", error);
+      res.status(500).json({ error: "Error al eliminar registro de asistencia" });
+    }
+  });
+
+  app.post("/api/hr/attendance/check-in", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.body.userId || req.user?.userId;
+      if (!userId) {
+        return res.status(400).json({ error: "Se requiere userId" });
+      }
+      const attendance = await storage.checkIn(userId, new Date());
+      res.json(attendance);
+    } catch (error) {
+      console.error("Error checking in:", error);
+      res.status(500).json({ error: "Error al registrar entrada" });
+    }
+  });
+
+  app.post("/api/hr/attendance/check-out", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.body.userId || req.user?.userId;
+      if (!userId) {
+        return res.status(400).json({ error: "Se requiere userId" });
+      }
+      const attendance = await storage.checkOut(userId, new Date());
+      if (!attendance) {
+        return res.status(404).json({ error: "No se encontró registro de entrada para hoy" });
+      }
+      res.json(attendance);
+    } catch (error) {
+      console.error("Error checking out:", error);
+      res.status(500).json({ error: "Error al registrar salida" });
+    }
+  });
+
+  app.get("/api/hr/attendance/summary/:userId", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date(new Date().setMonth(new Date().getMonth() - 1));
+      const end = endDate ? new Date(endDate as string) : new Date();
+      const summary = await storage.getAttendanceSummary(req.params.userId, start, end);
+      res.json(summary);
+    } catch (error) {
+      console.error("Error getting attendance summary:", error);
+      res.status(500).json({ error: "Error al obtener resumen de asistencia" });
+    }
+  });
+
+  // Nómina
+  app.get("/api/hr/payroll", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId, startDate, endDate, status } = req.query;
+      const records = await storage.getPayrollRecords({
+        userId: userId as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+        status: status as string | undefined
+      });
+      res.json(records);
+    } catch (error) {
+      console.error("Error getting payroll records:", error);
+      res.status(500).json({ error: "Error al obtener registros de nómina" });
+    }
+  });
+
+  app.get("/api/hr/payroll/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const record = await storage.getPayrollRecord(req.params.id);
+      if (!record) {
+        return res.status(404).json({ error: "Registro no encontrado" });
+      }
+      res.json(record);
+    } catch (error) {
+      console.error("Error getting payroll record:", error);
+      res.status(500).json({ error: "Error al obtener registro de nómina" });
+    }
+  });
+
+  app.post("/api/hr/payroll", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = insertPayrollRecordSchema.parse(req.body);
+      const record = await storage.createPayrollRecord(data);
+      res.status(201).json(record);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating payroll record:", error);
+      res.status(500).json({ error: "Error al crear registro de nómina" });
+    }
+  });
+
+  app.patch("/api/hr/payroll/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = insertPayrollRecordSchema.partial().parse(req.body);
+      const record = await storage.updatePayrollRecord(req.params.id, data);
+      if (!record) {
+        return res.status(404).json({ error: "Registro no encontrado" });
+      }
+      res.json(record);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error updating payroll record:", error);
+      res.status(500).json({ error: "Error al actualizar registro de nómina" });
+    }
+  });
+
+  app.delete("/api/hr/payroll/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const success = await storage.deletePayrollRecord(req.params.id);
+      res.json({ success });
+    } catch (error) {
+      console.error("Error deleting payroll record:", error);
+      res.status(500).json({ error: "Error al eliminar registro de nómina" });
+    }
+  });
+
+  app.post("/api/hr/payroll/:id/process", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const record = await storage.processPayroll(req.params.id, req.user!.userId);
+      if (!record) {
+        return res.status(404).json({ error: "Registro no encontrado" });
+      }
+      res.json(record);
+    } catch (error) {
+      console.error("Error processing payroll:", error);
+      res.status(500).json({ error: "Error al procesar nómina" });
+    }
+  });
+
+  // Vacaciones
+  app.get("/api/hr/vacations", authenticateJWT, authorizeRoles("admin", "rh", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId, status, startDate, endDate } = req.query;
+      const requests = await storage.getVacationRequests({
+        userId: userId as string | undefined,
+        status: status as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined
+      });
+      res.json(requests);
+    } catch (error) {
+      console.error("Error getting vacation requests:", error);
+      res.status(500).json({ error: "Error al obtener solicitudes de vacaciones" });
+    }
+  });
+
+  app.get("/api/hr/vacations/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const request = await storage.getVacationRequest(req.params.id);
+      if (!request) {
+        return res.status(404).json({ error: "Solicitud no encontrada" });
+      }
+      res.json(request);
+    } catch (error) {
+      console.error("Error getting vacation request:", error);
+      res.status(500).json({ error: "Error al obtener solicitud de vacaciones" });
+    }
+  });
+
+  app.post("/api/hr/vacations", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.body.userId || req.user?.userId;
+      const data = insertVacationRequestSchema.parse({ ...req.body, userId });
+      const request = await storage.createVacationRequest(data);
+      res.status(201).json(request);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating vacation request:", error);
+      res.status(500).json({ error: "Error al crear solicitud de vacaciones" });
+    }
+  });
+
+  app.patch("/api/hr/vacations/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = insertVacationRequestSchema.partial().parse(req.body);
+      const request = await storage.updateVacationRequest(req.params.id, data);
+      if (!request) {
+        return res.status(404).json({ error: "Solicitud no encontrada" });
+      }
+      res.json(request);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error updating vacation request:", error);
+      res.status(500).json({ error: "Error al actualizar solicitud de vacaciones" });
+    }
+  });
+
+  app.post("/api/hr/vacations/:id/approve", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const request = await storage.approveVacation(req.params.id, req.user!.userId);
+      if (!request) {
+        return res.status(404).json({ error: "Solicitud no encontrada" });
+      }
+      res.json(request);
+    } catch (error) {
+      console.error("Error approving vacation:", error);
+      res.status(500).json({ error: "Error al aprobar vacaciones" });
+    }
+  });
+
+  app.post("/api/hr/vacations/:id/reject", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { reason } = req.body;
+      if (!reason) {
+        return res.status(400).json({ error: "Se requiere motivo de rechazo" });
+      }
+      const request = await storage.rejectVacation(req.params.id, req.user!.userId, reason);
+      if (!request) {
+        return res.status(404).json({ error: "Solicitud no encontrada" });
+      }
+      res.json(request);
+    } catch (error) {
+      console.error("Error rejecting vacation:", error);
+      res.status(500).json({ error: "Error al rechazar vacaciones" });
+    }
+  });
+
+  app.post("/api/hr/vacations/:id/cancel", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const request = await storage.cancelVacation(req.params.id);
+      if (!request) {
+        return res.status(404).json({ error: "Solicitud no encontrada" });
+      }
+      res.json(request);
+    } catch (error) {
+      console.error("Error cancelling vacation:", error);
+      res.status(500).json({ error: "Error al cancelar vacaciones" });
+    }
+  });
+
+  // Evaluaciones de desempeño
+  app.get("/api/hr/reviews", authenticateJWT, authorizeRoles("admin", "rh", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId, reviewerId, status, period } = req.query;
+      const reviews = await storage.getPerformanceReviews({
+        userId: userId as string | undefined,
+        reviewerId: reviewerId as string | undefined,
+        status: status as string | undefined,
+        period: period as string | undefined
+      });
+      res.json(reviews);
+    } catch (error) {
+      console.error("Error getting performance reviews:", error);
+      res.status(500).json({ error: "Error al obtener evaluaciones" });
+    }
+  });
+
+  app.get("/api/hr/reviews/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const review = await storage.getPerformanceReview(req.params.id);
+      if (!review) {
+        return res.status(404).json({ error: "Evaluación no encontrada" });
+      }
+      res.json(review);
+    } catch (error) {
+      console.error("Error getting performance review:", error);
+      res.status(500).json({ error: "Error al obtener evaluación" });
+    }
+  });
+
+  app.post("/api/hr/reviews", authenticateJWT, authorizeRoles("admin", "rh", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const reviewerId = req.body.reviewerId || req.user?.userId;
+      const data = insertPerformanceReviewSchema.parse({ ...req.body, reviewerId });
+      const review = await storage.createPerformanceReview(data);
+      res.status(201).json(review);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating performance review:", error);
+      res.status(500).json({ error: "Error al crear evaluación" });
+    }
+  });
+
+  app.patch("/api/hr/reviews/:id", authenticateJWT, authorizeRoles("admin", "rh", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = insertPerformanceReviewSchema.partial().parse(req.body);
+      const review = await storage.updatePerformanceReview(req.params.id, data);
+      if (!review) {
+        return res.status(404).json({ error: "Evaluación no encontrada" });
+      }
+      res.json(review);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error updating performance review:", error);
+      res.status(500).json({ error: "Error al actualizar evaluación" });
+    }
+  });
+
+  app.delete("/api/hr/reviews/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const success = await storage.deletePerformanceReview(req.params.id);
+      res.json({ success });
+    } catch (error) {
+      console.error("Error deleting performance review:", error);
+      res.status(500).json({ error: "Error al eliminar evaluación" });
+    }
+  });
+
+  // Documentos de empleados
+  app.get("/api/hr/documents", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId, documentType } = req.query;
+      const documents = await storage.getEmployeeDocuments({
+        userId: userId as string | undefined,
+        documentType: documentType as string | undefined
+      });
+      res.json(documents);
+    } catch (error) {
+      console.error("Error getting employee documents:", error);
+      res.status(500).json({ error: "Error al obtener documentos" });
+    }
+  });
+
+  app.get("/api/hr/documents/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const document = await storage.getEmployeeDocument(req.params.id);
+      if (!document) {
+        return res.status(404).json({ error: "Documento no encontrado" });
+      }
+      res.json(document);
+    } catch (error) {
+      console.error("Error getting employee document:", error);
+      res.status(500).json({ error: "Error al obtener documento" });
+    }
+  });
+
+  app.post("/api/hr/documents", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const uploadedBy = req.user?.userId;
+      const data = insertEmployeeDocumentSchema.parse({ ...req.body, uploadedBy });
+      const document = await storage.createEmployeeDocument(data);
+      res.status(201).json(document);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating employee document:", error);
+      res.status(500).json({ error: "Error al crear documento" });
+    }
+  });
+
+  app.patch("/api/hr/documents/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const data = insertEmployeeDocumentSchema.partial().parse(req.body);
+      const document = await storage.updateEmployeeDocument(req.params.id, data);
+      if (!document) {
+        return res.status(404).json({ error: "Documento no encontrado" });
+      }
+      res.json(document);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error updating employee document:", error);
+      res.status(500).json({ error: "Error al actualizar documento" });
+    }
+  });
+
+  app.delete("/api/hr/documents/:id", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const success = await storage.deleteEmployeeDocument(req.params.id);
+      res.json({ success });
+    } catch (error) {
+      console.error("Error deleting employee document:", error);
+      res.status(500).json({ error: "Error al eliminar documento" });
     }
   });
 
