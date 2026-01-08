@@ -650,14 +650,14 @@ export function CalendarPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Asignar a (opcional)</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value || ""}>
                         <FormControl>
                           <SelectTrigger data-testid="select-event-user">
                             <SelectValue placeholder="Seleccionar usuario" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="none">Sin asignar</SelectItem>
+                          <SelectItem value="">Sin asignar</SelectItem>
                           {users?.map((user) => (
                             <SelectItem key={user.id} value={user.id}>
                               {user.fullName || user.username}
