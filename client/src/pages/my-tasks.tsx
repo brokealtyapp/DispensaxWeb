@@ -131,14 +131,16 @@ export function MyTasksPage() {
 
     return (
       <Card 
-        className={`hover-elevate transition-all ${
-          task.priority === "urgente" ? "border-l-4 border-l-red-500" : 
-          task.priority === "alta" ? "border-l-4 border-l-orange-500" : ""
-        }`}
+        className="hover-elevate transition-all"
         data-testid={`card-my-task-${task.id}`}
       >
         <CardContent className="p-4">
           <div className="flex items-start gap-4">
+            {(task.priority === "urgente" || task.priority === "alta") && (
+              <div className={`w-1 self-stretch rounded-full ${
+                task.priority === "urgente" ? "bg-red-500" : "bg-orange-500"
+              }`} />
+            )}
             <button
               onClick={() => {
                 if (task.status === "pendiente") {
@@ -148,7 +150,7 @@ export function MyTasksPage() {
                 }
               }}
               disabled={task.status === "completada" || task.status === "cancelada"}
-              className={`mt-1 h-6 w-6 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 ${
+              className={`mt-1 h-6 w-6 rounded-full border-2 flex items-center justify-center transition-colors ${
                 task.status === "completada" 
                   ? "bg-green-500 border-green-500 text-white" 
                   : task.status === "en_progreso"
@@ -221,16 +223,25 @@ export function MyTasksPage() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   {task.status === "pendiente" && (
-                    <DropdownMenuItem onClick={() => changeStatusMutation.mutate({ id: task.id, status: "en_progreso" })}>
+                    <DropdownMenuItem 
+                      onClick={() => changeStatusMutation.mutate({ id: task.id, status: "en_progreso" })}
+                      data-testid={`menu-item-start-${task.id}`}
+                    >
                       <PlayCircle className="h-4 w-4 mr-2" />
                       Iniciar
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onClick={() => completeTaskMutation.mutate(task.id)}>
+                  <DropdownMenuItem 
+                    onClick={() => completeTaskMutation.mutate(task.id)}
+                    data-testid={`menu-item-complete-${task.id}`}
+                  >
                     <CheckCircle2 className="h-4 w-4 mr-2" />
                     Completar
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => changeStatusMutation.mutate({ id: task.id, status: "cancelada" })}>
+                  <DropdownMenuItem 
+                    onClick={() => changeStatusMutation.mutate({ id: task.id, status: "cancelada" })}
+                    data-testid={`menu-item-cancel-${task.id}`}
+                  >
                     <XCircle className="h-4 w-4 mr-2" />
                     Cancelar
                   </DropdownMenuItem>
