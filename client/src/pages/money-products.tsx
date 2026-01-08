@@ -288,7 +288,7 @@ export function MoneyProductsPage() {
               <Trash2 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-orange-600" data-testid="text-shrinkage">{formatCurrency(shrinkageSummary?.totalLoss || 0)}</div>
+              <div className="text-2xl font-bold text-orange-600" data-testid="text-shrinkage">{formatCurrency(shrinkageSummary?.totalCost || 0)}</div>
               <p className="text-xs text-muted-foreground">{shrinkageSummary?.totalQuantity || 0} unidades</p>
             </CardContent>
           </Card>
