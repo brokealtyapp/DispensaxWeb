@@ -431,9 +431,9 @@ export function MoneyProductsPage() {
                 </div>
                 {shrinkageSummary && (
                   <div className="flex gap-2">
-                    {Object.entries(shrinkageSummary.byType || {}).map(([type, qty]) => (
+                    {Object.entries(shrinkageSummary.byType || {}).map(([type, data]) => (
                       <Badge key={type} variant="outline" data-testid={`badge-shrinkage-type-${type}`}>
-                        {getShrinkageTypeLabel(type)}: {qty as number}
+                        {getShrinkageTypeLabel(type)}: {(data as any).quantity || 0}
                       </Badge>
                     ))}
                   </div>
