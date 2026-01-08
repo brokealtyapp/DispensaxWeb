@@ -1,5 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
-import { getAccessToken } from "./auth-context";
+import { getAccessToken, setAccessTokenExternal } from "./auth-context";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -17,6 +17,7 @@ async function tryRefreshToken(): Promise<string | null> {
 
     if (response.ok) {
       const data = await response.json();
+      setAccessTokenExternal(data.accessToken);
       return data.accessToken;
     }
     return null;

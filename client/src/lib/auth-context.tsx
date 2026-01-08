@@ -240,6 +240,10 @@ export function getAccessToken(): string | null {
   return accessTokenInMemory;
 }
 
+export function setAccessTokenExternal(token: string | null): void {
+  accessTokenInMemory = token;
+}
+
 export function getRoleDisplayName(role: UserRole): string {
   const roleNames: Record<UserRole, string> = {
     admin: "Administrador",
