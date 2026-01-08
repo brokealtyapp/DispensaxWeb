@@ -217,7 +217,7 @@ export interface IStorage {
   getShrinkageSummary(startDate?: Date, endDate?: Date): Promise<{ totalRecords: number; totalQuantity: number; totalCost: number; pendingCount: number; byType: Record<string, { count: number; quantity: number; cost: number }> }>;
   
   // Conciliación
-  getDailyReconciliation(date: Date): Promise<any>;
+  getDailyReconciliation(date: Date, endDate?: Date): Promise<any>;
   getSupplierReconciliation(userId: string, date: Date): Promise<any>;
   
   // ==================== MÓDULO CAJA CHICA ====================
@@ -1854,19 +1854,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCashMovementsSummary(startDate?: Date, endDate?: Date): Promise<{ total: number; pending: number; delivered: number; deposited: number; differences: number }> {
-    // Usar zona horaria GMT-4 (República Dominicana) para cálculo del día actual
+    // Usar zona horaria GMT-4 (República Dominicana)
     const now = new Date();
     const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' });
-    const start = startDate || new Date(todayStr + 'T00:00:00-04:00');
-    const end = endDate || new Date(todayStr + 'T23:59:59.999-04:00');
     
-    // Obtener movimientos del día
+    // Si no se pasan fechas, usar últimos 30 días para mostrar datos reales
+    // Si se pasan fechas, usar el rango exacto
+    let start: Date;
+    let end: Date;
+    let depositDateCondition;
+    
+    if (startDate || endDate) {
+      // Rango específico solicitado
+      start = startDate || new Date(todayStr + 'T00:00:00-04:00');
+      end = endDate || new Date(todayStr + 'T23:59:59.999-04:00');
+      depositDateCondition = and(gte(bankDeposits.depositDate, start), lte(bankDeposits.depositDate, end));
+    } else {
+      // Default: últimos 30 días para mostrar datos reales
+      start = new Date(new Date().setDate(new Date().getDate() - 30));
+      end = new Date();
+      depositDateCondition = and(gte(bankDeposits.depositDate, start), lte(bankDeposits.depositDate, end));
+    }
+    
+    // Obtener movimientos del rango
     const movements = await db.select().from(cashMovements)
       .where(and(gte(cashMovements.createdAt, start), lte(cashMovements.createdAt, end)));
     
-    // Obtener depósitos bancarios del día usando SQL DATE() para comparación exacta
+    // Obtener depósitos bancarios del rango
     const deposits = await db.select().from(bankDeposits)
-      .where(sql`DATE(${bankDeposits.depositDate}) = ${todayStr}`);
+      .where(depositDateCondition);
     
     const totalDeposited = deposits.reduce((sum, d) => sum + parseFloat(d.amount || "0"), 0);
     
@@ -2084,28 +2100,53 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Conciliación
-  async getDailyReconciliation(date: Date): Promise<any> {
+  async getDailyReconciliation(date: Date, endDate?: Date): Promise<any> {
     // Usar zona horaria GMT-4 (República Dominicana) para comparación de fechas
-    // Normalizar a inicio y fin del día en GMT-4
-    const dateStr = date.toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' });
-    const startOfDay = new Date(dateStr + 'T00:00:00-04:00');
-    const endOfDay = new Date(dateStr + 'T23:59:59.999-04:00');
+    let start: Date;
+    let end: Date;
+    let depositDateCondition;
     
-    // Para deposit_date que solo tiene fecha (00:00:00), buscar por el día exacto
-    const depositDateStr = dateStr; // YYYY-MM-DD format
+    if (endDate) {
+      // Rango específico solicitado
+      start = date;
+      end = endDate;
+      depositDateCondition = and(gte(bankDeposits.depositDate, start), lte(bankDeposits.depositDate, end));
+    } else {
+      // Día específico o últimos 30 días si no hay datos hoy
+      const dateStr = date.toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' });
+      const startOfDay = new Date(dateStr + 'T00:00:00-04:00');
+      const endOfDay = new Date(dateStr + 'T23:59:59.999-04:00');
+      
+      // Verificar si hay datos del día solicitado
+      const dayCollections = await db.select().from(cashCollections)
+        .where(and(gte(cashCollections.createdAt, startOfDay), lte(cashCollections.createdAt, endOfDay)));
+      const dayMovements = await db.select().from(cashMovements)
+        .where(and(gte(cashMovements.createdAt, startOfDay), lte(cashMovements.createdAt, endOfDay)));
+      
+      // Si hay datos del día, usar ese día; si no, usar últimos 30 días
+      if (dayCollections.length > 0 || dayMovements.length > 0) {
+        start = startOfDay;
+        end = endOfDay;
+        depositDateCondition = sql`DATE(${bankDeposits.depositDate}) = ${dateStr}`;
+      } else {
+        // Sin datos del día: mostrar últimos 30 días
+        start = new Date(new Date().setDate(new Date().getDate() - 30));
+        end = new Date();
+        depositDateCondition = and(gte(bankDeposits.depositDate, start), lte(bankDeposits.depositDate, end));
+      }
+    }
     
     const collections = await db.select().from(cashCollections)
-      .where(and(gte(cashCollections.createdAt, startOfDay), lte(cashCollections.createdAt, endOfDay)));
+      .where(and(gte(cashCollections.createdAt, start), lte(cashCollections.createdAt, end)));
     
     const movements = await db.select().from(cashMovements)
-      .where(and(gte(cashMovements.createdAt, startOfDay), lte(cashMovements.createdAt, endOfDay)));
+      .where(and(gte(cashMovements.createdAt, start), lte(cashMovements.createdAt, end)));
     
-    // Para bank_deposits, comparar por fecha exacta usando SQL
     const deposits = await db.select().from(bankDeposits)
-      .where(sql`DATE(${bankDeposits.depositDate}) = ${depositDateStr}`);
+      .where(depositDateCondition);
     
     return {
-      date,
+      date: end,
       totalCollected: collections.reduce((sum, c) => sum + parseFloat(c.actualAmount || "0"), 0),
       totalExpected: collections.reduce((sum, c) => sum + parseFloat(c.expectedAmount || "0"), 0),
       totalDifference: collections.reduce((sum, c) => sum + parseFloat(c.difference || "0"), 0),

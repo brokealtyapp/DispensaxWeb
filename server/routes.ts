@@ -3030,9 +3030,14 @@ export async function registerRoutes(
   // Conciliación
   app.get("/api/reconciliation/daily", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { date } = req.query;
-      const targetDate = date ? new Date(date as string) : new Date();
-      const reconciliation = await storage.getDailyReconciliation(targetDate);
+      const { date, startDate, endDate } = req.query;
+      // Compatibilidad: si se pasa 'date', usar ese día específico
+      // Si se pasa 'startDate' y 'endDate', usar rango
+      // Si no se pasa nada, usar hoy (con fallback a 30 días si no hay datos)
+      const targetDate = date ? new Date(date as string) : 
+                         startDate ? new Date(startDate as string) : new Date();
+      const end = endDate ? new Date(endDate as string) : undefined;
+      const reconciliation = await storage.getDailyReconciliation(targetDate, end);
       res.json(reconciliation);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener conciliación diaria" });
