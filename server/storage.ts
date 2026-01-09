@@ -41,6 +41,9 @@ import {
   type PerformanceReview, type InsertPerformanceReview,
   type EmployeeDocument, type InsertEmployeeDocument,
   type EmployeeProfile, type InsertEmployeeProfile,
+  type VehicleInventory, type InsertVehicleInventory,
+  type InventoryTransfer, type InsertInventoryTransfer,
+  type MachineInventoryLot, type InsertMachineInventoryLot,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
@@ -49,7 +52,8 @@ import {
   purchaseOrders, purchaseOrderItems, purchaseReceptions, receptionItems,
   vehicles, fuelRecords,
   tasks, calendarEvents, passwordResetTokens, refreshTokens,
-  employeeAttendance, payrollRecords, vacationRequests, performanceReviews, employeeDocuments, employeeProfiles
+  employeeAttendance, payrollRecords, vacationRequests, performanceReviews, employeeDocuments, employeeProfiles,
+  vehicleInventory, inventoryTransfers, machineInventoryLots
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc, or, inArray } from "drizzle-orm";
@@ -204,6 +208,25 @@ export interface IStorage {
   updateSupplierInventoryItem(userId: string, productId: string, quantity: number, lotId?: string): Promise<SupplierInventory>;
   loadProductsFromWarehouse(userId: string, productId: string, quantity: number): Promise<void>;
   unloadProductsToMachine(userId: string, machineId: string, productId: string, quantity: number): Promise<void>;
+  
+  // ==================== FLUJO DE INVENTARIO CONECTADO ====================
+  
+  // Inventario del Vehículo
+  getVehicleInventory(vehicleId: string): Promise<any[]>;
+  getVehicleInventoryByUser(userId: string): Promise<any[]>;
+  dispatchToVehicle(data: {
+    vehicleId: string;
+    items: Array<{ productId: string; quantity: number }>;
+    executedByUserId: string;
+    notes?: string;
+  }): Promise<{ warehouseMovements: WarehouseMovement[]; vehicleInventoryItems: VehicleInventory[]; inventoryTransfers: InventoryTransfer[] }>;
+  
+  // Transferencias de Inventario
+  getInventoryTransfers(filters?: { vehicleId?: string; machineId?: string; transferType?: string; limit?: number }): Promise<any[]>;
+  createInventoryTransfer(transfer: InsertInventoryTransfer): Promise<InventoryTransfer>;
+  
+  // Inventario de Máquina con Lotes
+  getMachineInventoryLots(machineId: string): Promise<any[]>;
   
   // Estadísticas del Abastecedor
   getSupplierStats(userId: string, startDate?: Date, endDate?: Date): Promise<any>;
@@ -1865,6 +1888,252 @@ export class DatabaseStorage implements IStorage {
       issuesReported: issuesReported[0]?.count || 0,
       machinesVisited: machinesVisited[0]?.count || 0,
     };
+  }
+
+  // ==================== FLUJO DE INVENTARIO CONECTADO ====================
+  
+  async getVehicleInventory(vehicleId: string): Promise<any[]> {
+    const items = await db.select()
+      .from(vehicleInventory)
+      .where(and(
+        eq(vehicleInventory.vehicleId, vehicleId),
+        sql`${vehicleInventory.quantity} > 0`
+      ))
+      .orderBy(asc(vehicleInventory.createdAt));
+    
+    if (items.length === 0) return [];
+    
+    const productIds = Array.from(new Set(items.map(i => i.productId)));
+    const lotIds = Array.from(new Set(items.map(i => i.lotId)));
+    
+    const [productsData, lotsData] = await Promise.all([
+      db.select().from(products).where(inArray(products.id, productIds)),
+      db.select().from(productLots).where(inArray(productLots.id, lotIds))
+    ]);
+    
+    const productsMap = new Map(productsData.map(p => [p.id, p]));
+    const lotsMap = new Map(lotsData.map(l => [l.id, l]));
+    
+    return items.map(item => ({
+      ...item,
+      product: productsMap.get(item.productId),
+      lot: lotsMap.get(item.lotId),
+    }));
+  }
+  
+  async getVehicleInventoryByUser(userId: string): Promise<any[]> {
+    const [vehicle] = await db.select()
+      .from(vehicles)
+      .where(eq(vehicles.assignedUserId, userId));
+    
+    if (!vehicle) return [];
+    
+    return this.getVehicleInventory(vehicle.id);
+  }
+  
+  async dispatchToVehicle(data: {
+    vehicleId: string;
+    items: Array<{ productId: string; quantity: number }>;
+    executedByUserId: string;
+    notes?: string;
+  }): Promise<{ warehouseMovements: WarehouseMovement[]; vehicleInventoryItems: VehicleInventory[]; inventoryTransfers: InventoryTransfer[] }> {
+    const warehouseMovementsResult: WarehouseMovement[] = [];
+    const vehicleInventoryItemsResult: VehicleInventory[] = [];
+    const inventoryTransfersResult: InventoryTransfer[] = [];
+    
+    for (const item of data.items) {
+      const currentInventory = await this.getWarehouseInventoryItem(item.productId);
+      const previousStock = currentInventory?.currentStock || 0;
+      
+      if (previousStock < item.quantity) {
+        throw new Error(`Stock insuficiente para producto ${item.productId}. Disponible: ${previousStock}, Solicitado: ${item.quantity}`);
+      }
+      
+      const newStock = previousStock - item.quantity;
+      await this.updateWarehouseStock(item.productId, newStock);
+      
+      const lots = await this.getProductLots(item.productId);
+      let remaining = item.quantity;
+      
+      for (const lot of lots) {
+        if (remaining <= 0) break;
+        if (lot.remainingQuantity <= 0) continue;
+        
+        const toDeduct = Math.min(remaining, lot.remainingQuantity);
+        
+        await db.update(productLots)
+          .set({ remainingQuantity: lot.remainingQuantity - toDeduct })
+          .where(eq(productLots.id, lot.id));
+        
+        const warehouseMovement = await this.createWarehouseMovement({
+          productId: item.productId,
+          lotId: lot.id,
+          movementType: "salida_abastecedor",
+          quantity: toDeduct,
+          previousStock: previousStock,
+          newStock: newStock,
+          unitCost: lot.costPrice,
+          userId: data.executedByUserId,
+          notes: data.notes ? `${data.notes} | Lote: ${lot.lotNumber}` : `Despacho a vehículo | Lote: ${lot.lotNumber}`,
+        });
+        warehouseMovementsResult.push(warehouseMovement);
+        
+        const existingVehicleInv = await db.select()
+          .from(vehicleInventory)
+          .where(and(
+            eq(vehicleInventory.vehicleId, data.vehicleId),
+            eq(vehicleInventory.productId, item.productId),
+            eq(vehicleInventory.lotId, lot.id)
+          ));
+        
+        let vehicleInvItem: VehicleInventory;
+        const vehiclePrevStock = existingVehicleInv[0]?.quantity || 0;
+        const vehicleNewStock = vehiclePrevStock + toDeduct;
+        
+        if (existingVehicleInv[0]) {
+          const [updated] = await db.update(vehicleInventory)
+            .set({ 
+              quantity: vehicleNewStock,
+              updatedAt: new Date()
+            })
+            .where(eq(vehicleInventory.id, existingVehicleInv[0].id))
+            .returning();
+          vehicleInvItem = updated;
+        } else {
+          const [newItem] = await db.insert(vehicleInventory)
+            .values({
+              vehicleId: data.vehicleId,
+              productId: item.productId,
+              lotId: lot.id,
+              quantity: toDeduct,
+              loadedByUserId: data.executedByUserId,
+              warehouseMovementId: warehouseMovement.id,
+              notes: data.notes,
+            })
+            .returning();
+          vehicleInvItem = newItem;
+        }
+        vehicleInventoryItemsResult.push(vehicleInvItem);
+        
+        const [transfer] = await db.insert(inventoryTransfers)
+          .values({
+            transferType: "almacen_vehiculo",
+            productId: item.productId,
+            lotId: lot.id,
+            quantity: toDeduct,
+            sourceType: "warehouse",
+            destinationType: "vehicle",
+            destinationVehicleId: data.vehicleId,
+            sourcePreviousStock: previousStock,
+            sourceNewStock: newStock,
+            destinationPreviousStock: vehiclePrevStock,
+            destinationNewStock: vehicleNewStock,
+            warehouseMovementId: warehouseMovement.id,
+            executedByUserId: data.executedByUserId,
+            notes: data.notes,
+            status: "completado",
+          })
+          .returning();
+        inventoryTransfersResult.push(transfer);
+        
+        remaining -= toDeduct;
+      }
+      
+      if (remaining > 0) {
+        throw new Error(`No hay suficientes lotes disponibles para completar el despacho del producto ${item.productId}`);
+      }
+    }
+    
+    return {
+      warehouseMovements: warehouseMovementsResult,
+      vehicleInventoryItems: vehicleInventoryItemsResult,
+      inventoryTransfers: inventoryTransfersResult,
+    };
+  }
+  
+  async getInventoryTransfers(filters?: { vehicleId?: string; machineId?: string; transferType?: string; limit?: number }): Promise<any[]> {
+    let conditions: any[] = [];
+    
+    if (filters?.vehicleId) {
+      conditions.push(or(
+        eq(inventoryTransfers.sourceVehicleId, filters.vehicleId),
+        eq(inventoryTransfers.destinationVehicleId, filters.vehicleId)
+      ));
+    }
+    if (filters?.machineId) {
+      conditions.push(or(
+        eq(inventoryTransfers.sourceMachineId, filters.machineId),
+        eq(inventoryTransfers.destinationMachineId, filters.machineId)
+      ));
+    }
+    if (filters?.transferType) {
+      conditions.push(eq(inventoryTransfers.transferType, filters.transferType));
+    }
+    
+    const query = conditions.length > 0
+      ? db.select().from(inventoryTransfers).where(and(...conditions))
+      : db.select().from(inventoryTransfers);
+    
+    const transfers = await query
+      .orderBy(desc(inventoryTransfers.createdAt))
+      .limit(filters?.limit || 100);
+    
+    if (transfers.length === 0) return [];
+    
+    const productIds = Array.from(new Set(transfers.map(t => t.productId)));
+    const lotIds = Array.from(new Set(transfers.map(t => t.lotId)));
+    const userIds = Array.from(new Set(transfers.map(t => t.executedByUserId).filter(Boolean))) as string[];
+    
+    const [productsData, lotsData, usersData] = await Promise.all([
+      db.select().from(products).where(inArray(products.id, productIds)),
+      db.select().from(productLots).where(inArray(productLots.id, lotIds)),
+      userIds.length > 0 ? db.select().from(users).where(inArray(users.id, userIds)) : Promise.resolve([])
+    ]);
+    
+    const productsMap = new Map(productsData.map(p => [p.id, p]));
+    const lotsMap = new Map(lotsData.map(l => [l.id, l]));
+    const usersMap = new Map(usersData.map(u => [u.id, { id: u.id, username: u.username, fullName: u.fullName }]));
+    
+    return transfers.map(t => ({
+      ...t,
+      product: productsMap.get(t.productId),
+      lot: lotsMap.get(t.lotId),
+      executedBy: t.executedByUserId ? usersMap.get(t.executedByUserId) : null,
+    }));
+  }
+  
+  async createInventoryTransfer(transfer: InsertInventoryTransfer): Promise<InventoryTransfer> {
+    const [newTransfer] = await db.insert(inventoryTransfers).values(transfer).returning();
+    return newTransfer;
+  }
+  
+  async getMachineInventoryLots(machineId: string): Promise<any[]> {
+    const items = await db.select()
+      .from(machineInventoryLots)
+      .where(and(
+        eq(machineInventoryLots.machineId, machineId),
+        sql`${machineInventoryLots.quantity} > 0`
+      ))
+      .orderBy(asc(machineInventoryLots.createdAt));
+    
+    if (items.length === 0) return [];
+    
+    const productIds = Array.from(new Set(items.map(i => i.productId)));
+    const lotIds = Array.from(new Set(items.map(i => i.lotId)));
+    
+    const [productsData, lotsData] = await Promise.all([
+      db.select().from(products).where(inArray(products.id, productIds)),
+      db.select().from(productLots).where(inArray(productLots.id, lotIds))
+    ]);
+    
+    const productsMap = new Map(productsData.map(p => [p.id, p]));
+    const lotsMap = new Map(lotsData.map(l => [l.id, l]));
+    
+    return items.map(item => ({
+      ...item,
+      product: productsMap.get(item.productId),
+      lot: lotsMap.get(item.lotId),
+    }));
   }
 
   // ==================== MÓDULO PRODUCTOS Y DINERO ====================

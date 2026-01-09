@@ -1030,6 +1030,91 @@ export async function registerRoutes(
     }
   });
 
+  // Despachar productos del almacén a un vehículo (flujo de inventario conectado)
+  app.post("/api/warehouse/dispatch-to-vehicle", authenticateJWT, authorizeAction("warehouse_movements", "create"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { vehicleId, items, notes } = req.body;
+      
+      if (!vehicleId || !items || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: "Faltan campos requeridos: vehicleId y items (array de {productId, quantity})" });
+      }
+      
+      // Validar estructura de items
+      for (const item of items) {
+        if (!item.productId || !item.quantity || item.quantity <= 0) {
+          return res.status(400).json({ error: "Cada item debe tener productId y quantity > 0" });
+        }
+      }
+      
+      const result = await storage.dispatchToVehicle({
+        vehicleId,
+        items: items.map((i: { productId: string; quantity: number }) => ({
+          productId: i.productId,
+          quantity: parseInt(String(i.quantity)),
+        })),
+        executedByUserId: req.user!.userId,
+        notes,
+      });
+      
+      res.status(201).json({
+        success: true,
+        message: `Se despacharon ${items.length} productos al vehículo`,
+        warehouseMovementsCount: result.warehouseMovements.length,
+        vehicleInventoryItemsCount: result.vehicleInventoryItems.length,
+        inventoryTransfersCount: result.inventoryTransfers.length,
+      });
+    } catch (error: any) {
+      if (error.message?.includes("Stock insuficiente")) {
+        return res.status(400).json({ error: error.message });
+      }
+      if (error.message?.includes("lotes disponibles")) {
+        return res.status(400).json({ error: error.message });
+      }
+      console.error("Error dispatching to vehicle:", error);
+      res.status(500).json({ error: "Error al despachar productos al vehículo" });
+    }
+  });
+
+  // Obtener inventario de un vehículo
+  app.get("/api/vehicle-inventory/:vehicleId", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { vehicleId } = req.params;
+      const inventory = await storage.getVehicleInventory(vehicleId);
+      res.json(inventory);
+    } catch (error) {
+      console.error("Error getting vehicle inventory:", error);
+      res.status(500).json({ error: "Error al obtener inventario del vehículo" });
+    }
+  });
+
+  // Obtener inventario del vehículo del usuario actual (abastecedor)
+  app.get("/api/my-vehicle-inventory", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const inventory = await storage.getVehicleInventoryByUser(req.user!.userId);
+      res.json(inventory);
+    } catch (error) {
+      console.error("Error getting my vehicle inventory:", error);
+      res.status(500).json({ error: "Error al obtener inventario de mi vehículo" });
+    }
+  });
+
+  // Obtener historial de transferencias de inventario
+  app.get("/api/inventory-transfers", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { vehicleId, machineId, transferType, limit } = req.query;
+      const transfers = await storage.getInventoryTransfers({
+        vehicleId: vehicleId as string,
+        machineId: machineId as string,
+        transferType: transferType as string,
+        limit: limit ? parseInt(limit as string) : undefined,
+      });
+      res.json(transfers);
+    } catch (error) {
+      console.error("Error getting inventory transfers:", error);
+      res.status(500).json({ error: "Error al obtener transferencias de inventario" });
+    }
+  });
+
   // Estadísticas del almacén (protegido con JWT)
   app.get("/api/warehouse/stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
