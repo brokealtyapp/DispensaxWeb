@@ -32,6 +32,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
 import {
   Package,
   Search,
@@ -45,12 +46,14 @@ import {
   Clock,
   Edit,
   Download,
+  Truck,
+  X,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Product, Supplier, WarehouseInventory, WarehouseMovement, ProductLot } from "@shared/schema";
+import type { Product, Supplier, Vehicle, WarehouseInventory, WarehouseMovement, ProductLot } from "@shared/schema";
 import { formatDateShort, formatTime, formatCurrency } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -134,7 +137,15 @@ export function WarehousePage() {
   const [isEntryDialogOpen, setIsEntryDialogOpen] = useState(false);
   const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
   const [isAdjustmentDialogOpen, setIsAdjustmentDialogOpen] = useState(false);
+  const [isDispatchToVehicleDialogOpen, setIsDispatchToVehicleDialogOpen] = useState(false);
   const [selectedProductFilter, setSelectedProductFilter] = useState<string>("all");
+  const [dispatchVehicleId, setDispatchVehicleId] = useState<string>("");
+  const [dispatchItems, setDispatchItems] = useState<Array<{ productId: string; quantity: number }>>([]);
+  const [dispatchNotes, setDispatchNotes] = useState("");
+  const [tempProductId, setTempProductId] = useState("");
+  const [tempQuantity, setTempQuantity] = useState("");
+
+  const { toast } = useToast();
   const [selectedMovementTypeFilter, setSelectedMovementTypeFilter] = useState<string>("all");
   const [movementsPage, setMovementsPage] = useState(1);
   const MOVEMENTS_PER_PAGE = 20;
@@ -174,6 +185,10 @@ export function WarehousePage() {
 
   const { data: suppliers = [] } = useQuery<Supplier[]>({
     queryKey: ["/api/suppliers"],
+  });
+
+  const { data: vehicles = [] } = useQuery<Vehicle[]>({
+    queryKey: ["/api/vehicles"],
   });
 
   const entryForm = useForm<EntryFormData>({
@@ -256,6 +271,93 @@ export function WarehousePage() {
     },
   });
 
+  const dispatchToVehicleMutation = useMutation({
+    mutationFn: async (data: { vehicleId: string; items: Array<{ productId: string; quantity: number }>; notes?: string }) => {
+      const response = await apiRequest("POST", "/api/warehouse/dispatch-to-vehicle", data);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Error al despachar");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse/inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse/movements"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse/lots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicle-inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-transfers"] });
+      setIsDispatchToVehicleDialogOpen(false);
+      setDispatchVehicleId("");
+      setDispatchItems([]);
+      setDispatchNotes("");
+      setTempProductId("");
+      setTempQuantity("");
+      toast({
+        title: "Despacho exitoso",
+        description: data.message,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error al despachar",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAddDispatchItem = () => {
+    if (!tempProductId || !tempQuantity || parseInt(tempQuantity) <= 0) {
+      toast({
+        title: "Error",
+        description: "Selecciona un producto y cantidad válida",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const existingIndex = dispatchItems.findIndex(i => i.productId === tempProductId);
+    if (existingIndex >= 0) {
+      const updated = [...dispatchItems];
+      updated[existingIndex].quantity += parseInt(tempQuantity);
+      setDispatchItems(updated);
+    } else {
+      setDispatchItems([...dispatchItems, { productId: tempProductId, quantity: parseInt(tempQuantity) }]);
+    }
+    setTempProductId("");
+    setTempQuantity("");
+  };
+
+  const handleRemoveDispatchItem = (productId: string) => {
+    setDispatchItems(dispatchItems.filter(i => i.productId !== productId));
+  };
+
+  const handleSubmitDispatch = () => {
+    if (!dispatchVehicleId) {
+      toast({
+        title: "Error",
+        description: "Selecciona un vehículo",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (dispatchItems.length === 0) {
+      toast({
+        title: "Error",
+        description: "Agrega al menos un producto",
+        variant: "destructive",
+      });
+      return;
+    }
+    dispatchToVehicleMutation.mutate({
+      vehicleId: dispatchVehicleId,
+      items: dispatchItems,
+      notes: dispatchNotes || undefined,
+    });
+  };
+
   const filteredInventory = inventory.filter((item) =>
     item.product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     item.product.code?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -333,6 +435,16 @@ export function WarehousePage() {
             >
               <ArrowUpCircle className="w-4 h-4 mr-2" />
               Salida
+            </Button>
+          )}
+          {canCreate("warehouse_movements") && (
+            <Button
+              onClick={() => setIsDispatchToVehicleDialogOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700"
+              data-testid="button-dispatch-vehicle"
+            >
+              <Truck className="w-4 h-4 mr-2" />
+              Despachar a Vehículo
             </Button>
           )}
           <Select onValueChange={(type) => {
@@ -1122,6 +1234,127 @@ export function WarehousePage() {
               </div>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDispatchToVehicleDialogOpen} onOpenChange={setIsDispatchToVehicleDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Despachar Productos a Vehículo</DialogTitle>
+            <DialogDescription>
+              Transfiere productos del almacén a un vehículo de abastecimiento
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Vehículo</label>
+              <Select value={dispatchVehicleId} onValueChange={setDispatchVehicleId}>
+                <SelectTrigger data-testid="select-dispatch-vehicle">
+                  <SelectValue placeholder="Selecciona un vehículo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {vehicles.filter(v => v.isActive !== false).map((vehicle) => (
+                    <SelectItem key={vehicle.id} value={vehicle.id}>
+                      {vehicle.plate} - {vehicle.brand} {vehicle.model}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="border rounded-lg p-4 space-y-3">
+              <label className="text-sm font-medium">Agregar productos</label>
+              <div className="flex gap-2">
+                <Select value={tempProductId} onValueChange={setTempProductId}>
+                  <SelectTrigger className="flex-1" data-testid="select-dispatch-product">
+                    <SelectValue placeholder="Producto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {inventory.filter(i => (i.currentStock || 0) > 0).map((item) => (
+                      <SelectItem key={item.productId} value={item.productId}>
+                        {item.product.name} (Stock: {item.currentStock})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  placeholder="Cantidad"
+                  className="w-24"
+                  value={tempQuantity}
+                  onChange={(e) => setTempQuantity(e.target.value)}
+                  data-testid="input-dispatch-quantity"
+                />
+                <Button type="button" size="icon" onClick={handleAddDispatchItem} data-testid="button-add-dispatch-item">
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {dispatchItems.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Productos a despachar:</p>
+                  {dispatchItems.map((item) => {
+                    const product = products.find(p => p.id === item.productId);
+                    const invItem = inventory.find(i => i.productId === item.productId);
+                    return (
+                      <div key={item.productId} className="flex items-center justify-between bg-muted/50 rounded-md px-3 py-2">
+                        <span className="text-sm">
+                          {product?.name || item.productId} - <strong>{item.quantity} unidades</strong>
+                          {invItem && item.quantity > (invItem.currentStock || 0) && (
+                            <Badge variant="destructive" className="ml-2">Stock insuficiente</Badge>
+                          )}
+                        </span>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => handleRemoveDispatchItem(item.productId)}
+                          data-testid={`button-remove-dispatch-item-${item.productId}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Notas (opcional)</label>
+              <Textarea
+                placeholder="Observaciones del despacho..."
+                value={dispatchNotes}
+                onChange={(e) => setDispatchNotes(e.target.value)}
+                data-testid="input-dispatch-notes"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsDispatchToVehicleDialogOpen(false);
+                  setDispatchVehicleId("");
+                  setDispatchItems([]);
+                  setDispatchNotes("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSubmitDispatch}
+                disabled={dispatchToVehicleMutation.isPending || dispatchItems.length === 0}
+                className="bg-blue-600 hover:bg-blue-700"
+                data-testid="button-submit-dispatch"
+              >
+                {dispatchToVehicleMutation.isPending ? "Despachando..." : `Despachar ${dispatchItems.length} producto(s)`}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
