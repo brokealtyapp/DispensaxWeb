@@ -2526,6 +2526,50 @@ export async function registerRoutes(
     }
   });
 
+  // Cargar productos desde vehículo a máquina (nuevo flujo con trazabilidad de lotes y FEFO)
+  app.post("/api/supplier/load-from-vehicle", authenticateJWT, authorizeAction("warehouse_movements", "create"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { machineId, products, serviceRecordId, notes } = req.body;
+      const userId = req.user?.userId;
+      
+      if (!machineId || !products || !Array.isArray(products) || !userId) {
+        return res.status(400).json({ error: "Faltan campos requeridos" });
+      }
+      
+      // Abastecedor solo puede cargar desde su propio vehículo
+      if (req.user?.role === "abastecedor") {
+        // No ownership override needed - the method automatically uses userId to find their vehicle
+      }
+      
+      const result = await storage.transferFromVehicleToMachine({
+        userId,
+        machineId,
+        items: products.map((p: { productId: string; quantity: number }) => ({
+          productId: p.productId,
+          quantity: p.quantity
+        })),
+        serviceRecordId: serviceRecordId || undefined,
+        notes: notes || undefined,
+      });
+      
+      if (!result.success) {
+        return res.status(400).json({
+          error: "Inventario insuficiente en vehículo",
+          insufficientProducts: result.insufficientProducts
+        });
+      }
+      
+      res.status(201).json({
+        message: "Productos cargados exitosamente desde vehículo",
+        totalLoaded: result.totalLoaded,
+        loadedProducts: result.loadedProducts
+      });
+    } catch (error) {
+      console.error("Error loading products from vehicle to machine:", error);
+      res.status(500).json({ error: "Error al cargar productos desde vehículo" });
+    }
+  });
+
   // Estadísticas del Abastecedor
   app.get("/api/supplier/stats/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "rh"), authorizeOwnership("userId"), async (req: AuthenticatedRequest, res: Response) => {
     try {
