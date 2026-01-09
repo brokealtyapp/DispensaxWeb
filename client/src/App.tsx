@@ -37,6 +37,7 @@ import { ProductsPage } from "@/pages/products";
 import RoutesPage from "@/pages/routes";
 import { SuppliersManagementPage } from "@/pages/suppliers-management";
 import { ServiceMonitoringPage } from "@/pages/service-monitoring";
+import MiVehiculoPage from "@/pages/mi-vehiculo";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
@@ -217,6 +218,7 @@ function ProtectedRoutes() {
               <Route path="/mis-tareas">{() => <ProtectedRoute path="/mis-tareas" component={MyTasksPage} />}</Route>
               <Route path="/calendario">{() => <ProtectedRoute path="/calendario" component={CalendarPage} />}</Route>
               <Route path="/abastecedor">{() => <ProtectedRoute path="/abastecedor" component={SupplierPage} />}</Route>
+              <Route path="/mi-vehiculo">{() => <ProtectedRoute path="/mi-vehiculo" component={MiVehiculoPage} />}</Route>
               <Route path="/almacen">{() => <ProtectedRoute path="/almacen" component={WarehousePage} />}</Route>
               <Route path="/productos">{() => <ProtectedRoute path="/productos" component={ProductsPage} />}</Route>
               <Route path="/dinero-productos">{() => <ProtectedRoute path="/dinero-productos" component={MoneyProductsPage} />}</Route>

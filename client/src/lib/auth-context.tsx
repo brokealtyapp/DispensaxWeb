@@ -11,6 +11,8 @@ export interface User {
   phone?: string | null;
   role: UserRole;
   isActive?: boolean;
+  assignedVehicleId?: string | null;
+  assignedZoneId?: string | null;
 }
 
 interface AuthContextType {
@@ -276,7 +278,7 @@ export function canAccessRoute(role: UserRole, route: string): boolean {
   const supervisorRoutes = ["/supervisor", "/maquinas", "/tareas", "/todas-tareas", "/calendario", 
     "/almacen", "/abastecedor", "/abastecedores", "/dinero-productos", "/combustible", "/rh", "/configuracion", "/productos", "/rutas", "/monitoreo-servicios"];
   
-  const abastecedorRoutes = ["/abastecedor", "/tareas", "/calendario", "/configuracion"];
+  const abastecedorRoutes = ["/abastecedor", "/mi-vehiculo", "/tareas", "/calendario", "/configuracion"];
   
   const almacenRoutes = ["/almacen", "/almacen-panel", "/compras", "/tareas", "/calendario", "/configuracion", "/productos"];
   

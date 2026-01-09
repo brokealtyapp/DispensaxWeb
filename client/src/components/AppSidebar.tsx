@@ -82,7 +82,7 @@ const operacionItems: MenuItem[] = [
 const abastecedorItems: MenuItem[] = [
   { icon: Navigation, label: "Mi Ruta", href: "/abastecedor?tab=ruta", roles: ["abastecedor"] },
   { icon: Wrench, label: "Servicio Activo", href: "/abastecedor?tab=servicio", roles: ["abastecedor"] },
-  { icon: Truck, label: "Mi Vehículo", href: "/abastecedor?tab=inventario", roles: ["abastecedor"] },
+  { icon: Truck, label: "Mi Vehículo", href: "/mi-vehiculo", roles: ["abastecedor"] },
   { icon: TrendingUp, label: "Mi Rendimiento", href: "/abastecedor?tab=rendimiento", roles: ["abastecedor"] },
 ];
 
