@@ -239,6 +239,7 @@ export interface IStorage {
     success: boolean; 
     loadedProducts: Array<{ productId: string; quantity: number; lotIds: string[] }>; 
     totalLoaded: number;
+    errorCode?: "NO_VEHICLE_ASSIGNED" | "INSUFFICIENT_STOCK" | "TRANSACTION_FAILED";
     insufficientProducts?: Array<{ productId: string; requested: number; available: number }>;
   }>;
   
@@ -1951,118 +1952,144 @@ export class DatabaseStorage implements IStorage {
     executedByUserId: string;
     notes?: string;
   }): Promise<{ warehouseMovements: WarehouseMovement[]; vehicleInventoryItems: VehicleInventory[]; inventoryTransfers: InventoryTransfer[] }> {
-    const warehouseMovementsResult: WarehouseMovement[] = [];
-    const vehicleInventoryItemsResult: VehicleInventory[] = [];
-    const inventoryTransfersResult: InventoryTransfer[] = [];
-    
-    for (const item of data.items) {
-      const currentInventory = await this.getWarehouseInventoryItem(item.productId);
-      const previousStock = currentInventory?.currentStock || 0;
+    // Usar transacción para garantizar atomicidad
+    return await db.transaction(async (tx) => {
+      const warehouseMovementsResult: WarehouseMovement[] = [];
+      const vehicleInventoryItemsResult: VehicleInventory[] = [];
+      const inventoryTransfersResult: InventoryTransfer[] = [];
       
-      if (previousStock < item.quantity) {
-        throw new Error(`Stock insuficiente para producto ${item.productId}. Disponible: ${previousStock}, Solicitado: ${item.quantity}`);
-      }
-      
-      const newStock = previousStock - item.quantity;
-      await this.updateWarehouseStock(item.productId, newStock);
-      
-      const lots = await this.getProductLots(item.productId);
-      let remaining = item.quantity;
-      
-      for (const lot of lots) {
-        if (remaining <= 0) break;
-        if (lot.remainingQuantity <= 0) continue;
+      for (const item of data.items) {
+        // Obtener inventario actual dentro de la transacción
+        const [currentInventory] = await tx.select()
+          .from(warehouseInventory)
+          .where(eq(warehouseInventory.productId, item.productId));
+        const previousStock = currentInventory?.currentStock || 0;
         
-        const toDeduct = Math.min(remaining, lot.remainingQuantity);
+        if (previousStock < item.quantity) {
+          throw new Error(`Stock insuficiente para producto ${item.productId}. Disponible: ${previousStock}, Solicitado: ${item.quantity}`);
+        }
         
-        await db.update(productLots)
-          .set({ remainingQuantity: lot.remainingQuantity - toDeduct })
-          .where(eq(productLots.id, lot.id));
+        const newStock = previousStock - item.quantity;
         
-        const warehouseMovement = await this.createWarehouseMovement({
-          productId: item.productId,
-          lotId: lot.id,
-          movementType: "salida_abastecedor",
-          quantity: toDeduct,
-          previousStock: previousStock,
-          newStock: newStock,
-          unitCost: lot.costPrice,
-          userId: data.executedByUserId,
-          notes: data.notes ? `${data.notes} | Lote: ${lot.lotNumber}` : `Despacho a vehículo | Lote: ${lot.lotNumber}`,
-        });
-        warehouseMovementsResult.push(warehouseMovement);
+        // Actualizar stock del almacén
+        if (currentInventory) {
+          await tx.update(warehouseInventory)
+            .set({ currentStock: newStock, lastUpdated: new Date() })
+            .where(eq(warehouseInventory.id, currentInventory.id));
+        }
         
-        const existingVehicleInv = await db.select()
-          .from(vehicleInventory)
+        // Obtener lotes ordenados por FEFO
+        const lots = await tx.select()
+          .from(productLots)
           .where(and(
-            eq(vehicleInventory.vehicleId, data.vehicleId),
-            eq(vehicleInventory.productId, item.productId),
-            eq(vehicleInventory.lotId, lot.id)
-          ));
+            eq(productLots.productId, item.productId),
+            sql`${productLots.remainingQuantity} > 0`
+          ))
+          .orderBy(asc(productLots.expirationDate));
         
-        let vehicleInvItem: VehicleInventory;
-        const vehiclePrevStock = existingVehicleInv[0]?.quantity || 0;
-        const vehicleNewStock = vehiclePrevStock + toDeduct;
+        let remaining = item.quantity;
         
-        if (existingVehicleInv[0]) {
-          const [updated] = await db.update(vehicleInventory)
-            .set({ 
-              quantity: vehicleNewStock,
-              updatedAt: new Date()
-            })
-            .where(eq(vehicleInventory.id, existingVehicleInv[0].id))
-            .returning();
-          vehicleInvItem = updated;
-        } else {
-          const [newItem] = await db.insert(vehicleInventory)
+        for (const lot of lots) {
+          if (remaining <= 0) break;
+          if (lot.remainingQuantity <= 0) continue;
+          
+          const toDeduct = Math.min(remaining, lot.remainingQuantity);
+          
+          // Actualizar lote
+          await tx.update(productLots)
+            .set({ remainingQuantity: lot.remainingQuantity - toDeduct })
+            .where(eq(productLots.id, lot.id));
+          
+          // Crear movimiento de almacén
+          const [warehouseMovement] = await tx.insert(warehouseMovements)
             .values({
-              vehicleId: data.vehicleId,
+              productId: item.productId,
+              lotId: lot.id,
+              movementType: "salida_abastecedor",
+              quantity: toDeduct,
+              previousStock: previousStock,
+              newStock: newStock,
+              unitCost: lot.costPrice,
+              userId: data.executedByUserId,
+              notes: data.notes ? `${data.notes} | Lote: ${lot.lotNumber}` : `Despacho a vehículo | Lote: ${lot.lotNumber}`,
+            })
+            .returning();
+          warehouseMovementsResult.push(warehouseMovement);
+          
+          // Verificar si ya existe inventario del vehículo para este lote
+          const existingVehicleInv = await tx.select()
+            .from(vehicleInventory)
+            .where(and(
+              eq(vehicleInventory.vehicleId, data.vehicleId),
+              eq(vehicleInventory.productId, item.productId),
+              eq(vehicleInventory.lotId, lot.id)
+            ));
+          
+          let vehicleInvItem: VehicleInventory;
+          const vehiclePrevStock = existingVehicleInv[0]?.quantity || 0;
+          const vehicleNewStock = vehiclePrevStock + toDeduct;
+          
+          if (existingVehicleInv[0]) {
+            const [updated] = await tx.update(vehicleInventory)
+              .set({ 
+                quantity: vehicleNewStock,
+                updatedAt: new Date()
+              })
+              .where(eq(vehicleInventory.id, existingVehicleInv[0].id))
+              .returning();
+            vehicleInvItem = updated;
+          } else {
+            const [newItem] = await tx.insert(vehicleInventory)
+              .values({
+                vehicleId: data.vehicleId,
+                productId: item.productId,
+                lotId: lot.id,
+                quantity: toDeduct,
+                loadedByUserId: data.executedByUserId,
+                warehouseMovementId: warehouseMovement.id,
+                notes: data.notes,
+              })
+              .returning();
+            vehicleInvItem = newItem;
+          }
+          vehicleInventoryItemsResult.push(vehicleInvItem);
+          
+          // Crear registro de transferencia
+          const [transfer] = await tx.insert(inventoryTransfers)
+            .values({
+              transferType: "almacen_vehiculo",
               productId: item.productId,
               lotId: lot.id,
               quantity: toDeduct,
-              loadedByUserId: data.executedByUserId,
+              sourceType: "warehouse",
+              destinationType: "vehicle",
+              destinationVehicleId: data.vehicleId,
+              sourcePreviousStock: previousStock,
+              sourceNewStock: newStock,
+              destinationPreviousStock: vehiclePrevStock,
+              destinationNewStock: vehicleNewStock,
               warehouseMovementId: warehouseMovement.id,
+              executedByUserId: data.executedByUserId,
               notes: data.notes,
+              status: "completado",
             })
             .returning();
-          vehicleInvItem = newItem;
+          inventoryTransfersResult.push(transfer);
+          
+          remaining -= toDeduct;
         }
-        vehicleInventoryItemsResult.push(vehicleInvItem);
         
-        const [transfer] = await db.insert(inventoryTransfers)
-          .values({
-            transferType: "almacen_vehiculo",
-            productId: item.productId,
-            lotId: lot.id,
-            quantity: toDeduct,
-            sourceType: "warehouse",
-            destinationType: "vehicle",
-            destinationVehicleId: data.vehicleId,
-            sourcePreviousStock: previousStock,
-            sourceNewStock: newStock,
-            destinationPreviousStock: vehiclePrevStock,
-            destinationNewStock: vehicleNewStock,
-            warehouseMovementId: warehouseMovement.id,
-            executedByUserId: data.executedByUserId,
-            notes: data.notes,
-            status: "completado",
-          })
-          .returning();
-        inventoryTransfersResult.push(transfer);
-        
-        remaining -= toDeduct;
+        if (remaining > 0) {
+          throw new Error(`No hay suficientes lotes disponibles para completar el despacho del producto ${item.productId}`);
+        }
       }
       
-      if (remaining > 0) {
-        throw new Error(`No hay suficientes lotes disponibles para completar el despacho del producto ${item.productId}`);
-      }
-    }
-    
-    return {
-      warehouseMovements: warehouseMovementsResult,
-      vehicleInventoryItems: vehicleInventoryItemsResult,
-      inventoryTransfers: inventoryTransfersResult,
-    };
+      return {
+        warehouseMovements: warehouseMovementsResult,
+        vehicleInventoryItems: vehicleInventoryItemsResult,
+        inventoryTransfers: inventoryTransfersResult,
+      };
+    });
   }
   
   async getInventoryTransfers(filters?: { vehicleId?: string; machineId?: string; transferType?: string; limit?: number }): Promise<any[]> {
@@ -2160,6 +2187,7 @@ export class DatabaseStorage implements IStorage {
     success: boolean; 
     loadedProducts: Array<{ productId: string; quantity: number; lotIds: string[] }>; 
     totalLoaded: number;
+    errorCode?: "NO_VEHICLE_ASSIGNED" | "INSUFFICIENT_STOCK" | "TRANSACTION_FAILED";
     insufficientProducts?: Array<{ productId: string; requested: number; available: number }>;
   }> {
     const [vehicle] = await db.select()
@@ -2167,7 +2195,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(vehicles.assignedUserId, data.userId));
     
     if (!vehicle) {
-      return { success: false, loadedProducts: [], totalLoaded: 0, insufficientProducts: [] };
+      return { success: false, loadedProducts: [], totalLoaded: 0, errorCode: "NO_VEHICLE_ASSIGNED" };
     }
     
     const vehicleInv = await this.getVehicleInventory(vehicle.id);
@@ -2190,133 +2218,159 @@ export class DatabaseStorage implements IStorage {
     }
     
     if (insufficientProducts.length > 0) {
-      return { success: false, loadedProducts: [], totalLoaded: 0, insufficientProducts };
+      return { success: false, loadedProducts: [], totalLoaded: 0, errorCode: "INSUFFICIENT_STOCK", insufficientProducts };
     }
     
-    const loadedProducts: Array<{ productId: string; quantity: number; lotIds: string[] }> = [];
-    let totalLoaded = 0;
-    
-    for (const item of data.items) {
-      if (item.quantity <= 0) continue;
-      
-      let remaining = item.quantity;
-      const lotIds: string[] = [];
-      
-      const productInventory = vehicleInv
-        .filter(v => v.productId === item.productId && v.quantity > 0)
-        .sort((a, b) => {
-          if (!a.lot?.expirationDate && !b.lot?.expirationDate) return 0;
-          if (!a.lot?.expirationDate) return 1;
-          if (!b.lot?.expirationDate) return -1;
-          return new Date(a.lot.expirationDate).getTime() - new Date(b.lot.expirationDate).getTime();
-        });
-      
-      for (const vehInvItem of productInventory) {
-        if (remaining <= 0) break;
+    // Usar transacción para garantizar atomicidad
+    try {
+      const result = await db.transaction(async (tx) => {
+        const loadedProducts: Array<{ productId: string; quantity: number; lotIds: string[] }> = [];
+        let totalLoaded = 0;
         
-        const toTransfer = Math.min(remaining, vehInvItem.quantity);
-        remaining -= toTransfer;
-        
-        if (vehInvItem.lotId) {
-          lotIds.push(vehInvItem.lotId);
-        }
-        
-        await db.update(vehicleInventory)
-          .set({ quantity: vehInvItem.quantity - toTransfer })
-          .where(eq(vehicleInventory.id, vehInvItem.id));
-        
-        const previousVehicleStock = vehInvItem.quantity;
-        const newVehicleStock = vehInvItem.quantity - toTransfer;
-        
-        const [existingMachineInv] = await db.select()
-          .from(machineInventory)
-          .where(and(
-            eq(machineInventory.machineId, data.machineId),
-            eq(machineInventory.productId, item.productId)
-          ));
-        
-        const previousMachineStock = existingMachineInv?.currentQuantity || 0;
-        const newMachineStock = previousMachineStock + toTransfer;
-        
-        if (existingMachineInv) {
-          await db.update(machineInventory)
-            .set({ 
-              currentQuantity: newMachineStock,
-              lastUpdated: new Date()
-            })
-            .where(eq(machineInventory.id, existingMachineInv.id));
-        } else {
-          await db.insert(machineInventory).values({
-            machineId: data.machineId,
-            productId: item.productId,
-            currentQuantity: toTransfer,
-            maxCapacity: 20,
-            minLevel: 5,
-          });
-        }
-        
-        if (vehInvItem.lotId) {
-          const [existingMachineLot] = await db.select()
-            .from(machineInventoryLots)
-            .where(and(
-              eq(machineInventoryLots.machineId, data.machineId),
-              eq(machineInventoryLots.productId, item.productId),
-              eq(machineInventoryLots.lotId, vehInvItem.lotId)
-            ));
+        for (const item of data.items) {
+          if (item.quantity <= 0) continue;
           
-          if (existingMachineLot) {
-            await db.update(machineInventoryLots)
-              .set({ quantity: existingMachineLot.quantity + toTransfer })
-              .where(eq(machineInventoryLots.id, existingMachineLot.id));
-          } else {
-            await db.insert(machineInventoryLots).values({
-              machineId: data.machineId,
+          let remaining = item.quantity;
+          const lotIds: string[] = [];
+          
+          // Re-fetch vehicle inventory dentro de la transacción para consistencia
+          const txVehicleInv = await tx.select()
+            .from(vehicleInventory)
+            .leftJoin(productLots, eq(vehicleInventory.lotId, productLots.id))
+            .where(and(
+              eq(vehicleInventory.vehicleId, vehicle.id),
+              sql`${vehicleInventory.quantity} > 0`
+            ))
+            .orderBy(asc(productLots.expirationDate));
+          
+          const productInventory = txVehicleInv
+            .filter(v => v.vehicle_inventory.productId === item.productId && v.vehicle_inventory.quantity > 0)
+            .sort((a, b) => {
+              if (!a.product_lots?.expirationDate && !b.product_lots?.expirationDate) return 0;
+              if (!a.product_lots?.expirationDate) return 1;
+              if (!b.product_lots?.expirationDate) return -1;
+              return new Date(a.product_lots.expirationDate).getTime() - new Date(b.product_lots.expirationDate).getTime();
+            });
+          
+          for (const row of productInventory) {
+            if (remaining <= 0) break;
+            
+            const vehInvItem = row.vehicle_inventory;
+            const toTransfer = Math.min(remaining, vehInvItem.quantity);
+            remaining -= toTransfer;
+            
+            if (vehInvItem.lotId) {
+              lotIds.push(vehInvItem.lotId);
+            }
+            
+            // Actualizar inventario del vehículo
+            await tx.update(vehicleInventory)
+              .set({ quantity: vehInvItem.quantity - toTransfer })
+              .where(eq(vehicleInventory.id, vehInvItem.id));
+            
+            const previousVehicleStock = vehInvItem.quantity;
+            const newVehicleStock = vehInvItem.quantity - toTransfer;
+            
+            // Obtener o crear inventario de máquina
+            const [existingMachineInv] = await tx.select()
+              .from(machineInventory)
+              .where(and(
+                eq(machineInventory.machineId, data.machineId),
+                eq(machineInventory.productId, item.productId)
+              ));
+            
+            const previousMachineStock = existingMachineInv?.currentQuantity || 0;
+            const newMachineStock = previousMachineStock + toTransfer;
+            
+            if (existingMachineInv) {
+              await tx.update(machineInventory)
+                .set({ 
+                  currentQuantity: newMachineStock,
+                  lastUpdated: new Date()
+                })
+                .where(eq(machineInventory.id, existingMachineInv.id));
+            } else {
+              await tx.insert(machineInventory).values({
+                machineId: data.machineId,
+                productId: item.productId,
+                currentQuantity: toTransfer,
+                maxCapacity: 20,
+                minLevel: 5,
+              });
+            }
+            
+            // Actualizar lotes de máquina
+            if (vehInvItem.lotId) {
+              const [existingMachineLot] = await tx.select()
+                .from(machineInventoryLots)
+                .where(and(
+                  eq(machineInventoryLots.machineId, data.machineId),
+                  eq(machineInventoryLots.productId, item.productId),
+                  eq(machineInventoryLots.lotId, vehInvItem.lotId)
+                ));
+              
+              if (existingMachineLot) {
+                await tx.update(machineInventoryLots)
+                  .set({ quantity: existingMachineLot.quantity + toTransfer })
+                  .where(eq(machineInventoryLots.id, existingMachineLot.id));
+              } else {
+                await tx.insert(machineInventoryLots).values({
+                  machineId: data.machineId,
+                  productId: item.productId,
+                  lotId: vehInvItem.lotId,
+                  quantity: toTransfer,
+                });
+              }
+            }
+            
+            // Registrar transferencia
+            await tx.insert(inventoryTransfers).values({
+              transferType: "vehiculo_maquina",
               productId: item.productId,
               lotId: vehInvItem.lotId,
               quantity: toTransfer,
+              sourceType: "vehicle",
+              sourceVehicleId: vehicle.id,
+              destinationType: "machine",
+              destinationMachineId: data.machineId,
+              sourcePreviousStock: previousVehicleStock,
+              sourceNewStock: newVehicleStock,
+              destinationPreviousStock: previousMachineStock,
+              destinationNewStock: newMachineStock,
+              executedByUserId: data.userId,
+              notes: data.notes,
             });
+            
+            // Registrar en product_loads si hay serviceRecordId
+            if (data.serviceRecordId) {
+              await tx.insert(productLoads).values({
+                serviceRecordId: data.serviceRecordId,
+                machineId: data.machineId,
+                productId: item.productId,
+                userId: data.userId,
+                loadType: "cargado",
+                quantity: toTransfer,
+                lotId: vehInvItem.lotId || null,
+              });
+            }
           }
-        }
-        
-        await db.insert(inventoryTransfers).values({
-          transferType: "vehiculo_maquina",
-          productId: item.productId,
-          lotId: vehInvItem.lotId,
-          quantity: toTransfer,
-          sourceType: "vehicle",
-          sourceVehicleId: vehicle.id,
-          destinationType: "machine",
-          destinationMachineId: data.machineId,
-          sourcePreviousStock: previousVehicleStock,
-          sourceNewStock: newVehicleStock,
-          destinationPreviousStock: previousMachineStock,
-          destinationNewStock: newMachineStock,
-          executedByUserId: data.userId,
-          notes: data.notes,
-        });
-        
-        if (data.serviceRecordId) {
-          await db.insert(productLoads).values({
-            serviceRecordId: data.serviceRecordId,
-            machineId: data.machineId,
-            productId: item.productId,
-            userId: data.userId,
-            loadType: "cargado",
-            quantity: toTransfer,
-            lotId: vehInvItem.lotId || null,
+          
+          loadedProducts.push({ 
+            productId: item.productId, 
+            quantity: item.quantity, 
+            lotIds 
           });
+          totalLoaded += item.quantity;
         }
-      }
-      
-      loadedProducts.push({ 
-        productId: item.productId, 
-        quantity: item.quantity, 
-        lotIds 
+        
+        return { loadedProducts, totalLoaded };
       });
-      totalLoaded += item.quantity;
+      
+      return { success: true, loadedProducts: result.loadedProducts, totalLoaded: result.totalLoaded };
+    } catch (error) {
+      console.error("Transaction failed in transferFromVehicleToMachine:", error);
+      return { success: false, loadedProducts: [], totalLoaded: 0, errorCode: "TRANSACTION_FAILED" };
     }
-    
-    return { success: true, loadedProducts, totalLoaded };
   }
 
   // ==================== MÓDULO PRODUCTOS Y DINERO ====================

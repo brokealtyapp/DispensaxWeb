@@ -2531,14 +2531,44 @@ export async function registerRoutes(
     try {
       const { machineId, products, serviceRecordId, notes } = req.body;
       const userId = req.user?.userId;
+      const userRole = req.user?.role;
       
       if (!machineId || !products || !Array.isArray(products) || !userId) {
-        return res.status(400).json({ error: "Faltan campos requeridos" });
+        return res.status(400).json({ 
+          error: "Faltan campos requeridos",
+          errorCode: "MISSING_FIELDS"
+        });
       }
       
-      // Abastecedor solo puede cargar desde su propio vehículo
-      if (req.user?.role === "abastecedor") {
-        // No ownership override needed - the method automatically uses userId to find their vehicle
+      // Validar que la máquina existe
+      const machine = await storage.getMachine(machineId);
+      if (!machine) {
+        return res.status(404).json({
+          error: "Máquina no encontrada",
+          errorCode: "MACHINE_NOT_FOUND"
+        });
+      }
+      
+      // Para abastecedores: validar que la máquina está en su zona asignada
+      if (userRole === "abastecedor") {
+        const user = await storage.getUser(userId);
+        if (user?.assignedZone && machine.zone && user.assignedZone !== machine.zone) {
+          return res.status(403).json({
+            error: "No tiene permiso para cargar productos a esta máquina. La máquina no está en su zona asignada.",
+            errorCode: "MACHINE_NOT_IN_ZONE"
+          });
+        }
+      }
+      
+      // Para supervisores: validar que la máquina está en su zona
+      if (userRole === "supervisor") {
+        const supervisorZone = await getSupervisorZone(req);
+        if (supervisorZone && machine.zone && supervisorZone !== machine.zone) {
+          return res.status(403).json({
+            error: "No tiene permiso para operar esta máquina. La máquina no está en su zona.",
+            errorCode: "MACHINE_NOT_IN_ZONE"
+          });
+        }
       }
       
       const result = await storage.transferFromVehicleToMachine({
@@ -2553,9 +2583,25 @@ export async function registerRoutes(
       });
       
       if (!result.success) {
+        // Determinar el tipo de error específico
+        if (result.errorCode === "NO_VEHICLE_ASSIGNED") {
+          return res.status(400).json({
+            error: "No tiene un vehículo asignado. Contacte al administrador.",
+            errorCode: "NO_VEHICLE_ASSIGNED"
+          });
+        }
+        
+        if (result.insufficientProducts && result.insufficientProducts.length > 0) {
+          return res.status(400).json({
+            error: "Inventario insuficiente en vehículo para algunos productos",
+            errorCode: "INSUFFICIENT_STOCK",
+            insufficientProducts: result.insufficientProducts
+          });
+        }
+        
         return res.status(400).json({
-          error: "Inventario insuficiente en vehículo",
-          insufficientProducts: result.insufficientProducts
+          error: "Error al transferir productos",
+          errorCode: "TRANSFER_FAILED"
         });
       }
       
@@ -2566,7 +2612,10 @@ export async function registerRoutes(
       });
     } catch (error) {
       console.error("Error loading products from vehicle to machine:", error);
-      res.status(500).json({ error: "Error al cargar productos desde vehículo" });
+      res.status(500).json({ 
+        error: "Error al cargar productos desde vehículo",
+        errorCode: "INTERNAL_ERROR"
+      });
     }
   });
 
