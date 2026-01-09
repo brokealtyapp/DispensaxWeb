@@ -1808,3 +1808,196 @@ export const employeeProfilesRelations = relations(employeeProfiles, ({ one }) =
     references: [users.id],
   }),
 }));
+
+// ==================== SISTEMA DE FLUJO DE INVENTARIO ====================
+// Inventario del vehículo - Stock que lleva el abastecedor en su vehículo
+
+export const vehicleInventory = pgTable("vehicle_inventory", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vehicleId: varchar("vehicle_id").references(() => vehicles.id).notNull(),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  lotId: varchar("lot_id").references(() => productLots.id).notNull(),
+  quantity: integer("quantity").notNull().default(0),
+  loadedAt: timestamp("loaded_at").defaultNow(),
+  loadedByUserId: varchar("loaded_by_user_id").references(() => users.id),
+  warehouseMovementId: varchar("warehouse_movement_id").references(() => warehouseMovements.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertVehicleInventorySchema = createInsertSchema(vehicleInventory).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  loadedAt: true,
+});
+
+export type InsertVehicleInventory = z.infer<typeof insertVehicleInventorySchema>;
+export type VehicleInventory = typeof vehicleInventory.$inferSelect;
+
+// Transferencias de inventario con trazabilidad completa (kardex unificado)
+export const inventoryTransfers = pgTable("inventory_transfers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  transferType: text("transfer_type").notNull(), // almacen_vehiculo, vehiculo_maquina, maquina_venta, devolucion_vehiculo, devolucion_almacen
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  lotId: varchar("lot_id").references(() => productLots.id).notNull(),
+  quantity: integer("quantity").notNull(),
+  
+  // Origen
+  sourceType: text("source_type").notNull(), // warehouse, vehicle, machine
+  sourceWarehouseId: varchar("source_warehouse_id"), // null = almacén principal
+  sourceVehicleId: varchar("source_vehicle_id").references(() => vehicles.id),
+  sourceMachineId: varchar("source_machine_id").references(() => machines.id),
+  
+  // Destino
+  destinationType: text("destination_type").notNull(), // vehicle, machine, customer, warehouse
+  destinationVehicleId: varchar("destination_vehicle_id").references(() => vehicles.id),
+  destinationMachineId: varchar("destination_machine_id").references(() => machines.id),
+  
+  // Stock antes/después para auditoria
+  sourcePreviousStock: integer("source_previous_stock"),
+  sourceNewStock: integer("source_new_stock"),
+  destinationPreviousStock: integer("destination_previous_stock"),
+  destinationNewStock: integer("destination_new_stock"),
+  
+  // Referencias
+  warehouseMovementId: varchar("warehouse_movement_id").references(() => warehouseMovements.id),
+  serviceRecordId: varchar("service_record_id").references(() => serviceRecords.id),
+  machineSaleId: varchar("machine_sale_id").references(() => machineSales.id),
+  
+  // Usuarios
+  executedByUserId: varchar("executed_by_user_id").references(() => users.id).notNull(),
+  approvedByUserId: varchar("approved_by_user_id").references(() => users.id),
+  
+  reference: text("reference"),
+  notes: text("notes"),
+  status: text("status").default("completado"), // pendiente, completado, cancelado
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertInventoryTransferSchema = createInsertSchema(inventoryTransfers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertInventoryTransfer = z.infer<typeof insertInventoryTransferSchema>;
+export type InventoryTransfer = typeof inventoryTransfers.$inferSelect;
+
+// Inventario de máquina con trazabilidad de lote
+export const machineInventoryLots = pgTable("machine_inventory_lots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  machineId: varchar("machine_id").references(() => machines.id).notNull(),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  lotId: varchar("lot_id").references(() => productLots.id).notNull(),
+  quantity: integer("quantity").notNull().default(0),
+  loadedAt: timestamp("loaded_at").defaultNow(),
+  loadedByUserId: varchar("loaded_by_user_id").references(() => users.id),
+  vehicleInventoryId: varchar("vehicle_inventory_id").references(() => vehicleInventory.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMachineInventoryLotSchema = createInsertSchema(machineInventoryLots).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  loadedAt: true,
+});
+
+export type InsertMachineInventoryLot = z.infer<typeof insertMachineInventoryLotSchema>;
+export type MachineInventoryLot = typeof machineInventoryLots.$inferSelect;
+
+// Relaciones del sistema de flujo de inventario
+export const vehicleInventoryRelations = relations(vehicleInventory, ({ one }) => ({
+  vehicle: one(vehicles, {
+    fields: [vehicleInventory.vehicleId],
+    references: [vehicles.id],
+  }),
+  product: one(products, {
+    fields: [vehicleInventory.productId],
+    references: [products.id],
+  }),
+  lot: one(productLots, {
+    fields: [vehicleInventory.lotId],
+    references: [productLots.id],
+  }),
+  loadedBy: one(users, {
+    fields: [vehicleInventory.loadedByUserId],
+    references: [users.id],
+  }),
+  warehouseMovement: one(warehouseMovements, {
+    fields: [vehicleInventory.warehouseMovementId],
+    references: [warehouseMovements.id],
+  }),
+}));
+
+export const inventoryTransfersRelations = relations(inventoryTransfers, ({ one }) => ({
+  product: one(products, {
+    fields: [inventoryTransfers.productId],
+    references: [products.id],
+  }),
+  lot: one(productLots, {
+    fields: [inventoryTransfers.lotId],
+    references: [productLots.id],
+  }),
+  sourceVehicle: one(vehicles, {
+    fields: [inventoryTransfers.sourceVehicleId],
+    references: [vehicles.id],
+  }),
+  sourceMachine: one(machines, {
+    fields: [inventoryTransfers.sourceMachineId],
+    references: [machines.id],
+  }),
+  destinationVehicle: one(vehicles, {
+    fields: [inventoryTransfers.destinationVehicleId],
+    references: [vehicles.id],
+  }),
+  destinationMachine: one(machines, {
+    fields: [inventoryTransfers.destinationMachineId],
+    references: [machines.id],
+  }),
+  executedBy: one(users, {
+    fields: [inventoryTransfers.executedByUserId],
+    references: [users.id],
+  }),
+  approvedBy: one(users, {
+    fields: [inventoryTransfers.approvedByUserId],
+    references: [users.id],
+  }),
+  warehouseMovement: one(warehouseMovements, {
+    fields: [inventoryTransfers.warehouseMovementId],
+    references: [warehouseMovements.id],
+  }),
+  serviceRecord: one(serviceRecords, {
+    fields: [inventoryTransfers.serviceRecordId],
+    references: [serviceRecords.id],
+  }),
+  machineSale: one(machineSales, {
+    fields: [inventoryTransfers.machineSaleId],
+    references: [machineSales.id],
+  }),
+}));
+
+export const machineInventoryLotsRelations = relations(machineInventoryLots, ({ one }) => ({
+  machine: one(machines, {
+    fields: [machineInventoryLots.machineId],
+    references: [machines.id],
+  }),
+  product: one(products, {
+    fields: [machineInventoryLots.productId],
+    references: [products.id],
+  }),
+  lot: one(productLots, {
+    fields: [machineInventoryLots.lotId],
+    references: [productLots.id],
+  }),
+  loadedBy: one(users, {
+    fields: [machineInventoryLots.loadedByUserId],
+    references: [users.id],
+  }),
+  sourceVehicleInventory: one(vehicleInventory, {
+    fields: [machineInventoryLots.vehicleInventoryId],
+    references: [vehicleInventory.id],
+  }),
+}));
