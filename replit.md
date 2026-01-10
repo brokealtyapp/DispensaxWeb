@@ -59,3 +59,13 @@ The application follows a client-server architecture. The frontend is built with
     - JSON Web Tokens (JWT)
 - **Email Service:**
     - SMTP (for password recovery)
+
+## Documentation
+
+- **MANUAL_USUARIO.md**: Comprehensive user manual (200+ sections) organized by user role (6 profiles) and module (12+ modules). Includes:
+  - Detailed access and authentication instructions
+  - Role-specific guides for Admin, Supervisor, Abastecedor, Almacén, Contabilidad, and RH
+  - Practical step-by-step examples for every major functionality
+  - Module-by-module reference guide
+  - FAQ section and glossary
+  - All text in Spanish as per user preference
