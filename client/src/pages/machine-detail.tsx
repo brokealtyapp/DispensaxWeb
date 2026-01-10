@@ -206,12 +206,7 @@ export function MachineDetailPage() {
   }, [isServiceActive, serviceStartTime]);
 
   const { data: machine, isLoading } = useQuery<MachineWithDetails>({
-    queryKey: ["/api/machines", machineId],
-    queryFn: async () => {
-      const response = await fetch(`/api/machines/${machineId}`, { credentials: "include" });
-      if (!response.ok) throw new Error("Error loading machine");
-      return response.json();
-    },
+    queryKey: [`/api/machines/${machineId}`],
     enabled: !!machineId,
   });
 
@@ -233,7 +228,7 @@ export function MachineDetailPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/machines", machineId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       setIsAlertDialogOpen(false);
       alertForm.reset();
     },
@@ -245,7 +240,7 @@ export function MachineDetailPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/machines", machineId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
     },
   });
 
@@ -255,7 +250,7 @@ export function MachineDetailPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/machines", machineId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
     },
   });
 
@@ -265,7 +260,7 @@ export function MachineDetailPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/machines", machineId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       setIsEditDialogOpen(false);
     },
@@ -277,7 +272,7 @@ export function MachineDetailPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/machines", machineId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
     },
   });
@@ -288,7 +283,7 @@ export function MachineDetailPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/machines", machineId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       setIsInventoryDialogOpen(false);
       inventoryForm.reset();
     },
@@ -300,7 +295,7 @@ export function MachineDetailPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/machines", machineId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       setEditingInventoryId(null);
     },
   });
@@ -386,7 +381,7 @@ export function MachineDetailPage() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/machines", machineId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       toast({ title: "Servicio registrado", description: "La visita se ha guardado correctamente" });
     },
     onError: () => {
