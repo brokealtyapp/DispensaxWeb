@@ -67,6 +67,85 @@ import {
 import { z } from "zod";
 
 // =====================
+// RATE LIMITING (In-memory, can upgrade to Redis for production)
+// =====================
+interface RateLimitEntry {
+  count: number;
+  resetTime: number;
+}
+
+const rateLimitStore = new Map<string, RateLimitEntry>();
+
+function rateLimit(options: { 
+  windowMs: number; 
+  max: number; 
+  keyPrefix: string;
+  message?: string;
+}) {
+  return (req: Request, res: Response, next: () => void) => {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const key = `${options.keyPrefix}:${ip}`;
+    const now = Date.now();
+    
+    const entry = rateLimitStore.get(key);
+    
+    if (!entry || now > entry.resetTime) {
+      rateLimitStore.set(key, { count: 1, resetTime: now + options.windowMs });
+      res.setHeader("X-RateLimit-Limit", options.max);
+      res.setHeader("X-RateLimit-Remaining", options.max - 1);
+      return next();
+    }
+    
+    if (entry.count >= options.max) {
+      res.setHeader("X-RateLimit-Limit", options.max);
+      res.setHeader("X-RateLimit-Remaining", 0);
+      res.setHeader("Retry-After", Math.ceil((entry.resetTime - now) / 1000));
+      return res.status(429).json({ 
+        error: options.message || "Demasiadas solicitudes. Intenta de nuevo más tarde.",
+        code: "RATE_LIMIT_EXCEEDED",
+        retryAfter: Math.ceil((entry.resetTime - now) / 1000)
+      });
+    }
+    
+    entry.count++;
+    res.setHeader("X-RateLimit-Limit", options.max);
+    res.setHeader("X-RateLimit-Remaining", options.max - entry.count);
+    next();
+  };
+}
+
+// Cleanup old rate limit entries every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitStore.entries()) {
+    if (now > entry.resetTime) {
+      rateLimitStore.delete(key);
+    }
+  }
+}, 10 * 60 * 1000);
+
+// Rate limiters for different endpoints
+const publicPlansLimiter = rateLimit({ 
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, 
+  keyPrefix: "public-plans" 
+});
+
+const signupLimiter = rateLimit({ 
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, 
+  keyPrefix: "signup",
+  message: "Demasiados intentos de registro. Intenta de nuevo en 1 hora."
+});
+
+const authLimiter = rateLimit({ 
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, 
+  keyPrefix: "auth",
+  message: "Demasiados intentos de inicio de sesión. Intenta de nuevo en 15 minutos."
+});
+
+// =====================
 // TIMEZONE UTILITIES (GMT-4 / America/Santo_Domingo)
 // =====================
 const TIMEZONE = 'America/Santo_Domingo';
@@ -158,7 +237,7 @@ export async function registerRoutes(
     role: z.enum(["admin", "supervisor", "abastecedor", "almacen", "contabilidad", "rh"]).default("abastecedor"),
   });
 
-  app.post("/api/auth/login", async (req: Request, res: Response) => {
+  app.post("/api/auth/login", authLimiter, async (req: Request, res: Response) => {
     try {
       const { username, password } = loginSchema.parse(req.body);
       
@@ -371,7 +450,7 @@ export async function registerRoutes(
   // =====================
 
   // Get active subscription plans (public for signup page)
-  app.get("/api/public/plans", async (req: Request, res: Response) => {
+  app.get("/api/public/plans", publicPlansLimiter, async (req: Request, res: Response) => {
     try {
       const plans = await storage.getAllSubscriptionPlans();
       const activePlans = plans.filter(p => p.isActive);
@@ -383,7 +462,7 @@ export async function registerRoutes(
   });
 
   // Tenant signup (public registration for new companies)
-  app.post("/api/public/tenant-signup", async (req: Request, res: Response) => {
+  app.post("/api/public/tenant-signup", signupLimiter, async (req: Request, res: Response) => {
     try {
       const signupSchema = z.object({
         companyName: z.string().min(2, "El nombre de la empresa es requerido"),
@@ -662,8 +741,25 @@ export async function registerRoutes(
 
   app.post("/api/machines", authenticateJWT, authorizeAction("machines", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // SECURITY: Always use tenantId from authenticated user context, never from request body
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return res.status(403).json({ error: "Acceso denegado: contexto de empresa no disponible" });
+      }
+      
+      // Validate plan limits before creating machine
+      const limits = await storage.checkTenantPlanLimits(tenantId);
+      if (!limits.canCreateMachine) {
+        return res.status(403).json({ 
+          error: `Límite de máquinas alcanzado (${limits.currentMachines}/${limits.maxMachines}). Actualiza tu plan para agregar más máquinas.`,
+          code: "PLAN_LIMIT_EXCEEDED",
+          planName: limits.planName
+        });
+      }
+      
       const data = insertMachineSchema.parse(req.body);
-      const machine = await storage.createMachine(data);
+      // Override tenantId with authenticated user's tenant (prevent bypass attacks)
+      const machine = await storage.createMachine({ ...data, tenantId });
       res.status(201).json(machine);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2990,6 +3086,22 @@ export async function registerRoutes(
   // Crear usuario (solo admin)
   app.post("/api/admin/users", authenticateJWT, authorizeAction("users", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // SECURITY: Always use tenantId from authenticated user context
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return res.status(403).json({ error: "Acceso denegado: contexto de empresa no disponible" });
+      }
+      
+      // Validate plan limits before creating user
+      const limits = await storage.checkTenantPlanLimits(tenantId);
+      if (!limits.canCreateUser) {
+        return res.status(403).json({ 
+          error: `Límite de usuarios alcanzado (${limits.currentUsers}/${limits.maxUsers}). Actualiza tu plan para agregar más usuarios.`,
+          code: "PLAN_LIMIT_EXCEEDED",
+          planName: limits.planName
+        });
+      }
+      
       const validatedData = adminUserSchema.parse(req.body);
       
       if (!validatedData.password) {
@@ -3018,6 +3130,7 @@ export async function registerRoutes(
         role: validatedData.role,
         assignedZone: validatedData.assignedZone || null,
         isActive: validatedData.isActive ?? true,
+        tenantId: tenantId,
       }).returning();
       
       const { password, ...userWithoutPassword } = newUser;

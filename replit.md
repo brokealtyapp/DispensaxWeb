@@ -49,6 +49,9 @@ The application follows a client-server architecture. The frontend is built with
 - **Fuel Module:** Manages fleet vehicles, fuel loads, calculates km/L performance, and tracks costs.
 - **Report Optimization:** Critical performance improvements in reporting functions by eliminating N+1 patterns, using `Promise.all` for parallel data fetching, and `Map` for O(1) lookups. New reporting features include product dashboards, CSV exports, and total rows.
 - **SMTP Password Recovery:** Implemented for user convenience.
+- **Plan Limit Validation:** `checkTenantPlanLimits()` enforces maxMachines and maxUsers before creation. Returns 403 with PLAN_LIMIT_EXCEEDED code when limits are reached.
+- **Rate Limiting:** In-memory rate limiter protects public and auth endpoints. Signup: 5/hour, Plans: 60/min, Login: 10/15min. Includes X-RateLimit headers and Retry-After for 429 responses.
+- **Tenant Isolation Security:** All creation routes (machines, users) override tenantId from JWT context, preventing payload tampering attacks. Routes require authenticated tenantId - fail closed if missing.
 
 **UI/UX Decisions:**
 - **Primary Color:** #E84545 (Dispensax Red) as per user preference, overriding a previous blue.

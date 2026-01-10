@@ -559,6 +559,17 @@ export interface IStorage {
   revokeRefreshToken(tokenHash: string): Promise<boolean>;
   revokeAllUserRefreshTokens(userId: string): Promise<number>;
   deleteExpiredRefreshTokens(): Promise<number>;
+  
+  // ==================== MULTI-TENANT: PLAN LIMITS ====================
+  checkTenantPlanLimits(tenantId: string): Promise<{
+    canCreateMachine: boolean;
+    canCreateUser: boolean;
+    currentMachines: number;
+    maxMachines: number;
+    currentUsers: number;
+    maxUsers: number;
+    planName: string;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5786,6 +5797,64 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tenantSubscriptions.id, id))
       .returning();
     return updated;
+  }
+
+  // ==================== PLAN LIMIT VALIDATION ====================
+  
+  async checkTenantPlanLimits(tenantId: string): Promise<{
+    canCreateMachine: boolean;
+    canCreateUser: boolean;
+    currentMachines: number;
+    maxMachines: number;
+    currentUsers: number;
+    maxUsers: number;
+    planName: string;
+  }> {
+    const subscription = await this.getTenantSubscription(tenantId);
+    if (!subscription) {
+      return {
+        canCreateMachine: false,
+        canCreateUser: false,
+        currentMachines: 0,
+        maxMachines: 0,
+        currentUsers: 0,
+        maxUsers: 0,
+        planName: "Sin plan activo"
+      };
+    }
+    
+    const plan = await this.getSubscriptionPlan(subscription.planId);
+    if (!plan) {
+      return {
+        canCreateMachine: false,
+        canCreateUser: false,
+        currentMachines: 0,
+        maxMachines: 0,
+        currentUsers: 0,
+        maxUsers: 0,
+        planName: "Plan no encontrado"
+      };
+    }
+    
+    const [machineCount] = await db.select({ count: sql<number>`COUNT(*)` })
+      .from(machines).where(eq(machines.tenantId, tenantId));
+    const [userCount] = await db.select({ count: sql<number>`COUNT(*)` })
+      .from(users).where(eq(users.tenantId, tenantId));
+    
+    const currentMachines = Number(machineCount?.count || 0);
+    const currentUsers = Number(userCount?.count || 0);
+    const maxMachines = plan.maxMachines || 999999;
+    const maxUsers = plan.maxUsers || 999999;
+    
+    return {
+      canCreateMachine: currentMachines < maxMachines,
+      canCreateUser: currentUsers < maxUsers,
+      currentMachines,
+      maxMachines,
+      currentUsers,
+      maxUsers,
+      planName: plan.name
+    };
   }
 
   // ==================== SUPER ADMIN: AUDIT LOG ====================
