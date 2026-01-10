@@ -5720,6 +5720,11 @@ export class DatabaseStorage implements IStorage {
     return tenant;
   }
 
+  async getTenantByEmail(email: string): Promise<Tenant | undefined> {
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.email, email));
+    return tenant;
+  }
+
   async createTenant(data: InsertTenant): Promise<Tenant> {
     const [tenant] = await db.insert(tenants).values(data).returning();
     return tenant;

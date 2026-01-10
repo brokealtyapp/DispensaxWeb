@@ -39,6 +39,7 @@ import { SuppliersManagementPage } from "@/pages/suppliers-management";
 import { ServiceMonitoringPage } from "@/pages/service-monitoring";
 import MiVehiculoPage from "@/pages/mi-vehiculo";
 import { SuperAdminPage } from "@/pages/super-admin";
+import { TenantSignupPage } from "@/pages/tenant-signup";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
@@ -269,6 +270,7 @@ function Router() {
     <Switch>
       <Route path="/auth" component={AuthRoute} />
       <Route path="/reset-password" component={ResetPasswordPage} />
+      <Route path="/signup" component={TenantSignupPage} />
       <Route>
         <ProtectedRoutes />
       </Route>

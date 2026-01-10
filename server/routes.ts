@@ -367,6 +367,119 @@ export async function registerRoutes(
   });
 
   // =====================
+  // PUBLIC ROUTES (No auth required)
+  // =====================
+
+  // Get active subscription plans (public for signup page)
+  app.get("/api/public/plans", async (req: Request, res: Response) => {
+    try {
+      const plans = await storage.getAllSubscriptionPlans();
+      const activePlans = plans.filter(p => p.isActive);
+      res.json(activePlans);
+    } catch (error) {
+      console.error("Error getting public plans:", error);
+      res.status(500).json({ error: "Error al obtener planes" });
+    }
+  });
+
+  // Tenant signup (public registration for new companies)
+  app.post("/api/public/tenant-signup", async (req: Request, res: Response) => {
+    try {
+      const signupSchema = z.object({
+        companyName: z.string().min(2, "El nombre de la empresa es requerido"),
+        email: z.string().email("Email de empresa inválido"),
+        phone: z.string().optional(),
+        address: z.string().optional(),
+        adminName: z.string().min(2, "El nombre del administrador es requerido"),
+        adminEmail: z.string().email("Email del administrador inválido"),
+        password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
+        planId: z.string().min(1, "El plan es requerido"),
+      });
+
+      const data = signupSchema.parse(req.body);
+
+      // Check if plan exists and is active
+      const plan = await storage.getSubscriptionPlan(data.planId);
+      if (!plan || !plan.isActive) {
+        return res.status(400).json({ error: "Plan no disponible" });
+      }
+
+      // Check if company email already exists
+      const existingTenant = await storage.getTenantByEmail(data.email);
+      if (existingTenant) {
+        return res.status(400).json({ error: "Ya existe una empresa registrada con este email" });
+      }
+
+      // Check if admin email already exists
+      const existingUser = await storage.getUserByEmail(data.adminEmail);
+      if (existingUser) {
+        return res.status(400).json({ error: "El email del administrador ya está registrado" });
+      }
+
+      // Create tenant
+      const slug = data.companyName.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
+      const tenant = await storage.createTenant({
+        name: data.companyName,
+        slug: slug + "-" + Date.now().toString(36),
+        email: data.email,
+        phone: data.phone,
+        address: data.address,
+        isActive: true,
+      });
+
+      // Create subscription
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setMonth(endDate.getMonth() + 1); // 1 month trial
+
+      await storage.createTenantSubscription({
+        tenantId: tenant.id,
+        planId: data.planId,
+        status: "active",
+        startDate,
+        endDate,
+        isTrial: true,
+      });
+
+      // Create admin user for the tenant
+      const hashedPassword = await bcrypt.hash(data.password, 10);
+      const adminUsername = data.adminEmail.split("@")[0] + "-" + Date.now().toString(36);
+
+      const adminUser = await storage.createEmployee({
+        username: adminUsername,
+        password: hashedPassword,
+        fullName: data.adminName,
+        email: data.adminEmail,
+        role: "admin",
+        isActive: true,
+        tenantId: tenant.id,
+        isSuperAdmin: false,
+      });
+
+      // Log the signup
+      await storage.createAuditLog({
+        userId: adminUser.id,
+        action: "TENANT_SIGNUP",
+        resourceType: "tenants",
+        resourceId: tenant.id,
+        details: { planId: data.planId, companyName: data.companyName },
+        tenantId: tenant.id,
+      });
+
+      res.status(201).json({
+        message: "Empresa registrada correctamente",
+        tenant: { id: tenant.id, name: tenant.name },
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Tenant signup error:", error);
+      res.status(500).json({ error: "Error al registrar empresa" });
+    }
+  });
+
+  // =====================
   // LOCATION ROUTES
   // =====================
 
