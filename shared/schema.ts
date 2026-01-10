@@ -1,11 +1,229 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, boolean, pgEnum, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 
+// ==================== SISTEMA MULTI-TENANT ====================
+
+// Tabla de Tenants (Empresas/Clientes del SaaS)
+export const tenants = pgTable("tenants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  logo: text("logo"),
+  timezone: text("timezone").default("America/Santo_Domingo"),
+  currency: text("currency").default("DOP"),
+  country: text("country").default("DO"),
+  address: text("address"),
+  phone: text("phone"),
+  email: text("email"),
+  taxId: text("tax_id"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTenantSchema = createInsertSchema(tenants).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertTenant = z.infer<typeof insertTenantSchema>;
+export type Tenant = typeof tenants.$inferSelect;
+
+// Planes de Suscripción
+export const subscriptionPlanStatusEnum = pgEnum("subscription_plan_status", [
+  "active",
+  "inactive",
+  "deprecated"
+]);
+
+export const subscriptionPlans = pgTable("subscription_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  code: text("code").notNull().unique(),
+  description: text("description"),
+  monthlyPrice: decimal("monthly_price", { precision: 10, scale: 2 }).notNull(),
+  yearlyPrice: decimal("yearly_price", { precision: 10, scale: 2 }),
+  maxMachines: integer("max_machines").default(25),
+  maxUsers: integer("max_users").default(10),
+  maxProducts: integer("max_products").default(100),
+  maxLocations: integer("max_locations").default(50),
+  features: jsonb("features"),
+  status: text("status").default("active"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertSubscriptionPlanSchema = createInsertSchema(subscriptionPlans).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertSubscriptionPlan = z.infer<typeof insertSubscriptionPlanSchema>;
+export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
+
+// Suscripciones de Tenants
+export const tenantSubscriptionStatusEnum = pgEnum("tenant_subscription_status", [
+  "active",
+  "trial",
+  "past_due",
+  "cancelled",
+  "expired"
+]);
+
+export const billingCycleEnum = pgEnum("billing_cycle", [
+  "monthly",
+  "yearly"
+]);
+
+export const tenantSubscriptions = pgTable("tenant_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  planId: varchar("plan_id").references(() => subscriptionPlans.id).notNull(),
+  status: text("status").default("trial"),
+  billingCycle: text("billing_cycle").default("monthly"),
+  startDate: timestamp("start_date").defaultNow().notNull(),
+  endDate: timestamp("end_date"),
+  trialEndsAt: timestamp("trial_ends_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTenantSubscriptionSchema = createInsertSchema(tenantSubscriptions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertTenantSubscription = z.infer<typeof insertTenantSubscriptionSchema>;
+export type TenantSubscription = typeof tenantSubscriptions.$inferSelect;
+
+// Configuraciones por Tenant
+export const tenantSettings = pgTable("tenant_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull().unique(),
+  primaryColor: text("primary_color").default("#E84545"),
+  secondaryColor: text("secondary_color").default("#2F6FED"),
+  dateFormat: text("date_format").default("DD/MM/YYYY"),
+  timeFormat: text("time_format").default("HH:mm"),
+  language: text("language").default("es"),
+  weekStartsOn: integer("week_starts_on").default(1),
+  smtpHost: text("smtp_host"),
+  smtpPort: integer("smtp_port"),
+  smtpUser: text("smtp_user"),
+  smtpFromEmail: text("smtp_from_email"),
+  notifyLowStock: boolean("notify_low_stock").default(true),
+  notifyMaintenanceDue: boolean("notify_maintenance_due").default(true),
+  lowStockThreshold: integer("low_stock_threshold").default(5),
+  settings: jsonb("settings"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTenantSettingsSchema = createInsertSchema(tenantSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertTenantSettings = z.infer<typeof insertTenantSettingsSchema>;
+export type TenantSettings = typeof tenantSettings.$inferSelect;
+
+// Invitaciones para unirse a un Tenant
+export const tenantInvites = pgTable("tenant_invites", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  email: text("email").notNull(),
+  role: text("role").default("abastecedor"),
+  token: text("token").notNull().unique(),
+  invitedBy: varchar("invited_by"),
+  expiresAt: timestamp("expires_at").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTenantInviteSchema = createInsertSchema(tenantInvites).omit({
+  id: true,
+  createdAt: true,
+  acceptedAt: true,
+});
+
+export type InsertTenantInvite = z.infer<typeof insertTenantInviteSchema>;
+export type TenantInvite = typeof tenantInvites.$inferSelect;
+
+// Audit Log del Super Admin
+export const superAdminAuditLog = pgTable("super_admin_audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  action: text("action").notNull(),
+  resourceType: text("resource_type").notNull(),
+  resourceId: varchar("resource_id"),
+  tenantId: varchar("tenant_id"),
+  details: jsonb("details"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSuperAdminAuditLogSchema = createInsertSchema(superAdminAuditLog).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSuperAdminAuditLog = z.infer<typeof insertSuperAdminAuditLogSchema>;
+export type SuperAdminAuditLog = typeof superAdminAuditLog.$inferSelect;
+
+// Relaciones Multi-Tenant
+export const tenantsRelations = relations(tenants, ({ many, one }) => ({
+  users: many(users),
+  subscriptions: many(tenantSubscriptions),
+  settings: one(tenantSettings),
+  invites: many(tenantInvites),
+}));
+
+export const subscriptionPlansRelations = relations(subscriptionPlans, ({ many }) => ({
+  subscriptions: many(tenantSubscriptions),
+}));
+
+export const tenantSubscriptionsRelations = relations(tenantSubscriptions, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [tenantSubscriptions.tenantId],
+    references: [tenants.id],
+  }),
+  plan: one(subscriptionPlans, {
+    fields: [tenantSubscriptions.planId],
+    references: [subscriptionPlans.id],
+  }),
+}));
+
+export const tenantSettingsRelations = relations(tenantSettings, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [tenantSettings.tenantId],
+    references: [tenants.id],
+  }),
+}));
+
+export const tenantInvitesRelations = relations(tenantInvites, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [tenantInvites.tenantId],
+    references: [tenants.id],
+  }),
+}));
+
+// ==================== FIN SISTEMA MULTI-TENANT ====================
+
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   fullName: text("full_name"),
@@ -13,6 +231,7 @@ export const users = pgTable("users", {
   phone: text("phone"),
   role: text("role").default("abastecedor"),
   assignedZone: text("assigned_zone"),
+  isSuperAdmin: boolean("is_super_admin").default(false),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -41,6 +260,7 @@ export const machineStatusEnum = pgEnum("machine_status", [
 
 export const locations = pgTable("locations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   name: text("name").notNull(),
   address: text("address"),
   city: text("city"),
@@ -71,8 +291,9 @@ export const productCategories = pgEnum("product_category", [
 
 export const products = pgTable("products", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   name: text("name").notNull(),
-  code: text("code").unique(),
+  code: text("code"),
   category: text("category").default("bebidas_frias"),
   salePrice: decimal("sale_price", { precision: 10, scale: 2 }).notNull(),
   costPrice: decimal("cost_price", { precision: 10, scale: 2 }),
@@ -98,8 +319,9 @@ export const machineTypes = pgEnum("machine_type", [
 
 export const machines = pgTable("machines", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   name: text("name").notNull(),
-  code: text("code").unique(),
+  code: text("code"),
   type: text("type").default("mixta"),
   status: text("status").default("operando"),
   locationId: varchar("location_id").references(() => locations.id),
@@ -122,6 +344,7 @@ export type Machine = typeof machines.$inferSelect;
 
 export const machineInventory = pgTable("machine_inventory", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   machineId: varchar("machine_id").references(() => machines.id).notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
   currentQuantity: integer("current_quantity").default(0),
@@ -156,6 +379,7 @@ export const alertPriorities = pgEnum("alert_priority", [
 
 export const machineAlerts = pgTable("machine_alerts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   machineId: varchar("machine_id").references(() => machines.id).notNull(),
   type: text("type").notNull(),
   priority: text("priority").default("media"),
@@ -188,6 +412,7 @@ export const visitTypes = pgEnum("visit_type", [
 
 export const machineVisits = pgTable("machine_visits", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   machineId: varchar("machine_id").references(() => machines.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
   visitType: text("visit_type").default("abastecimiento"),
@@ -212,6 +437,7 @@ export type MachineVisit = typeof machineVisits.$inferSelect;
 
 export const machineSales = pgTable("machine_sales", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   machineId: varchar("machine_id").references(() => machines.id).notNull(),
   productId: varchar("product_id").references(() => products.id),
   quantity: integer("quantity").default(1),
@@ -287,8 +513,9 @@ export const machineSalesRelations = relations(machineSales, ({ one }) => ({
 
 export const suppliers = pgTable("suppliers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   name: text("name").notNull(),
-  code: text("code").unique(),
+  code: text("code"),
   contactName: text("contact_name"),
   contactEmail: text("contact_email"),
   contactPhone: text("contact_phone"),
@@ -311,6 +538,7 @@ export type Supplier = typeof suppliers.$inferSelect;
 
 export const warehouseInventory = pgTable("warehouse_inventory", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
   currentStock: integer("current_stock").default(0),
   minStock: integer("min_stock").default(10),
@@ -329,6 +557,7 @@ export type WarehouseInventory = typeof warehouseInventory.$inferSelect;
 
 export const productLots = pgTable("product_lots", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
   lotNumber: text("lot_number").notNull(),
   quantity: integer("quantity").notNull(),
@@ -364,6 +593,7 @@ export const movementTypes = pgEnum("movement_type", [
 
 export const warehouseMovements = pgTable("warehouse_movements", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
   lotId: varchar("lot_id").references(() => productLots.id),
   movementType: text("movement_type").notNull(),
@@ -446,6 +676,7 @@ export const routeStatusEnum = pgEnum("route_status", [
 
 export const routes = pgTable("routes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   date: timestamp("date").notNull(),
   supplierId: varchar("supplier_id").references(() => users.id).notNull(),
   supervisorId: varchar("supervisor_id").references(() => users.id),
@@ -481,6 +712,7 @@ export const stopStatusEnum = pgEnum("stop_status", [
 
 export const routeStops = pgTable("route_stops", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   routeId: varchar("route_id").references(() => routes.id).notNull(),
   machineId: varchar("machine_id").references(() => machines.id).notNull(),
   order: integer("order").notNull(),
@@ -515,6 +747,7 @@ export const serviceTypeEnum = pgEnum("service_type", [
 
 export const serviceRecords = pgTable("service_records", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   routeStopId: varchar("route_stop_id").references(() => routeStops.id),
   machineId: varchar("machine_id").references(() => machines.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
@@ -542,6 +775,7 @@ export type ServiceRecord = typeof serviceRecords.$inferSelect;
 
 export const cashCollections = pgTable("cash_collections", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   serviceRecordId: varchar("service_record_id").references(() => serviceRecords.id),
   machineId: varchar("machine_id").references(() => machines.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
@@ -573,6 +807,7 @@ export const productLoadTypeEnum = pgEnum("product_load_type", [
 
 export const productLoads = pgTable("product_loads", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   serviceRecordId: varchar("service_record_id").references(() => serviceRecords.id),
   machineId: varchar("machine_id").references(() => machines.id).notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
@@ -610,6 +845,7 @@ export const issuePriorityEnum = pgEnum("issue_priority", [
 
 export const issueReports = pgTable("issue_reports", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   serviceRecordId: varchar("service_record_id").references(() => serviceRecords.id),
   machineId: varchar("machine_id").references(() => machines.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
@@ -637,6 +873,7 @@ export type IssueReport = typeof issueReports.$inferSelect;
 
 export const supplierInventory = pgTable("supplier_inventory", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
   quantity: integer("quantity").default(0),
@@ -790,6 +1027,7 @@ export const cashMovementStatusEnum = pgEnum("cash_movement_status", [
 
 export const cashMovements = pgTable("cash_movements", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   type: text("type").notNull(),
   status: text("status").default("pendiente"),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
@@ -819,6 +1057,7 @@ export type CashMovement = typeof cashMovements.$inferSelect;
 
 export const bankDeposits = pgTable("bank_deposits", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   bankName: text("bank_name"),
   accountNumber: text("account_number"),
@@ -853,6 +1092,7 @@ export const transferTypeEnum = pgEnum("transfer_type", [
 
 export const productTransfers = pgTable("product_transfers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   transferType: text("transfer_type").notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
   quantity: integer("quantity").notNull(),
@@ -887,6 +1127,7 @@ export const shrinkageTypeEnum = pgEnum("shrinkage_type", [
 
 export const shrinkageRecords = pgTable("shrinkage_records", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   shrinkageType: text("shrinkage_type").notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
   quantity: integer("quantity").notNull(),
@@ -1014,6 +1255,7 @@ export const expenseCategoryEnum = pgEnum("expense_category", [
 
 export const pettyCashExpenses = pgTable("petty_cash_expenses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   category: text("category").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   description: text("description").notNull(),
@@ -1048,6 +1290,7 @@ export type PettyCashExpense = typeof pettyCashExpenses.$inferSelect;
 
 export const pettyCashFund = pgTable("petty_cash_fund", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   initialBalance: decimal("initial_balance", { precision: 10, scale: 2 }).notNull(),
   currentBalance: decimal("current_balance", { precision: 10, scale: 2 }).notNull(),
   minBalance: decimal("min_balance", { precision: 10, scale: 2 }).default("500"),
@@ -1070,6 +1313,7 @@ export type PettyCashFund = typeof pettyCashFund.$inferSelect;
 
 export const pettyCashTransactions = pgTable("petty_cash_transactions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   type: text("type").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   previousBalance: decimal("previous_balance", { precision: 10, scale: 2 }).notNull(),
@@ -1141,7 +1385,8 @@ export const purchaseOrderStatus = pgEnum("purchase_order_status", [
 
 export const purchaseOrders = pgTable("purchase_orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  orderNumber: text("order_number").notNull().unique(),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  orderNumber: text("order_number").notNull(),
   supplierId: varchar("supplier_id").references(() => suppliers.id).notNull(),
   status: purchaseOrderStatus("status").default("borrador").notNull(),
   issueDate: timestamp("issue_date").defaultNow().notNull(),
@@ -1176,6 +1421,7 @@ export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 
 export const purchaseOrderItems = pgTable("purchase_order_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   orderId: varchar("order_id").references(() => purchaseOrders.id).notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
   quantity: integer("quantity").notNull(),
@@ -1197,8 +1443,9 @@ export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
 
 export const purchaseReceptions = pgTable("purchase_receptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   orderId: varchar("order_id").references(() => purchaseOrders.id).notNull(),
-  receptionNumber: text("reception_number").notNull().unique(),
+  receptionNumber: text("reception_number").notNull(),
   receptionDate: timestamp("reception_date").defaultNow().notNull(),
   invoiceNumber: text("invoice_number"),
   invoiceDate: timestamp("invoice_date"),
@@ -1218,6 +1465,7 @@ export type PurchaseReception = typeof purchaseReceptions.$inferSelect;
 
 export const receptionItems = pgTable("reception_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   receptionId: varchar("reception_id").references(() => purchaseReceptions.id).notNull(),
   orderItemId: varchar("order_item_id").references(() => purchaseOrderItems.id).notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
@@ -1320,7 +1568,8 @@ export const fuelTypeEnum = pgEnum("fuel_type", [
 
 export const vehicles = pgTable("vehicles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  plate: text("plate").notNull().unique(),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  plate: text("plate").notNull(),
   brand: text("brand").notNull(),
   model: text("model").notNull(),
   year: integer("year"),
@@ -1352,6 +1601,7 @@ export type Vehicle = typeof vehicles.$inferSelect;
 
 export const fuelRecords = pgTable("fuel_records", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   vehicleId: varchar("vehicle_id").references(() => vehicles.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
   routeId: varchar("route_id").references(() => routes.id),
@@ -1439,6 +1689,7 @@ export const taskTypeEnum = pgEnum("task_type", [
 
 export const tasks = pgTable("tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   title: text("title").notNull(),
   description: text("description"),
   type: text("type").default("otro"),
@@ -1501,6 +1752,7 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
 
 export const calendarEvents = pgTable("calendar_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   title: text("title").notNull(),
   description: text("description"),
   eventType: text("event_type").default("otro"),
@@ -1591,11 +1843,12 @@ export const passwordResetTokensRelations = relations(passwordResetTokens, ({ on
 // Registro de asistencia de empleados
 export const employeeAttendance = pgTable("employee_attendance", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
   date: timestamp("date").notNull(),
   checkIn: timestamp("check_in"),
   checkOut: timestamp("check_out"),
-  status: text("status").default("presente"), // presente, ausente, tarde, permiso, vacaciones, incapacidad
+  status: text("status").default("presente"),
   hoursWorked: decimal("hours_worked", { precision: 5, scale: 2 }),
   overtimeHours: decimal("overtime_hours", { precision: 5, scale: 2 }).default("0"),
   notes: text("notes"),
@@ -1625,6 +1878,7 @@ export const employeeAttendanceRelations = relations(employeeAttendance, ({ one 
 // Registros de nómina
 export const payrollRecords = pgTable("payroll_records", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
   periodStart: timestamp("period_start").notNull(),
   periodEnd: timestamp("period_end").notNull(),
@@ -1635,9 +1889,9 @@ export const payrollRecords = pgTable("payroll_records", {
   taxWithholding: decimal("tax_withholding", { precision: 10, scale: 2 }).default("0"),
   socialSecurity: decimal("social_security", { precision: 10, scale: 2 }).default("0"),
   netPay: decimal("net_pay", { precision: 12, scale: 2 }).notNull(),
-  status: text("status").default("pendiente"), // pendiente, procesado, pagado
+  status: text("status").default("pendiente"),
   paymentDate: timestamp("payment_date"),
-  paymentMethod: text("payment_method").default("transferencia"), // transferencia, cheque, efectivo
+  paymentMethod: text("payment_method").default("transferencia"),
   notes: text("notes"),
   processedBy: varchar("processed_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1665,12 +1919,13 @@ export const payrollRecordsRelations = relations(payrollRecords, ({ one }) => ({
 // Solicitudes de vacaciones
 export const vacationRequests = pgTable("vacation_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date").notNull(),
   daysRequested: integer("days_requested").notNull(),
   reason: text("reason"),
-  status: text("status").default("pendiente"), // pendiente, aprobado, rechazado, cancelado
+  status: text("status").default("pendiente"),
   approvedBy: varchar("approved_by").references(() => users.id),
   approvedAt: timestamp("approved_at"),
   rejectionReason: text("rejection_reason"),
@@ -1701,10 +1956,11 @@ export const vacationRequestsRelations = relations(vacationRequests, ({ one }) =
 // Evaluaciones de desempeño
 export const performanceReviews = pgTable("performance_reviews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
   reviewerId: varchar("reviewer_id").references(() => users.id).notNull(),
-  reviewPeriod: text("review_period").notNull(), // "Q1 2026", "Anual 2025"
-  overallScore: decimal("overall_score", { precision: 3, scale: 1 }), // 1.0 - 5.0
+  reviewPeriod: text("review_period").notNull(),
+  overallScore: decimal("overall_score", { precision: 3, scale: 1 }),
   punctualityScore: decimal("punctuality_score", { precision: 3, scale: 1 }),
   productivityScore: decimal("productivity_score", { precision: 3, scale: 1 }),
   teamworkScore: decimal("teamwork_score", { precision: 3, scale: 1 }),
@@ -1713,7 +1969,7 @@ export const performanceReviews = pgTable("performance_reviews", {
   areasToImprove: text("areas_to_improve"),
   goals: text("goals"),
   comments: text("comments"),
-  status: text("status").default("borrador"), // borrador, completado, revisado
+  status: text("status").default("borrador"),
   reviewDate: timestamp("review_date"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -1740,8 +1996,9 @@ export const performanceReviewsRelations = relations(performanceReviews, ({ one 
 // Documentos de empleados
 export const employeeDocuments = pgTable("employee_documents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
-  documentType: text("document_type").notNull(), // contrato, identificacion, curriculum, certificado, otro
+  documentType: text("document_type").notNull(),
   name: text("name").notNull(),
   fileUrl: text("file_url"),
   fileSize: integer("file_size"),
@@ -1774,8 +2031,9 @@ export const employeeDocumentsRelations = relations(employeeDocuments, ({ one })
 // Información extendida de empleados (datos adicionales de RRHH)
 export const employeeProfiles = pgTable("employee_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull().unique(),
-  employeeCode: text("employee_code").unique(),
+  employeeCode: text("employee_code"),
   department: text("department"),
   position: text("position"),
   hireDate: timestamp("hire_date"),
@@ -1786,7 +2044,7 @@ export const employeeProfiles = pgTable("employee_profiles", {
   bankName: text("bank_name"),
   bankAccount: text("bank_account"),
   baseSalary: decimal("base_salary", { precision: 12, scale: 2 }),
-  contractType: text("contract_type").default("indefinido"), // indefinido, temporal, prueba
+  contractType: text("contract_type").default("indefinido"),
   vacationDaysAvailable: integer("vacation_days_available").default(14),
   vacationDaysUsed: integer("vacation_days_used").default(0),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1814,6 +2072,7 @@ export const employeeProfilesRelations = relations(employeeProfiles, ({ one }) =
 
 export const vehicleInventory = pgTable("vehicle_inventory", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   vehicleId: varchar("vehicle_id").references(() => vehicles.id).notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
   lotId: varchar("lot_id").references(() => productLots.id).notNull(),
@@ -1839,40 +2098,30 @@ export type VehicleInventory = typeof vehicleInventory.$inferSelect;
 // Transferencias de inventario con trazabilidad completa (kardex unificado)
 export const inventoryTransfers = pgTable("inventory_transfers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  transferType: text("transfer_type").notNull(), // almacen_vehiculo, vehiculo_maquina, maquina_venta, devolucion_vehiculo, devolucion_almacen
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  transferType: text("transfer_type").notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
   lotId: varchar("lot_id").references(() => productLots.id).notNull(),
   quantity: integer("quantity").notNull(),
-  
-  // Origen
-  sourceType: text("source_type").notNull(), // warehouse, vehicle, machine
-  sourceWarehouseId: varchar("source_warehouse_id"), // null = almacén principal
+  sourceType: text("source_type").notNull(),
+  sourceWarehouseId: varchar("source_warehouse_id"),
   sourceVehicleId: varchar("source_vehicle_id").references(() => vehicles.id),
   sourceMachineId: varchar("source_machine_id").references(() => machines.id),
-  
-  // Destino
-  destinationType: text("destination_type").notNull(), // vehicle, machine, customer, warehouse
+  destinationType: text("destination_type").notNull(),
   destinationVehicleId: varchar("destination_vehicle_id").references(() => vehicles.id),
   destinationMachineId: varchar("destination_machine_id").references(() => machines.id),
-  
-  // Stock antes/después para auditoria
   sourcePreviousStock: integer("source_previous_stock"),
   sourceNewStock: integer("source_new_stock"),
   destinationPreviousStock: integer("destination_previous_stock"),
   destinationNewStock: integer("destination_new_stock"),
-  
-  // Referencias
   warehouseMovementId: varchar("warehouse_movement_id").references(() => warehouseMovements.id),
   serviceRecordId: varchar("service_record_id").references(() => serviceRecords.id),
   machineSaleId: varchar("machine_sale_id").references(() => machineSales.id),
-  
-  // Usuarios
   executedByUserId: varchar("executed_by_user_id").references(() => users.id).notNull(),
   approvedByUserId: varchar("approved_by_user_id").references(() => users.id),
-  
   reference: text("reference"),
   notes: text("notes"),
-  status: text("status").default("completado"), // pendiente, completado, cancelado
+  status: text("status").default("completado"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1887,6 +2136,7 @@ export type InventoryTransfer = typeof inventoryTransfers.$inferSelect;
 // Inventario de máquina con trazabilidad de lote
 export const machineInventoryLots = pgTable("machine_inventory_lots", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   machineId: varchar("machine_id").references(() => machines.id).notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
   lotId: varchar("lot_id").references(() => productLots.id).notNull(),
