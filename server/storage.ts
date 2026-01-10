@@ -2231,33 +2231,27 @@ export class DatabaseStorage implements IStorage {
           if (item.quantity <= 0) continue;
           
           let remaining = item.quantity;
+          let actualTransferred = 0;
           const lotIds: string[] = [];
           
-          // Re-fetch vehicle inventory dentro de la transacción para consistencia
+          // Obtener inventario del vehículo dentro de la transacción con FEFO
           const txVehicleInv = await tx.select()
             .from(vehicleInventory)
             .leftJoin(productLots, eq(vehicleInventory.lotId, productLots.id))
             .where(and(
               eq(vehicleInventory.vehicleId, vehicle.id),
+              eq(vehicleInventory.productId, item.productId),
               sql`${vehicleInventory.quantity} > 0`
             ))
             .orderBy(asc(productLots.expirationDate));
           
-          const productInventory = txVehicleInv
-            .filter(v => v.vehicle_inventory.productId === item.productId && v.vehicle_inventory.quantity > 0)
-            .sort((a, b) => {
-              if (!a.product_lots?.expirationDate && !b.product_lots?.expirationDate) return 0;
-              if (!a.product_lots?.expirationDate) return 1;
-              if (!b.product_lots?.expirationDate) return -1;
-              return new Date(a.product_lots.expirationDate).getTime() - new Date(b.product_lots.expirationDate).getTime();
-            });
-          
-          for (const row of productInventory) {
+          for (const row of txVehicleInv) {
             if (remaining <= 0) break;
             
             const vehInvItem = row.vehicle_inventory;
             const toTransfer = Math.min(remaining, vehInvItem.quantity);
             remaining -= toTransfer;
+            actualTransferred += toTransfer;
             
             if (vehInvItem.lotId) {
               lotIds.push(vehInvItem.lotId);
@@ -2355,12 +2349,15 @@ export class DatabaseStorage implements IStorage {
             }
           }
           
-          loadedProducts.push({ 
-            productId: item.productId, 
-            quantity: item.quantity, 
-            lotIds 
-          });
-          totalLoaded += item.quantity;
+          // Usar cantidad real transferida, no la solicitada
+          if (actualTransferred > 0) {
+            loadedProducts.push({ 
+              productId: item.productId, 
+              quantity: actualTransferred, 
+              lotIds 
+            });
+            totalLoaded += actualTransferred;
+          }
         }
         
         return { loadedProducts, totalLoaded };

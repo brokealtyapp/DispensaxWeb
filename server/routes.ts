@@ -2549,26 +2549,36 @@ export async function registerRoutes(
         });
       }
       
-      // Para abastecedores: validar que la máquina está en su zona asignada
-      if (userRole === "abastecedor") {
-        const user = await storage.getUser(userId);
-        if (user?.assignedZone && machine.zone && user.assignedZone !== machine.zone) {
-          return res.status(403).json({
-            error: "No tiene permiso para cargar productos a esta máquina. La máquina no está en su zona asignada.",
-            errorCode: "MACHINE_NOT_IN_ZONE"
-          });
+      // Admin puede operar cualquier máquina - sin restricciones de zona
+      // Para otros roles: validar zona estrictamente (fail closed)
+      if (userRole !== "admin") {
+        // Para abastecedores: validar que la máquina está en su zona asignada
+        if (userRole === "abastecedor") {
+          const user = await storage.getUser(userId);
+          // Fail closed: si el usuario no tiene zona O la máquina no tiene zona O no coinciden → rechazar
+          if (!user?.assignedZone || !machine.zone || user.assignedZone !== machine.zone) {
+            return res.status(403).json({
+              error: "No tiene permiso para cargar productos a esta máquina. La máquina no está en su zona asignada o faltan configuraciones de zona.",
+              errorCode: "MACHINE_NOT_IN_ZONE"
+            });
+          }
         }
-      }
-      
-      // Para supervisores: validar que la máquina está en su zona
-      if (userRole === "supervisor") {
-        const supervisorZone = await getSupervisorZone(req);
-        if (supervisorZone && machine.zone && supervisorZone !== machine.zone) {
-          return res.status(403).json({
-            error: "No tiene permiso para operar esta máquina. La máquina no está en su zona.",
-            errorCode: "MACHINE_NOT_IN_ZONE"
-          });
+        
+        // Para supervisores: validar que la máquina está en su zona
+        if (userRole === "supervisor") {
+          const supervisorZone = await getSupervisorZone(req);
+          // Fail closed: si el supervisor no tiene zona O la máquina no tiene zona O no coinciden → rechazar
+          if (!supervisorZone || !machine.zone || supervisorZone !== machine.zone) {
+            return res.status(403).json({
+              error: "No tiene permiso para operar esta máquina. La máquina no está en su zona o faltan configuraciones de zona.",
+              errorCode: "MACHINE_NOT_IN_ZONE"
+            });
+          }
         }
+        
+        // Para otros roles no-admin (almacen, contabilidad, rh): no deberían usar este endpoint
+        // pero si tienen el permiso warehouse_movements:create, solo pueden operar sin restricciones de zona
+        // si explícitamente se les asigna ese permiso (ya validado por authorizeAction)
       }
       
       const result = await storage.transferFromVehicleToMachine({
