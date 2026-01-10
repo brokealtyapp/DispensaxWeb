@@ -2530,15 +2530,29 @@ export async function registerRoutes(
   // Cargar productos desde vehículo a máquina (nuevo flujo con trazabilidad de lotes y FEFO)
   app.post("/api/supplier/load-from-vehicle", authenticateJWT, authorizeAction("warehouse_movements", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { machineId, products, serviceRecordId, notes } = req.body;
-      const userId = req.user?.userId;
+      const { machineId, products, serviceRecordId, notes, targetSupplierId } = req.body;
+      const authenticatedUserId = req.user?.userId;
       const userRole = req.user?.role;
       
-      if (!machineId || !products || !Array.isArray(products) || !userId) {
+      if (!machineId || !products || !Array.isArray(products) || !authenticatedUserId) {
         return res.status(400).json({ 
           error: "Faltan campos requeridos",
           errorCode: "MISSING_FIELDS"
         });
+      }
+      
+      // Determinar el userId efectivo: admins y supervisores pueden operar en nombre de otro supplier
+      let effectiveUserId = authenticatedUserId;
+      if (targetSupplierId && (userRole === "admin" || userRole === "supervisor")) {
+        // Validar que el target supplier existe y es abastecedor
+        const targetUser = await storage.getUser(targetSupplierId);
+        if (!targetUser || targetUser.role !== "abastecedor") {
+          return res.status(400).json({
+            error: "Usuario objetivo no encontrado o no es abastecedor",
+            errorCode: "INVALID_TARGET_USER"
+          });
+        }
+        effectiveUserId = targetSupplierId;
       }
       
       // Validar que la máquina existe
@@ -2555,7 +2569,7 @@ export async function registerRoutes(
       if (userRole !== "admin") {
         // Para abastecedores: validar que la máquina está en su zona asignada
         if (userRole === "abastecedor") {
-          const user = await storage.getUser(userId);
+          const user = await storage.getUser(effectiveUserId);
           // Fail closed: si el usuario no tiene zona O la máquina no tiene zona O no coinciden → rechazar
           if (!user?.assignedZone || !machine.zone || user.assignedZone !== machine.zone) {
             return res.status(403).json({
@@ -2565,7 +2579,7 @@ export async function registerRoutes(
           }
         }
         
-        // Para supervisores: validar que la máquina está en su zona
+        // Para supervisores: validar que la máquina está en su zona (también valida el supplier objetivo)
         if (userRole === "supervisor") {
           const supervisorZone = await getSupervisorZone(req);
           // Fail closed: si el supervisor no tiene zona O la máquina no tiene zona O no coinciden → rechazar
@@ -2575,6 +2589,16 @@ export async function registerRoutes(
               errorCode: "MACHINE_NOT_IN_ZONE"
             });
           }
+          // Si actúa en nombre de un supplier, validar que el supplier está en la zona del supervisor
+          if (targetSupplierId) {
+            const targetUser = await storage.getUser(targetSupplierId);
+            if (!targetUser?.assignedZone || targetUser.assignedZone !== supervisorZone) {
+              return res.status(403).json({
+                error: "El abastecedor objetivo no está en su zona de supervisión.",
+                errorCode: "SUPPLIER_NOT_IN_ZONE"
+              });
+            }
+          }
         }
         
         // Para otros roles no-admin (almacen, contabilidad, rh): no deberían usar este endpoint
@@ -2583,7 +2607,7 @@ export async function registerRoutes(
       }
       
       const result = await storage.transferFromVehicleToMachine({
-        userId,
+        userId: effectiveUserId,
         machineId,
         items: products.map((p: { productId: string; quantity: number }) => ({
           productId: p.productId,

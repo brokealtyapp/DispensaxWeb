@@ -559,7 +559,7 @@ export function SupplierPage() {
   });
 
   const loadProductsMutation = useMutation({
-    mutationFn: async (data: { machineId: string; products: { productId: string; quantity: number }[]; serviceRecordId?: string }) => {
+    mutationFn: async (data: { machineId: string; products: { productId: string; quantity: number }[]; serviceRecordId?: string; targetSupplierId?: string }) => {
       return apiRequest("POST", "/api/supplier/load-from-vehicle", data);
     },
     onSuccess: () => {
@@ -788,6 +788,7 @@ export function SupplierPage() {
       machineId: currentStop.machine.id,
       products: productsWithQuantity.map(p => ({ productId: p.productId, quantity: p.quantity })),
       serviceRecordId: activeServiceId || undefined,
+      targetSupplierId: isViewingOther ? supplierId : undefined,
     });
   };
 
@@ -1432,8 +1433,6 @@ export function SupplierPage() {
                       className="w-full justify-start gap-2" 
                       variant="outline"
                       onClick={openLoadDialog}
-                      disabled={isViewingOther}
-                      title={isViewingOther ? "No puedes cargar productos cuando ves a otro abastecedor" : ""}
                       data-testid="button-load-products"
                     >
                       <Package className="h-4 w-4" />
