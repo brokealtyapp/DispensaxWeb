@@ -1,7 +1,7 @@
 # Manual de Usuario - Dispensax
 ## Sistema de Gestión de Máquinas Expendedoras
 
-**Versión:** 1.0  
+**Versión:** 2.0  
 **Fecha:** Enero 2026  
 **Zona Horaria:** América/Santo_Domingo (GMT-4)  
 **Moneda:** Pesos Dominicanos (RD$)
@@ -20,7 +20,31 @@
    - [3.5 Contabilidad](#35-contabilidad)
    - [3.6 Recursos Humanos](#36-recursos-humanos)
 4. [Guía por Módulo](#4-guía-por-módulo)
+   - [4.1 Dashboard](#41-dashboard)
+   - [4.2 Máquinas](#42-máquinas)
+   - [4.3 Almacén](#43-almacén)
+   - [4.4 Productos](#44-productos)
+   - [4.5 Gestión de Rutas](#45-gestión-de-rutas)
+   - [4.6 Combustible](#46-combustible)
+   - [4.7 Contabilidad](#47-contabilidad)
+   - [4.8 Caja Chica](#48-caja-chica)
+   - [4.9 Compras](#49-compras)
+   - [4.10 Recursos Humanos](#410-recursos-humanos)
+   - [4.11 Reportes](#411-reportes)
+   - [4.12 Configuración](#412-configuración)
+   - [4.13 Dinero y Productos](#413-dinero-y-productos)
+   - [4.14 Monitoreo de Servicios](#414-monitoreo-de-servicios)
+   - [4.15 Gestión de Abastecedores](#415-gestión-de-abastecedores)
+   - [4.16 Calendario](#416-calendario)
+   - [4.17 Mi Vehículo](#417-mi-vehículo)
+   - [4.18 Panel de Almacén](#418-panel-de-almacén)
+   - [4.19 Panel de Contabilidad](#419-panel-de-contabilidad)
+   - [4.20 Detalle de Máquina](#420-detalle-de-máquina)
+   - [4.21 Gestión de Ubicaciones](#421-gestión-de-ubicaciones)
+   - [4.22 Gestión de Paradas de Ruta](#422-gestión-de-paradas-de-ruta)
 5. [Preguntas Frecuentes](#5-preguntas-frecuentes)
+6. [Glosario](#glosario)
+7. [Anexo A: Matriz de Permisos](#anexo-a-matriz-de-permisos-por-rol)
 
 ---
 
@@ -396,6 +420,70 @@ Durante la ruta, si necesita cargar combustible:
 > - Estación: "Shell - Av. Lincoln"
 > - Tipo: "Gasolina Regular"
 > - Guardar → El sistema calcula el rendimiento km/L.
+
+**6. Solicitar Vacaciones**
+
+1. Vaya a **Configuración** o **Mi Perfil**
+2. Haga clic en **"Solicitar Vacaciones"**
+3. Complete el formulario:
+   - Fecha de inicio
+   - Fecha de fin
+   - Motivo o comentarios
+4. Envíe la solicitud
+
+**Ejemplo Práctico:**
+> Solicitar vacaciones de Semana Santa:
+> - Ir a Configuración > Solicitar Vacaciones
+> - Fecha inicio: 14/04/2026
+> - Fecha fin: 18/04/2026
+> - Motivo: "Vacaciones de Semana Santa"
+> - Enviar → El supervisor recibe la solicitud para aprobación.
+
+**Estados de Solicitud:**
+- **Pendiente**: Esperando aprobación del supervisor
+- **Aprobada**: Vacaciones autorizadas
+- **Rechazada**: Solicitud no aprobada (ver motivo)
+
+**7. Ver Mis Tareas**
+
+1. Vaya a **Mi Trabajo > Tareas Hoy**
+2. Vea las tareas asignadas para el día
+3. Marque tareas como completadas
+4. Agregue notas si es necesario
+
+**Tipos de Tareas:**
+- Tareas de mantenimiento
+- Revisiones especiales
+- Recolecciones programadas
+- Capacitaciones
+
+**Ejemplo Práctico:**
+> Completar tarea de revisión especial:
+> - Ver tarea: "Revisar temperatura de MAQ-12"
+> - Prioridad: Alta
+> - Fecha límite: Hoy 2:00 PM
+> - Ir a la máquina y realizar la revisión
+> - Marcar como completada → Agregar nota: "Temperatura normal: 4°C"
+
+**8. Consultar Mi Rendimiento**
+
+Acceda a estadísticas de su desempeño:
+
+1. Vaya a **Mi Trabajo > Mi Rendimiento** (si disponible)
+2. Vea métricas personales:
+   - Máquinas atendidas en el período
+   - Tiempo promedio por servicio
+   - Efectivo recolectado
+   - Productos abastecidos
+   - Comparación con períodos anteriores
+
+**Ejemplo Práctico:**
+> Revisar rendimiento de la semana:
+> - Esta semana: 35 máquinas atendidas
+> - Tiempo promedio: 14 minutos/servicio
+> - Efectivo recolectado: RD$52,000
+> - Productos cargados: 420 unidades
+> - Comparación: +8% vs semana anterior
 
 ---
 
@@ -1088,6 +1176,625 @@ Preferencias del sistema y perfil de usuario.
 - **Seguridad**: Cambio de contraseña
 - **Empresa**: (Solo Admin) Datos de la empresa
 
+### 4.13 Dinero y Productos
+
+Control transversal de efectivo, productos y mermas del negocio.
+
+**Pestañas:**
+- **Efectivo**: Movimientos de dinero en efectivo
+- **Transferencias**: Movimientos de productos entre ubicaciones
+- **Mermas**: Pérdidas de inventario por diversos motivos
+
+#### Tipos de Movimientos de Efectivo
+
+| Tipo | Descripción | Icono |
+|------|-------------|-------|
+| Recolección Máquina | Dinero recogido de una máquina | 🛒 |
+| Entrega Oficina | Entrega de efectivo a la oficina central | 🏢 |
+| Depósito Bancario | Depósito del efectivo en banco | 💵 |
+| Ajuste Positivo | Corrección hacia arriba (sobrante) | ↗️ |
+| Ajuste Negativo | Corrección hacia abajo (faltante) | ↘️ |
+
+#### Estados de Movimientos
+
+- **Pendiente**: Movimiento registrado pero no procesado
+- **Entregado**: Efectivo entregado en oficina
+- **Depositado**: Efectivo depositado en banco
+- **Conciliado**: Verificado y cerrado
+
+#### Registrar Movimiento de Efectivo
+
+1. Vaya a **Operaciones > Dinero y Productos**
+2. Haga clic en **"+ Nuevo Movimiento"**
+3. Complete el formulario:
+   - Tipo de movimiento
+   - Monto (RD$)
+   - Monto esperado (opcional, para verificar diferencias)
+   - Usuario responsable
+   - Notas adicionales
+4. Haga clic en **"Guardar"**
+
+**Ejemplo Práctico:**
+> Registrar recolección de efectivo:
+> - Tipo: "Recolección Máquina"
+> - Monto: RD$5,500.00
+> - Monto esperado: RD$5,450.00
+> - Usuario: "Carlos Martínez"
+> - Notas: "Diferencia de RD$50 a favor"
+> - Guardar → El sistema calcula automáticamente la diferencia.
+
+#### Tipos de Mermas
+
+| Tipo | Descripción |
+|------|-------------|
+| Caducidad | Producto vencido |
+| Daño | Producto dañado físicamente |
+| Robo | Producto sustraído |
+| Pérdida | Producto extraviado sin explicación |
+| Error de Conteo | Discrepancia en inventario |
+| Otro | Cualquier otra causa |
+
+#### Registrar Merma
+
+1. En la pestaña **Mermas**, haga clic en **"+ Nueva Merma"**
+2. Seleccione:
+   - Tipo de merma
+   - Producto afectado
+   - Cantidad perdida
+   - Usuario que reporta
+   - Razón o descripción
+3. Haga clic en **"Registrar"**
+
+**Ejemplo Práctico:**
+> Registrar productos caducados:
+> - Tipo: "Caducidad"
+> - Producto: "Coca-Cola 500ml"
+> - Cantidad: 12 unidades
+> - Usuario: "Juan Pérez"
+> - Razón: "Lote #2024-1215 vencido el 05/01/2026"
+> - Registrar → El inventario se ajusta automáticamente.
+
+#### Resumen y KPIs
+
+El módulo muestra un resumen con:
+- Total efectivo recolectado
+- Total pendiente de depósito
+- Total de mermas del período
+- Conciliación diaria (cuadre)
+
+### 4.14 Monitoreo de Servicios
+
+Seguimiento en tiempo real de los servicios activos en las máquinas.
+
+**Información Mostrada por Servicio:**
+- Máquina siendo atendida
+- Abastecedor responsable
+- Tiempo transcurrido del servicio
+- Progreso del checklist
+- Productos cargados
+- Efectivo recolectado
+- Problemas reportados
+
+#### Funcionalidades
+
+**Ver Servicios Activos:**
+1. Vaya a **Operaciones > Monitoreo Servicios**
+2. Vea las tarjetas de cada servicio activo
+3. El contador de servicios activos se muestra en la esquina superior
+
+**Actualizar Vista:**
+- Los datos se actualizan automáticamente cada 30 segundos
+- Use el botón **"Actualizar"** para refrescar manualmente
+
+**Ver Detalle de Servicio:**
+1. Haga clic en la tarjeta del servicio
+2. Se abre un diálogo con información completa:
+   - Línea de tiempo de acciones
+   - Lista de productos cargados
+   - Efectivo recolectado
+   - Estado del checklist (cada ítem)
+   - Problemas reportados
+   - Firma del responsable (si aplica)
+
+**Ejemplo Práctico:**
+> Monitorear servicio de Carlos en MAQ-15:
+> - Ver tarjeta: Duración 23 min, Checklist 80%, RD$3,200 recolectado
+> - Hacer clic para ver detalle
+> - Línea de tiempo:
+>   - 09:15 - Servicio iniciado
+>   - 09:18 - Productos cargados: 24 unidades
+>   - 09:25 - Efectivo recolectado: RD$3,200
+>   - 09:35 - Problema reportado: "Display con pixels muertos"
+> - El supervisor puede contactar al abastecedor si necesita más información.
+
+### 4.15 Gestión de Abastecedores
+
+Panel de supervisión para monitorear el rendimiento y actividad de los abastecedores.
+
+**Pestañas:**
+- **Activos**: Abastecedores trabajando hoy
+- **Historial**: Registro de actividades pasadas
+- **Estadísticas**: Métricas de rendimiento
+
+#### Vista de Abastecedor Activo
+
+Para cada abastecedor se muestra:
+- Estado actual (En ruta, En servicio, Disponible)
+- Ruta del día (si tiene asignada)
+- Progreso de paradas (completadas/total)
+- Máquinas atendidas hoy
+- Efectivo recolectado hoy
+- Productos cargados hoy
+- Tiempo promedio por servicio
+
+#### Filtros Disponibles
+
+- **Búsqueda**: Por nombre del abastecedor
+- **Estado**: Todos, En ruta, En servicio, Disponible
+- **Período**: Hoy, Esta semana, Este mes
+
+**Ejemplo Práctico:**
+> Revisar rendimiento del equipo:
+> - Filtro: "Hoy"
+> - Ver listado de 5 abastecedores activos
+> - Carlos Martínez: 8/10 paradas, RD$12,500, 145 productos
+> - María Gómez: 6/8 paradas, RD$8,200, 98 productos
+> - Hacer clic en "Carlos" para ver análisis detallado:
+>   - Tiempo promedio por máquina: 18 min
+>   - Eficiencia: 92%
+>   - Sin problemas reportados
+
+### 4.16 Calendario
+
+Calendario interactivo para gestión de eventos y tareas.
+
+**Tipos de Eventos:**
+| Tipo | Color | Descripción |
+|------|-------|-------------|
+| Tarea | Azul | Tareas asignadas |
+| Mantenimiento | Naranja | Mantenimiento programado |
+| Abastecimiento | Verde | Rutas de abastecimiento |
+| Recolección | Púrpura | Recolección de efectivo |
+| Revisión | Cian | Revisiones programadas |
+| Otro | Gris | Eventos varios |
+
+#### Funcionalidades
+
+**Navegar el Calendario:**
+- Use las flechas < > para cambiar de mes
+- Haga clic en **"Hoy"** para volver a la fecha actual
+- Cambie entre vista de **Mes** o **Semana**
+
+**Crear Evento:**
+1. Haga clic en el día deseado
+2. Haga clic en **"+ Agregar Evento"**
+3. Complete el formulario:
+   - Título del evento
+   - Tipo de evento
+   - Descripción (opcional)
+   - Fecha de inicio
+   - Fecha de fin (opcional)
+   - Todo el día (checkbox)
+   - Color personalizado
+   - Usuario asignado (opcional)
+4. Haga clic en **"Crear Evento"**
+
+**Editar Evento:**
+1. Haga clic en el evento en el calendario
+2. Seleccione **"Editar"**
+3. Modifique los campos necesarios
+4. Guarde los cambios
+
+**Eliminar Evento:**
+1. Haga clic en el evento
+2. Seleccione **"Eliminar"**
+3. Confirme la eliminación
+
+**Ejemplo Práctico:**
+> Programar mantenimiento preventivo:
+> - Hacer clic en el 15 de enero
+> - "+ Agregar Evento"
+> - Título: "Mantenimiento Zona Norte"
+> - Tipo: "Mantenimiento"
+> - Descripción: "Revisión trimestral de todas las máquinas"
+> - Todo el día: ✓
+> - Color: Naranja
+> - Crear → El evento aparece en el calendario.
+
+#### Integración con Tareas
+
+El calendario muestra automáticamente:
+- Eventos creados manualmente
+- Tareas con fecha de vencimiento
+- Rutas programadas
+
+### 4.17 Mi Vehículo (Abastecedor)
+
+Panel personal del abastecedor para ver el inventario de su vehículo asignado.
+
+**Información del Vehículo:**
+- Placa del vehículo
+- Marca y modelo
+- Estado de asignación
+
+**KPIs del Inventario:**
+- Productos diferentes en vehículo
+- Unidades totales cargadas
+- Cargas recibidas hoy (entrantes)
+- Descargas realizadas hoy (salientes)
+- Productos próximos a vencer (7 días)
+
+#### Inventario por Producto
+
+Muestra cada producto cargado con:
+- Nombre del producto
+- SKU (código)
+- Cantidad total
+- Detalle por lote:
+  - Número de lote
+  - Cantidad del lote
+  - Fecha de carga
+  - Fecha de vencimiento
+  - Días restantes hasta vencimiento
+
+**Indicadores de Vencimiento:**
+- 🔴 Rojo: Vence en menos de 3 días
+- 🟡 Amarillo: Vence en 3-7 días
+- 🟢 Verde: Más de 7 días para vencer
+
+#### Historial de Transferencias
+
+Muestra las transferencias del día actual:
+- **Entrantes** (↓): Productos recibidos del almacén
+- **Salientes** (↑): Productos entregados a máquinas
+
+**Ejemplo Práctico:**
+> Verificar inventario antes de iniciar ruta:
+> - Entrar a "Mi Vehículo"
+> - Ver: 8 productos, 156 unidades totales
+> - Alerta: "2 lotes por vencer"
+>   - Coca-Cola Lote #2024-0105: 12 unidades, vence en 3 días
+>   - Pepsi Lote #2024-0108: 8 unidades, vence en 5 días
+> - Priorizar estos productos en las máquinas de hoy.
+
+### 4.18 Panel de Almacén
+
+Vista rápida del estado del inventario para usuarios con rol Almacén.
+
+**Tarjetas de Resumen:**
+- Total de productos en almacén
+- Unidades totales en stock
+- Productos bajo mínimo (alerta)
+- Lotes por vencer en 30 días (alerta)
+
+#### Productos con Stock Bajo
+
+Lista de productos que han alcanzado o están por debajo del nivel mínimo de stock:
+- Nombre del producto
+- Stock actual vs. mínimo
+- Barra de progreso visual
+- Indicador de nivel crítico (rojo)
+
+**Ejemplo:**
+> Stock bajo detectado:
+> - Coca-Cola 500ml: 45/50 (90%) - Advertencia
+> - Pepsi 350ml: 12/30 (40%) - Crítico
+> - Agua Cristal: 0/20 (0%) - Sin stock
+
+#### Lotes Próximos a Vencer
+
+Lista de lotes ordenados por fecha de vencimiento:
+- Producto y número de lote
+- Cantidad disponible
+- Días restantes para vencer
+- Indicador de urgencia
+
+**Ejemplo:**
+> Lotes por vencer:
+> - Coca-Cola #2024-1201: 24 unidades, vence en 5 días 🔴
+> - Pepsi #2024-1210: 36 unidades, vence en 14 días 🟡
+> - Agua #2025-0115: 50 unidades, vence en 30 días 🟢
+
+#### Órdenes de Compra Pendientes
+
+Lista de órdenes de compra enviadas a proveedores:
+- Proveedor
+- Fecha de orden
+- Estado (Enviada, En tránsito)
+- Productos pendientes de recibir
+
+#### Movimientos Recientes
+
+Últimos 10 movimientos de inventario:
+- Tipo de movimiento (Entrada/Salida)
+- Producto afectado
+- Cantidad
+- Fecha y hora
+- Usuario responsable
+
+**Accesos Rápidos:**
+- **Ver Almacén Completo**: Ir al módulo de almacén
+- **Compras**: Ir al módulo de compras
+
+### 4.19 Panel de Contabilidad
+
+Vista rápida financiera para usuarios con rol Contabilidad.
+
+**Tarjetas de Resumen:**
+- Ventas del mes actual (RD$)
+- Efectivo recolectado (RD$)
+- Pendiente de depósito (RD$)
+- Saldo de caja chica (RD$)
+
+#### Máquinas Top del Mes
+
+Lista de las 5 máquinas con mayores ventas:
+- Nombre de la máquina
+- Zona
+- Total de ventas (RD$)
+- Porcentaje del total
+
+**Ejemplo:**
+> Top ventas enero:
+> 1. MAQ-05 Plaza Las Américas: RD$45,000 (18%)
+> 2. MAQ-12 Universidad INTEC: RD$38,000 (15%)
+> 3. MAQ-08 Supermercado Nacional: RD$32,000 (13%)
+> 4. MAQ-03 Hospital HOMS: RD$28,000 (11%)
+> 5. MAQ-15 Aeropuerto: RD$25,000 (10%)
+
+#### Depósitos Recientes
+
+Últimos 5 depósitos bancarios:
+- Fecha del depósito
+- Monto depositado (RD$)
+- Banco/Cuenta
+- Estado (Verificado/Pendiente)
+
+#### Gastos de Caja Chica Pendientes
+
+Lista de gastos esperando aprobación:
+- Fecha de solicitud
+- Categoría del gasto
+- Monto solicitado
+- Solicitante
+- Acciones: Aprobar / Rechazar
+
+**Accesos Rápidos:**
+- **Contabilidad Completa**: Ir al módulo de contabilidad
+- **Caja Chica**: Ir al módulo de caja chica
+
+### 4.20 Detalle de Máquina
+
+Vista completa de información y operaciones de una máquina específica.
+
+**Pestañas Disponibles:**
+
+#### Pestaña General
+- Nombre y código de la máquina
+- Tipo de máquina (Bebidas, Snacks, Mixta)
+- Estado actual (Operando, Fuera de Servicio, Mantenimiento)
+- Zona asignada
+- Ubicación (dirección, coordenadas)
+- Fecha de instalación
+- Último servicio realizado
+- Próximo servicio programado
+
+#### Pestaña Inventario
+Lista de productos actualmente en la máquina:
+- Nombre del producto
+- Cantidad disponible
+- Capacidad máxima
+- Porcentaje de llenado (barra visual)
+- Indicador de stock bajo
+
+**Colores de Indicador:**
+- 🟢 Verde: Stock >50%
+- 🟡 Amarillo: Stock 20-50%
+- 🔴 Rojo: Stock <20%
+
+#### Pestaña Servicio
+Historial de servicios realizados:
+- Fecha y hora del servicio
+- Abastecedor que realizó el servicio
+- Duración del servicio
+- Productos cargados
+- Efectivo recolectado
+- Checklist completado
+- Notas del servicio
+
+#### Pestaña Alertas
+Problemas y alertas activas de la máquina:
+- Tipo de alerta (Técnica, Stock, Operacional)
+- Fecha de reporte
+- Descripción del problema
+- Prioridad (Alta, Media, Baja)
+- Estado (Pendiente, En Atención, Resuelto)
+- Fotos adjuntas (si aplica)
+
+#### Pestaña Ventas
+Estadísticas de ventas de la máquina:
+- Gráfico de ventas diarias/semanales/mensuales
+- Total de ventas del período
+- Productos más vendidos
+- Horarios de mayor venta
+- Comparación con períodos anteriores
+
+**Ejemplo Práctico:**
+> Ver detalle de MAQ-22:
+> - Hacer clic en la tarjeta de MAQ-22
+> - General: Estado "Operando", Zona Norte, último servicio hace 2 días
+> - Inventario: 75% lleno, Coca-Cola: 8/12, Pepsi: 5/10 (bajo!)
+> - Alertas: 1 alerta activa "Display con falla"
+>   - Prioridad: Media
+>   - Reportado por: Carlos Martínez
+>   - Fecha: 08/01/2026
+> - Ventas: RD$4,500 esta semana, +15% vs semana anterior
+
+### 4.21 Gestión de Ubicaciones
+
+Administración de los puntos físicos donde se instalan las máquinas.
+
+**Información de Ubicación:**
+- Nombre del lugar (ej: "Plaza Las Américas")
+- Dirección completa
+- Coordenadas GPS (latitud/longitud)
+- Tipo de ubicación (Centro Comercial, Hospital, Universidad, etc.)
+- Contacto del lugar
+- Notas adicionales
+
+#### Crear Nueva Ubicación
+
+1. Vaya a **Máquinas > Ubicaciones**
+2. Haga clic en **"+ Nueva Ubicación"**
+3. Complete los datos requeridos
+4. Guarde la ubicación
+
+**Ejemplo Práctico:**
+> Agregar nueva ubicación:
+> - Nombre: "Centro Comercial Sambil"
+> - Dirección: "Av. John F. Kennedy, Santo Domingo"
+> - Tipo: "Centro Comercial"
+> - Contacto: "Sr. García - 809-555-1234"
+> - Guardar → Ahora puede asignar máquinas a esta ubicación.
+
+### 4.22 Gestión de Paradas de Ruta
+
+Configuración de las visitas programadas en cada ruta.
+
+**Información de Parada:**
+- Máquina a visitar
+- Orden en la ruta (secuencia)
+- Hora estimada de llegada
+- Tiempo estimado de servicio
+- Notas especiales
+
+#### Estados de Parada
+
+| Estado | Descripción | Color |
+|--------|-------------|-------|
+| Pendiente | Aún no visitada | Gris |
+| En Progreso | Servicio en curso | Azul |
+| Completada | Servicio terminado | Verde |
+| Omitida | Saltada por alguna razón | Amarillo |
+
+#### Funcionalidades
+
+**Agregar Parada a Ruta:**
+1. Abra la ruta en edición
+2. Haga clic en **"+ Agregar Parada"**
+3. Seleccione la máquina
+4. Defina el orden y hora estimada
+5. Guarde los cambios
+
+**Reordenar Paradas:**
+- Arrastre y suelte las paradas para cambiar el orden
+- El sistema recalcula las horas estimadas automáticamente
+
+---
+
+## Anexo A: Matriz de Permisos por Rol
+
+Esta tabla muestra los permisos de cada rol en el sistema. Las acciones posibles son:
+- **V**: Ver
+- **C**: Crear
+- **E**: Editar
+- **D**: Eliminar
+- **A**: Aprobar
+- **X**: Exportar
+
+### Recursos Operativos
+
+| Recurso | Admin | Supervisor | Abastecedor | Almacén | Contabilidad | RH |
+|---------|-------|------------|-------------|---------|--------------|-----|
+| Máquinas | VCED | VE | V | - | V | - |
+| Ubicaciones | VCED | V | V | - | V | - |
+| Rutas | VCED | VE | V | - | - | - |
+| Paradas de Ruta | VCED | VCED | VE | - | - | - |
+| Productos | VCED | V | V | VCED | V | - |
+| Almacén | VCED | V | - | VCED | V | - |
+| Movimientos Almacén | VCED | V | - | VCE | V | - |
+
+### Recursos de Personal
+
+| Recurso | Admin | Supervisor | Abastecedor | Almacén | Contabilidad | RH |
+|---------|-------|------------|-------------|---------|--------------|-----|
+| Empleados | VCED | V | - | - | V | VCED |
+| Usuarios | VCED | - | - | - | - | VCE |
+| Proveedores | VCED | V | - | VCED | V | - |
+
+### Recursos Financieros
+
+| Recurso | Admin | Supervisor | Abastecedor | Almacén | Contabilidad | RH |
+|---------|-------|------------|-------------|---------|--------------|-----|
+| Recolección Efectivo | VCEDA | V | VC | - | VCEA | - |
+| Reportes Problemas | VCEDA | VCEA | VC | - | V | - |
+| Caja Chica | VCED | V | - | - | VCED | - |
+| Aprobación Caja Chica | VA | V | - | - | VA | - |
+| Contabilidad | VCEDX | - | - | - | VCEDX | - |
+| Compras | VCEDA | V | - | VCEDA | V | - |
+
+### Recursos de Combustible y Vehículos
+
+| Recurso | Admin | Supervisor | Abastecedor | Almacén | Contabilidad | RH |
+|---------|-------|------------|-------------|---------|--------------|-----|
+| Combustible | VCED | VCE | - | - | V | - |
+| Vehículos | VCED | VE | - | - | V | - |
+
+### Recursos de RRHH
+
+| Recurso | Admin | Supervisor | Abastecedor | Almacén | Contabilidad | RH |
+|---------|-------|------------|-------------|---------|--------------|-----|
+| Asistencia | VCEDA | VE | - | - | - | VCEDA |
+| Nómina | VCEDA | V | - | - | V | VCEDA |
+| Vacaciones | VCEDA | VE | VC | VC | VC | VCEDA |
+| Evaluaciones | VCED | VE | - | - | - | VCED |
+| Documentos | VCED | VE | - | - | - | VCED |
+| Perfiles Empleado | VCED | VE | - | - | - | VCED |
+
+### Recursos Generales
+
+| Recurso | Admin | Supervisor | Abastecedor | Almacén | Contabilidad | RH |
+|---------|-------|------------|-------------|---------|--------------|-----|
+| Tareas | VCED | VCE | VE | VCED | VCED | VCED |
+| Servicios | VCED | V | VCE | - | - | - |
+| Reportes | VX | V | - | VX | VX | V |
+| Configuración | VE | V | V | V | V | V |
+
+**Nota:** Esta matriz refleja la configuración definida en el sistema. Las acciones específicas disponibles pueden variar según el contexto y la zona asignada al usuario.
+
+**Leyenda:**
+- V = Ver (view)
+- C = Crear (create)
+- E = Editar (edit)
+- D = Eliminar (delete)
+- A = Aprobar (approve)
+- X = Exportar (export)
+- "-" = Sin acceso
+
+### Restricciones Especiales por Rol
+
+**Supervisor:**
+- Solo puede ver/editar máquinas de su zona asignada
+- No puede crear ni eliminar máquinas, rutas o usuarios
+- Puede aprobar reportes de problemas de su zona
+
+**Abastecedor:**
+- Solo ve su propia ruta y vehículo asignado
+- Solo puede crear recolecciones de efectivo (no editar/eliminar)
+- Puede solicitar vacaciones (no aprobar)
+
+**Almacén:**
+- Sin acceso a módulos financieros (excepto compras)
+- Control total sobre inventario y proveedores
+
+**Contabilidad:**
+- Sin acceso a operaciones de campo
+- Control total sobre finanzas y caja chica
+
+**RH:**
+- Sin acceso a operaciones ni finanzas
+- Control total sobre personal y nómina
+
 ---
 
 ## 5. Preguntas Frecuentes
@@ -1149,10 +1856,10 @@ R: Sí, una vez que hace clic en "Guardar" o "Confirmar", los datos se almacenan
 
 ## Información de Contacto
 
-**Sistema:** Dispensax v1.0  
+**Sistema:** Dispensax v2.0  
 **Desarrollado para:** Gestión de Máquinas Expendedoras  
 **Zona Horaria:** América/Santo_Domingo (GMT-4)
 
 ---
 
-*Este manual está sujeto a actualizaciones según evolucione el sistema.*
+*Este manual está sujeto a actualizaciones según evolucione el sistema. Última actualización: Enero 2026.*
