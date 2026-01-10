@@ -836,6 +836,186 @@ export async function registerRoutes(
     return true;
   }
 
+  // Helper function to verify supplier tenant ownership
+  async function verifySupplierTenant(supplierId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const supplier = await storage.getSupplier(supplierId);
+    if (!supplier) {
+      res.status(404).json({ error: "Proveedor no encontrado" });
+      return false;
+    }
+    if (!verifyTenantOwnership(supplier.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Proveedor no encontrado" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify route tenant ownership
+  async function verifyRouteTenant(routeId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const route = await storage.getRoute(routeId);
+    if (!route) {
+      res.status(404).json({ error: "Ruta no encontrada" });
+      return false;
+    }
+    if (!verifyTenantOwnership(route.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Ruta no encontrada" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify route stop tenant ownership (via route)
+  async function verifyStopTenant(stopId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const stop = await storage.getRouteStop(stopId);
+    if (!stop) {
+      res.status(404).json({ error: "Parada no encontrada" });
+      return false;
+    }
+    const route = await storage.getRoute(stop.routeId);
+    if (!route) {
+      res.status(404).json({ error: "Parada no encontrada" });
+      return false;
+    }
+    if (!verifyTenantOwnership(route.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Parada no encontrada" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify service record tenant ownership
+  async function verifyServiceTenant(serviceId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const service = await storage.getServiceRecord(serviceId);
+    if (!service) {
+      res.status(404).json({ error: "Servicio no encontrado" });
+      return false;
+    }
+    if (!verifyTenantOwnership(service.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Servicio no encontrado" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify vehicle tenant ownership
+  async function verifyVehicleTenant(vehicleId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const vehicle = await storage.getVehicle(vehicleId);
+    if (!vehicle) {
+      res.status(404).json({ error: "Vehículo no encontrado" });
+      return false;
+    }
+    if (!verifyTenantOwnership(vehicle.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Vehículo no encontrado" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify fuel record tenant ownership
+  async function verifyFuelRecordTenant(recordId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const record = await storage.getFuelRecord(recordId);
+    if (!record) {
+      res.status(404).json({ error: "Registro de combustible no encontrado" });
+      return false;
+    }
+    if (!verifyTenantOwnership(record.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Registro de combustible no encontrado" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify cash movement tenant ownership
+  async function verifyCashMovementTenant(movementId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const movement = await storage.getCashMovement(movementId);
+    if (!movement) {
+      res.status(404).json({ error: "Movimiento no encontrado" });
+      return false;
+    }
+    if (!verifyTenantOwnership(movement.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Movimiento no encontrado" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify bank deposit tenant ownership
+  async function verifyBankDepositTenant(depositId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const deposit = await storage.getBankDeposit(depositId);
+    if (!deposit) {
+      res.status(404).json({ error: "Depósito no encontrado" });
+      return false;
+    }
+    if (!verifyTenantOwnership(deposit.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Depósito no encontrado" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify product transfer tenant ownership
+  async function verifyProductTransferTenant(transferId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const transfer = await storage.getProductTransfer(transferId);
+    if (!transfer) {
+      res.status(404).json({ error: "Transferencia no encontrada" });
+      return false;
+    }
+    if (!verifyTenantOwnership(transfer.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Transferencia no encontrada" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify shrinkage record tenant ownership
+  async function verifyShrinkageTenant(shrinkageId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const record = await storage.getShrinkageRecord(shrinkageId);
+    if (!record) {
+      res.status(404).json({ error: "Merma no encontrada" });
+      return false;
+    }
+    if (!verifyTenantOwnership(record.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Merma no encontrada" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify purchase order tenant ownership
+  async function verifyPurchaseOrderTenant(orderId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const order = await storage.getPurchaseOrder(orderId);
+    if (!order) {
+      res.status(404).json({ error: "Orden no encontrada" });
+      return false;
+    }
+    if (!verifyTenantOwnership(order.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Orden no encontrada" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify purchase order item tenant ownership (via order)
+  // Note: Uses direct DB query since storage.getPurchaseOrderItem doesn't exist
+  async function verifyPurchaseOrderItemTenant(itemId: string, req: AuthenticatedRequest, res: Response): Promise<{ valid: boolean; orderId?: string }> {
+    const { purchaseOrderItems } = await import("@shared/schema");
+    const [item] = await db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.id, itemId));
+    if (!item) {
+      res.status(404).json({ error: "Item no encontrado" });
+      return { valid: false };
+    }
+    const order = await storage.getPurchaseOrder(item.orderId);
+    if (!order) {
+      res.status(404).json({ error: "Item no encontrado" });
+      return { valid: false };
+    }
+    if (!verifyTenantOwnership(order.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Item no encontrado" });
+      return { valid: false };
+    }
+    return { valid: true, orderId: item.orderId };
+  }
+
   app.get("/api/machines/:id/inventory", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyMachineTenant(req.params.id, req, res)) return;
@@ -1099,10 +1279,9 @@ export async function registerRoutes(
 
   app.get("/api/suppliers/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifySupplierTenant(req.params.id, req, res)) return;
+      
       const supplier = await storage.getSupplier(req.params.id);
-      if (!supplier) {
-        return res.status(404).json({ error: "Proveedor no encontrado" });
-      }
       res.json(supplier);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener proveedor" });
@@ -1124,6 +1303,8 @@ export async function registerRoutes(
 
   app.patch("/api/suppliers/:id", authenticateJWT, authorizeAction("suppliers", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifySupplierTenant(req.params.id, req, res)) return;
+      
       const data = insertSupplierSchema.partial().parse(req.body);
       const supplier = await storage.updateSupplier(req.params.id, data);
       if (!supplier) {
@@ -1140,6 +1321,8 @@ export async function registerRoutes(
 
   app.delete("/api/suppliers/:id", authenticateJWT, authorizeAction("suppliers", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifySupplierTenant(req.params.id, req, res)) return;
+      
       await storage.deleteSupplier(req.params.id);
       res.status(204).send();
     } catch (error) {
@@ -1635,6 +1818,8 @@ export async function registerRoutes(
 
   app.get("/api/supplier/routes/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyRouteTenant(req.params.id, req, res)) return;
+      
       const route = await storage.getRoute(req.params.id);
       if (!route) {
         return res.status(404).json({ error: "Ruta no encontrada" });
@@ -1678,6 +1863,8 @@ export async function registerRoutes(
 
   app.patch("/api/supplier/routes/:id", authenticateJWT, authorizeAction("routes", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyRouteTenant(req.params.id, req, res)) return;
+      
       const data = insertRouteSchema.partial().parse(req.body);
       const route = await storage.updateRoute(req.params.id, data);
       if (!route) {
@@ -1774,6 +1961,8 @@ export async function registerRoutes(
 
   app.get("/api/supplier/stops/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyStopTenant(req.params.id, req, res)) return;
+      
       const stop = await storage.getRouteStop(req.params.id);
       if (!stop) {
         return res.status(404).json({ error: "Parada no encontrada" });
@@ -1914,6 +2103,8 @@ export async function registerRoutes(
 
   app.delete("/api/supplier/routes/:id", authenticateJWT, authorizeAction("routes", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyRouteTenant(req.params.id, req, res)) return;
+      
       const route = await storage.getRoute(req.params.id);
       if (!route) {
         return res.status(404).json({ error: "Ruta no encontrada" });
@@ -1930,6 +2121,8 @@ export async function registerRoutes(
 
   app.delete("/api/supplier/stops/:id", authenticateJWT, authorizeAction("stops", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyStopTenant(req.params.id, req, res)) return;
+      
       const success = await storage.deleteRouteStop(req.params.id);
       if (!success) {
         return res.status(404).json({ error: "Parada no encontrada" });
@@ -1959,6 +2152,8 @@ export async function registerRoutes(
 
   app.get("/api/supplier/services/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyServiceTenant(req.params.id, req, res)) return;
+      
       const service = await storage.getServiceRecord(req.params.id);
       if (!service) {
         return res.status(404).json({ error: "Servicio no encontrado" });
@@ -3289,10 +3484,9 @@ export async function registerRoutes(
 
   app.get("/api/cash-movements/:id", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyCashMovementTenant(req.params.id, req, res)) return;
+      
       const movement = await storage.getCashMovement(req.params.id);
-      if (!movement) {
-        return res.status(404).json({ error: "Movimiento no encontrado" });
-      }
       res.json(movement);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener movimiento" });
@@ -3314,6 +3508,8 @@ export async function registerRoutes(
 
   app.patch("/api/cash-movements/:id/status", authenticateJWT, authorizeAction("cash_collections", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyCashMovementTenant(req.params.id, req, res)) return;
+      
       const { status } = req.body;
       if (!status) {
         return res.status(400).json({ error: "Falta el estado" });
@@ -3363,10 +3559,9 @@ export async function registerRoutes(
 
   app.get("/api/bank-deposits/:id", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyBankDepositTenant(req.params.id, req, res)) return;
+      
       const deposit = await storage.getBankDeposit(req.params.id);
-      if (!deposit) {
-        return res.status(404).json({ error: "Depósito no encontrado" });
-      }
       res.json(deposit);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener depósito" });
@@ -3421,10 +3616,9 @@ export async function registerRoutes(
 
   app.get("/api/product-transfers/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyProductTransferTenant(req.params.id, req, res)) return;
+      
       const transfer = await storage.getProductTransfer(req.params.id);
-      if (!transfer) {
-        return res.status(404).json({ error: "Transferencia no encontrada" });
-      }
       res.json(transfer);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener transferencia" });
@@ -3477,10 +3671,9 @@ export async function registerRoutes(
 
   app.get("/api/shrinkage/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyShrinkageTenant(req.params.id, req, res)) return;
+      
       const record = await storage.getShrinkageRecord(req.params.id);
-      if (!record) {
-        return res.status(404).json({ error: "Merma no encontrada" });
-      }
       res.json(record);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener merma" });
@@ -3775,10 +3968,9 @@ export async function registerRoutes(
 
   app.get("/api/purchase-orders/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyPurchaseOrderTenant(req.params.id, req, res)) return;
+      
       const order = await storage.getPurchaseOrder(req.params.id);
-      if (!order) {
-        return res.status(404).json({ error: "Orden no encontrada" });
-      }
       res.json(order);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener orden" });
@@ -3806,6 +3998,8 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-orders/:id", authenticateJWT, authorizeAction("purchase_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyPurchaseOrderTenant(req.params.id, req, res)) return;
+      
       const data = insertPurchaseOrderSchema.partial().parse(req.body);
       const order = await storage.updatePurchaseOrder(req.params.id, data);
       if (!order) {
@@ -3842,6 +4036,8 @@ export async function registerRoutes(
 
   app.delete("/api/purchase-orders/:id", authenticateJWT, authorizeAction("purchase_orders", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyPurchaseOrderTenant(req.params.id, req, res)) return;
+      
       const deleted = await storage.deletePurchaseOrder(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Orden no encontrada" });
@@ -3855,6 +4051,8 @@ export async function registerRoutes(
   // Items de Orden de Compra
   app.get("/api/purchase-orders/:id/items", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyPurchaseOrderTenant(req.params.id, req, res)) return;
+      
       const items = await storage.getPurchaseOrderItems(req.params.id);
       res.json(items);
     } catch (error) {
@@ -3864,6 +4062,8 @@ export async function registerRoutes(
 
   app.post("/api/purchase-orders/:id/items", authenticateJWT, authorizeAction("purchase_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyPurchaseOrderTenant(req.params.id, req, res)) return;
+      
       const data = insertPurchaseOrderItemSchema.omit({ orderId: true }).parse(req.body);
       const item = await storage.addPurchaseOrderItem({
         ...data,
@@ -3881,6 +4081,9 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-order-items/:id", authenticateJWT, authorizeAction("purchase_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const verifyResult = await verifyPurchaseOrderItemTenant(req.params.id, req, res);
+      if (!verifyResult.valid) return;
+      
       const data = insertPurchaseOrderItemSchema.partial().parse(req.body);
       const item = await storage.updatePurchaseOrderItem(req.params.id, data);
       if (!item) {
@@ -3897,6 +4100,9 @@ export async function registerRoutes(
 
   app.delete("/api/purchase-order-items/:id", authenticateJWT, authorizeAction("purchase_orders", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const verifyResult = await verifyPurchaseOrderItemTenant(req.params.id, req, res);
+      if (!verifyResult.valid) return;
+      
       const deleted = await storage.removePurchaseOrderItem(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Item no encontrado" });
@@ -4003,10 +4209,9 @@ export async function registerRoutes(
 
   app.get("/api/vehicles/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyVehicleTenant(req.params.id, req, res)) return;
+      
       const vehicle = await storage.getVehicle(req.params.id);
-      if (!vehicle) {
-        return res.status(404).json({ error: "Vehículo no encontrado" });
-      }
       res.json(vehicle);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener vehículo" });
@@ -4029,6 +4234,8 @@ export async function registerRoutes(
 
   app.patch("/api/vehicles/:id", authenticateJWT, authorizeAction("vehicles", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyVehicleTenant(req.params.id, req, res)) return;
+      
       const validated = insertVehicleSchema.partial().parse(req.body);
       const vehicle = await storage.updateVehicle(req.params.id, validated);
       if (!vehicle) {
@@ -4045,6 +4252,8 @@ export async function registerRoutes(
 
   app.delete("/api/vehicles/:id", authenticateJWT, authorizeAction("vehicles", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyVehicleTenant(req.params.id, req, res)) return;
+      
       await storage.deleteVehicle(req.params.id);
       res.json({ success: true });
     } catch (error) {
@@ -4086,10 +4295,9 @@ export async function registerRoutes(
 
   app.get("/api/fuel-records/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyFuelRecordTenant(req.params.id, req, res)) return;
+      
       const record = await storage.getFuelRecord(req.params.id);
-      if (!record) {
-        return res.status(404).json({ error: "Registro no encontrado" });
-      }
       res.json(record);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener registro de combustible" });
@@ -4112,6 +4320,8 @@ export async function registerRoutes(
 
   app.patch("/api/fuel-records/:id", authenticateJWT, authorizeAction("fuel", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyFuelRecordTenant(req.params.id, req, res)) return;
+      
       const validated = insertFuelRecordSchema.partial().parse(req.body);
       const record = await storage.updateFuelRecord(req.params.id, validated);
       if (!record) {
@@ -4128,6 +4338,8 @@ export async function registerRoutes(
 
   app.delete("/api/fuel-records/:id", authenticateJWT, authorizeAction("fuel", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyFuelRecordTenant(req.params.id, req, res)) return;
+      
       await storage.deleteFuelRecord(req.params.id);
       res.json({ success: true });
     } catch (error) {
