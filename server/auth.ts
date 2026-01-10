@@ -14,6 +14,8 @@ export interface JWTPayload {
   userId: string;
   username: string;
   role: string;
+  tenantId: string | null;
+  isSuperAdmin: boolean;
   iat?: number;
   exp?: number;
 }
@@ -109,7 +111,12 @@ export function authorizeOwnership(paramName: string = "userId") {
     const currentUserId = req.user.userId;
     const currentRole = req.user.role;
     
-    // Admin y supervisor pueden ver datos de cualquier usuario
+    // Super Admin puede ver todo
+    if (req.user.isSuperAdmin) {
+      return next();
+    }
+    
+    // Admin y supervisor pueden ver datos de cualquier usuario de su tenant
     if (currentRole === "admin" || currentRole === "supervisor") {
       return next();
     }
@@ -123,6 +130,66 @@ export function authorizeOwnership(paramName: string = "userId") {
     
     next();
   };
+}
+
+/**
+ * Middleware que requiere que el usuario tenga un tenant asignado.
+ * Super Admins pasan sin tenant cuando acceden a rutas de gestión de tenants.
+ */
+export function requireTenant(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ error: "No autenticado" });
+  }
+  
+  // Super Admin puede acceder sin tenant (para rutas de gestión)
+  if (req.user.isSuperAdmin) {
+    return next();
+  }
+  
+  if (!req.user.tenantId) {
+    return res.status(403).json({ 
+      error: "Usuario sin empresa asignada",
+      code: "NO_TENANT_ASSIGNED"
+    });
+  }
+  
+  next();
+}
+
+/**
+ * Middleware que requiere Super Admin.
+ * Solo usuarios con isSuperAdmin=true pueden acceder.
+ */
+export function requireSuperAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ error: "No autenticado" });
+  }
+  
+  if (!req.user.isSuperAdmin) {
+    return res.status(403).json({ 
+      error: "Acceso restringido a Super Administradores",
+      code: "SUPER_ADMIN_REQUIRED"
+    });
+  }
+  
+  next();
+}
+
+/**
+ * Helper para obtener el tenantId efectivo para queries.
+ * Super Admins pueden especificar un tenant en query params.
+ * Usuarios normales siempre usan su propio tenant.
+ */
+export function getEffectiveTenantId(req: AuthenticatedRequest): string | null {
+  if (!req.user) return null;
+  
+  // Super Admin puede especificar tenant via query param
+  if (req.user.isSuperAdmin) {
+    const queryTenantId = req.query.tenantId as string;
+    return queryTenantId || req.user.tenantId;
+  }
+  
+  return req.user.tenantId;
 }
 
 /**

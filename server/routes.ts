@@ -184,7 +184,9 @@ export async function registerRoutes(
       const accessToken = signAccessToken({
         userId: user.id,
         username: user.username,
-        role: user.role || "abastecedor"
+        role: user.role || "abastecedor",
+        tenantId: user.tenantId || null,
+        isSuperAdmin: user.isSuperAdmin || false
       });
 
       const { token: refreshToken, hash: refreshTokenHash, expiresAt } = signRefreshToken();
@@ -245,7 +247,9 @@ export async function registerRoutes(
       const accessToken = signAccessToken({
         userId: user.id,
         username: user.username,
-        role: user.role || "abastecedor"
+        role: user.role || "abastecedor",
+        tenantId: user.tenantId || null,
+        isSuperAdmin: user.isSuperAdmin || false
       });
 
       const { token: newRefreshToken, hash: newRefreshTokenHash, expiresAt } = signRefreshToken();
@@ -312,7 +316,9 @@ export async function registerRoutes(
       const accessToken = signAccessToken({
         userId: newUser.id,
         username: newUser.username,
-        role: newUser.role || "abastecedor"
+        role: newUser.role || "abastecedor",
+        tenantId: newUser.tenantId || null,
+        isSuperAdmin: newUser.isSuperAdmin || false
       });
 
       const { token: refreshToken, hash: refreshTokenHash, expiresAt } = signRefreshToken();
@@ -2492,6 +2498,7 @@ export async function registerRoutes(
               .where(eq(machineInventory.id, existing.id));
           } else {
             await db.insert(machineInventory).values({
+              tenantId: req.user!.tenantId!,
               machineId,
               productId: product.productId,
               currentQuantity: product.quantity,
@@ -2502,6 +2509,7 @@ export async function registerRoutes(
           
           // 4. Registrar en product_loads
           await db.insert(productLoads).values({
+            tenantId: req.user!.tenantId!,
             serviceRecordId: serviceRecordId || null,
             machineId,
             productId: product.productId,
@@ -3214,6 +3222,7 @@ export async function registerRoutes(
         await storage.updateWarehouseStock(data.productId, newStock);
         
         await storage.createWarehouseMovement({
+          tenantId: req.user!.tenantId!,
           productId: data.productId,
           lotId: data.lotId,
           movementType,

@@ -13,6 +13,8 @@ export interface User {
   isActive?: boolean;
   assignedVehicleId?: string | null;
   assignedZoneId?: string | null;
+  tenantId?: string | null;
+  isSuperAdmin?: boolean;
 }
 
 interface AuthContextType {
@@ -274,6 +276,8 @@ export function canAccessRoute(role: UserRole, route: string): boolean {
   const adminRoutes = ["/", "/maquinas", "/tareas", "/todas-tareas", "/calendario", "/almacen", "/almacen-panel",
     "/abastecedor", "/abastecedores", "/dinero-productos", "/compras", "/combustible", "/contabilidad", "/contabilidad-panel",
     "/caja-chica", "/rh", "/reportes", "/configuracion", "/supervisor", "/productos", "/supervisores", "/usuarios", "/rutas", "/monitoreo-servicios"];
+  
+  const superAdminRoutes = ["/super-admin", "/super-admin/tenants", "/super-admin/plans", "/super-admin/metrics"];
   
   const supervisorRoutes = ["/supervisor", "/maquinas", "/tareas", "/todas-tareas", "/calendario", 
     "/almacen", "/abastecedor", "/abastecedores", "/dinero-productos", "/combustible", "/rh", "/configuracion", "/productos", "/rutas", "/monitoreo-servicios"];
