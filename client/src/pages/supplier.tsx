@@ -560,26 +560,41 @@ export function SupplierPage() {
 
   const loadProductsMutation = useMutation({
     mutationFn: async (data: { machineId: string; products: { productId: string; quantity: number }[]; serviceRecordId?: string }) => {
-      return apiRequest("POST", "/api/supplier/load-products", data);
+      return apiRequest("POST", "/api/supplier/load-from-vehicle", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/machines", currentStop?.machine?.id, "inventory"] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/stats", supplierId] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/inventory", supplierId] });
       queryClient.invalidateQueries({ queryKey: [`/api/supplier/services/${activeServiceId}/products`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-vehicle-inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-transfers"] });
       toast({ title: "Productos cargados", description: "El inventario ha sido actualizado" });
       setProductsToLoad([]);
       setIsLoadDialogOpen(false);
     },
     onError: (error: any) => {
-      if (error?.insufficientProducts) {
+      const errorCode = error?.errorCode;
+      if (errorCode === "MACHINE_NOT_IN_ZONE") {
+        toast({ 
+          title: "Máquina fuera de zona", 
+          description: "No tienes permiso para abastecer esta máquina. Contacta a tu supervisor.",
+          variant: "destructive" 
+        });
+      } else if (errorCode === "NO_VEHICLE_ASSIGNED") {
+        toast({ 
+          title: "Sin vehículo asignado", 
+          description: "No tienes un vehículo asignado. Contacta al administrador.",
+          variant: "destructive" 
+        });
+      } else if (errorCode === "INSUFFICIENT_STOCK" || error?.insufficientProducts) {
         toast({ 
           title: "Inventario insuficiente", 
           description: "No tienes suficientes productos en tu vehículo",
           variant: "destructive" 
         });
       } else {
-        toast({ title: "Error", description: "No se pudieron cargar los productos", variant: "destructive" });
+        toast({ title: "Error", description: error?.error || "No se pudieron cargar los productos", variant: "destructive" });
       }
     },
   });

@@ -2411,7 +2411,8 @@ export async function registerRoutes(
     }
   });
 
-  // Cargar múltiples productos a máquina (desde el panel del abastecedor)
+  // DEPRECATED: Use /api/supplier/load-from-vehicle instead (uses vehicleInventory with FEFO and zone validation)
+  // This endpoint uses the legacy supplierInventory table without lot traceability
   app.post("/api/supplier/load-products", authenticateJWT, authorizeAction("warehouse_movements", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { machineId, products, serviceRecordId } = req.body;
