@@ -287,6 +287,7 @@ export function WarehousePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse/movements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse/lots"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vehicle-inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-vehicle-inventory"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-transfers"] });
       setIsDispatchToVehicleDialogOpen(false);
       setDispatchVehicleId("");

@@ -607,6 +607,18 @@ export function SupplierPage() {
           description: "No tienes suficientes productos en tu vehículo",
           variant: "destructive" 
         });
+      } else if (errorCode === "INVALID_TARGET_USER") {
+        toast({ 
+          title: "Usuario inválido", 
+          description: "El abastecedor seleccionado no es válido o no existe.",
+          variant: "destructive" 
+        });
+      } else if (errorCode === "SUPPLIER_NOT_IN_ZONE") {
+        toast({ 
+          title: "Abastecedor fuera de zona", 
+          description: "No puedes operar en nombre de un abastecedor que no está en tu zona.",
+          variant: "destructive" 
+        });
       } else {
         toast({ title: "Error", description: errorMessage, variant: "destructive" });
       }
