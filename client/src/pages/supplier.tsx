@@ -574,7 +574,21 @@ export function SupplierPage() {
       setIsLoadDialogOpen(false);
     },
     onError: (error: any) => {
-      const errorCode = error?.errorCode;
+      let errorCode = "";
+      let errorMessage = "No se pudieron cargar los productos";
+      
+      try {
+        const errorString = error?.message || String(error);
+        const jsonMatch = errorString.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          errorCode = parsed.errorCode || "";
+          errorMessage = parsed.error || errorMessage;
+        }
+      } catch {
+        // ignore parse error
+      }
+      
       if (errorCode === "MACHINE_NOT_IN_ZONE") {
         toast({ 
           title: "Máquina fuera de zona", 
@@ -587,14 +601,14 @@ export function SupplierPage() {
           description: "No tienes un vehículo asignado. Contacta al administrador.",
           variant: "destructive" 
         });
-      } else if (errorCode === "INSUFFICIENT_STOCK" || error?.insufficientProducts) {
+      } else if (errorCode === "INSUFFICIENT_STOCK") {
         toast({ 
           title: "Inventario insuficiente", 
           description: "No tienes suficientes productos en tu vehículo",
           variant: "destructive" 
         });
       } else {
-        toast({ title: "Error", description: error?.error || "No se pudieron cargar los productos", variant: "destructive" });
+        toast({ title: "Error", description: errorMessage, variant: "destructive" });
       }
     },
   });
@@ -1418,6 +1432,8 @@ export function SupplierPage() {
                       className="w-full justify-start gap-2" 
                       variant="outline"
                       onClick={openLoadDialog}
+                      disabled={isViewingOther}
+                      title={isViewingOther ? "No puedes cargar productos cuando ves a otro abastecedor" : ""}
                       data-testid="button-load-products"
                     >
                       <Package className="h-4 w-4" />
