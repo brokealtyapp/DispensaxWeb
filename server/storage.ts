@@ -53,7 +53,13 @@ import {
   vehicles, fuelRecords,
   tasks, calendarEvents, passwordResetTokens, refreshTokens,
   employeeAttendance, payrollRecords, vacationRequests, performanceReviews, employeeDocuments, employeeProfiles,
-  vehicleInventory, inventoryTransfers, machineInventoryLots
+  vehicleInventory, inventoryTransfers, machineInventoryLots,
+  tenants, subscriptionPlans, tenantSubscriptions, tenantSettings, tenantInvites, superAdminAuditLog,
+  type Tenant, type InsertTenant,
+  type SubscriptionPlan, type InsertSubscriptionPlan,
+  type TenantSubscription, type InsertTenantSubscription,
+  type TenantSettings, type InsertTenantSettings,
+  type SuperAdminAuditLog, type InsertSuperAdminAuditLog
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc, or, inArray } from "drizzle-orm";
@@ -5696,6 +5702,169 @@ export class DatabaseStorage implements IStorage {
     await db.delete(refreshTokens)
       .where(lte(refreshTokens.expiresAt, new Date()));
     return 0;
+  }
+
+  // ==================== SUPER ADMIN: TENANTS ====================
+
+  async getAllTenants(): Promise<Tenant[]> {
+    return db.select().from(tenants).orderBy(desc(tenants.createdAt));
+  }
+
+  async getTenant(id: string): Promise<Tenant | undefined> {
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, id));
+    return tenant;
+  }
+
+  async getTenantBySlug(slug: string): Promise<Tenant | undefined> {
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.slug, slug));
+    return tenant;
+  }
+
+  async createTenant(data: InsertTenant): Promise<Tenant> {
+    const [tenant] = await db.insert(tenants).values(data).returning();
+    return tenant;
+  }
+
+  async updateTenant(id: string, data: Partial<InsertTenant>): Promise<Tenant | undefined> {
+    const [updated] = await db.update(tenants)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(tenants.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTenant(id: string): Promise<boolean> {
+    await db.update(tenants).set({ isActive: false }).where(eq(tenants.id, id));
+    return true;
+  }
+
+  // ==================== SUPER ADMIN: SUBSCRIPTION PLANS ====================
+
+  async getAllSubscriptionPlans(): Promise<SubscriptionPlan[]> {
+    return db.select().from(subscriptionPlans).orderBy(asc(subscriptionPlans.name));
+  }
+
+  async getSubscriptionPlan(id: string): Promise<SubscriptionPlan | undefined> {
+    const [plan] = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.id, id));
+    return plan;
+  }
+
+  async createSubscriptionPlan(data: InsertSubscriptionPlan): Promise<SubscriptionPlan> {
+    const [plan] = await db.insert(subscriptionPlans).values(data).returning();
+    return plan;
+  }
+
+  async updateSubscriptionPlan(id: string, data: Partial<InsertSubscriptionPlan>): Promise<SubscriptionPlan | undefined> {
+    const [updated] = await db.update(subscriptionPlans)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(subscriptionPlans.id, id))
+      .returning();
+    return updated;
+  }
+
+  // ==================== SUPER ADMIN: TENANT SUBSCRIPTIONS ====================
+
+  async getTenantSubscription(tenantId: string): Promise<TenantSubscription | undefined> {
+    const [sub] = await db.select().from(tenantSubscriptions)
+      .where(and(eq(tenantSubscriptions.tenantId, tenantId), eq(tenantSubscriptions.status, "active")));
+    return sub;
+  }
+
+  async createTenantSubscription(data: InsertTenantSubscription): Promise<TenantSubscription> {
+    const [sub] = await db.insert(tenantSubscriptions).values(data).returning();
+    return sub;
+  }
+
+  async updateTenantSubscription(id: string, data: Partial<InsertTenantSubscription>): Promise<TenantSubscription | undefined> {
+    const [updated] = await db.update(tenantSubscriptions)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(tenantSubscriptions.id, id))
+      .returning();
+    return updated;
+  }
+
+  // ==================== SUPER ADMIN: AUDIT LOG ====================
+
+  async createAuditLog(data: InsertSuperAdminAuditLog): Promise<SuperAdminAuditLog> {
+    const [log] = await db.insert(superAdminAuditLog).values(data).returning();
+    return log;
+  }
+
+  async getAuditLogs(limit?: number): Promise<SuperAdminAuditLog[]> {
+    const query = limit
+      ? db.select().from(superAdminAuditLog).orderBy(desc(superAdminAuditLog.createdAt)).limit(limit)
+      : db.select().from(superAdminAuditLog).orderBy(desc(superAdminAuditLog.createdAt));
+    return query;
+  }
+
+  // ==================== SUPER ADMIN: GLOBAL METRICS ====================
+
+  async getGlobalMetrics(): Promise<{
+    totalTenants: number;
+    activeTenants: number;
+    totalUsers: number;
+    totalMachines: number;
+    totalRevenue: string;
+    tenantsWithDetails: any[];
+  }> {
+    // Total tenants
+    const [tenantCount] = await db.select({ count: sql<number>`COUNT(*)` }).from(tenants);
+    const [activeCount] = await db.select({ count: sql<number>`COUNT(*)` }).from(tenants).where(eq(tenants.isActive, true));
+    
+    // Total users across all tenants
+    const [userCount] = await db.select({ count: sql<number>`COUNT(*)` }).from(users);
+    
+    // Total machines across all tenants
+    const [machineCount] = await db.select({ count: sql<number>`COUNT(*)` }).from(machines);
+    
+    // Get tenants with their user and machine counts
+    const allTenants = await this.getAllTenants();
+    const tenantsWithDetails = await Promise.all(allTenants.map(async (tenant) => {
+      const [userCountForTenant] = await db.select({ count: sql<number>`COUNT(*)` })
+        .from(users).where(eq(users.tenantId, tenant.id));
+      const [machineCountForTenant] = await db.select({ count: sql<number>`COUNT(*)` })
+        .from(machines).where(eq(machines.tenantId, tenant.id));
+      const subscription = await this.getTenantSubscription(tenant.id);
+      const plan = subscription ? await this.getSubscriptionPlan(subscription.planId) : null;
+      
+      return {
+        ...tenant,
+        userCount: userCountForTenant?.count || 0,
+        machineCount: machineCountForTenant?.count || 0,
+        subscription,
+        plan: plan?.name || "Sin plan"
+      };
+    }));
+
+    return {
+      totalTenants: tenantCount?.count || 0,
+      activeTenants: activeCount?.count || 0,
+      totalUsers: userCount?.count || 0,
+      totalMachines: machineCount?.count || 0,
+      totalRevenue: "0.00",
+      tenantsWithDetails
+    };
+  }
+
+  async getTenantStats(tenantId: string): Promise<{
+    users: number;
+    machines: number;
+    products: number;
+    monthlyRevenue: string;
+  }> {
+    const [userCount] = await db.select({ count: sql<number>`COUNT(*)` })
+      .from(users).where(eq(users.tenantId, tenantId));
+    const [machineCount] = await db.select({ count: sql<number>`COUNT(*)` })
+      .from(machines).where(eq(machines.tenantId, tenantId));
+    const [productCount] = await db.select({ count: sql<number>`COUNT(*)` })
+      .from(products).where(eq(products.tenantId, tenantId));
+    
+    return {
+      users: userCount?.count || 0,
+      machines: machineCount?.count || 0,
+      products: productCount?.count || 0,
+      monthlyRevenue: "0.00"
+    };
   }
 }
 

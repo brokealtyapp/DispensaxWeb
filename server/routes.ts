@@ -14,6 +14,7 @@ import {
   getEffectiveUserId,
   getSupervisorZone,
   optionalAuth,
+  requireSuperAdmin,
   REFRESH_TOKEN_COOKIE,
   REFRESH_TOKEN_COOKIE_OPTIONS,
   type AuthenticatedRequest 
@@ -5887,6 +5888,300 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error in search:", error);
       res.status(500).json({ error: "Error al buscar" });
+    }
+  });
+
+  // ==================== SUPER ADMIN ROUTES ====================
+  
+  // Get global metrics (Super Admin only)
+  app.get("/api/super-admin/metrics", authenticateJWT, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const metrics = await storage.getGlobalMetrics();
+      res.json(metrics);
+    } catch (error) {
+      console.error("Error getting global metrics:", error);
+      res.status(500).json({ error: "Error al obtener métricas globales" });
+    }
+  });
+
+  // Get all tenants (Super Admin only)
+  app.get("/api/super-admin/tenants", authenticateJWT, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenants = await storage.getAllTenants();
+      
+      // Get additional info for each tenant
+      const tenantsWithInfo = await Promise.all(tenants.map(async (tenant) => {
+        const stats = await storage.getTenantStats(tenant.id);
+        const subscription = await storage.getTenantSubscription(tenant.id);
+        const plan = subscription ? await storage.getSubscriptionPlan(subscription.planId) : null;
+        
+        return {
+          ...tenant,
+          ...stats,
+          subscription,
+          planName: plan?.name || "Sin plan"
+        };
+      }));
+      
+      res.json(tenantsWithInfo);
+    } catch (error) {
+      console.error("Error getting tenants:", error);
+      res.status(500).json({ error: "Error al obtener empresas" });
+    }
+  });
+
+  // Get single tenant (Super Admin only)
+  app.get("/api/super-admin/tenants/:id", authenticateJWT, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenant = await storage.getTenant(req.params.id);
+      if (!tenant) {
+        return res.status(404).json({ error: "Empresa no encontrada" });
+      }
+      
+      const stats = await storage.getTenantStats(tenant.id);
+      const subscription = await storage.getTenantSubscription(tenant.id);
+      const plan = subscription ? await storage.getSubscriptionPlan(subscription.planId) : null;
+      
+      res.json({
+        ...tenant,
+        ...stats,
+        subscription,
+        plan
+      });
+    } catch (error) {
+      console.error("Error getting tenant:", error);
+      res.status(500).json({ error: "Error al obtener empresa" });
+    }
+  });
+
+  // Create tenant (Super Admin only)
+  app.post("/api/super-admin/tenants", authenticateJWT, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      // Validate input
+      const createTenantSchema = z.object({
+        name: z.string().min(1, "Nombre es requerido"),
+        slug: z.string().min(1, "Slug es requerido").regex(/^[a-z0-9-]+$/, "Slug solo puede contener letras minúsculas, números y guiones"),
+        email: z.string().email().optional(),
+        phone: z.string().optional(),
+        address: z.string().optional(),
+        planId: z.string().optional()
+      });
+      
+      const data = createTenantSchema.parse(req.body);
+      
+      // Check if slug is unique
+      const existing = await storage.getTenantBySlug(data.slug);
+      if (existing) {
+        return res.status(400).json({ error: "El slug ya está en uso" });
+      }
+      
+      const tenant = await storage.createTenant({
+        name: data.name,
+        slug: data.slug,
+        email: data.email,
+        phone: data.phone,
+        address: data.address
+      });
+      
+      // Create subscription if plan provided
+      if (data.planId) {
+        const now = new Date();
+        const endDate = new Date();
+        endDate.setFullYear(endDate.getFullYear() + 1);
+        
+        await storage.createTenantSubscription({
+          tenantId: tenant.id,
+          planId: data.planId,
+          status: "active",
+          startDate: now,
+          endDate,
+          billingCycle: "monthly"
+        });
+      }
+      
+      // Log the action
+      await storage.createAuditLog({
+        userId: req.user!.userId,
+        action: "CREATE_TENANT",
+        resourceType: "tenants",
+        resourceId: tenant.id,
+        details: { name: data.name, slug: data.slug },
+        tenantId: tenant.id
+      });
+      
+      res.status(201).json(tenant);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error creating tenant:", error);
+      res.status(500).json({ error: "Error al crear empresa" });
+    }
+  });
+
+  // Update tenant (Super Admin only)
+  app.patch("/api/super-admin/tenants/:id", authenticateJWT, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      // Validate input
+      const updateTenantSchema = z.object({
+        name: z.string().min(1).optional(),
+        email: z.string().email().optional(),
+        phone: z.string().optional(),
+        address: z.string().optional(),
+        isActive: z.boolean().optional()
+      });
+      
+      const data = updateTenantSchema.parse(req.body);
+      
+      const updated = await storage.updateTenant(req.params.id, data);
+      if (!updated) {
+        return res.status(404).json({ error: "Empresa no encontrada" });
+      }
+      
+      // Log the action
+      await storage.createAuditLog({
+        userId: req.user!.userId,
+        action: "UPDATE_TENANT",
+        resourceType: "tenants",
+        resourceId: req.params.id,
+        details: data,
+        tenantId: req.params.id
+      });
+      
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error updating tenant:", error);
+      res.status(500).json({ error: "Error al actualizar empresa" });
+    }
+  });
+
+  // Deactivate tenant (Super Admin only)
+  app.delete("/api/super-admin/tenants/:id", authenticateJWT, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      await storage.deleteTenant(req.params.id);
+      
+      // Log the action
+      await storage.createAuditLog({
+        userId: req.user!.userId,
+        action: "DELETE_TENANT",
+        resourceType: "tenants",
+        resourceId: req.params.id,
+        tenantId: req.params.id
+      });
+      
+      res.json({ message: "Empresa desactivada correctamente" });
+    } catch (error) {
+      console.error("Error deleting tenant:", error);
+      res.status(500).json({ error: "Error al desactivar empresa" });
+    }
+  });
+
+  // Get all subscription plans (Super Admin only)
+  app.get("/api/super-admin/plans", authenticateJWT, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const plans = await storage.getAllSubscriptionPlans();
+      res.json(plans);
+    } catch (error) {
+      console.error("Error getting plans:", error);
+      res.status(500).json({ error: "Error al obtener planes" });
+    }
+  });
+
+  // Create subscription plan (Super Admin only)
+  app.post("/api/super-admin/plans", authenticateJWT, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      // Validate input (monthlyPrice/yearlyPrice are decimal columns, accept string or number)
+      const createPlanSchema = z.object({
+        name: z.string().min(1, "Nombre es requerido"),
+        code: z.string().min(1, "Código es requerido"),
+        description: z.string().optional(),
+        monthlyPrice: z.union([z.string(), z.number()]).transform(v => String(v)),
+        yearlyPrice: z.union([z.string(), z.number()]).transform(v => String(v)).optional(),
+        maxMachines: z.number().int().positive().optional(),
+        maxUsers: z.number().int().positive().optional(),
+        maxProducts: z.number().int().positive().optional(),
+        maxLocations: z.number().int().positive().optional(),
+        features: z.any().optional()
+      });
+      
+      const data = createPlanSchema.parse(req.body);
+      
+      const plan = await storage.createSubscriptionPlan(data);
+      
+      // Log the action (no tenantId for global plans)
+      await storage.createAuditLog({
+        userId: req.user!.userId,
+        action: "CREATE_PLAN",
+        resourceType: "subscription_plans",
+        resourceId: plan.id,
+        details: data
+      });
+      
+      res.status(201).json(plan);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error creating plan:", error);
+      res.status(500).json({ error: "Error al crear plan" });
+    }
+  });
+
+  // Update subscription plan (Super Admin only)
+  app.patch("/api/super-admin/plans/:id", authenticateJWT, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      // Validate input (monthlyPrice/yearlyPrice are decimal columns, accept string or number)
+      const updatePlanSchema = z.object({
+        name: z.string().min(1).optional(),
+        description: z.string().optional(),
+        monthlyPrice: z.union([z.string(), z.number()]).transform(v => String(v)).optional(),
+        yearlyPrice: z.union([z.string(), z.number()]).transform(v => String(v)).optional(),
+        maxMachines: z.number().int().positive().optional(),
+        maxUsers: z.number().int().positive().optional(),
+        maxProducts: z.number().int().positive().optional(),
+        maxLocations: z.number().int().positive().optional(),
+        features: z.any().optional(),
+        isActive: z.boolean().optional()
+      });
+      
+      const data = updatePlanSchema.parse(req.body);
+      
+      const updated = await storage.updateSubscriptionPlan(req.params.id, data);
+      if (!updated) {
+        return res.status(404).json({ error: "Plan no encontrado" });
+      }
+      
+      // Log the action (no tenantId for global plans)
+      await storage.createAuditLog({
+        userId: req.user!.userId,
+        action: "UPDATE_PLAN",
+        resourceType: "subscription_plans",
+        resourceId: req.params.id,
+        details: data
+      });
+      
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error updating plan:", error);
+      res.status(500).json({ error: "Error al actualizar plan" });
+    }
+  });
+
+  // Get audit logs (Super Admin only)
+  app.get("/api/super-admin/audit-logs", authenticateJWT, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+      const logs = await storage.getAuditLogs(limit);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error getting audit logs:", error);
+      res.status(500).json({ error: "Error al obtener logs de auditoría" });
     }
   });
 
