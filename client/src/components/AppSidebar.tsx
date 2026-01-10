@@ -46,6 +46,9 @@ import {
   Tag,
   UserCog,
   Activity,
+  Shield,
+  Building2,
+  CreditCard,
 } from "lucide-react";
 
 interface MenuItem {
@@ -391,6 +394,36 @@ export function AppSidebar() {
                   </SidebarMenuItem>
                 );
               })}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
+
+        {user?.isSuperAdmin && (
+          <SidebarGroup className={isCollapsed ? "mt-2" : "mt-4"}>
+            {!isCollapsed && (
+              <SidebarGroupLabel className="text-xs font-medium text-amber-600 dark:text-amber-400 px-3 mb-2">
+                SUPER ADMIN
+              </SidebarGroupLabel>
+            )}
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  tooltip={isCollapsed ? "Panel Super Admin" : undefined}
+                  className={cn(
+                    "rounded-xl transition-all duration-200",
+                    isCollapsed ? "h-10 px-0 justify-center" : "h-10 px-4",
+                    location === "/super-admin"
+                      ? "bg-amber-500 text-white shadow-md"
+                      : "hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                  )}
+                >
+                  <Link href="/super-admin" data-testid="link-nav-super-admin">
+                    <Shield className="h-4 w-4 shrink-0" />
+                    {!isCollapsed && <span className="text-sm font-medium">Panel Super Admin</span>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
         )}

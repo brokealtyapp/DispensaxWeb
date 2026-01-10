@@ -6093,18 +6093,23 @@ export async function registerRoutes(
   // Create subscription plan (Super Admin only)
   app.post("/api/super-admin/plans", authenticateJWT, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // Validate input (monthlyPrice/yearlyPrice are decimal columns, accept string or number)
+      // Validate input - decimal fields validated as valid numeric strings
+      const decimalSchema = z.union([
+        z.number().transform(v => String(v)),
+        z.string().regex(/^-?\d+(\.\d{1,2})?$/, "Debe ser un número decimal válido")
+      ]);
+      
       const createPlanSchema = z.object({
         name: z.string().min(1, "Nombre es requerido"),
         code: z.string().min(1, "Código es requerido"),
         description: z.string().optional(),
-        monthlyPrice: z.union([z.string(), z.number()]).transform(v => String(v)),
-        yearlyPrice: z.union([z.string(), z.number()]).transform(v => String(v)).optional(),
+        monthlyPrice: decimalSchema,
+        yearlyPrice: decimalSchema.optional(),
         maxMachines: z.number().int().positive().optional(),
         maxUsers: z.number().int().positive().optional(),
         maxProducts: z.number().int().positive().optional(),
         maxLocations: z.number().int().positive().optional(),
-        features: z.any().optional()
+        features: z.array(z.string()).optional()
       });
       
       const data = createPlanSchema.parse(req.body);
@@ -6133,17 +6138,22 @@ export async function registerRoutes(
   // Update subscription plan (Super Admin only)
   app.patch("/api/super-admin/plans/:id", authenticateJWT, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // Validate input (monthlyPrice/yearlyPrice are decimal columns, accept string or number)
+      // Validate input - decimal fields validated as valid numeric strings
+      const decimalSchema = z.union([
+        z.number().transform(v => String(v)),
+        z.string().regex(/^-?\d+(\.\d{1,2})?$/, "Debe ser un número decimal válido")
+      ]);
+      
       const updatePlanSchema = z.object({
         name: z.string().min(1).optional(),
         description: z.string().optional(),
-        monthlyPrice: z.union([z.string(), z.number()]).transform(v => String(v)).optional(),
-        yearlyPrice: z.union([z.string(), z.number()]).transform(v => String(v)).optional(),
+        monthlyPrice: decimalSchema.optional(),
+        yearlyPrice: decimalSchema.optional(),
         maxMachines: z.number().int().positive().optional(),
         maxUsers: z.number().int().positive().optional(),
         maxProducts: z.number().int().positive().optional(),
         maxLocations: z.number().int().positive().optional(),
-        features: z.any().optional(),
+        features: z.array(z.string()).optional(),
         isActive: z.boolean().optional()
       });
       

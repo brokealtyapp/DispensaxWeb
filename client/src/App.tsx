@@ -38,6 +38,7 @@ import RoutesPage from "@/pages/routes";
 import { SuppliersManagementPage } from "@/pages/suppliers-management";
 import { ServiceMonitoringPage } from "@/pages/service-monitoring";
 import MiVehiculoPage from "@/pages/mi-vehiculo";
+import { SuperAdminPage } from "@/pages/super-admin";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
@@ -234,6 +235,7 @@ function ProtectedRoutes() {
               <Route path="/rutas">{() => <ProtectedRoute path="/rutas" component={RoutesPage} />}</Route>
               <Route path="/abastecedores">{() => <ProtectedRoute path="/abastecedores" component={SuppliersManagementPage} />}</Route>
               <Route path="/configuracion">{() => <ProtectedRoute path="/configuracion" component={SettingsPage} />}</Route>
+              <Route path="/super-admin">{() => <ProtectedRoute path="/super-admin" component={SuperAdminPage} />}</Route>
               <Route component={NotFound} />
             </Switch>
           </main>
