@@ -126,11 +126,13 @@ export interface IStorage {
   setMachineInventory(inventory: InsertMachineInventory): Promise<MachineInventory>;
   
   getMachineAlerts(machineId?: string, resolved?: boolean, limit?: number): Promise<MachineAlert[]>;
+  getMachineAlert(id: string): Promise<MachineAlert | undefined>;
   createMachineAlert(alert: InsertMachineAlert): Promise<MachineAlert>;
   resolveAlert(id: string, userId: string): Promise<MachineAlert | undefined>;
   resolveAlertSimple(id: string): Promise<MachineAlert | undefined>;
   
   getMachineVisits(machineId: string): Promise<MachineVisit[]>;
+  getMachineVisit(id: string): Promise<MachineVisit | undefined>;
   createMachineVisit(visit: InsertMachineVisit): Promise<MachineVisit>;
   endMachineVisit(id: string, endTime: Date, notes?: string): Promise<MachineVisit | undefined>;
   
@@ -769,6 +771,11 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(machineAlerts).orderBy(desc(machineAlerts.createdAt)).limit(limit);
   }
 
+  async getMachineAlert(id: string): Promise<MachineAlert | undefined> {
+    const [alert] = await db.select().from(machineAlerts).where(eq(machineAlerts.id, id));
+    return alert;
+  }
+
   async createMachineAlert(alert: InsertMachineAlert): Promise<MachineAlert> {
     const [newAlert] = await db.insert(machineAlerts).values(alert).returning();
     return newAlert;
@@ -795,6 +802,11 @@ export class DatabaseStorage implements IStorage {
       .where(eq(machineVisits.machineId, machineId))
       .orderBy(desc(machineVisits.startTime))
       .limit(50);
+  }
+
+  async getMachineVisit(id: string): Promise<MachineVisit | undefined> {
+    const [visit] = await db.select().from(machineVisits).where(eq(machineVisits.id, id));
+    return visit;
   }
 
   async createMachineVisit(visit: InsertMachineVisit): Promise<MachineVisit> {

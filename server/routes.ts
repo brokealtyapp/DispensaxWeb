@@ -574,10 +574,9 @@ export async function registerRoutes(
 
   app.get("/api/locations/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyLocationTenant(req.params.id, req, res)) return;
+      
       const location = await storage.getLocation(req.params.id);
-      if (!location) {
-        return res.status(404).json({ error: "Ubicación no encontrada" });
-      }
       res.json(location);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener ubicación" });
@@ -599,6 +598,8 @@ export async function registerRoutes(
 
   app.patch("/api/locations/:id", authenticateJWT, authorizeAction("locations", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyLocationTenant(req.params.id, req, res)) return;
+      
       const data = insertLocationSchema.partial().parse(req.body);
       const location = await storage.updateLocation(req.params.id, data);
       if (!location) {
@@ -615,6 +616,8 @@ export async function registerRoutes(
 
   app.delete("/api/locations/:id", authenticateJWT, authorizeAction("locations", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyLocationTenant(req.params.id, req, res)) return;
+      
       await storage.deleteLocation(req.params.id);
       res.status(204).send();
     } catch (error) {
@@ -633,10 +636,9 @@ export async function registerRoutes(
 
   app.get("/api/products/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyProductTenant(req.params.id, req, res)) return;
+      
       const product = await storage.getProduct(req.params.id);
-      if (!product) {
-        return res.status(404).json({ error: "Producto no encontrado" });
-      }
       res.json(product);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener producto" });
@@ -658,6 +660,8 @@ export async function registerRoutes(
 
   app.patch("/api/products/:id", authenticateJWT, authorizeAction("products", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyProductTenant(req.params.id, req, res)) return;
+      
       const data = insertProductSchema.partial().parse(req.body);
       const product = await storage.updateProduct(req.params.id, data);
       if (!product) {
@@ -674,6 +678,8 @@ export async function registerRoutes(
 
   app.delete("/api/products/:id", authenticateJWT, authorizeAction("products", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyProductTenant(req.params.id, req, res)) return;
+      
       await storage.deleteProduct(req.params.id);
       res.status(204).send();
     } catch (error) {
@@ -1016,6 +1022,120 @@ export async function registerRoutes(
     return { valid: true, orderId: item.orderId };
   }
 
+  // Helper function to verify location tenant ownership
+  async function verifyLocationTenant(locationId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const location = await storage.getLocation(locationId);
+    if (!location) {
+      res.status(404).json({ error: "Ubicación no encontrada" });
+      return false;
+    }
+    if (!verifyTenantOwnership(location.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Ubicación no encontrada" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify product tenant ownership
+  async function verifyProductTenant(productId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const product = await storage.getProduct(productId);
+    if (!product) {
+      res.status(404).json({ error: "Producto no encontrado" });
+      return false;
+    }
+    if (!verifyTenantOwnership(product.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Producto no encontrado" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify alert tenant ownership (via machine)
+  async function verifyAlertTenant(alertId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const alert = await storage.getMachineAlert(alertId);
+    if (!alert) {
+      res.status(404).json({ error: "Alerta no encontrada" });
+      return false;
+    }
+    const machine = await storage.getMachine(alert.machineId);
+    if (!machine || !verifyTenantOwnership(machine.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Alerta no encontrada" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify visit tenant ownership (via machine)
+  async function verifyVisitTenant(visitId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const visit = await storage.getMachineVisit(visitId);
+    if (!visit) {
+      res.status(404).json({ error: "Visita no encontrada" });
+      return false;
+    }
+    const machine = await storage.getMachine(visit.machineId);
+    if (!machine || !verifyTenantOwnership(machine.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Visita no encontrada" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify petty cash expense tenant ownership
+  async function verifyPettyCashExpenseTenant(expenseId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const expense = await storage.getPettyCashExpense(expenseId);
+    if (!expense) {
+      res.status(404).json({ error: "Gasto no encontrado" });
+      return false;
+    }
+    if (!verifyTenantOwnership(expense.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Gasto no encontrado" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify employee tenant ownership
+  async function verifyEmployeeTenant(employeeId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const employee = await storage.getEmployee(employeeId);
+    if (!employee) {
+      res.status(404).json({ error: "Empleado no encontrado" });
+      return false;
+    }
+    if (!verifyTenantOwnership(employee.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Empleado no encontrado" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify task tenant ownership
+  async function verifyTaskTenant(taskId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const task = await storage.getTask(taskId);
+    if (!task) {
+      res.status(404).json({ error: "Tarea no encontrada" });
+      return false;
+    }
+    if (!verifyTenantOwnership(task.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Tarea no encontrada" });
+      return false;
+    }
+    return true;
+  }
+
+  // Helper function to verify calendar event tenant ownership
+  async function verifyCalendarEventTenant(eventId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const event = await storage.getCalendarEvent(eventId);
+    if (!event) {
+      res.status(404).json({ error: "Evento no encontrado" });
+      return false;
+    }
+    if (!verifyTenantOwnership(event.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Evento no encontrado" });
+      return false;
+    }
+    return true;
+  }
+
   app.get("/api/machines/:id/inventory", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyMachineTenant(req.params.id, req, res)) return;
@@ -1151,6 +1271,8 @@ export async function registerRoutes(
 
   app.patch("/api/alerts/:id/resolve", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyAlertTenant(req.params.id, req, res)) return;
+      
       const alert = await storage.resolveAlertSimple(req.params.id);
       if (!alert) {
         return res.status(404).json({ error: "Alerta no encontrada" });
@@ -1194,6 +1316,8 @@ export async function registerRoutes(
 
   app.patch("/api/visits/:id/end", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyVisitTenant(req.params.id, req, res)) return;
+      
       const { endTime, notes } = req.body;
       const visit = await storage.endMachineVisit(
         req.params.id,
@@ -3787,10 +3911,9 @@ export async function registerRoutes(
 
   app.get("/api/petty-cash/expenses/:id", authenticateJWT, authorizeAction("petty_cash", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyPettyCashExpenseTenant(req.params.id, req, res)) return;
+      
       const expense = await storage.getPettyCashExpense(req.params.id);
-      if (!expense) {
-        return res.status(404).json({ error: "Gasto no encontrado" });
-      }
       res.json(expense);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener gasto" });
@@ -4753,10 +4876,9 @@ export async function registerRoutes(
 
   app.get("/api/hr/employees/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyEmployeeTenant(req.params.id, req, res)) return;
+      
       const employee = await storage.getEmployee(req.params.id);
-      if (!employee) {
-        return res.status(404).json({ error: "Empleado no encontrado" });
-      }
       res.json(employee);
     } catch (error) {
       console.error("Error getting employee:", error);
@@ -4792,6 +4914,8 @@ export async function registerRoutes(
 
   app.patch("/api/hr/employees/:id", authenticateJWT, authorizeAction("employees", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyEmployeeTenant(req.params.id, req, res)) return;
+      
       const data = insertEmployeeSchema.partial().parse(req.body);
       const employee = await storage.updateEmployee(req.params.id, data);
       if (!employee) {
@@ -4809,6 +4933,8 @@ export async function registerRoutes(
 
   app.delete("/api/hr/employees/:id", authenticateJWT, authorizeAction("employees", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyEmployeeTenant(req.params.id, req, res)) return;
+      
       const success = await storage.deleteEmployee(req.params.id);
       if (!success) {
         return res.status(404).json({ error: "Empleado no encontrado" });
@@ -5464,6 +5590,8 @@ export async function registerRoutes(
 
   app.get("/api/tasks/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyTaskTenant(req.params.id, req, res)) return;
+      
       const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Tarea no encontrada" });
@@ -5500,6 +5628,8 @@ export async function registerRoutes(
 
   app.patch("/api/tasks/:id", authenticateJWT, authorizeAction("tasks", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyTaskTenant(req.params.id, req, res)) return;
+      
       // Verificar ownership para abastecedores
       const existingTask = await storage.getTask(req.params.id);
       if (!existingTask) {
@@ -5541,6 +5671,8 @@ export async function registerRoutes(
 
   app.post("/api/tasks/:id/complete", authenticateJWT, authorizeAction("tasks", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyTaskTenant(req.params.id, req, res)) return;
+      
       // Verificar ownership para abastecedores
       const existingTask = await storage.getTask(req.params.id);
       if (!existingTask) {
@@ -5567,6 +5699,8 @@ export async function registerRoutes(
 
   app.post("/api/tasks/:id/cancel", authenticateJWT, authorizeAction("tasks", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyTaskTenant(req.params.id, req, res)) return;
+      
       // Verificar ownership para abastecedores
       const existingTask = await storage.getTask(req.params.id);
       if (!existingTask) {
@@ -5593,6 +5727,8 @@ export async function registerRoutes(
 
   app.delete("/api/tasks/:id", authenticateJWT, authorizeAction("tasks", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyTaskTenant(req.params.id, req, res)) return;
+      
       await storage.deleteTask(req.params.id);
       res.json({ success: true });
     } catch (error) {
@@ -5636,6 +5772,8 @@ export async function registerRoutes(
 
   app.get("/api/calendar/events/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyCalendarEventTenant(req.params.id, req, res)) return;
+      
       const event = await storage.getCalendarEvent(req.params.id);
       if (!event) {
         return res.status(404).json({ error: "Evento no encontrado" });
@@ -5673,6 +5811,8 @@ export async function registerRoutes(
 
   app.patch("/api/calendar/events/:id", authenticateJWT, authorizeAction("tasks", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyCalendarEventTenant(req.params.id, req, res)) return;
+      
       const data = insertCalendarEventSchema.partial().parse(req.body);
       const event = await storage.updateCalendarEvent(req.params.id, data);
       if (!event) {
@@ -5690,6 +5830,8 @@ export async function registerRoutes(
 
   app.delete("/api/calendar/events/:id", authenticateJWT, authorizeAction("tasks", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyCalendarEventTenant(req.params.id, req, res)) return;
+      
       await storage.deleteCalendarEvent(req.params.id);
       res.json({ success: true });
     } catch (error) {

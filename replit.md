@@ -51,7 +51,13 @@ The application follows a client-server architecture. The frontend is built with
 - **SMTP Password Recovery:** Implemented for user convenience.
 - **Plan Limit Validation:** `checkTenantPlanLimits()` enforces maxMachines and maxUsers before creation. Returns 403 with PLAN_LIMIT_EXCEEDED code when limits are reached.
 - **Rate Limiting:** In-memory rate limiter protects public and auth endpoints. Signup: 5/hour, Plans: 60/min, Login: 10/15min. Includes X-RateLimit headers and Retry-After for 429 responses.
-- **Tenant Isolation Security:** All creation routes (machines, users) override tenantId from JWT context, preventing payload tampering attacks. Routes require authenticated tenantId - fail closed if missing.
+- **Tenant Isolation Security:** Complete multi-tenant data isolation across all modules:
+  - POST routes: Override tenantId from JWT context, preventing payload tampering
+  - GET/PATCH/DELETE routes: 20+ helper functions verify tenant ownership before any operation
+  - Protected modules: Machines, Locations, Products, Suppliers, Routes, Vehicles, Fuel, Cash, Purchases, Employees, Tasks, Calendar
+  - Returns 404 (not 403) to prevent cross-tenant information disclosure
+  - Super Admins bypass tenant checks via isSuperAdmin flag
+  - Fail-closed approach: access denied if tenantId missing or mismatched
 
 **UI/UX Decisions:**
 - **Primary Color:** #E84545 (Dispensax Red) as per user preference, overriding a previous blue.
