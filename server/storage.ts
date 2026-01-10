@@ -894,7 +894,7 @@ export class DatabaseStorage implements IStorage {
     return item;
   }
 
-  async updateWarehouseStock(productId: string, quantity: number): Promise<WarehouseInventory> {
+  async updateWarehouseStock(productId: string, quantity: number, tenantId?: string): Promise<WarehouseInventory> {
     const existing = await this.getWarehouseInventoryItem(productId);
     
     if (existing) {
@@ -905,13 +905,19 @@ export class DatabaseStorage implements IStorage {
       return updated;
     }
     
+    const product = await this.getProduct(productId);
+    const effectiveTenantId = tenantId || product?.tenantId;
+    if (!effectiveTenantId) {
+      throw new Error("tenantId is required to create warehouse inventory");
+    }
+    
     const [newInventory] = await db.insert(warehouseInventory)
-      .values({ productId, currentStock: quantity })
+      .values({ productId, currentStock: quantity, tenantId: effectiveTenantId })
       .returning();
     return newInventory;
   }
 
-  async updateWarehouseInventory(productId: string, data: { currentStock?: number; minStock?: number; maxStock?: number; reorderPoint?: number }): Promise<WarehouseInventory> {
+  async updateWarehouseInventory(productId: string, data: { currentStock?: number; minStock?: number; maxStock?: number; reorderPoint?: number; tenantId?: string }): Promise<WarehouseInventory> {
     const existing = await this.getWarehouseInventoryItem(productId);
     
     const updateData: any = { lastUpdated: new Date() };
@@ -928,9 +934,16 @@ export class DatabaseStorage implements IStorage {
       return updated;
     }
     
+    const product = await this.getProduct(productId);
+    const effectiveTenantId = data.tenantId || product?.tenantId;
+    if (!effectiveTenantId) {
+      throw new Error("tenantId is required to create warehouse inventory");
+    }
+    
     const [newInventory] = await db.insert(warehouseInventory)
       .values({ 
         productId, 
+        tenantId: effectiveTenantId,
         currentStock: data.currentStock ?? 0,
         minStock: data.minStock,
         maxStock: data.maxStock,
@@ -1066,13 +1079,21 @@ export class DatabaseStorage implements IStorage {
     expirationDate?: Date; 
     notes?: string;
     userId?: string;
+    tenantId?: string;
   }): Promise<WarehouseMovement> {
+    const product = await this.getProduct(data.productId);
+    const tenantId = data.tenantId || product?.tenantId;
+    if (!tenantId) {
+      throw new Error("tenantId is required for registerPurchaseEntry");
+    }
+
     const currentInventory = await this.getWarehouseInventoryItem(data.productId);
     const previousStock = currentInventory?.currentStock || 0;
     const newStock = previousStock + data.quantity;
 
     // Crear lote
     const lot = await this.createProductLot({
+      tenantId,
       productId: data.productId,
       lotNumber: data.lotNumber,
       quantity: data.quantity,
@@ -1083,10 +1104,11 @@ export class DatabaseStorage implements IStorage {
     });
 
     // Actualizar inventario
-    await this.updateWarehouseStock(data.productId, newStock);
+    await this.updateWarehouseStock(data.productId, newStock, tenantId);
 
     // Registrar movimiento con userId para auditoría
     const movement = await this.createWarehouseMovement({
+      tenantId,
       productId: data.productId,
       lotId: lot.id,
       movementType: "entrada_compra",
@@ -1110,7 +1132,14 @@ export class DatabaseStorage implements IStorage {
     notes?: string;
     userId?: string;
     movementType?: "salida_abastecedor" | "salida_maquina";
+    tenantId?: string;
   }): Promise<WarehouseMovement> {
+    const product = await this.getProduct(data.productId);
+    const tenantId = data.tenantId || product?.tenantId;
+    if (!tenantId) {
+      throw new Error("tenantId is required for registerSupplierExit");
+    }
+
     const currentInventory = await this.getWarehouseInventoryItem(data.productId);
     const previousStock = currentInventory?.currentStock || 0;
     
@@ -1121,7 +1150,7 @@ export class DatabaseStorage implements IStorage {
     const newStock = previousStock - data.quantity;
 
     // Actualizar inventario
-    await this.updateWarehouseStock(data.productId, newStock);
+    await this.updateWarehouseStock(data.productId, newStock, tenantId);
 
     // Descontar de lotes (FEFO - primero los más próximos a caducar, ya ordenados por expirationDate)
     const lots = await this.getProductLots(data.productId);
@@ -1150,6 +1179,7 @@ export class DatabaseStorage implements IStorage {
     // Creamos UN movimiento principal con los detalles de todos los lotes en notes
     const lotDetails = lotDeductions.map(l => `Lote ${l.lotNumber}: ${l.quantity} uds`).join(", ");
     const movement = await this.createWarehouseMovement({
+      tenantId,
       productId: data.productId,
       lotId: lotDeductions.length === 1 ? lotDeductions[0].lotId : undefined,
       movementType: data.movementType || "salida_abastecedor",
@@ -1173,17 +1203,25 @@ export class DatabaseStorage implements IStorage {
     reason: string;
     notes?: string;
     userId?: string;
+    tenantId?: string;
   }): Promise<WarehouseMovement> {
+    const product = await this.getProduct(data.productId);
+    const tenantId = data.tenantId || product?.tenantId;
+    if (!tenantId) {
+      throw new Error("tenantId is required for registerInventoryAdjustment");
+    }
+
     const currentInventory = await this.getWarehouseInventoryItem(data.productId);
     const previousStock = currentInventory?.currentStock || 0;
     const newStock = data.physicalCount;
     const difference = newStock - previousStock;
     
     // Actualizar inventario con el conteo físico
-    await this.updateWarehouseStock(data.productId, newStock);
+    await this.updateWarehouseStock(data.productId, newStock, tenantId);
 
     // Registrar movimiento de ajuste con información detallada
     const movement = await this.createWarehouseMovement({
+      tenantId,
       productId: data.productId,
       movementType: "ajuste_inventario",
       quantity: Math.abs(difference),
@@ -1652,6 +1690,7 @@ export class DatabaseStorage implements IStorage {
       await this.updateMachineInventory(load.machineId, load.productId, newQuantity);
     } else if (load.loadType === "cargado") {
       await this.setMachineInventory({
+        tenantId: load.tenantId,
         machineId: load.machineId,
         productId: load.productId,
         currentQuantity: load.quantity,
@@ -1736,6 +1775,7 @@ export class DatabaseStorage implements IStorage {
     // Crear alerta en la máquina si es de alta prioridad
     if (report.priority === "alta" || report.priority === "critica") {
       await this.createMachineAlert({
+        tenantId: report.tenantId,
         machineId: report.machineId,
         type: report.issueType,
         priority: report.priority,
@@ -1778,7 +1818,7 @@ export class DatabaseStorage implements IStorage {
     return inventoryWithDetails.filter(item => item.product);
   }
 
-  async updateSupplierInventoryItem(userId: string, productId: string, quantity: number, lotId?: string): Promise<SupplierInventory> {
+  async updateSupplierInventoryItem(userId: string, productId: string, quantity: number, lotId?: string, tenantId?: string): Promise<SupplierInventory> {
     const [existing] = await db.select().from(supplierInventory)
       .where(and(eq(supplierInventory.userId, userId), eq(supplierInventory.productId, productId)));
     
@@ -1790,8 +1830,14 @@ export class DatabaseStorage implements IStorage {
       return updated;
     }
     
+    const product = await this.getProduct(productId);
+    const effectiveTenantId = tenantId || product?.tenantId;
+    if (!effectiveTenantId) {
+      throw new Error("tenantId is required to create supplier inventory");
+    }
+    
     const [newItem] = await db.insert(supplierInventory)
-      .values({ userId, productId, quantity, lotId })
+      .values({ tenantId: effectiveTenantId, userId, productId, quantity, lotId })
       .returning();
     return newItem;
   }
@@ -1822,11 +1868,17 @@ export class DatabaseStorage implements IStorage {
     // Agregar al inventario de la máquina
     const machineInv = await this.getMachineInventory(machineId);
     const machineItem = machineInv.find(inv => inv.productId === productId);
+    const machine = await this.getMachine(machineId);
+    const tenantId = machine?.tenantId;
     
     if (machineItem) {
       await this.updateMachineInventory(machineId, productId, (machineItem.currentQuantity || 0) + quantity);
     } else {
+      if (!tenantId) {
+        throw new Error("tenantId is required to create machine inventory");
+      }
       await this.setMachineInventory({
+        tenantId,
         machineId,
         productId,
         currentQuantity: quantity,
@@ -1952,6 +2004,13 @@ export class DatabaseStorage implements IStorage {
     executedByUserId: string;
     notes?: string;
   }): Promise<{ warehouseMovements: WarehouseMovement[]; vehicleInventoryItems: VehicleInventory[]; inventoryTransfers: InventoryTransfer[] }> {
+    // Get vehicle to get tenantId
+    const vehicle = await this.getVehicle(data.vehicleId);
+    if (!vehicle?.tenantId) {
+      throw new Error("Vehicle not found or missing tenantId");
+    }
+    const tenantId = vehicle.tenantId;
+
     // Usar transacción para garantizar atomicidad
     return await db.transaction(async (tx) => {
       const warehouseMovementsResult: WarehouseMovement[] = [];
@@ -2003,6 +2062,7 @@ export class DatabaseStorage implements IStorage {
           // Crear movimiento de almacén
           const [warehouseMovement] = await tx.insert(warehouseMovements)
             .values({
+              tenantId,
               productId: item.productId,
               lotId: lot.id,
               movementType: "salida_abastecedor",
@@ -2041,6 +2101,7 @@ export class DatabaseStorage implements IStorage {
           } else {
             const [newItem] = await tx.insert(vehicleInventory)
               .values({
+                tenantId,
                 vehicleId: data.vehicleId,
                 productId: item.productId,
                 lotId: lot.id,
@@ -2057,6 +2118,7 @@ export class DatabaseStorage implements IStorage {
           // Crear registro de transferencia
           const [transfer] = await tx.insert(inventoryTransfers)
             .values({
+              tenantId,
               transferType: "almacen_vehiculo",
               productId: item.productId,
               lotId: lot.id,
@@ -2197,6 +2259,14 @@ export class DatabaseStorage implements IStorage {
     if (!vehicle) {
       return { success: false, loadedProducts: [], totalLoaded: 0, errorCode: "NO_VEHICLE_ASSIGNED" };
     }
+
+    // Get machine to get tenantId
+    const machine = await this.getMachine(data.machineId);
+    if (!machine?.tenantId) {
+      console.error("Machine not found or missing tenantId:", data.machineId);
+      return { success: false, loadedProducts: [], totalLoaded: 0, errorCode: "TRANSACTION_FAILED" };
+    }
+    const tenantId = machine.tenantId;
     
     const vehicleInv = await this.getVehicleInventory(vehicle.id);
     const insufficientProducts: Array<{ productId: string; requested: number; available: number }> = [];
@@ -2285,6 +2355,7 @@ export class DatabaseStorage implements IStorage {
                 .where(eq(machineInventory.id, existingMachineInv.id));
             } else {
               await tx.insert(machineInventory).values({
+                tenantId,
                 machineId: data.machineId,
                 productId: item.productId,
                 currentQuantity: toTransfer,
@@ -2309,6 +2380,7 @@ export class DatabaseStorage implements IStorage {
                   .where(eq(machineInventoryLots.id, existingMachineLot.id));
               } else {
                 await tx.insert(machineInventoryLots).values({
+                  tenantId,
                   machineId: data.machineId,
                   productId: item.productId,
                   lotId: vehInvItem.lotId,
@@ -2319,6 +2391,7 @@ export class DatabaseStorage implements IStorage {
             
             // Registrar transferencia
             await tx.insert(inventoryTransfers).values({
+              tenantId,
               transferType: "vehiculo_maquina",
               productId: item.productId,
               lotId: vehInvItem.lotId,
@@ -2338,6 +2411,7 @@ export class DatabaseStorage implements IStorage {
             // Registrar en product_loads si hay serviceRecordId
             if (data.serviceRecordId) {
               await tx.insert(productLoads).values({
+                tenantId,
                 serviceRecordId: data.serviceRecordId,
                 machineId: data.machineId,
                 productId: item.productId,
@@ -2850,8 +2924,9 @@ export class DatabaseStorage implements IStorage {
     
     // Registrar la transacción
     const fund = await this.getPettyCashFund();
-    if (fund) {
+    if (fund && expense.tenantId) {
       await this.createPettyCashTransaction({
+        tenantId: expense.tenantId,
         type: "gasto",
         amount: expense.amount,
         previousBalance: (parseFloat(fund.currentBalance) + parseFloat(expense.amount)).toString(),
@@ -2917,14 +2992,17 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     // Registrar la transacción
-    await this.createPettyCashTransaction({
-      type: "reposicion",
-      amount: amount.toString(),
-      previousBalance: previousBalance.toString(),
-      newBalance: newBalance.toString(),
-      userId,
-      reference: "Reposición de fondo",
-    });
+    if (fund.tenantId) {
+      await this.createPettyCashTransaction({
+        tenantId: fund.tenantId,
+        type: "reposicion",
+        amount: amount.toString(),
+        previousBalance: previousBalance.toString(),
+        newBalance: newBalance.toString(),
+        userId,
+        reference: "Reposición de fondo",
+      });
+    }
     
     return updated;
   }
@@ -3215,6 +3293,7 @@ export class DatabaseStorage implements IStorage {
       // Crear lote de producto automáticamente (generar número de lote si no existe)
       const lotNumber = item.lotNumber || `REC-${newReception.receptionNumber}-${item.productId.slice(-4)}`;
       const lot = await this.createProductLot({
+        tenantId: reception.tenantId,
         productId: item.productId,
         lotNumber,
         quantity: item.quantityReceived,
@@ -3226,10 +3305,11 @@ export class DatabaseStorage implements IStorage {
       });
       
       // Actualizar inventario del almacén con el nuevo stock total
-      await this.updateWarehouseStock(item.productId, newStock);
+      await this.updateWarehouseStock(item.productId, newStock, reception.tenantId);
       
       // Registrar movimiento de almacén con trazabilidad completa
       await this.createWarehouseMovement({
+        tenantId: reception.tenantId,
         productId: item.productId,
         lotId: lot.id,
         movementType: "entrada_compra",
@@ -4885,7 +4965,7 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async checkIn(userId: string, date: Date): Promise<EmployeeAttendance> {
+  async checkIn(userId: string, date: Date, tenantId?: string): Promise<EmployeeAttendance> {
     const today = getTodayInTimezone();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -4906,7 +4986,19 @@ export class DatabaseStorage implements IStorage {
       return updated;
     }
     
+    // Get tenantId from user if not provided
+    let effectiveTenantId = tenantId;
+    if (!effectiveTenantId) {
+      const user = await this.getUser(userId);
+      effectiveTenantId = user?.tenantId || undefined;
+    }
+    
+    if (!effectiveTenantId) {
+      throw new Error("TenantId is required for creating attendance records");
+    }
+    
     const [created] = await db.insert(employeeAttendance).values({
+      tenantId: effectiveTenantId,
       userId,
       date: today,
       checkIn: date,
