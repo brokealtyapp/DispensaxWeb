@@ -234,3 +234,32 @@ export async function getSupervisorZone(req: AuthenticatedRequest): Promise<stri
   const fullUser = await storage.getUser(req.user.userId);
   return fullUser?.assignedZone || undefined;
 }
+
+/**
+ * Verifica que un recurso pertenece al tenant del usuario autenticado.
+ * Super Admins pueden acceder a cualquier tenant.
+ * Retorna true si el acceso está permitido, false si no.
+ */
+export function verifyTenantOwnership(
+  resourceTenantId: string | null | undefined,
+  userTenantId: string | null | undefined,
+  isSuperAdmin: boolean
+): boolean {
+  // Super Admin puede acceder a cualquier recurso
+  if (isSuperAdmin) {
+    return true;
+  }
+  
+  // Si el recurso no tiene tenant asignado, denegar por defecto (fail closed)
+  if (!resourceTenantId) {
+    return false;
+  }
+  
+  // Si el usuario no tiene tenant, denegar
+  if (!userTenantId) {
+    return false;
+  }
+  
+  // Verificar que coinciden
+  return resourceTenantId === userTenantId;
+}

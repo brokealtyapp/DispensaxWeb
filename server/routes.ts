@@ -15,6 +15,7 @@ import {
   getSupervisorZone,
   optionalAuth,
   requireSuperAdmin,
+  verifyTenantOwnership,
   REFRESH_TOKEN_COOKIE,
   REFRESH_TOKEN_COOKIE_OPTIONS,
   type AuthenticatedRequest 
@@ -733,6 +734,12 @@ export async function registerRoutes(
       if (!machine) {
         return res.status(404).json({ error: "Máquina no encontrada" });
       }
+      
+      // SECURITY: Verify tenant ownership (fail closed)
+      if (!verifyTenantOwnership(machine.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+        return res.status(404).json({ error: "Máquina no encontrada" });
+      }
+      
       res.json(machine);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener máquina" });
@@ -772,11 +779,21 @@ export async function registerRoutes(
 
   app.patch("/api/machines/:id", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertMachineSchema.partial().parse(req.body);
-      const machine = await storage.updateMachine(req.params.id, data);
-      if (!machine) {
+      // SECURITY: First verify tenant ownership before updating
+      const existingMachine = await storage.getMachine(req.params.id);
+      if (!existingMachine) {
         return res.status(404).json({ error: "Máquina no encontrada" });
       }
+      
+      if (!verifyTenantOwnership(existingMachine.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+        return res.status(404).json({ error: "Máquina no encontrada" });
+      }
+      
+      const data = insertMachineSchema.partial().parse(req.body);
+      // Prevent tenantId modification (security)
+      delete (data as any).tenantId;
+      
+      const machine = await storage.updateMachine(req.params.id, data);
       res.json(machine);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -788,6 +805,16 @@ export async function registerRoutes(
 
   app.delete("/api/machines/:id", authenticateJWT, authorizeAction("machines", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // SECURITY: First verify tenant ownership before deleting
+      const existingMachine = await storage.getMachine(req.params.id);
+      if (!existingMachine) {
+        return res.status(404).json({ error: "Máquina no encontrada" });
+      }
+      
+      if (!verifyTenantOwnership(existingMachine.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+        return res.status(404).json({ error: "Máquina no encontrada" });
+      }
+      
       await storage.deleteMachine(req.params.id);
       res.status(204).send();
     } catch (error) {
@@ -795,8 +822,24 @@ export async function registerRoutes(
     }
   });
 
+  // Helper function to verify machine tenant ownership
+  async function verifyMachineTenant(machineId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const machine = await storage.getMachine(machineId);
+    if (!machine) {
+      res.status(404).json({ error: "Máquina no encontrada" });
+      return false;
+    }
+    if (!verifyTenantOwnership(machine.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Máquina no encontrada" });
+      return false;
+    }
+    return true;
+  }
+
   app.get("/api/machines/:id/inventory", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyMachineTenant(req.params.id, req, res)) return;
+      
       const inventory = await storage.getMachineInventory(req.params.id);
       res.json(inventory);
     } catch (error) {
@@ -806,6 +849,8 @@ export async function registerRoutes(
 
   app.post("/api/machines/:id/inventory", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyMachineTenant(req.params.id, req, res)) return;
+      
       const data = insertMachineInventorySchema.parse({
         ...req.body,
         machineId: req.params.id,
@@ -822,6 +867,8 @@ export async function registerRoutes(
 
   app.patch("/api/machines/:id/inventory/:productId", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyMachineTenant(req.params.id, req, res)) return;
+      
       const { quantity } = req.body;
       const inventory = await storage.updateMachineInventory(
         req.params.id,
@@ -839,6 +886,8 @@ export async function registerRoutes(
 
   app.get("/api/machines/:id/alerts", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyMachineTenant(req.params.id, req, res)) return;
+      
       const { resolved } = req.query;
       const alerts = await storage.getMachineAlerts(
         req.params.id,
@@ -904,6 +953,8 @@ export async function registerRoutes(
 
   app.post("/api/machines/:id/alerts", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyMachineTenant(req.params.id, req, res)) return;
+      
       const data = insertMachineAlertSchema.parse({
         ...req.body,
         machineId: req.params.id,
@@ -932,6 +983,8 @@ export async function registerRoutes(
 
   app.get("/api/machines/:id/visits", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyMachineTenant(req.params.id, req, res)) return;
+      
       const visits = await storage.getMachineVisits(req.params.id);
       res.json(visits);
     } catch (error) {
@@ -941,6 +994,8 @@ export async function registerRoutes(
 
   app.post("/api/machines/:id/visits", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyMachineTenant(req.params.id, req, res)) return;
+      
       const body = {
         ...req.body,
         machineId: req.params.id,
@@ -976,6 +1031,8 @@ export async function registerRoutes(
 
   app.get("/api/machines/:id/sales", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyMachineTenant(req.params.id, req, res)) return;
+      
       const { startDate, endDate } = req.query;
       const sales = await storage.getMachineSales(
         req.params.id,
@@ -990,6 +1047,8 @@ export async function registerRoutes(
 
   app.post("/api/machines/:id/sales", authenticateJWT, authorizeAction("accounting", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyMachineTenant(req.params.id, req, res)) return;
+      
       const data = insertMachineSaleSchema.parse({
         ...req.body,
         machineId: req.params.id,
@@ -1006,6 +1065,8 @@ export async function registerRoutes(
 
   app.get("/api/machines/:id/sales/summary", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyMachineTenant(req.params.id, req, res)) return;
+      
       const summary = await storage.getMachineSalesSummary(req.params.id);
       res.json(summary);
     } catch (error) {
