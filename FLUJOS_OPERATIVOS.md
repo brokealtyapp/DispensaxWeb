@@ -23,7 +23,7 @@
    - [3.2 Seguimiento de Servicios en Tiempo Real](#32-seguimiento-de-servicios-en-tiempo-real)
    - [3.3 Aprobación de Reportes de Problemas](#33-aprobación-de-reportes-de-problemas)
    - [3.4 Análisis de Rendimiento de Zona](#34-análisis-de-rendimiento-de-zona)
-   - [3.5 Gestión de Vacaciones del Equipo](#35-gestión-de-vacaciones-del-equipo)
+   - [3.5 Revisión de Solicitudes de Vacaciones](#35-revisión-de-solicitudes-de-vacaciones)
 4. [Flujos del Abastecedor](#4-flujos-del-abastecedor)
    - [4.1 Inicio de Jornada](#41-inicio-de-jornada)
    - [4.2 Carga del Vehículo en Almacén](#42-carga-del-vehículo-en-almacén)
@@ -633,16 +633,18 @@ FLUJO: ANÁLISIS DE RENDIMIENTO DE ZONA
 
 ---
 
-### 3.5 Gestión de Vacaciones del Equipo
+### 3.5 Revisión de Solicitudes de Vacaciones
 
-**Momento:** Cuando se reciben solicitudes  
-**Objetivo:** Aprobar/rechazar vacaciones manteniendo operación
+**Momento:** Cuando se reciben solicitudes de su equipo  
+**Objetivo:** Evaluar impacto operativo y emitir recomendación para Admin/RRHH
+
+**Nota:** El Supervisor NO tiene permiso de aprobación directa. Su rol es evaluar el impacto operativo y emitir una recomendación que será revisada por Administrador o RRHH para la decisión final.
 
 ```
-FLUJO: GESTIÓN DE VACACIONES
-════════════════════════════
+FLUJO: REVISIÓN DE VACACIONES - SUPERVISOR
+══════════════════════════════════════════
 
-[Notificación de solicitud de vacaciones]
+[Notificación de solicitud de vacaciones de un empleado de su zona]
     │
     ▼
 [Ir a RRHH > Vacaciones]
@@ -653,37 +655,38 @@ FLUJO: GESTIÓN DE VACACIONES
     │   ├─ Días disponibles del empleado
     │   └─ Motivo
     │
-    ├─► Evaluar impacto operativo:
+    ├─► Evaluar impacto operativo en la zona:
     │   │
     │   ├─ ¿Hay otros ausentes en esas fechas?
-    │   │   └─► SÍ: Verificar cobertura suficiente
+    │   │   └─► SÍ: Documentar riesgo de cobertura
     │   │
     │   ├─ ¿Es temporada alta? (ej: Navidad, Semana Santa)
-    │   │   └─► SÍ: Considerar necesidad operativa
+    │   │   └─► SÍ: Documentar necesidad operativa
     │   │
     │   └─ ¿Se puede cubrir la ruta?
-    │       ├─► SÍ: Identificar quién cubrirá
-    │       └─► NO: Considerar rechazo o fechas alternativas
+    │       ├─► SÍ: Identificar quién podría cubrir
+    │       └─► NO: Documentar problema de cobertura
     │
-    ├─► Decisión:
+    ├─► Agregar nota de evaluación:
     │   │
-    │   ├─► APROBAR:
-    │   │   ├─ Hacer clic en "Aprobar"
-    │   │   ├─ Agregar nota si es necesario
-    │   │   ├─ Notificar al empleado
-    │   │   └─ Planificar cobertura de ruta
-    │   │
-    │   └─► RECHAZAR:
-    │       ├─ Hacer clic en "Rechazar"
-    │       ├─ Agregar motivo claro
-    │       ├─ Sugerir fechas alternativas si es posible
-    │       └─ Notificar al empleado
+    │   ├─ Hacer clic en "Editar" la solicitud
+    │   ├─ En campo de notas, agregar evaluación:
+    │   │   ├─ "RECOMIENDO APROBAR - Cobertura disponible con [nombre]"
+    │   │   ├─ "RECOMIENDO RECHAZAR - Sin cobertura disponible"
+    │   │   └─ "RECOMIENDO FECHAS ALTERNATIVAS - [sugerir fechas]"
+    │   └─ Guardar nota
     │
-    └─► Si se aprueba, actualizar rutas:
+    └─► La solicitud queda lista para decisión de Admin/RRHH
         │
-        ├─ Ir a Operaciones > Rutas
-        ├─ Reasignar temporalmente la ruta del ausente
-        └─ Comunicar al abastecedor que cubrirá
+        └─ Admin o RRHH revisa evaluación del supervisor
+            y toma la decisión final de aprobar/rechazar
+    │
+    ▼
+[Si Admin/RRHH aprueba - Supervisor coordina cobertura]
+    │
+    ├─ Ir a Operaciones > Rutas
+    ├─ Reasignar temporalmente la ruta del ausente
+    └─ Comunicar al abastecedor que cubrirá
 ```
 
 ---
@@ -1020,53 +1023,68 @@ FLUJO: REPORTE DE PROBLEMA
 **Momento:** Cuando el tanque está bajo  
 **Objetivo:** Mantener vehículo con combustible suficiente
 
+**Nota:** El Abastecedor NO tiene permiso para registrar cargas de combustible en el sistema. Su rol es cargar combustible, guardar el comprobante y entregarlo al Supervisor de zona, quien tiene permiso para registrar la carga. Contabilidad solo tiene permiso de visualización para fines de conciliación.
+
 ```
-FLUJO: CARGA DE COMBUSTIBLE
-═══════════════════════════
+FLUJO: CARGA DE COMBUSTIBLE - ABASTECEDOR
+═════════════════════════════════════════
 
 [Indicador de combustible bajo]
     │
     ▼
 [Ir a estación de servicio autorizada]
     │
-    ├─ Usar estaciones de la lista aprobada
+    ├─ Usar estaciones de la lista aprobada por la empresa
     └─ Preferir estaciones con facturación electrónica
     │
     ▼
-[Antes de cargar]
+[Antes de cargar - Anotar datos importantes]
     │
-    ├─► Anotar lectura del odómetro: _______ km
+    ├─► Anotar en libreta o foto:
+    │   ├─ Lectura actual del odómetro: _______ km
+    │   └─ Hora de la carga
     │
     ▼
 [Cargar combustible]
     │
-    ├─ Solicitar tipo de combustible autorizado
+    ├─ Solicitar tipo de combustible autorizado (Gasoil/Gasolina)
     ├─ Solicitar tanque lleno o monto autorizado
-    ├─ Solicitar factura con crédito fiscal
+    ├─ Solicitar factura con crédito fiscal a nombre de la empresa
     │
     ▼
-[Registrar en el sistema]
+[Documentar la carga]
     │
-    ├─ Ir a sección de combustible en la app
-    ├─ Hacer clic en "Registrar Carga"
-    │
-    ├─► Ingresar datos:
-    │   ├─ Litros cargados: _____
-    │   ├─ Precio por litro: RD$_____
-    │   ├─ Total (calculado automáticamente)
-    │   ├─ Lectura odómetro: _____ km
-    │   ├─ Estación: (seleccionar de lista)
-    │   └─ Número de factura: _____
-    │
-    └─ Guardar registro
-        │
-        └─ El sistema calcula rendimiento km/L
+    ├─► En la factura o atrás de ella, anotar:
+    │   ├─ Placa del vehículo
+    │   ├─ Lectura del odómetro
+    │   ├─ Nombre del abastecedor
+    │   └─ Fecha y hora
     │
     ▼
-[Guardar comprobante]
+[Guardar comprobante cuidadosamente]
     │
-    └─ Guardar factura para entregar en oficina
+    ├─ NO perder la factura - es requisito para reembolso
+    ├─ Guardar en lugar seguro del vehículo
+    │
+    ▼
+[Al cierre de jornada - Entregar comprobante]
+    │
+    ├─► Entregar factura al Supervisor de zona
+    │   └─ El Supervisor tiene permiso para registrar cargas
+    │
+    └─► El Supervisor registrará la carga en el sistema
+        con todos los datos de la factura
 ```
+
+**Flujo complementario para SUPERVISOR:**
+El Supervisor (con permiso VCE en fuel) registra la carga:
+1. Recibe factura del abastecedor
+2. Ir a Combustible > Cargas > "+ Nueva Carga"
+3. Selecciona vehículo y abastecedor
+4. Ingresa: litros, precio, odómetro, estación, número de factura
+5. Guarda registro (sistema calcula km/L automáticamente)
+
+**Nota para Contabilidad:** El rol de Contabilidad solo tiene permiso de visualización (V) en combustible. Puede consultar los registros para conciliación y reportes, pero no puede crear ni editar cargas de combustible.
 
 ---
 
