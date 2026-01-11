@@ -39,7 +39,13 @@ import RoutesPage from "@/pages/routes";
 import { SuppliersManagementPage } from "@/pages/suppliers-management";
 import { ServiceMonitoringPage } from "@/pages/service-monitoring";
 import MiVehiculoPage from "@/pages/mi-vehiculo";
-import { SuperAdminPage } from "@/pages/super-admin";
+import { SuperAdminDashboardPage } from "@/pages/super-admin/index";
+import { SuperAdminTenantsPage } from "@/pages/super-admin/tenants";
+import { SuperAdminPlansPage } from "@/pages/super-admin/plans";
+import { SuperAdminUsersPage } from "@/pages/super-admin/users";
+import { SuperAdminMetricsPage } from "@/pages/super-admin/metrics";
+import { SuperAdminAuditPage } from "@/pages/super-admin/audit";
+import { SuperAdminSettingsPage } from "@/pages/super-admin/settings";
 import { TenantSignupPage } from "@/pages/tenant-signup";
 import { EstablishmentViewersPage } from "@/pages/establishment-viewers";
 import { ViewerDashboardPage } from "@/pages/viewer-dashboard";
@@ -132,13 +138,13 @@ function SuperAdminLayout() {
           </header>
           <main className="flex-1 overflow-auto">
             <Switch>
-              <Route path="/super-admin" component={SuperAdminPage} />
-              <Route path="/super-admin/empresas" component={SuperAdminPage} />
-              <Route path="/super-admin/planes" component={SuperAdminPage} />
-              <Route path="/super-admin/usuarios" component={SuperAdminPage} />
-              <Route path="/super-admin/metricas" component={SuperAdminPage} />
-              <Route path="/super-admin/auditoria" component={SuperAdminPage} />
-              <Route path="/super-admin/configuracion" component={SuperAdminPage} />
+              <Route path="/super-admin" component={SuperAdminDashboardPage} />
+              <Route path="/super-admin/empresas" component={SuperAdminTenantsPage} />
+              <Route path="/super-admin/planes" component={SuperAdminPlansPage} />
+              <Route path="/super-admin/usuarios" component={SuperAdminUsersPage} />
+              <Route path="/super-admin/metricas" component={SuperAdminMetricsPage} />
+              <Route path="/super-admin/auditoria" component={SuperAdminAuditPage} />
+              <Route path="/super-admin/configuracion" component={SuperAdminSettingsPage} />
               <Route component={NotFound} />
             </Switch>
           </main>

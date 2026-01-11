@@ -67,7 +67,9 @@ import {
   bankDeposits,
   cashMovements,
   establishmentViewers,
-  machineViewerAssignments
+  machineViewerAssignments,
+  users,
+  tenants
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -6837,6 +6839,39 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting audit logs:", error);
       res.status(500).json({ error: "Error al obtener logs de auditoría" });
+    }
+  });
+
+  // Get all platform users (Super Admin only)
+  app.get("/api/super-admin/users", authenticateJWT, requireSuperAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      // Get all users across all tenants
+      const allUsers = await db.select({
+        id: users.id,
+        username: users.username,
+        fullName: users.fullName,
+        email: users.email,
+        role: users.role,
+        isSuperAdmin: users.isSuperAdmin,
+        isActive: users.isActive,
+        createdAt: users.createdAt,
+        tenantId: users.tenantId
+      }).from(users).orderBy(sql`${users.createdAt} DESC`);
+      
+      // Get tenant names for each user
+      const tenantsMap = new Map<string, string>();
+      const tenantsList = await db.select({ id: tenants.id, name: tenants.name }).from(tenants);
+      tenantsList.forEach(t => tenantsMap.set(t.id, t.name));
+      
+      const usersWithTenants = allUsers.map(user => ({
+        ...user,
+        tenantName: user.tenantId ? tenantsMap.get(user.tenantId) || null : null
+      }));
+      
+      res.json(usersWithTenants);
+    } catch (error) {
+      console.error("Error getting all users:", error);
+      res.status(500).json({ error: "Error al obtener usuarios" });
     }
   });
 
