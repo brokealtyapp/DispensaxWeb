@@ -172,14 +172,11 @@ export default function EstablishmentViewersPage() {
     mutationFn: async (data: InviteFormData) => {
       return apiRequest("POST", "/api/viewer-invites", {
         email: data.email,
-        role: "visor_establecimiento",
-        metadata: {
-          establishmentName: data.establishmentName,
-          contactName: data.contactName,
-          phone: data.phone,
-          machineIds: data.machineIds,
-          commissionPercent: data.commissionPercent,
-        },
+        establishmentName: data.establishmentName,
+        contactName: data.contactName,
+        phone: data.phone,
+        machineIds: data.machineIds,
+        commissionPercent: String(data.commissionPercent),
       });
     },
     onSuccess: () => {
@@ -621,11 +618,12 @@ export default function EstablishmentViewersPage() {
             </Table>
           </div>
 
-          {totalPages > 1 && (
+          {filteredViewers.length > ITEMS_PER_PAGE && (
             <div className="mt-4">
               <DataPagination
                 currentPage={currentPage}
-                totalPages={totalPages}
+                totalItems={filteredViewers.length}
+                itemsPerPage={ITEMS_PER_PAGE}
                 onPageChange={setCurrentPage}
               />
             </div>

@@ -5,7 +5,7 @@
 
 export type UserRole = "admin" | "supervisor" | "abastecedor" | "almacen" | "contabilidad" | "rh" | "visor_establecimiento";
 
-export type Action = "view" | "create" | "edit" | "delete" | "approve" | "export";
+export type Action = "view" | "read" | "create" | "edit" | "delete" | "approve" | "export";
 
 export type Resource = 
   | "machines"

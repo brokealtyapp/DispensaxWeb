@@ -6869,7 +6869,7 @@ export async function registerRoutes(
           const machine = await storage.getMachine(assignment.machineId);
           return {
             ...assignment,
-            machine: machine ? { id: machine.id, serialNumber: machine.serialNumber, alias: machine.alias } : null
+            machine: machine ? { id: machine.id, code: machine.code, name: machine.name } : null
           };
         }));
         
@@ -6906,7 +6906,7 @@ export async function registerRoutes(
         const machine = await storage.getMachine(assignment.machineId);
         return {
           ...assignment,
-          machine: machine ? { id: machine.id, serialNumber: machine.serialNumber, alias: machine.alias } : null
+          machine: machine ? { id: machine.id, code: machine.code, name: machine.name } : null
         };
       }));
       
@@ -6954,7 +6954,6 @@ export async function registerRoutes(
       const user = await storage.createUser({
         username: data.username,
         password: hashedPassword,
-        email: data.email || null,
         fullName: data.fullName || data.establishmentName,
         phone: data.phone || null,
         role: "visor_establecimiento",
@@ -6978,6 +6977,7 @@ export async function registerRoutes(
         const machine = await storage.getMachine(machineId);
         if (machine && machine.tenantId === tenantId) {
           const assignment = await storage.createMachineViewerAssignment({
+            tenantId: tenantId,
             viewerId: viewer.id,
             machineId: machineId,
             commissionPercent: data.defaultCommissionPercent,
@@ -7083,6 +7083,7 @@ export async function registerRoutes(
           const machine = await storage.getMachine(machineId);
           if (machine && machine.tenantId === viewer.tenantId) {
             const assignment = await storage.createMachineViewerAssignment({
+              tenantId: viewer.tenantId,
               viewerId: viewer.id,
               machineId: machineId,
               commissionPercent: commissionPercent,
@@ -7178,6 +7179,8 @@ export async function registerRoutes(
       const inviteSchema = z.object({
         email: z.string().email("Email no válido"),
         establishmentName: z.string().min(1, "Nombre del establecimiento es requerido"),
+        contactName: z.string().optional(),
+        phone: z.string().optional(),
         machineIds: z.array(z.string()).min(1, "Debe asignar al menos una máquina"),
         commissionPercent: z.string().optional().default("5.00")
       });
@@ -7209,6 +7212,8 @@ export async function registerRoutes(
         metadata: {
           viewerType: "establishment",
           establishmentName: data.establishmentName,
+          contactName: data.contactName || "",
+          phone: data.phone || "",
           machineIds: data.machineIds,
           commissionPercent: data.commissionPercent
         },
@@ -7270,6 +7275,8 @@ export async function registerRoutes(
       const metadata = invite.metadata as {
         viewerType: string;
         establishmentName: string;
+        contactName?: string;
+        phone?: string;
         machineIds: string[];
         commissionPercent: string;
       } | null;
@@ -7302,6 +7309,7 @@ export async function registerRoutes(
       // Create machine assignments
       for (const machineId of metadata.machineIds) {
         await storage.createMachineViewerAssignment({
+          tenantId: invite.tenantId,
           viewerId: viewer.id,
           machineId: machineId,
           commissionPercent: metadata.commissionPercent,
@@ -7353,8 +7361,8 @@ export async function registerRoutes(
           commissionPercent: assignment.commissionPercent,
           machine: machine ? {
             id: machine.id,
-            serialNumber: machine.serialNumber,
-            alias: machine.alias,
+            code: machine.code,
+            name: machine.name,
             status: machine.status,
             zone: machine.zone
           } : null
@@ -7424,7 +7432,7 @@ export async function registerRoutes(
         const sales = await storage.getMachineSales(assignment.machineId, startDate, endDate);
         
         const machineTotalSales = sales.reduce((sum, sale) => {
-          return sum + parseFloat(sale.saleAmount?.toString() || "0");
+          return sum + parseFloat(sale.totalAmount?.toString() || "0");
         }, 0);
         
         const commissionPercent = parseFloat(assignment.commissionPercent || viewer.defaultCommissionPercent || "5.00");
@@ -7435,7 +7443,7 @@ export async function registerRoutes(
         
         return {
           machineId: machine.id,
-          machineName: machine.alias || machine.serialNumber,
+          machineName: machine.name || machine.code || machine.id,
           totalSales: machineTotalSales.toFixed(2),
           commissionPercent: commissionPercent.toFixed(2),
           commission: machineCommission.toFixed(2),
