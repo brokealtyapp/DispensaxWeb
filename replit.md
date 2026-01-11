@@ -4,10 +4,11 @@
 Dispensax is a comprehensive multi-tenant SaaS platform for managing beverage vending machines. It supports multiple companies (tenants) with complete data isolation, featuring a Super Administrator role for managing all client companies. Each tenant operates independently with ~25 machines (scalable to hundreds) in Dominican Republic, implementing 12 operational modules with strict granular RBAC, secure JWT authentication with tenant context, and GMT-4 timezone handling. All monetary values display in Dominican Pesos (RD$).
 
 ## Multi-Tenant Architecture
-The platform implements a 3-tier user hierarchy:
+The platform implements a 4-tier user hierarchy:
 1. **Super Admin** - Manages SaaS platform (all tenants, subscription plans, global metrics)
 2. **Admin** - Manages their company/tenant (machines, users, operations)
 3. **Operational Roles** (6 types) - Work within their assigned tenant
+4. **Establishment Viewers** - External users (establishment owners) with read-only access to their assigned machines' sales and commissions
 
 **Key Multi-Tenant Components:**
 - **New Tables:** tenants, subscription_plans, tenant_subscriptions, tenant_settings, tenant_invites, super_admin_audit_log
@@ -41,7 +42,8 @@ The application follows a client-server architecture. The frontend is built with
 - **In-Memory Caching System:** Implemented on the server (`server/cache.ts`) to pre-compute and store frequently accessed data (dashboard stats, summary data). This non-blocking background refresh mechanism drastically improves API response times by addressing Node.js's single-threaded nature and preventing event loop blocking.
 - **Optimized Database Interactions:** Employs efficient SQL JOINs instead of N+1 patterns, limits query results, and utilizes 23 critical database indexes for performance.
 - **Comprehensive JWT Authentication:** Features access and refresh tokens (HttpOnly cookies), middleware for role-based access control (RBAC), and automatic token renewal. Password changes revoke all active sessions.
-- **Granular Permission System (RBAC):** Complete action-based authorization using `authorizeAction(resource, action)` middleware on all mutation endpoints. Permission matrix defined in `shared/permissions.ts` with 7 roles (super_admin, admin, supervisor, abastecedor, almacen, contabilidad, rh) and actions (view, create, edit, delete, approve, export) across 20+ resources. Frontend uses `usePermissions()` hook with isLoading/isAuthenticated states for conditional UI rendering.
+- **Granular Permission System (RBAC):** Complete action-based authorization using `authorizeAction(resource, action)` middleware on all mutation endpoints. Permission matrix defined in `shared/permissions.ts` with 8 roles (super_admin, admin, supervisor, abastecedor, almacen, contabilidad, rh, visor_establecimiento) and actions (view, create, edit, delete, approve, export) across 20+ resources. Frontend uses `usePermissions()` hook with isLoading/isAuthenticated states for conditional UI rendering.
+- **Establishment Viewer System:** External users (establishment owners) can view sales data and commissions for their assigned machines. Features include: invite-based onboarding, per-machine commission configuration (default 5%), dedicated dashboard at `/mi-panel`, and admin management panel at `/visores`. Tables: `establishment_viewers`, `machine_viewer_assignments`.
 - **Enhanced Security (RBAC & Ownership):** Implemented `authorizeOwnership` middleware and `getEffectiveUserId` helper to prevent horizontal privilege escalation, ensuring users (especially "abastecedores") can only access their own data. Zone-based filtering for supervisors on machine data.
 - **Fail-Closed Zone Validation:** Critical security feature - supervisors and suppliers can only access machines in their assigned zone. If user OR machine lacks zone configuration, access is denied (fail closed). Admins bypass zone restrictions. Error codes: MACHINE_NOT_IN_ZONE, NO_VEHICLE_ASSIGNED, INSUFFICIENT_STOCK.
 - **Atomic Inventory Transactions:** All multi-table inventory operations (dispatchToVehicle, transferFromVehicleToMachine) use PostgreSQL transactions via `db.transaction()` to ensure consistency - partial updates are impossible on failure.
