@@ -59,11 +59,15 @@ import {
   insertPerformanceReviewSchema,
   insertEmployeeDocumentSchema,
   insertEmployeeProfileSchema,
+  insertEstablishmentViewerSchema,
+  insertMachineViewerAssignmentSchema,
   machines,
   machineSales,
   cashCollections,
   bankDeposits,
-  cashMovements
+  cashMovements,
+  establishmentViewers,
+  machineViewerAssignments
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -6833,6 +6837,628 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting audit logs:", error);
       res.status(500).json({ error: "Error al obtener logs de auditoría" });
+    }
+  });
+
+  // ==================== VISORES DE ESTABLECIMIENTO ====================
+
+  // Helper to verify establishment viewer tenant ownership
+  async function verifyEstablishmentViewerTenant(viewerId: string, tenantId: string | undefined, isSuperAdmin: boolean): Promise<boolean> {
+    if (isSuperAdmin) return true;
+    const viewer = await storage.getEstablishmentViewer(viewerId);
+    return viewer ? viewer.tenantId === tenantId : false;
+  }
+
+  // List all viewers (tenant-scoped)
+  app.get("/api/establishment-viewers", authenticateJWT, authorizeAction("establishment_viewers", "read"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: "Tenant no válido" });
+      }
+      
+      const viewers = await storage.getEstablishmentViewers(tenantId);
+      
+      // Enrich with user details and assignments
+      const enrichedViewers = await Promise.all(viewers.map(async (viewer) => {
+        const user = await storage.getUser(viewer.userId);
+        const assignments = await storage.getMachineViewerAssignments(viewer.id);
+        
+        // Get machine details for each assignment
+        const assignmentsWithMachines = await Promise.all(assignments.map(async (assignment) => {
+          const machine = await storage.getMachine(assignment.machineId);
+          return {
+            ...assignment,
+            machine: machine ? { id: machine.id, serialNumber: machine.serialNumber, alias: machine.alias } : null
+          };
+        }));
+        
+        return {
+          ...viewer,
+          user: user ? { id: user.id, username: user.username, email: user.email, fullName: user.fullName } : null,
+          assignments: assignmentsWithMachines
+        };
+      }));
+      
+      res.json(enrichedViewers);
+    } catch (error) {
+      console.error("Error getting establishment viewers:", error);
+      res.status(500).json({ error: "Error al obtener visores de establecimiento" });
+    }
+  });
+
+  // Get single viewer details
+  app.get("/api/establishment-viewers/:id", authenticateJWT, authorizeAction("establishment_viewers", "read"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const viewer = await storage.getEstablishmentViewer(req.params.id);
+      if (!viewer) {
+        return res.status(404).json({ error: "Visor no encontrado" });
+      }
+      
+      if (!verifyTenantOwnership(viewer.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+        return res.status(403).json({ error: "No tienes acceso a este visor" });
+      }
+      
+      const user = await storage.getUser(viewer.userId);
+      const assignments = await storage.getMachineViewerAssignments(viewer.id);
+      
+      const assignmentsWithMachines = await Promise.all(assignments.map(async (assignment) => {
+        const machine = await storage.getMachine(assignment.machineId);
+        return {
+          ...assignment,
+          machine: machine ? { id: machine.id, serialNumber: machine.serialNumber, alias: machine.alias } : null
+        };
+      }));
+      
+      res.json({
+        ...viewer,
+        user: user ? { id: user.id, username: user.username, email: user.email, fullName: user.fullName } : null,
+        assignments: assignmentsWithMachines
+      });
+    } catch (error) {
+      console.error("Error getting establishment viewer:", error);
+      res.status(500).json({ error: "Error al obtener visor de establecimiento" });
+    }
+  });
+
+  // Create viewer (also creates user with visor_establecimiento role)
+  app.post("/api/establishment-viewers", authenticateJWT, authorizeAction("establishment_viewers", "create"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: "Tenant no válido" });
+      }
+      
+      const createViewerSchema = z.object({
+        establishmentName: z.string().min(1, "Nombre del establecimiento es requerido"),
+        username: z.string().min(3, "Usuario debe tener al menos 3 caracteres"),
+        password: z.string().min(6, "Contraseña debe tener al menos 6 caracteres"),
+        email: z.string().email("Email no válido").optional(),
+        fullName: z.string().optional(),
+        phone: z.string().optional(),
+        defaultCommissionPercent: z.string().optional().default("5.00"),
+        notes: z.string().optional(),
+        machineIds: z.array(z.string()).optional().default([])
+      });
+      
+      const data = createViewerSchema.parse(req.body);
+      
+      // Check if username already exists
+      const existingUser = await storage.getUserByUsername(data.username);
+      if (existingUser) {
+        return res.status(400).json({ error: "El nombre de usuario ya existe" });
+      }
+      
+      // Create user with visor_establecimiento role
+      const hashedPassword = await bcrypt.hash(data.password, 10);
+      const user = await storage.createUser({
+        username: data.username,
+        password: hashedPassword,
+        email: data.email || null,
+        fullName: data.fullName || data.establishmentName,
+        phone: data.phone || null,
+        role: "visor_establecimiento",
+        tenantId: tenantId,
+        isActive: true
+      });
+      
+      // Create establishment viewer
+      const viewer = await storage.createEstablishmentViewer({
+        tenantId: tenantId,
+        userId: user.id,
+        establishmentName: data.establishmentName,
+        defaultCommissionPercent: data.defaultCommissionPercent,
+        notes: data.notes || null,
+        isActive: true
+      });
+      
+      // Create machine assignments if provided
+      const assignments = [];
+      for (const machineId of data.machineIds) {
+        const machine = await storage.getMachine(machineId);
+        if (machine && machine.tenantId === tenantId) {
+          const assignment = await storage.createMachineViewerAssignment({
+            viewerId: viewer.id,
+            machineId: machineId,
+            commissionPercent: data.defaultCommissionPercent,
+            isActive: true
+          });
+          assignments.push(assignment);
+        }
+      }
+      
+      res.status(201).json({
+        ...viewer,
+        user: { id: user.id, username: user.username, email: user.email, fullName: user.fullName },
+        assignments
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error creating establishment viewer:", error);
+      res.status(500).json({ error: "Error al crear visor de establecimiento" });
+    }
+  });
+
+  // Update viewer
+  app.patch("/api/establishment-viewers/:id", authenticateJWT, authorizeAction("establishment_viewers", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const viewer = await storage.getEstablishmentViewer(req.params.id);
+      if (!viewer) {
+        return res.status(404).json({ error: "Visor no encontrado" });
+      }
+      
+      if (!verifyTenantOwnership(viewer.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+        return res.status(403).json({ error: "No tienes acceso a este visor" });
+      }
+      
+      const updateViewerSchema = z.object({
+        establishmentName: z.string().min(1).optional(),
+        defaultCommissionPercent: z.string().optional(),
+        notes: z.string().optional(),
+        isActive: z.boolean().optional()
+      });
+      
+      const data = updateViewerSchema.parse(req.body);
+      
+      const updated = await storage.updateEstablishmentViewer(req.params.id, data);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error updating establishment viewer:", error);
+      res.status(500).json({ error: "Error al actualizar visor de establecimiento" });
+    }
+  });
+
+  // Delete viewer (soft delete)
+  app.delete("/api/establishment-viewers/:id", authenticateJWT, authorizeAction("establishment_viewers", "delete"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const viewer = await storage.getEstablishmentViewer(req.params.id);
+      if (!viewer) {
+        return res.status(404).json({ error: "Visor no encontrado" });
+      }
+      
+      if (!verifyTenantOwnership(viewer.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+        return res.status(403).json({ error: "No tienes acceso a este visor" });
+      }
+      
+      await storage.deleteEstablishmentViewer(req.params.id);
+      res.json({ success: true, message: "Visor desactivado correctamente" });
+    } catch (error) {
+      console.error("Error deleting establishment viewer:", error);
+      res.status(500).json({ error: "Error al eliminar visor de establecimiento" });
+    }
+  });
+
+  // Assign machines to viewer
+  app.post("/api/establishment-viewers/:id/assignments", authenticateJWT, authorizeAction("establishment_viewers", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const viewer = await storage.getEstablishmentViewer(req.params.id);
+      if (!viewer) {
+        return res.status(404).json({ error: "Visor no encontrado" });
+      }
+      
+      if (!verifyTenantOwnership(viewer.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+        return res.status(403).json({ error: "No tienes acceso a este visor" });
+      }
+      
+      const assignSchema = z.object({
+        machineIds: z.array(z.string()).min(1, "Debe proporcionar al menos una máquina"),
+        commissionPercent: z.string().optional()
+      });
+      
+      const data = assignSchema.parse(req.body);
+      const commissionPercent = data.commissionPercent || viewer.defaultCommissionPercent || "5.00";
+      
+      // Get existing assignments to avoid duplicates
+      const existingAssignments = await storage.getMachineViewerAssignments(viewer.id);
+      const existingMachineIds = existingAssignments.map(a => a.machineId);
+      
+      const newAssignments = [];
+      for (const machineId of data.machineIds) {
+        if (!existingMachineIds.includes(machineId)) {
+          const machine = await storage.getMachine(machineId);
+          if (machine && machine.tenantId === viewer.tenantId) {
+            const assignment = await storage.createMachineViewerAssignment({
+              viewerId: viewer.id,
+              machineId: machineId,
+              commissionPercent: commissionPercent,
+              isActive: true
+            });
+            newAssignments.push(assignment);
+          }
+        }
+      }
+      
+      res.status(201).json(newAssignments);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error assigning machines to viewer:", error);
+      res.status(500).json({ error: "Error al asignar máquinas al visor" });
+    }
+  });
+
+  // Remove machine assignment
+  app.delete("/api/establishment-viewers/:viewerId/assignments/:assignmentId", authenticateJWT, authorizeAction("establishment_viewers", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const viewer = await storage.getEstablishmentViewer(req.params.viewerId);
+      if (!viewer) {
+        return res.status(404).json({ error: "Visor no encontrado" });
+      }
+      
+      if (!verifyTenantOwnership(viewer.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+        return res.status(403).json({ error: "No tienes acceso a este visor" });
+      }
+      
+      const assignment = await storage.getMachineViewerAssignment(req.params.assignmentId);
+      if (!assignment || assignment.viewerId !== viewer.id) {
+        return res.status(404).json({ error: "Asignación no encontrada" });
+      }
+      
+      await storage.deleteMachineViewerAssignment(req.params.assignmentId);
+      res.json({ success: true, message: "Asignación eliminada correctamente" });
+    } catch (error) {
+      console.error("Error removing machine assignment:", error);
+      res.status(500).json({ error: "Error al eliminar asignación" });
+    }
+  });
+
+  // Update commission percent for assignment
+  app.patch("/api/establishment-viewers/:viewerId/assignments/:assignmentId", authenticateJWT, authorizeAction("establishment_viewers", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const viewer = await storage.getEstablishmentViewer(req.params.viewerId);
+      if (!viewer) {
+        return res.status(404).json({ error: "Visor no encontrado" });
+      }
+      
+      if (!verifyTenantOwnership(viewer.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+        return res.status(403).json({ error: "No tienes acceso a este visor" });
+      }
+      
+      const assignment = await storage.getMachineViewerAssignment(req.params.assignmentId);
+      if (!assignment || assignment.viewerId !== viewer.id) {
+        return res.status(404).json({ error: "Asignación no encontrada" });
+      }
+      
+      const updateSchema = z.object({
+        commissionPercent: z.string().regex(/^\d+(\.\d{1,2})?$/, "Porcentaje de comisión inválido")
+      });
+      
+      const data = updateSchema.parse(req.body);
+      
+      const updated = await storage.updateMachineViewerAssignment(req.params.assignmentId, {
+        commissionPercent: data.commissionPercent
+      });
+      
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error updating commission:", error);
+      res.status(500).json({ error: "Error al actualizar comisión" });
+    }
+  });
+
+  // ==================== VIEWER INVITE FLOW ====================
+
+  // Create viewer invite
+  app.post("/api/viewer-invites", authenticateJWT, authorizeAction("establishment_viewers", "create"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: "Tenant no válido" });
+      }
+      
+      const inviteSchema = z.object({
+        email: z.string().email("Email no válido"),
+        establishmentName: z.string().min(1, "Nombre del establecimiento es requerido"),
+        machineIds: z.array(z.string()).min(1, "Debe asignar al menos una máquina"),
+        commissionPercent: z.string().optional().default("5.00")
+      });
+      
+      const data = inviteSchema.parse(req.body);
+      
+      // Verify all machines belong to this tenant
+      for (const machineId of data.machineIds) {
+        const machine = await storage.getMachine(machineId);
+        if (!machine || machine.tenantId !== tenantId) {
+          return res.status(400).json({ error: `Máquina ${machineId} no encontrada o no pertenece a este tenant` });
+        }
+      }
+      
+      // Generate unique token
+      const crypto = await import("crypto");
+      const token = crypto.randomBytes(32).toString("hex");
+      
+      // Create invite with metadata
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
+      
+      const invite = await storage.createTenantInvite({
+        tenantId: tenantId,
+        email: data.email,
+        role: "visor_establecimiento",
+        token: token,
+        invitedBy: req.user!.userId,
+        metadata: {
+          viewerType: "establishment",
+          establishmentName: data.establishmentName,
+          machineIds: data.machineIds,
+          commissionPercent: data.commissionPercent
+        },
+        expiresAt: expiresAt
+      });
+      
+      res.status(201).json({
+        ...invite,
+        inviteUrl: `/invite/${token}`
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error creating viewer invite:", error);
+      res.status(500).json({ error: "Error al crear invitación" });
+    }
+  });
+
+  // Accept viewer invite
+  app.post("/api/viewer-invites/:token/accept", async (req: Request, res: Response) => {
+    try {
+      const acceptSchema = z.object({
+        username: z.string().min(3, "Usuario debe tener al menos 3 caracteres"),
+        password: z.string().min(6, "Contraseña debe tener al menos 6 caracteres"),
+        fullName: z.string().optional()
+      });
+      
+      const data = acceptSchema.parse(req.body);
+      
+      // Get invite by token
+      const invite = await storage.getTenantInviteByToken(req.params.token);
+      if (!invite) {
+        return res.status(404).json({ error: "Invitación no encontrada" });
+      }
+      
+      // Check if already accepted
+      if (invite.acceptedAt) {
+        return res.status(400).json({ error: "Esta invitación ya fue aceptada" });
+      }
+      
+      // Check if expired
+      if (new Date() > invite.expiresAt) {
+        return res.status(400).json({ error: "Esta invitación ha expirado" });
+      }
+      
+      // Verify it's a viewer invite
+      if (invite.role !== "visor_establecimiento") {
+        return res.status(400).json({ error: "Este endpoint es solo para invitaciones de visor" });
+      }
+      
+      // Check if username already exists
+      const existingUser = await storage.getUserByUsername(data.username);
+      if (existingUser) {
+        return res.status(400).json({ error: "El nombre de usuario ya existe" });
+      }
+      
+      // Extract metadata
+      const metadata = invite.metadata as {
+        viewerType: string;
+        establishmentName: string;
+        machineIds: string[];
+        commissionPercent: string;
+      } | null;
+      
+      if (!metadata || metadata.viewerType !== "establishment") {
+        return res.status(400).json({ error: "Datos de invitación inválidos" });
+      }
+      
+      // Create user
+      const hashedPassword = await bcrypt.hash(data.password, 10);
+      const user = await storage.createUser({
+        username: data.username,
+        password: hashedPassword,
+        email: invite.email,
+        fullName: data.fullName || metadata.establishmentName,
+        role: "visor_establecimiento",
+        tenantId: invite.tenantId,
+        isActive: true
+      });
+      
+      // Create establishment viewer
+      const viewer = await storage.createEstablishmentViewer({
+        tenantId: invite.tenantId,
+        userId: user.id,
+        establishmentName: metadata.establishmentName,
+        defaultCommissionPercent: metadata.commissionPercent,
+        isActive: true
+      });
+      
+      // Create machine assignments
+      for (const machineId of metadata.machineIds) {
+        await storage.createMachineViewerAssignment({
+          viewerId: viewer.id,
+          machineId: machineId,
+          commissionPercent: metadata.commissionPercent,
+          isActive: true
+        });
+      }
+      
+      // Mark invite as accepted
+      await storage.markTenantInviteAccepted(invite.id);
+      
+      res.json({
+        success: true,
+        message: "Cuenta creada exitosamente",
+        viewer: {
+          ...viewer,
+          user: { id: user.id, username: user.username, email: user.email }
+        }
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error accepting viewer invite:", error);
+      res.status(500).json({ error: "Error al aceptar invitación" });
+    }
+  });
+
+  // ==================== VIEWER SALES DASHBOARD ====================
+
+  // Get assigned machines for current viewer
+  app.get("/api/viewer/my-machines", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (req.user?.role !== "visor_establecimiento") {
+        return res.status(403).json({ error: "Este endpoint es solo para visores de establecimiento" });
+      }
+      
+      const viewer = await storage.getEstablishmentViewerByUserId(req.user.userId);
+      if (!viewer) {
+        return res.status(404).json({ error: "No se encontró visor para este usuario" });
+      }
+      
+      const assignments = await storage.getMachineViewerAssignments(viewer.id);
+      
+      const machinesWithDetails = await Promise.all(assignments.map(async (assignment) => {
+        const machine = await storage.getMachine(assignment.machineId);
+        return {
+          assignmentId: assignment.id,
+          machineId: assignment.machineId,
+          commissionPercent: assignment.commissionPercent,
+          machine: machine ? {
+            id: machine.id,
+            serialNumber: machine.serialNumber,
+            alias: machine.alias,
+            status: machine.status,
+            zone: machine.zone
+          } : null
+        };
+      }));
+      
+      res.json({
+        viewer: {
+          id: viewer.id,
+          establishmentName: viewer.establishmentName,
+          defaultCommissionPercent: viewer.defaultCommissionPercent
+        },
+        machines: machinesWithDetails.filter(m => m.machine !== null)
+      });
+    } catch (error) {
+      console.error("Error getting viewer machines:", error);
+      res.status(500).json({ error: "Error al obtener máquinas asignadas" });
+    }
+  });
+
+  // Get sales summary with commissions
+  app.get("/api/viewer/sales-summary", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (req.user?.role !== "visor_establecimiento") {
+        return res.status(403).json({ error: "Este endpoint es solo para visores de establecimiento" });
+      }
+      
+      const viewer = await storage.getEstablishmentViewerByUserId(req.user.userId);
+      if (!viewer) {
+        return res.status(404).json({ error: "No se encontró visor para este usuario" });
+      }
+      
+      // Parse date filters
+      const startDateStr = req.query.startDate as string;
+      const endDateStr = req.query.endDate as string;
+      
+      let startDate: Date | undefined;
+      let endDate: Date | undefined;
+      
+      if (startDateStr) {
+        startDate = new Date(startDateStr);
+        startDate.setHours(0, 0, 0, 0);
+      }
+      
+      if (endDateStr) {
+        endDate = new Date(endDateStr);
+        endDate.setHours(23, 59, 59, 999);
+      }
+      
+      // If no dates provided, default to current month
+      if (!startDate || !endDate) {
+        const now = new Date();
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      }
+      
+      const assignments = await storage.getMachineViewerAssignments(viewer.id);
+      
+      let totalSales = 0;
+      let totalCommission = 0;
+      
+      const machinesSummary = await Promise.all(assignments.map(async (assignment) => {
+        const machine = await storage.getMachine(assignment.machineId);
+        if (!machine) return null;
+        
+        // Get sales for this machine in the date range
+        const sales = await storage.getMachineSales(assignment.machineId, startDate, endDate);
+        
+        const machineTotalSales = sales.reduce((sum, sale) => {
+          return sum + parseFloat(sale.saleAmount?.toString() || "0");
+        }, 0);
+        
+        const commissionPercent = parseFloat(assignment.commissionPercent || viewer.defaultCommissionPercent || "5.00");
+        const machineCommission = machineTotalSales * (commissionPercent / 100);
+        
+        totalSales += machineTotalSales;
+        totalCommission += machineCommission;
+        
+        return {
+          machineId: machine.id,
+          machineName: machine.alias || machine.serialNumber,
+          totalSales: machineTotalSales.toFixed(2),
+          commissionPercent: commissionPercent.toFixed(2),
+          commission: machineCommission.toFixed(2),
+          salesCount: sales.length
+        };
+      }));
+      
+      res.json({
+        viewer: {
+          id: viewer.id,
+          establishmentName: viewer.establishmentName
+        },
+        dateRange: {
+          startDate: startDate?.toISOString(),
+          endDate: endDate?.toISOString()
+        },
+        machines: machinesSummary.filter(m => m !== null),
+        totalSales: totalSales.toFixed(2),
+        totalCommission: totalCommission.toFixed(2)
+      });
+    } catch (error) {
+      console.error("Error getting viewer sales summary:", error);
+      res.status(500).json({ error: "Error al obtener resumen de ventas" });
     }
   });
 

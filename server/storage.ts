@@ -44,6 +44,9 @@ import {
   type VehicleInventory, type InsertVehicleInventory,
   type InventoryTransfer, type InsertInventoryTransfer,
   type MachineInventoryLot, type InsertMachineInventoryLot,
+  type EstablishmentViewer, type InsertEstablishmentViewer,
+  type MachineViewerAssignment, type InsertMachineViewerAssignment,
+  type TenantInvite, type InsertTenantInvite,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
@@ -54,6 +57,7 @@ import {
   tasks, calendarEvents, passwordResetTokens, refreshTokens,
   employeeAttendance, payrollRecords, vacationRequests, performanceReviews, employeeDocuments, employeeProfiles,
   vehicleInventory, inventoryTransfers, machineInventoryLots,
+  establishmentViewers, machineViewerAssignments,
   tenants, subscriptionPlans, tenantSubscriptions, tenantSettings, tenantInvites, superAdminAuditLog,
   type Tenant, type InsertTenant,
   type SubscriptionPlan, type InsertSubscriptionPlan,
@@ -572,6 +576,28 @@ export interface IStorage {
     maxUsers: number;
     planName: string;
   }>;
+  
+  // ==================== VISORES DE ESTABLECIMIENTO ====================
+  
+  getEstablishmentViewers(tenantId: string): Promise<EstablishmentViewer[]>;
+  getEstablishmentViewer(id: string): Promise<EstablishmentViewer | undefined>;
+  getEstablishmentViewerByUserId(userId: string): Promise<EstablishmentViewer | undefined>;
+  createEstablishmentViewer(data: InsertEstablishmentViewer): Promise<EstablishmentViewer>;
+  updateEstablishmentViewer(id: string, data: Partial<InsertEstablishmentViewer>): Promise<EstablishmentViewer | undefined>;
+  deleteEstablishmentViewer(id: string): Promise<boolean>;
+  
+  getMachineViewerAssignments(viewerId: string): Promise<MachineViewerAssignment[]>;
+  getMachineViewerAssignment(id: string): Promise<MachineViewerAssignment | undefined>;
+  createMachineViewerAssignment(data: InsertMachineViewerAssignment): Promise<MachineViewerAssignment>;
+  updateMachineViewerAssignment(id: string, data: Partial<InsertMachineViewerAssignment>): Promise<MachineViewerAssignment | undefined>;
+  deleteMachineViewerAssignment(id: string): Promise<boolean>;
+  getViewerAssignedMachineIds(userId: string): Promise<string[]>;
+  
+  // ==================== INVITACIONES ====================
+  
+  createTenantInvite(data: InsertTenantInvite): Promise<TenantInvite>;
+  getTenantInviteByToken(token: string): Promise<TenantInvite | undefined>;
+  markTenantInviteAccepted(id: string): Promise<TenantInvite | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5951,6 +5977,110 @@ export class DatabaseStorage implements IStorage {
       products: productCount?.count || 0,
       monthlyRevenue: "0.00"
     };
+  }
+
+  // ==================== VISORES DE ESTABLECIMIENTO ====================
+
+  async getEstablishmentViewers(tenantId: string): Promise<EstablishmentViewer[]> {
+    return db.select().from(establishmentViewers)
+      .where(and(eq(establishmentViewers.tenantId, tenantId), eq(establishmentViewers.isActive, true)))
+      .orderBy(desc(establishmentViewers.createdAt));
+  }
+
+  async getEstablishmentViewer(id: string): Promise<EstablishmentViewer | undefined> {
+    const [viewer] = await db.select().from(establishmentViewers).where(eq(establishmentViewers.id, id));
+    return viewer;
+  }
+
+  async getEstablishmentViewerByUserId(userId: string): Promise<EstablishmentViewer | undefined> {
+    const [viewer] = await db.select().from(establishmentViewers)
+      .where(and(eq(establishmentViewers.userId, userId), eq(establishmentViewers.isActive, true)));
+    return viewer;
+  }
+
+  async createEstablishmentViewer(data: InsertEstablishmentViewer): Promise<EstablishmentViewer> {
+    const [viewer] = await db.insert(establishmentViewers).values(data).returning();
+    return viewer;
+  }
+
+  async updateEstablishmentViewer(id: string, data: Partial<InsertEstablishmentViewer>): Promise<EstablishmentViewer | undefined> {
+    const [updated] = await db.update(establishmentViewers)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(establishmentViewers.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteEstablishmentViewer(id: string): Promise<boolean> {
+    await db.update(establishmentViewers)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(establishmentViewers.id, id));
+    return true;
+  }
+
+  async getMachineViewerAssignments(viewerId: string): Promise<MachineViewerAssignment[]> {
+    return db.select().from(machineViewerAssignments)
+      .where(and(eq(machineViewerAssignments.viewerId, viewerId), eq(machineViewerAssignments.isActive, true)))
+      .orderBy(desc(machineViewerAssignments.createdAt));
+  }
+
+  async getMachineViewerAssignment(id: string): Promise<MachineViewerAssignment | undefined> {
+    const [assignment] = await db.select().from(machineViewerAssignments).where(eq(machineViewerAssignments.id, id));
+    return assignment;
+  }
+
+  async createMachineViewerAssignment(data: InsertMachineViewerAssignment): Promise<MachineViewerAssignment> {
+    const [assignment] = await db.insert(machineViewerAssignments).values(data).returning();
+    return assignment;
+  }
+
+  async updateMachineViewerAssignment(id: string, data: Partial<InsertMachineViewerAssignment>): Promise<MachineViewerAssignment | undefined> {
+    const [updated] = await db.update(machineViewerAssignments)
+      .set(data)
+      .where(eq(machineViewerAssignments.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMachineViewerAssignment(id: string): Promise<boolean> {
+    await db.update(machineViewerAssignments)
+      .set({ isActive: false })
+      .where(eq(machineViewerAssignments.id, id));
+    return true;
+  }
+
+  async getViewerAssignedMachineIds(userId: string): Promise<string[]> {
+    const viewer = await this.getEstablishmentViewerByUserId(userId);
+    if (!viewer) return [];
+    
+    const assignments = await db.select({ machineId: machineViewerAssignments.machineId })
+      .from(machineViewerAssignments)
+      .where(and(
+        eq(machineViewerAssignments.viewerId, viewer.id),
+        eq(machineViewerAssignments.isActive, true)
+      ));
+    
+    return assignments.map(a => a.machineId);
+  }
+
+  // ==================== INVITACIONES ====================
+
+  async createTenantInvite(data: InsertTenantInvite): Promise<TenantInvite> {
+    const [invite] = await db.insert(tenantInvites).values(data).returning();
+    return invite;
+  }
+
+  async getTenantInviteByToken(token: string): Promise<TenantInvite | undefined> {
+    const [invite] = await db.select().from(tenantInvites).where(eq(tenantInvites.token, token));
+    return invite;
+  }
+
+  async markTenantInviteAccepted(id: string): Promise<TenantInvite | undefined> {
+    const [updated] = await db.update(tenantInvites)
+      .set({ acceptedAt: new Date() })
+      .where(eq(tenantInvites.id, id))
+      .returning();
+    return updated;
   }
 }
 

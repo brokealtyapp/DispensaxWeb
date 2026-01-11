@@ -58,6 +58,7 @@ function getActionText(action: Action): string {
 function getResourceText(resource: Resource): string {
   const texts: Record<Resource, string> = {
     machines: "máquinas",
+    locations: "ubicaciones",
     routes: "rutas",
     stops: "paradas",
     employees: "empleados",
@@ -78,6 +79,14 @@ function getResourceText(resource: Resource): string {
     settings: "configuración",
     tasks: "tareas",
     service_records: "registros de servicio",
+    attendance: "asistencia",
+    payroll: "nómina",
+    vacations: "vacaciones",
+    performance_reviews: "evaluaciones de desempeño",
+    employee_documents: "documentos de empleados",
+    employee_profiles: "perfiles de empleados",
+    machine_sales: "ventas de máquinas",
+    establishment_viewers: "visores de establecimiento",
   };
   return texts[resource] || resource;
 }

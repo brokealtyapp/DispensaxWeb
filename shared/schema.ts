@@ -146,6 +146,7 @@ export const tenantInvites = pgTable("tenant_invites", {
   role: text("role").default("abastecedor"),
   token: text("token").notNull().unique(),
   invitedBy: varchar("invited_by"),
+  metadata: jsonb("metadata"),
   expiresAt: timestamp("expires_at").notNull(),
   acceptedAt: timestamp("accepted_at"),
   createdAt: timestamp("created_at").defaultNow(),
