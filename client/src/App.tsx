@@ -7,6 +7,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AuthProvider, useAuth, canAccessRoute, getRoleDefaultRoute, UserRole } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { AppSidebar } from "@/components/AppSidebar";
+import { SuperAdminSidebar } from "@/components/SuperAdminSidebar";
 import { SearchBar } from "@/components/SearchBar";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AuthPage } from "@/pages/auth";
@@ -73,7 +74,81 @@ function ProtectedRoute({ component: Component, path }: ProtectedRouteProps) {
   return <Component />;
 }
 
-function ProtectedRoutes() {
+function SuperAdminLayout() {
+  const { isAuthenticated, isLoading, user } = useAuth();
+  const [location, navigate] = useLocation();
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      navigate("/auth");
+    }
+  }, [isLoading, isAuthenticated, navigate]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-pulse text-muted-foreground">Cargando...</div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !user?.isSuperAdmin) {
+    return <Redirect to="/auth" />;
+  }
+
+  const sidebarStyle = {
+    "--sidebar-width": "16rem",
+    "--sidebar-width-icon": "3rem",
+  };
+
+  return (
+    <SidebarProvider style={sidebarStyle as React.CSSProperties}>
+      <div className="flex h-screen w-full bg-muted/30">
+        <SuperAdminSidebar />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <header className="flex items-center justify-between gap-4 px-6 py-4 bg-background sticky top-0 z-50">
+            <div className="flex items-center gap-4">
+              <SidebarTrigger data-testid="button-sidebar-toggle" />
+              <h1 className="text-lg font-semibold text-foreground">Panel Super Administrador</h1>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="text-right">
+                <p className="text-xl sm:text-2xl font-bold tabular-nums tracking-tight" data-testid="text-current-time">
+                  {formatTimeWithSeconds(currentTime)}
+                </p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground capitalize hidden sm:block">
+                  {formatFullDateWithWeekday(currentTime)}
+                </p>
+              </div>
+            </div>
+          </header>
+          <main className="flex-1 overflow-auto">
+            <Switch>
+              <Route path="/super-admin" component={SuperAdminPage} />
+              <Route path="/super-admin/empresas" component={SuperAdminPage} />
+              <Route path="/super-admin/planes" component={SuperAdminPage} />
+              <Route path="/super-admin/usuarios" component={SuperAdminPage} />
+              <Route path="/super-admin/metricas" component={SuperAdminPage} />
+              <Route path="/super-admin/auditoria" component={SuperAdminPage} />
+              <Route path="/super-admin/configuracion" component={SuperAdminPage} />
+              <Route component={NotFound} />
+            </Switch>
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+}
+
+function TenantLayout() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const [location, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
@@ -151,7 +226,6 @@ function ProtectedRoutes() {
     setReadAlerts(new Set(notifications.map(n => n.id)));
   }, [notifications]);
 
-  // Redirigir a auth cuando no está autenticado
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       navigate("/auth");
@@ -168,6 +242,10 @@ function ProtectedRoutes() {
 
   if (!isAuthenticated) {
     return null;
+  }
+
+  if (user?.isSuperAdmin) {
+    return <Redirect to="/super-admin" />;
   }
 
   const sidebarStyle = {
@@ -239,7 +317,6 @@ function ProtectedRoutes() {
               <Route path="/rutas">{() => <ProtectedRoute path="/rutas" component={RoutesPage} />}</Route>
               <Route path="/abastecedores">{() => <ProtectedRoute path="/abastecedores" component={SuppliersManagementPage} />}</Route>
               <Route path="/configuracion">{() => <ProtectedRoute path="/configuracion" component={SettingsPage} />}</Route>
-              <Route path="/super-admin">{() => <ProtectedRoute path="/super-admin" component={SuperAdminPage} />}</Route>
               <Route path="/visores">{() => <ProtectedRoute path="/visores" component={EstablishmentViewersPage} />}</Route>
               <Route path="/mi-panel">{() => <ProtectedRoute path="/mi-panel" component={ViewerDashboardPage} />}</Route>
               <Route component={NotFound} />
@@ -249,6 +326,16 @@ function ProtectedRoutes() {
       </div>
     </SidebarProvider>
   );
+}
+
+function ProtectedRoutes() {
+  const [location] = useLocation();
+  
+  if (location.startsWith("/super-admin")) {
+    return <SuperAdminLayout />;
+  }
+  
+  return <TenantLayout />;
 }
 
 function AuthRoute() {
