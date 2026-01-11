@@ -97,8 +97,13 @@ const finanzasItems: MenuItem[] = [
 const adminItems: MenuItem[] = [
   { icon: Users, label: "Gestión Usuarios", href: "/usuarios", roles: ["admin"] },
   { icon: UserCog, label: "Gestión Supervisores", href: "/supervisores", roles: ["admin"] },
+  { icon: Building2, label: "Visores Establecimiento", href: "/visores", roles: ["admin"] },
   { icon: Users, label: "Recursos Humanos", href: "/rh", roles: ["admin", "rh"] },
   { icon: FileText, label: "Reportes", href: "/reportes", roles: ["admin"] },
+];
+
+const visorEstablecimientoItems: MenuItem[] = [
+  { icon: TrendingUp, label: "Mis Ventas", href: "/mi-panel", roles: ["visor_establecimiento"] },
 ];
 
 function filterByRole(items: MenuItem[], userRole: UserRole | undefined): MenuItem[] {
@@ -125,6 +130,7 @@ export function AppSidebar() {
   const visibleAbastecedorItems = filterByRole(abastecedorItems, userRole);
   const visibleFinanzasItems = filterByRole(finanzasItems, userRole);
   const visibleAdminItems = filterByRole(adminItems, userRole);
+  const visibleVisorEstablecimientoItems = filterByRole(visorEstablecimientoItems, userRole);
   
   // Función para verificar si una ruta está activa (incluyendo parámetros de query)
   const isRouteActive = (href: string) => {
@@ -153,6 +159,7 @@ export function AppSidebar() {
       almacen: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
       contabilidad: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
       rh: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
+      visor_establecimiento: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400",
     };
     return role ? colors[role] : "";
   };
@@ -303,6 +310,41 @@ export function AppSidebar() {
             <SidebarMenu>
               {visibleAbastecedorItems.map((item) => {
                 const isActive = isRouteActive(item.href);
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      asChild
+                      tooltip={isCollapsed ? item.label : undefined}
+                      className={cn(
+                        "rounded-xl transition-all duration-200",
+                        isCollapsed ? "h-10 px-0 justify-center" : "h-10 px-4",
+                        isActive
+                          ? "bg-primary text-primary-foreground shadow-md"
+                          : "hover:bg-muted"
+                      )}
+                    >
+                      <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
+
+        {visibleVisorEstablecimientoItems.length > 0 && (
+          <SidebarGroup className={isCollapsed ? "mt-2" : "mt-4"}>
+            {!isCollapsed && (
+              <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+                MI PANEL
+              </SidebarGroupLabel>
+            )}
+            <SidebarMenu>
+              {visibleVisorEstablecimientoItems.map((item) => {
+                const isActive = location === item.href;
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton

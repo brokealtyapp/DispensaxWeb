@@ -40,6 +40,8 @@ import { ServiceMonitoringPage } from "@/pages/service-monitoring";
 import MiVehiculoPage from "@/pages/mi-vehiculo";
 import { SuperAdminPage } from "@/pages/super-admin";
 import { TenantSignupPage } from "@/pages/tenant-signup";
+import { EstablishmentViewersPage } from "@/pages/establishment-viewers";
+import { ViewerDashboardPage } from "@/pages/viewer-dashboard";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
@@ -237,6 +239,8 @@ function ProtectedRoutes() {
               <Route path="/abastecedores">{() => <ProtectedRoute path="/abastecedores" component={SuppliersManagementPage} />}</Route>
               <Route path="/configuracion">{() => <ProtectedRoute path="/configuracion" component={SettingsPage} />}</Route>
               <Route path="/super-admin">{() => <ProtectedRoute path="/super-admin" component={SuperAdminPage} />}</Route>
+              <Route path="/visores">{() => <ProtectedRoute path="/visores" component={EstablishmentViewersPage} />}</Route>
+              <Route path="/mi-panel">{() => <ProtectedRoute path="/mi-panel" component={ViewerDashboardPage} />}</Route>
               <Route component={NotFound} />
             </Switch>
           </main>

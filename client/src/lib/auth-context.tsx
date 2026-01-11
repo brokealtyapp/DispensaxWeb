@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
 import { queryClient } from "./queryClient";
 
-export type UserRole = "admin" | "supervisor" | "abastecedor" | "almacen" | "contabilidad" | "rh";
+export type UserRole = "admin" | "supervisor" | "abastecedor" | "almacen" | "contabilidad" | "rh" | "visor_establecimiento";
 
 export interface User {
   id: string;
@@ -256,6 +256,7 @@ export function getRoleDisplayName(role: UserRole): string {
     almacen: "Almacenista",
     contabilidad: "Contador",
     rh: "Recursos Humanos",
+    visor_establecimiento: "Visor Establecimiento",
   };
   return roleNames[role] || role;
 }
@@ -268,6 +269,7 @@ export function getRoleDefaultRoute(role: UserRole): string {
     almacen: "/almacen-panel",
     contabilidad: "/contabilidad-panel",
     rh: "/rh",
+    visor_establecimiento: "/mi-panel",
   };
   return routes[role] || "/";
 }
@@ -275,7 +277,7 @@ export function getRoleDefaultRoute(role: UserRole): string {
 export function canAccessRoute(role: UserRole, route: string): boolean {
   const adminRoutes = ["/", "/maquinas", "/tareas", "/todas-tareas", "/calendario", "/almacen", "/almacen-panel",
     "/abastecedor", "/abastecedores", "/dinero-productos", "/compras", "/combustible", "/contabilidad", "/contabilidad-panel",
-    "/caja-chica", "/rh", "/reportes", "/configuracion", "/supervisor", "/productos", "/supervisores", "/usuarios", "/rutas", "/monitoreo-servicios"];
+    "/caja-chica", "/rh", "/reportes", "/configuracion", "/supervisor", "/productos", "/supervisores", "/usuarios", "/rutas", "/monitoreo-servicios", "/visores"];
   
   const superAdminRoutes = ["/super-admin", "/super-admin/tenants", "/super-admin/plans", "/super-admin/metrics"];
   
@@ -290,6 +292,8 @@ export function canAccessRoute(role: UserRole, route: string): boolean {
   
   const rhRoutes = ["/rh", "/tareas", "/mis-tareas", "/calendario", "/configuracion"];
 
+  const visorEstablecimientoRoutes = ["/mi-panel"];
+
   const routePermissions: Record<UserRole, string[]> = {
     admin: adminRoutes,
     supervisor: supervisorRoutes,
@@ -297,6 +301,7 @@ export function canAccessRoute(role: UserRole, route: string): boolean {
     almacen: almacenRoutes,
     contabilidad: contabilidadRoutes,
     rh: rhRoutes,
+    visor_establecimiento: visorEstablecimientoRoutes,
   };
 
   const basePath = "/" + route.split("/")[1];
