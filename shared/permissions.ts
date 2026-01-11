@@ -3,7 +3,7 @@
  * Define qué acciones puede realizar cada rol en cada recurso
  */
 
-export type UserRole = "admin" | "supervisor" | "abastecedor" | "almacen" | "contabilidad" | "rh";
+export type UserRole = "admin" | "supervisor" | "abastecedor" | "almacen" | "contabilidad" | "rh" | "visor_establecimiento";
 
 export type Action = "view" | "create" | "edit" | "delete" | "approve" | "export";
 
@@ -35,7 +35,9 @@ export type Resource =
   | "vacations"
   | "performance_reviews"
   | "employee_documents"
-  | "employee_profiles";
+  | "employee_profiles"
+  | "machine_sales"
+  | "establishment_viewers";
 
 /**
  * Matriz de permisos: define qué acciones puede realizar cada rol en cada recurso
@@ -71,6 +73,8 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     performance_reviews: { view: true, create: true, edit: true, delete: true },
     employee_documents: { view: true, create: true, edit: true, delete: true },
     employee_profiles: { view: true, create: true, edit: true, delete: true },
+    machine_sales: { view: true, export: true },
+    establishment_viewers: { view: true, create: true, edit: true, delete: true },
   },
   
   supervisor: {
@@ -102,6 +106,8 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     performance_reviews: { view: true, create: false, edit: true, delete: false },
     employee_documents: { view: true, create: false, edit: true, delete: false },
     employee_profiles: { view: true, create: false, edit: true, delete: false },
+    machine_sales: { view: true, export: false },
+    establishment_viewers: { view: false, create: false, edit: false, delete: false },
   },
   
   abastecedor: {
@@ -133,6 +139,8 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     performance_reviews: { view: false, create: false, edit: false, delete: false },
     employee_documents: { view: false, create: false, edit: false, delete: false },
     employee_profiles: { view: false, create: false, edit: false, delete: false },
+    machine_sales: { view: false, export: false },
+    establishment_viewers: { view: false, create: false, edit: false, delete: false },
   },
   
   almacen: {
@@ -164,6 +172,8 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     performance_reviews: { view: false, create: false, edit: false, delete: false },
     employee_documents: { view: false, create: false, edit: false, delete: false },
     employee_profiles: { view: false, create: false, edit: false, delete: false },
+    machine_sales: { view: false, export: false },
+    establishment_viewers: { view: false, create: false, edit: false, delete: false },
   },
   
   contabilidad: {
@@ -195,6 +205,8 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     performance_reviews: { view: false, create: false, edit: false, delete: false },
     employee_documents: { view: false, create: false, edit: false, delete: false },
     employee_profiles: { view: false, create: false, edit: false, delete: false },
+    machine_sales: { view: true, export: true },
+    establishment_viewers: { view: false, create: false, edit: false, delete: false },
   },
   
   rh: {
@@ -226,6 +238,41 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     performance_reviews: { view: true, create: true, edit: true, delete: true },
     employee_documents: { view: true, create: true, edit: true, delete: true },
     employee_profiles: { view: true, create: true, edit: true, delete: true },
+    machine_sales: { view: false, export: false },
+    establishment_viewers: { view: false, create: false, edit: false, delete: false },
+  },
+  
+  visor_establecimiento: {
+    machines: { view: false, create: false, edit: false, delete: false },
+    locations: { view: false, create: false, edit: false, delete: false },
+    routes: { view: false, create: false, edit: false, delete: false },
+    stops: { view: false, create: false, edit: false, delete: false },
+    employees: { view: false, create: false, edit: false, delete: false },
+    users: { view: false, create: false, edit: false, delete: false },
+    suppliers: { view: false, create: false, edit: false, delete: false },
+    products: { view: false, create: false, edit: false, delete: false },
+    warehouse: { view: false, create: false, edit: false, delete: false },
+    warehouse_movements: { view: false, create: false, edit: false, delete: false },
+    cash_collections: { view: false, create: false, edit: false, delete: false },
+    issue_reports: { view: false, create: false, edit: false, delete: false },
+    petty_cash: { view: false, create: false, edit: false, delete: false },
+    petty_cash_approval: { view: false, approve: false },
+    accounting: { view: false, create: false, edit: false, delete: false },
+    fuel: { view: false, create: false, edit: false, delete: false },
+    vehicles: { view: false, create: false, edit: false, delete: false },
+    purchase_orders: { view: false, create: false, edit: false, delete: false },
+    reports: { view: false, export: false },
+    settings: { view: false, edit: false },
+    tasks: { view: false, create: false, edit: false, delete: false },
+    service_records: { view: false, create: false, edit: false, delete: false },
+    attendance: { view: false, create: false, edit: false, delete: false },
+    payroll: { view: false, create: false, edit: false, delete: false },
+    vacations: { view: false, create: false, edit: false, delete: false },
+    performance_reviews: { view: false, create: false, edit: false, delete: false },
+    employee_documents: { view: false, create: false, edit: false, delete: false },
+    employee_profiles: { view: false, create: false, edit: false, delete: false },
+    machine_sales: { view: true, export: true },
+    establishment_viewers: { view: false, create: false, edit: false, delete: false },
   },
 };
 

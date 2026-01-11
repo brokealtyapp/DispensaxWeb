@@ -2251,3 +2251,76 @@ export const machineInventoryLotsRelations = relations(machineInventoryLots, ({ 
     references: [vehicleInventory.id],
   }),
 }));
+
+// ==================== VISORES DE ESTABLECIMIENTO ====================
+
+export const establishmentViewers = pgTable("establishment_viewers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  establishmentName: text("establishment_name").notNull(),
+  contactName: text("contact_name"),
+  contactPhone: text("contact_phone"),
+  contactEmail: text("contact_email"),
+  defaultCommissionPercent: decimal("default_commission_percent", { precision: 5, scale: 2 }).default("5.00"),
+  notes: text("notes"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEstablishmentViewerSchema = createInsertSchema(establishmentViewers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertEstablishmentViewer = z.infer<typeof insertEstablishmentViewerSchema>;
+export type EstablishmentViewer = typeof establishmentViewers.$inferSelect;
+
+export const machineViewerAssignments = pgTable("machine_viewer_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  viewerId: varchar("viewer_id").references(() => establishmentViewers.id).notNull(),
+  machineId: varchar("machine_id").references(() => machines.id).notNull(),
+  commissionPercent: decimal("commission_percent", { precision: 5, scale: 2 }).default("5.00"),
+  startDate: timestamp("start_date").defaultNow(),
+  endDate: timestamp("end_date"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMachineViewerAssignmentSchema = createInsertSchema(machineViewerAssignments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertMachineViewerAssignment = z.infer<typeof insertMachineViewerAssignmentSchema>;
+export type MachineViewerAssignment = typeof machineViewerAssignments.$inferSelect;
+
+export const establishmentViewersRelations = relations(establishmentViewers, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [establishmentViewers.tenantId],
+    references: [tenants.id],
+  }),
+  user: one(users, {
+    fields: [establishmentViewers.userId],
+    references: [users.id],
+  }),
+  machineAssignments: many(machineViewerAssignments),
+}));
+
+export const machineViewerAssignmentsRelations = relations(machineViewerAssignments, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [machineViewerAssignments.tenantId],
+    references: [tenants.id],
+  }),
+  viewer: one(establishmentViewers, {
+    fields: [machineViewerAssignments.viewerId],
+    references: [establishmentViewers.id],
+  }),
+  machine: one(machines, {
+    fields: [machineViewerAssignments.machineId],
+    references: [machines.id],
+  }),
+}));
