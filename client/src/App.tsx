@@ -62,10 +62,11 @@ function ProtectedRoute({ component: Component, path }: ProtectedRouteProps) {
   if (!user) return null;
   
   const userRole = user.role as UserRole;
-  const hasAccess = canAccessRoute(userRole, path);
+  const isSuperAdmin = user.isSuperAdmin === true;
+  const hasAccess = canAccessRoute(userRole, path, isSuperAdmin);
   
   if (!hasAccess) {
-    const defaultRoute = getRoleDefaultRoute(userRole);
+    const defaultRoute = getRoleDefaultRoute(userRole, isSuperAdmin);
     return <Redirect to={defaultRoute} />;
   }
   
@@ -262,7 +263,7 @@ function AuthRoute() {
   }
 
   if (isAuthenticated && user) {
-    const defaultRoute = getRoleDefaultRoute(user.role as UserRole);
+    const defaultRoute = getRoleDefaultRoute(user.role as UserRole, user.isSuperAdmin);
     return <Redirect to={defaultRoute} />;
   }
 

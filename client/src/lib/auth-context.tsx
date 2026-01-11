@@ -261,7 +261,10 @@ export function getRoleDisplayName(role: UserRole): string {
   return roleNames[role] || role;
 }
 
-export function getRoleDefaultRoute(role: UserRole): string {
+export function getRoleDefaultRoute(role: UserRole, isSuperAdmin?: boolean): string {
+  if (isSuperAdmin) {
+    return "/super-admin";
+  }
   const routes: Record<UserRole, string> = {
     admin: "/",
     supervisor: "/supervisor",
@@ -274,7 +277,7 @@ export function getRoleDefaultRoute(role: UserRole): string {
   return routes[role] || "/";
 }
 
-export function canAccessRoute(role: UserRole, route: string): boolean {
+export function canAccessRoute(role: UserRole, route: string, isSuperAdmin?: boolean): boolean {
   const adminRoutes = ["/", "/maquinas", "/tareas", "/todas-tareas", "/calendario", "/almacen", "/almacen-panel",
     "/abastecedor", "/abastecedores", "/dinero-productos", "/compras", "/combustible", "/contabilidad", "/contabilidad-panel",
     "/caja-chica", "/rh", "/reportes", "/configuracion", "/supervisor", "/productos", "/supervisores", "/usuarios", "/rutas", "/monitoreo-servicios", "/visores"];
@@ -294,6 +297,14 @@ export function canAccessRoute(role: UserRole, route: string): boolean {
 
   const visorEstablecimientoRoutes = ["/mi-panel"];
 
+  const basePath = "/" + route.split("/")[1];
+
+  // Super Admin can access everything
+  if (isSuperAdmin) {
+    const allRoutes = [...adminRoutes, ...superAdminRoutes];
+    return allRoutes.includes(basePath);
+  }
+
   const routePermissions: Record<UserRole, string[]> = {
     admin: adminRoutes,
     supervisor: supervisorRoutes,
@@ -304,6 +315,5 @@ export function canAccessRoute(role: UserRole, route: string): boolean {
     visor_establecimiento: visorEstablecimientoRoutes,
   };
 
-  const basePath = "/" + route.split("/")[1];
   return routePermissions[role]?.includes(basePath) || false;
 }
