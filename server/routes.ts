@@ -69,9 +69,11 @@ import {
   establishmentViewers,
   machineViewerAssignments,
   users,
-  tenants
+  tenants,
+  nayaxConfig as nayaxConfigTable
 } from "@shared/schema";
 import { z } from "zod";
+import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
 
 // =====================
 // RATE LIMITING (In-memory, can upgrade to Redis for production)
@@ -6872,6 +6874,208 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting all users:", error);
       res.status(500).json({ error: "Error al obtener usuarios" });
+    }
+  });
+
+  // ==================== NAYAX INTEGRATION ====================
+
+  // Get Nayax config for current tenant
+  app.get("/api/nayax/config", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "Tenant no identificado" });
+      
+      const config = await db.select().from(nayaxConfigTable).where(eq(nayaxConfigTable.tenantId, tenantId)).limit(1);
+      if (config.length === 0) {
+        return res.json({ configured: false, isEnabled: false });
+      }
+      const { apiToken, ...safeConfig } = config[0];
+      res.json({ configured: true, hasToken: !!apiToken, ...safeConfig });
+    } catch (error) {
+      console.error("Error getting Nayax config:", error);
+      res.status(500).json({ error: "Error al obtener configuración de Nayax" });
+    }
+  });
+
+  // Save/Update Nayax config
+  app.post("/api/nayax/config", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "Tenant no identificado" });
+
+      const { apiToken, isEnabled, syncIntervalMinutes, autoSyncSales, autoSyncMachines } = req.body;
+      
+      const existing = await db.select().from(nayaxConfigTable).where(eq(nayaxConfigTable.tenantId, tenantId)).limit(1);
+      
+      if (existing.length > 0) {
+        const updateData: any = { updatedAt: new Date() };
+        if (apiToken !== undefined) updateData.apiToken = apiToken;
+        if (isEnabled !== undefined) updateData.isEnabled = isEnabled;
+        if (syncIntervalMinutes !== undefined) updateData.syncIntervalMinutes = syncIntervalMinutes;
+        if (autoSyncSales !== undefined) updateData.autoSyncSales = autoSyncSales;
+        if (autoSyncMachines !== undefined) updateData.autoSyncMachines = autoSyncMachines;
+        
+        await db.update(nayaxConfigTable).set(updateData).where(eq(nayaxConfigTable.tenantId, tenantId));
+      } else {
+        await db.insert(nayaxConfigTable).values({
+          tenantId,
+          apiToken: apiToken || null,
+          isEnabled: isEnabled || false,
+          syncIntervalMinutes: syncIntervalMinutes || 30,
+          autoSyncSales: autoSyncSales !== false,
+          autoSyncMachines: autoSyncMachines !== false,
+        });
+      }
+      
+      res.json({ success: true, message: "Configuración de Nayax guardada" });
+    } catch (error) {
+      console.error("Error saving Nayax config:", error);
+      res.status(500).json({ error: "Error al guardar configuración de Nayax" });
+    }
+  });
+
+  // Test Nayax connection
+  app.post("/api/nayax/test-connection", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "Tenant no identificado" });
+
+      const { apiToken } = req.body;
+      
+      let token = apiToken;
+      if (!token) {
+        token = await getNayaxToken(tenantId);
+      }
+      if (!token) {
+        return res.status(400).json({ error: "No se ha configurado un token de API de Nayax" });
+      }
+
+      const result = await testNayaxConnection(token);
+      res.json(result);
+    } catch (error) {
+      console.error("Error testing Nayax connection:", error);
+      res.status(500).json({ error: "Error al probar conexión con Nayax" });
+    }
+  });
+
+  // Get machines from Nayax
+  app.get("/api/nayax/machines", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "Tenant no identificado" });
+
+      const token = await getNayaxToken(tenantId);
+      if (!token) {
+        return res.status(400).json({ error: "No se ha configurado un token de API de Nayax" });
+      }
+
+      const nayaxMachines = await getAllNayaxMachines(token);
+      res.json(nayaxMachines);
+    } catch (error: any) {
+      console.error("Error getting Nayax machines:", error);
+      res.status(500).json({ error: error.message || "Error al obtener máquinas de Nayax" });
+    }
+  });
+
+  // Get last sales from Nayax machine
+  app.get("/api/nayax/machines/:nayaxMachineId/sales", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "Tenant no identificado" });
+
+      const token = await getNayaxToken(tenantId);
+      if (!token) {
+        return res.status(400).json({ error: "No se ha configurado un token de API de Nayax" });
+      }
+
+      const nayaxMachineId = parseInt(req.params.nayaxMachineId);
+      if (isNaN(nayaxMachineId)) {
+        return res.status(400).json({ error: "ID de máquina Nayax inválido" });
+      }
+
+      const sales = await getNayaxMachineLastSales(token, nayaxMachineId);
+      res.json(sales);
+    } catch (error: any) {
+      console.error("Error getting Nayax sales:", error);
+      res.status(500).json({ error: error.message || "Error al obtener ventas de Nayax" });
+    }
+  });
+
+  // Link a Dispensax machine with a Nayax machine
+  app.post("/api/nayax/link-machine", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "Tenant no identificado" });
+
+      const { dispensaxMachineId, nayaxMachineId, nayaxDeviceSerial } = req.body;
+
+      if (!dispensaxMachineId || !nayaxMachineId) {
+        return res.status(400).json({ error: "Se requiere ID de máquina Dispensax y Nayax" });
+      }
+
+      const machine = await storage.getMachine(dispensaxMachineId);
+      if (!machine || machine.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Máquina no encontrada" });
+      }
+
+      await db.update(machines).set({
+        nayaxMachineId: parseInt(nayaxMachineId),
+        nayaxDeviceSerial: nayaxDeviceSerial || null,
+        nayaxLinkedAt: new Date(),
+      }).where(and(eq(machines.id, dispensaxMachineId), eq(machines.tenantId, tenantId)));
+
+      res.json({ success: true, message: "Máquina vinculada con Nayax exitosamente" });
+    } catch (error) {
+      console.error("Error linking machine:", error);
+      res.status(500).json({ error: "Error al vincular máquina" });
+    }
+  });
+
+  // Unlink a Dispensax machine from Nayax
+  app.post("/api/nayax/unlink-machine", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "Tenant no identificado" });
+
+      const { dispensaxMachineId } = req.body;
+      if (!dispensaxMachineId) {
+        return res.status(400).json({ error: "Se requiere ID de máquina" });
+      }
+
+      const machine = await storage.getMachine(dispensaxMachineId);
+      if (!machine || machine.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Máquina no encontrada" });
+      }
+
+      await db.update(machines).set({
+        nayaxMachineId: null,
+        nayaxDeviceSerial: null,
+        nayaxLinkedAt: null,
+      }).where(and(eq(machines.id, dispensaxMachineId), eq(machines.tenantId, tenantId)));
+
+      res.json({ success: true, message: "Máquina desvinculada de Nayax" });
+    } catch (error) {
+      console.error("Error unlinking machine:", error);
+      res.status(500).json({ error: "Error al desvincular máquina" });
+    }
+  });
+
+  // Get linked machines summary (Dispensax machines with their Nayax info)
+  app.get("/api/nayax/linked-machines", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "Tenant no identificado" });
+
+      const linkedMachines = await db.select().from(machines)
+        .where(and(
+          eq(machines.tenantId, tenantId),
+          sql`${machines.nayaxMachineId} IS NOT NULL`
+        ));
+
+      res.json(linkedMachines);
+    } catch (error) {
+      console.error("Error getting linked machines:", error);
+      res.status(500).json({ error: "Error al obtener máquinas vinculadas" });
     }
   });
 

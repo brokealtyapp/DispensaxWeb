@@ -48,6 +48,7 @@ import { SuperAdminAuditPage } from "@/pages/super-admin/audit";
 import { SuperAdminSettingsPage } from "@/pages/super-admin/settings";
 import { TenantSignupPage } from "@/pages/tenant-signup";
 import { EstablishmentViewersPage } from "@/pages/establishment-viewers";
+import { NayaxPage } from "@/pages/nayax";
 import { ViewerDashboardPage } from "@/pages/viewer-dashboard";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -317,6 +318,7 @@ function TenantLayout() {
               <Route path="/compras">{() => <ProtectedRoute path="/compras" component={PurchasesPage} />}</Route>
               <Route path="/rh">{() => <ProtectedRoute path="/rh" component={HRPage} />}</Route>
               <Route path="/reportes">{() => <ProtectedRoute path="/reportes" component={ReportsPage} />}</Route>
+              <Route path="/nayax">{() => <ProtectedRoute path="/nayax" component={NayaxPage} />}</Route>
               <Route path="/supervisores">{() => <ProtectedRoute path="/supervisores" component={SupervisorsPage} />}</Route>
               <Route path="/monitoreo-servicios">{() => <ProtectedRoute path="/monitoreo-servicios" component={ServiceMonitoringPage} />}</Route>
               <Route path="/usuarios">{() => <ProtectedRoute path="/usuarios" component={UsersPage} />}</Route>

@@ -89,6 +89,14 @@ The application follows a client-server architecture. The frontend is built with
 - **Email Service:**
     - SMTP (for password recovery)
 
+## Nayax Integration
+- **Service:** `server/nayax.ts` - HTTP client for Nayax Lynx API (machines, sales, connection testing)
+- **Schema Tables:** `nayax_config` (per-tenant API token + settings), machines table extended with `nayax_machine_id`, `nayax_device_serial`, `nayax_linked_at`
+- **API Endpoints:** `/api/nayax/config` (GET/POST), `/api/nayax/test-connection` (POST), `/api/nayax/machines` (GET), `/api/nayax/machines/:id/sales` (GET), `/api/nayax/link-machine` (POST), `/api/nayax/unlink-machine` (POST), `/api/nayax/linked-machines` (GET)
+- **Frontend:** `/nayax` page with tabs for machine overview, linking, and cashless sales viewing
+- **Auth:** Admin-only access, token stored per tenant in `nayax_config` table
+- **Nayax Lynx API Base URL:** `https://lynx.nayax.com/operational/api/v1/`
+
 ## Documentation
 
 - **MANUAL_USUARIO.md**: Comprehensive user manual (200+ sections) organized by user role (6 profiles) and module (12+ modules). Includes:

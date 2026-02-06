@@ -138,6 +138,28 @@ export const insertTenantSettingsSchema = createInsertSchema(tenantSettings).omi
 export type InsertTenantSettings = z.infer<typeof insertTenantSettingsSchema>;
 export type TenantSettings = typeof tenantSettings.$inferSelect;
 
+export const nayaxConfig = pgTable("nayax_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull().unique(),
+  apiToken: text("api_token"),
+  isEnabled: boolean("is_enabled").default(false),
+  lastSyncAt: timestamp("last_sync_at"),
+  syncIntervalMinutes: integer("sync_interval_minutes").default(30),
+  autoSyncSales: boolean("auto_sync_sales").default(true),
+  autoSyncMachines: boolean("auto_sync_machines").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertNayaxConfigSchema = createInsertSchema(nayaxConfig).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertNayaxConfig = z.infer<typeof insertNayaxConfigSchema>;
+export type NayaxConfig = typeof nayaxConfig.$inferSelect;
+
 // Invitaciones para unirse a un Tenant
 export const tenantInvites = pgTable("tenant_invites", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -332,6 +354,9 @@ export const machines = pgTable("machines", {
   installationDate: timestamp("installation_date"),
   notes: text("notes"),
   isActive: boolean("is_active").default(true),
+  nayaxMachineId: integer("nayax_machine_id"),
+  nayaxDeviceSerial: text("nayax_device_serial"),
+  nayaxLinkedAt: timestamp("nayax_linked_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

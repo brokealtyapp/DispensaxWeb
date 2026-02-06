@@ -94,6 +94,10 @@ const finanzasItems: MenuItem[] = [
   { icon: Wallet, label: "Caja Chica", href: "/caja-chica", roles: ["admin", "contabilidad"] },
 ];
 
+const integrationItems: MenuItem[] = [
+  { icon: CreditCard, label: "Nayax", href: "/nayax", roles: ["admin"] },
+];
+
 const adminItems: MenuItem[] = [
   { icon: Users, label: "Gestión Usuarios", href: "/usuarios", roles: ["admin"] },
   { icon: UserCog, label: "Gestión Supervisores", href: "/supervisores", roles: ["admin"] },
@@ -129,6 +133,7 @@ export function AppSidebar() {
   const visibleOperacionItems = filterByRole(operacionItems, userRole);
   const visibleAbastecedorItems = filterByRole(abastecedorItems, userRole);
   const visibleFinanzasItems = filterByRole(finanzasItems, userRole);
+  const visibleIntegrationItems = filterByRole(integrationItems, userRole);
   const visibleAdminItems = filterByRole(adminItems, userRole);
   const visibleVisorEstablecimientoItems = filterByRole(visorEstablecimientoItems, userRole);
   
@@ -396,6 +401,41 @@ export function AppSidebar() {
                       <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
                         <item.icon className="h-4 w-4 shrink-0" />
                         {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
+
+        {visibleIntegrationItems.length > 0 && (
+          <SidebarGroup className={isCollapsed ? "mt-2" : "mt-4"}>
+            {!isCollapsed && (
+              <SidebarGroupLabel className="text-xs font-medium text-muted-foreground px-3 mb-2">
+                INTEGRACIONES
+              </SidebarGroupLabel>
+            )}
+            <SidebarMenu>
+              {visibleIntegrationItems.map((item) => {
+                const isActive = location === item.href;
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      className={cn(
+                        "mx-2 rounded-lg transition-all duration-200",
+                        isActive
+                          ? "bg-[#E84545] text-white hover:bg-[#E84545]/90 font-medium"
+                          : "hover:bg-muted/80"
+                      )}
+                      tooltip={item.label}
+                    >
+                      <Link href={item.href} data-testid={`link-${item.href.replace("/", "")}`}>
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{item.label}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

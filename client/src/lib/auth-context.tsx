@@ -280,7 +280,7 @@ export function getRoleDefaultRoute(role: UserRole, isSuperAdmin?: boolean): str
 export function canAccessRoute(role: UserRole, route: string, isSuperAdmin?: boolean): boolean {
   const adminRoutes = ["/", "/maquinas", "/tareas", "/todas-tareas", "/calendario", "/almacen", "/almacen-panel",
     "/abastecedor", "/abastecedores", "/dinero-productos", "/compras", "/combustible", "/contabilidad", "/contabilidad-panel",
-    "/caja-chica", "/rh", "/reportes", "/configuracion", "/supervisor", "/productos", "/supervisores", "/usuarios", "/rutas", "/monitoreo-servicios", "/visores"];
+    "/caja-chica", "/rh", "/reportes", "/configuracion", "/supervisor", "/productos", "/supervisores", "/usuarios", "/rutas", "/monitoreo-servicios", "/visores", "/nayax"];
   
   const superAdminRoutes = ["/super-admin", "/super-admin/tenants", "/super-admin/plans", "/super-admin/metrics"];
   
