@@ -949,15 +949,16 @@ export class DatabaseStorage implements IStorage {
       product: products,
     })
     .from(warehouseInventory)
-    .leftJoin(products, eq(warehouseInventory.productId, products.id));
+    .innerJoin(products, and(
+      eq(warehouseInventory.productId, products.id),
+      eq(products.isActive, true),
+    ));
 
     const results = tenantId
-      ? await query.where(eq(warehouseInventory.tenantId, tenantId))
+      ? await query.where(eq(products.tenantId, tenantId))
       : await query;
 
-    return results
-      .filter(r => r.product)
-      .map(r => ({ ...r.inventory, product: r.product! }));
+    return results.map(r => ({ ...r.inventory, product: r.product }));
   }
 
   async getWarehouseInventoryItem(productId: string): Promise<WarehouseInventory | undefined> {
