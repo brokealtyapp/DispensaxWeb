@@ -5669,9 +5669,12 @@ export async function registerRoutes(
         ...req.body,
         dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
         createdBy: req.user?.userId,
-        tenantId // Override tenantId from JWT — never trust request body
       };
-      const data = insertTaskSchema.parse(bodyWithParsedDate);
+      // Validate without tenantId from body (prevent injection), then append from JWT
+      const data = {
+        ...insertTaskSchema.omit({ tenantId: true }).parse(bodyWithParsedDate),
+        tenantId
+      };
       const task = await storage.createTask(data);
       res.status(201).json(task);
     } catch (error) {
