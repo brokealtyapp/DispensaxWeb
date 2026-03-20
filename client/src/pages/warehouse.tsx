@@ -987,7 +987,14 @@ export function WarehousePage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Producto</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        const selected = products.find((p) => p.id === value);
+                        entryForm.setValue("unitCost", selected?.costPrice ?? 0);
+                      }}
+                      value={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger data-testid="select-entry-product">
                           <SelectValue placeholder="Selecciona un producto" />
