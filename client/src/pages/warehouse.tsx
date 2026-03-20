@@ -991,7 +991,7 @@ export function WarehousePage() {
                       onValueChange={(value) => {
                         field.onChange(value);
                         const selected = products.find((p) => p.id === value);
-                        entryForm.setValue("unitCost", selected?.costPrice ?? 0);
+                        entryForm.setValue("unitCost", Number(selected?.costPrice ?? 0));
                       }}
                       value={field.value}
                     >
