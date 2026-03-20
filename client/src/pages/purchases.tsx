@@ -1521,8 +1521,6 @@ export default function PurchasesPage() {
               onClick={() => {
                 if (orderToDelete) {
                   deleteOrderMutation.mutate(orderToDelete.id);
-                  setOrderToDelete(null);
-                  setIsDeleteOrderOpen(false);
                 }
               }}
               data-testid="button-confirm-delete-order"

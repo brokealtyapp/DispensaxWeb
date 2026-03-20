@@ -1035,6 +1035,20 @@ export async function registerRoutes(
     return { valid: true, orderId: item.orderId };
   }
 
+  // Helper function to verify purchase reception tenant ownership
+  async function verifyReceptionTenant(receptionId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const reception = await storage.getPurchaseReception(receptionId);
+    if (!reception) {
+      res.status(404).json({ error: "Recepción no encontrada" });
+      return false;
+    }
+    if (!verifyTenantOwnership(reception.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+      res.status(404).json({ error: "Recepción no encontrada" });
+      return false;
+    }
+    return true;
+  }
+
   // Helper function to verify location tenant ownership
   async function verifyLocationTenant(locationId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
     const location = await storage.getLocation(locationId);
@@ -4137,7 +4151,8 @@ export async function registerRoutes(
 
   app.get("/api/purchase-orders/next-number", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const orderNumber = await storage.getNextOrderNumber();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const orderNumber = await storage.getNextOrderNumber(tenantId);
       res.json({ orderNumber });
     } catch (error) {
       res.status(500).json({ error: "Error al generar número de orden" });
@@ -4356,13 +4371,8 @@ export async function registerRoutes(
 
   app.get("/api/purchase-receptions/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyReceptionTenant(req.params.id, req, res)) return;
       const reception = await storage.getPurchaseReception(req.params.id);
-      if (!reception) {
-        return res.status(404).json({ error: "Recepción no encontrada" });
-      }
-      if (!verifyTenantOwnership(reception.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
-        return res.status(404).json({ error: "Recepción no encontrada" });
-      }
       res.json(reception);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener recepción" });
