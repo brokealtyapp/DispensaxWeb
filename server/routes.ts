@@ -1530,13 +1530,30 @@ export async function registerRoutes(
 
   app.post("/api/warehouse/lots", authenticateJWT, authorizeAction("warehouse_movements", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const tenantId = req.user?.isSuperAdmin
-        ? (req.query.tenantId as string | undefined) || req.user.tenantId
-        : req.user!.tenantId;
-      if (!tenantId) {
-        return res.status(400).json({ error: "No hay tenant asignado" });
+      const { productId } = req.body;
+      if (!productId) {
+        return res.status(400).json({ error: "productId es requerido" });
       }
-      const { tenantId: _ignored, ...bodyRest } = req.body;
+
+      // Load product and verify tenant ownership (fail-closed)
+      const product = await storage.getProduct(productId);
+      if (!product) {
+        return res.status(404).json({ error: "Producto no encontrado" });
+      }
+      if (!verifyTenantOwnership(product.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+        return res.status(404).json({ error: "Producto no encontrado" });
+      }
+
+      // Derive tenantId from JWT; for superAdmin without tenant, fall back to product's tenant
+      const tenantId = req.user?.isSuperAdmin
+        ? (req.query.tenantId as string | undefined) || req.user.tenantId || product.tenantId
+        : req.user!.tenantId;
+
+      if (!tenantId) {
+        return res.status(400).json({ error: "No se pudo determinar el tenant" });
+      }
+
+      const { tenantId: _omitted, ...bodyRest } = req.body;
       const data = insertProductLotSchema.parse({ ...bodyRest, tenantId });
       const lot = await storage.createProductLot(data);
       res.status(201).json(lot);
