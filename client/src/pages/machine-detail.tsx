@@ -261,6 +261,11 @@ export function MachineDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo actualizar el estado de la máquina", variant: "destructive" });
     },
   });
 

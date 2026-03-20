@@ -704,11 +704,13 @@ export async function registerRoutes(
 
   app.get("/api/machines/summary", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user!.tenantId;
       const cache = getDashboardCache();
+      const tenantMachines = await storage.getMachines(tenantId);
       res.json({
         stats: cache.stats,
         machinesByZone: cache.machinesByZone,
-        machines: cache.machinesList,
+        machines: tenantMachines,
       });
       if (!isDashboardCacheValid()) {
         refreshDashboardCacheIfStale().catch(err => console.error("[Cache] Error refresh dashboard:", err));
