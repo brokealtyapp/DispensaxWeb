@@ -656,8 +656,12 @@ export async function registerRoutes(
 
   app.post("/api/products", authenticateJWT, authorizeAction("products", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: "Tenant no identificado. Por favor cierre sesión e inicie de nuevo." });
+      }
       const data = insertProductSchema.omit({ tenantId: true }).parse(req.body);
-      const product = await storage.createProduct({ ...data, tenantId: req.user!.tenantId! });
+      const product = await storage.createProduct({ ...data, tenantId });
       res.status(201).json(product);
     } catch (error) {
       if (error instanceof z.ZodError) {
