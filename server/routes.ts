@@ -802,7 +802,7 @@ export async function registerRoutes(
         });
       }
       
-      const data = insertMachineSchema.parse(req.body);
+      const data = insertMachineSchema.omit({ tenantId: true }).parse(req.body);
       // Override tenantId with authenticated user's tenant (prevent bypass attacks)
       const machine = await storage.createMachine({ ...data, tenantId });
       res.status(201).json(machine);
