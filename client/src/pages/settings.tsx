@@ -21,6 +21,14 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import {
   User,
   Bell,
   Shield,
@@ -31,8 +39,13 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  MapPin,
+  Plus,
+  Pencil,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
+import type { Location } from "@shared/schema";
 
 interface TabConfig {
   value: string;
@@ -46,6 +59,7 @@ const tabsConfig: TabConfig[] = [
   { value: "notificaciones", label: "Notificaciones", icon: Bell, allowedRoles: ["admin", "supervisor", "abastecedor", "contabilidad", "almacen", "rh"] },
   { value: "apariencia", label: "Apariencia", icon: Palette, allowedRoles: ["admin", "supervisor", "abastecedor", "contabilidad", "almacen", "rh"] },
   { value: "empresa", label: "Empresa", icon: Building, allowedRoles: ["admin"] },
+  { value: "ubicaciones", label: "Ubicaciones", icon: MapPin, allowedRoles: ["admin"] },
   { value: "seguridad", label: "Seguridad", icon: Shield, allowedRoles: ["admin", "supervisor", "abastecedor", "contabilidad", "almacen", "rh"] },
 ];
 
@@ -255,6 +269,109 @@ export function SettingsPage() {
       });
     },
   });
+
+  // =====================
+  // Tab Ubicaciones
+  // =====================
+  const emptyLocationForm = {
+    name: "",
+    address: "",
+    city: "",
+    zone: "",
+    contactName: "",
+    contactPhone: "",
+    notes: "",
+  };
+
+  const [locationDialogOpen, setLocationDialogOpen] = useState(false);
+  const [locationEditing, setLocationEditing] = useState<Location | null>(null);
+  const [locationForm, setLocationForm] = useState(emptyLocationForm);
+  const [deletingLocationId, setDeletingLocationId] = useState<string | null>(null);
+
+  const { data: locationsList = [], isLoading: locationsLoading } = useQuery<Location[]>({
+    queryKey: ["/api/locations"],
+    enabled: isAdmin,
+  });
+
+  const createLocationMutation = useMutation({
+    mutationFn: async (data: typeof emptyLocationForm) => {
+      const res = await apiRequest("POST", "/api/locations", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
+      setLocationDialogOpen(false);
+      setLocationForm(emptyLocationForm);
+      toast({ title: "Ubicación creada", description: "Se agregó la ubicación correctamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo crear la ubicación", variant: "destructive" });
+    },
+  });
+
+  const updateLocationMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: typeof emptyLocationForm }) => {
+      const res = await apiRequest("PATCH", `/api/locations/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
+      setLocationDialogOpen(false);
+      setLocationEditing(null);
+      setLocationForm(emptyLocationForm);
+      toast({ title: "Ubicación actualizada", description: "Los cambios se guardaron correctamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo actualizar la ubicación", variant: "destructive" });
+    },
+  });
+
+  const deleteLocationMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/locations/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
+      setDeletingLocationId(null);
+      toast({ title: "Ubicación eliminada" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo eliminar la ubicación", variant: "destructive" });
+      setDeletingLocationId(null);
+    },
+  });
+
+  const openCreateLocation = () => {
+    setLocationEditing(null);
+    setLocationForm(emptyLocationForm);
+    setLocationDialogOpen(true);
+  };
+
+  const openEditLocation = (loc: Location) => {
+    setLocationEditing(loc);
+    setLocationForm({
+      name: loc.name || "",
+      address: loc.address || "",
+      city: loc.city || "",
+      zone: loc.zone || "",
+      contactName: loc.contactName || "",
+      contactPhone: loc.contactPhone || "",
+      notes: loc.notes || "",
+    });
+    setLocationDialogOpen(true);
+  };
+
+  const handleSaveLocation = () => {
+    if (!locationForm.name.trim()) {
+      toast({ title: "Error", description: "El nombre es requerido", variant: "destructive" });
+      return;
+    }
+    if (locationEditing) {
+      updateLocationMutation.mutate({ id: locationEditing.id, data: locationForm });
+    } else {
+      createLocationMutation.mutate(locationForm);
+    }
+  };
 
   // =====================
   // Handlers
@@ -725,6 +842,202 @@ export function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+        )}
+
+        {/* ===== TAB UBICACIONES ===== */}
+        {isTabAllowed("ubicaciones") && (
+          <TabsContent value="ubicaciones">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <CardTitle>Ubicaciones</CardTitle>
+                    <CardDescription>
+                      Gestiona los establecimientos donde se instalan las máquinas
+                    </CardDescription>
+                  </div>
+                  <Button onClick={openCreateLocation} className="gap-2" data-testid="button-add-location">
+                    <Plus className="h-4 w-4" />
+                    Nueva Ubicación
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {locationsLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Cargando ubicaciones...</span>
+                  </div>
+                ) : locationsList.length === 0 ? (
+                  <div className="flex flex-col items-center gap-3 py-12 text-center">
+                    <MapPin className="h-10 w-10 text-muted-foreground/50" />
+                    <p className="text-muted-foreground">No hay ubicaciones registradas.</p>
+                    <Button variant="outline" onClick={openCreateLocation} data-testid="button-add-location-empty">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Agregar primera ubicación
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {locationsList.map((loc) => (
+                      <div
+                        key={loc.id}
+                        className="flex flex-wrap items-start justify-between gap-3 py-4"
+                        data-testid={`row-location-${loc.id}`}
+                      >
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium" data-testid={`text-location-name-${loc.id}`}>{loc.name}</span>
+                            {loc.zone && (
+                              <Badge variant="secondary" className="text-xs">{loc.zone}</Badge>
+                            )}
+                          </div>
+                          {(loc.address || loc.city) && (
+                            <p className="text-sm text-muted-foreground">
+                              {[loc.address, loc.city].filter(Boolean).join(", ")}
+                            </p>
+                          )}
+                          {(loc.contactName || loc.contactPhone) && (
+                            <p className="text-xs text-muted-foreground">
+                              Contacto: {[loc.contactName, loc.contactPhone].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => openEditLocation(loc)}
+                            data-testid={`button-edit-location-${loc.id}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => {
+                              setDeletingLocationId(loc.id);
+                              deleteLocationMutation.mutate(loc.id);
+                            }}
+                            disabled={deletingLocationId === loc.id && deleteLocationMutation.isPending}
+                            data-testid={`button-delete-location-${loc.id}`}
+                          >
+                            {deletingLocationId === loc.id && deleteLocationMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Dialog crear/editar ubicación */}
+            <Dialog open={locationDialogOpen} onOpenChange={(open) => {
+              setLocationDialogOpen(open);
+              if (!open) { setLocationEditing(null); setLocationForm(emptyLocationForm); }
+            }}>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>{locationEditing ? "Editar Ubicación" : "Nueva Ubicación"}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="loc-name">Nombre *</Label>
+                    <Input
+                      id="loc-name"
+                      value={locationForm.name}
+                      onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })}
+                      placeholder="Ej: Plaza Central"
+                      data-testid="input-location-name"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="loc-city">Ciudad</Label>
+                      <Input
+                        id="loc-city"
+                        value={locationForm.city}
+                        onChange={(e) => setLocationForm({ ...locationForm, city: e.target.value })}
+                        placeholder="Ej: Santo Domingo"
+                        data-testid="input-location-city"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="loc-zone">Zona</Label>
+                      <Input
+                        id="loc-zone"
+                        value={locationForm.zone}
+                        onChange={(e) => setLocationForm({ ...locationForm, zone: e.target.value })}
+                        placeholder="Ej: Zona Norte"
+                        data-testid="input-location-zone"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="loc-address">Dirección</Label>
+                    <Input
+                      id="loc-address"
+                      value={locationForm.address}
+                      onChange={(e) => setLocationForm({ ...locationForm, address: e.target.value })}
+                      placeholder="Calle, número, sector"
+                      data-testid="input-location-address"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="loc-contact-name">Contacto</Label>
+                      <Input
+                        id="loc-contact-name"
+                        value={locationForm.contactName}
+                        onChange={(e) => setLocationForm({ ...locationForm, contactName: e.target.value })}
+                        placeholder="Nombre del contacto"
+                        data-testid="input-location-contact-name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="loc-contact-phone">Teléfono</Label>
+                      <Input
+                        id="loc-contact-phone"
+                        value={locationForm.contactPhone}
+                        onChange={(e) => setLocationForm({ ...locationForm, contactPhone: e.target.value })}
+                        placeholder="+1 (809) 000-0000"
+                        data-testid="input-location-contact-phone"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="loc-notes">Notas</Label>
+                    <Textarea
+                      id="loc-notes"
+                      value={locationForm.notes}
+                      onChange={(e) => setLocationForm({ ...locationForm, notes: e.target.value })}
+                      placeholder="Información adicional..."
+                      rows={3}
+                      data-testid="input-location-notes"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setLocationDialogOpen(false)}>Cancelar</Button>
+                  <Button
+                    onClick={handleSaveLocation}
+                    disabled={createLocationMutation.isPending || updateLocationMutation.isPending}
+                    data-testid="button-save-location"
+                  >
+                    {(createLocationMutation.isPending || updateLocationMutation.isPending) ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : null}
+                    {locationEditing ? "Guardar Cambios" : "Crear Ubicación"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
         )}
 

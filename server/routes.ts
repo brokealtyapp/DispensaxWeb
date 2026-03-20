@@ -595,8 +595,9 @@ export async function registerRoutes(
 
   app.post("/api/locations", authenticateJWT, authorizeAction("locations", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertLocationSchema.parse(req.body);
-      const location = await storage.createLocation(data);
+      const tenantId = req.user!.tenantId;
+      const data = insertLocationSchema.omit({ tenantId: true }).parse(req.body);
+      const location = await storage.createLocation({ ...data, tenantId });
       res.status(201).json(location);
     } catch (error) {
       if (error instanceof z.ZodError) {
