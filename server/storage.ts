@@ -146,25 +146,25 @@ export interface IStorage {
   getMachineSalesSummary(machineId: string): Promise<{ today: number; week: number; month: number }>;
   
   // Almacén - Proveedores
-  getSuppliers(): Promise<Supplier[]>;
+  getSuppliers(tenantId?: string): Promise<Supplier[]>;
   getSupplier(id: string): Promise<Supplier | undefined>;
   createSupplier(supplier: InsertSupplier): Promise<Supplier>;
   updateSupplier(id: string, supplier: Partial<InsertSupplier>): Promise<Supplier | undefined>;
   deleteSupplier(id: string): Promise<boolean>;
   
   // Almacén - Inventario
-  getWarehouseInventory(): Promise<(WarehouseInventory & { product: Product })[]>;
+  getWarehouseInventory(tenantId?: string): Promise<(WarehouseInventory & { product: Product })[]>;
   getWarehouseInventoryItem(productId: string): Promise<WarehouseInventory | undefined>;
   updateWarehouseStock(productId: string, quantity: number): Promise<WarehouseInventory>;
   updateWarehouseInventory(productId: string, data: { currentStock?: number; minStock?: number; maxStock?: number; reorderPoint?: number }): Promise<WarehouseInventory>;
-  getLowStockAlerts(): Promise<(WarehouseInventory & { product: Product })[]>;
+  getLowStockAlerts(tenantId?: string): Promise<(WarehouseInventory & { product: Product })[]>;
   
   // Almacén - Lotes
   getProductLots(productId?: string, limit?: number, tenantId?: string): Promise<(ProductLot & { product: Product; supplier?: Supplier })[]>;
   getProductLot(id: string): Promise<ProductLot | undefined>;
   createProductLot(lot: InsertProductLot): Promise<ProductLot>;
   updateProductLot(id: string, lot: Partial<InsertProductLot>): Promise<ProductLot | undefined>;
-  getExpiringLots(days: number, limit?: number): Promise<(ProductLot & { product: Product })[]>;
+  getExpiringLots(days: number, limit?: number, tenantId?: string): Promise<(ProductLot & { product: Product })[]>;
   
   // Almacén - Movimientos (Kardex)
   getWarehouseMovements(productId?: string, limit?: number, tenantId?: string): Promise<(WarehouseMovement & { product: Product })[]>;
@@ -314,7 +314,7 @@ export interface IStorage {
   // ==================== MÓDULO COMPRAS ====================
   
   // Órdenes de Compra
-  getPurchaseOrders(filters?: { supplierId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getPurchaseOrders(filters?: { supplierId?: string; status?: string; startDate?: Date; endDate?: Date; tenantId?: string }): Promise<any[]>;
   getPurchaseOrder(id: string): Promise<any>;
   createPurchaseOrder(order: InsertPurchaseOrder): Promise<PurchaseOrder>;
   updatePurchaseOrder(id: string, data: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined>;
@@ -336,9 +336,9 @@ export interface IStorage {
   getNextReceptionNumber(): Promise<string>;
   
   // Estadísticas de Compras
-  getPurchaseStats(startDate?: Date, endDate?: Date): Promise<{ totalOrders: number; totalAmount: number; pendingOrders: number; topSuppliers: any[] }>;
+  getPurchaseStats(startDate?: Date, endDate?: Date, tenantId?: string): Promise<{ totalOrders: number; totalAmount: number; pendingOrders: number; topSuppliers: any[] }>;
   getSupplierPurchaseHistory(supplierId: string, limit?: number): Promise<any[]>;
-  getLowStockProducts(): Promise<any[]>;
+  getLowStockProducts(tenantId?: string): Promise<any[]>;
   
   // ==================== MÓDULO COMBUSTIBLE ====================
   
