@@ -916,8 +916,10 @@ export class DatabaseStorage implements IStorage {
   // ==================== MÓDULO ALMACÉN ====================
 
   // Proveedores
-  async getSuppliers(): Promise<Supplier[]> {
-    return db.select().from(suppliers).where(eq(suppliers.isActive, true)).orderBy(suppliers.name);
+  async getSuppliers(tenantId?: string): Promise<Supplier[]> {
+    const conditions: any[] = [eq(suppliers.isActive, true)];
+    if (tenantId) conditions.push(eq(suppliers.tenantId, tenantId));
+    return db.select().from(suppliers).where(and(...conditions)).orderBy(suppliers.name);
   }
 
   async getSupplier(id: string): Promise<Supplier | undefined> {
@@ -941,15 +943,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Inventario de Almacén
-  async getWarehouseInventory(): Promise<(WarehouseInventory & { product: Product })[]> {
-    const inventory = await db.select().from(warehouseInventory);
-    
-    const result = await Promise.all(inventory.map(async (inv) => {
-      const product = await this.getProduct(inv.productId);
-      return { ...inv, product: product! };
-    }));
-    
-    return result.filter(inv => inv.product);
+  async getWarehouseInventory(tenantId?: string): Promise<(WarehouseInventory & { product: Product })[]> {
+    const query = db.select({
+      inventory: warehouseInventory,
+      product: products,
+    })
+    .from(warehouseInventory)
+    .leftJoin(products, eq(warehouseInventory.productId, products.id));
+
+    const results = tenantId
+      ? await query.where(eq(warehouseInventory.tenantId, tenantId))
+      : await query;
+
+    return results
+      .filter(r => r.product)
+      .map(r => ({ ...r.inventory, product: r.product! }));
   }
 
   async getWarehouseInventoryItem(productId: string): Promise<WarehouseInventory | undefined> {
@@ -1016,15 +1024,18 @@ export class DatabaseStorage implements IStorage {
     return newInventory;
   }
 
-  async getLowStockAlerts(): Promise<(WarehouseInventory & { product: Product })[]> {
-    // Usar JOIN para evitar N+1 queries
-    const results = await db.select({
+  async getLowStockAlerts(tenantId?: string): Promise<(WarehouseInventory & { product: Product })[]> {
+    const query = db.select({
         inventory: warehouseInventory,
         product: products
       })
       .from(warehouseInventory)
       .leftJoin(products, eq(warehouseInventory.productId, products.id))
       .limit(50);
+
+    const results = tenantId
+      ? await query.where(eq(warehouseInventory.tenantId, tenantId))
+      : await query;
     
     return results
       .filter(r => r.product && (r.inventory.currentStock || 0) <= (r.inventory.reorderPoint || 20))
@@ -1072,22 +1083,24 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getExpiringLots(days: number, limit: number = 30): Promise<(ProductLot & { product: Product })[]> {
+  async getExpiringLots(days: number, limit: number = 30, tenantId?: string): Promise<(ProductLot & { product: Product })[]> {
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + days);
+
+    const conditions: any[] = [
+      eq(productLots.isActive, true),
+      lte(productLots.expirationDate, futureDate),
+      gte(productLots.remainingQuantity, 1),
+    ];
+    if (tenantId) conditions.push(eq(productLots.tenantId, tenantId));
     
-    // Usar JOIN para evitar N+1 queries
     const results = await db.select({
         lot: productLots,
         product: products
       })
       .from(productLots)
       .leftJoin(products, eq(productLots.productId, products.id))
-      .where(and(
-        eq(productLots.isActive, true),
-        lte(productLots.expirationDate, futureDate),
-        gte(productLots.remainingQuantity, 1)
-      ))
+      .where(and(...conditions))
       .orderBy(asc(productLots.expirationDate))
       .limit(limit);
     
@@ -3123,9 +3136,12 @@ export class DatabaseStorage implements IStorage {
 
   // ==================== MÓDULO COMPRAS ====================
 
-  async getPurchaseOrders(filters?: { supplierId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+  async getPurchaseOrders(filters?: { supplierId?: string; status?: string; startDate?: Date; endDate?: Date; tenantId?: string }): Promise<any[]> {
     let conditions = [];
     
+    if (filters?.tenantId) {
+      conditions.push(eq(purchaseOrders.tenantId, filters.tenantId));
+    }
     if (filters?.supplierId) {
       conditions.push(eq(purchaseOrders.supplierId, filters.supplierId));
     }
@@ -3404,8 +3420,9 @@ export class DatabaseStorage implements IStorage {
     return `REC-${year}-${String(count).padStart(4, "0")}`;
   }
 
-  async getPurchaseStats(startDate?: Date, endDate?: Date): Promise<{ totalOrders: number; totalAmount: number; pendingOrders: number; topSuppliers: any[] }> {
+  async getPurchaseStats(startDate?: Date, endDate?: Date, tenantId?: string): Promise<{ totalOrders: number; totalAmount: number; pendingOrders: number; topSuppliers: any[] }> {
     let conditions = [];
+    if (tenantId) conditions.push(eq(purchaseOrders.tenantId, tenantId));
     if (startDate) conditions.push(gte(purchaseOrders.createdAt, startDate));
     if (endDate) conditions.push(lte(purchaseOrders.createdAt, endDate));
     
@@ -3461,19 +3478,21 @@ export class DatabaseStorage implements IStorage {
     return ordersWithItems;
   }
 
-  async getLowStockProducts(): Promise<any[]> {
-    const inventory = await db.select().from(warehouseInventory);
-    
-    const lowStockItems = inventory.filter(item => 
-      (item.currentStock || 0) <= (item.reorderPoint || 20)
-    );
-    
-    const itemsWithProducts = await Promise.all(lowStockItems.map(async (item) => {
-      const product = await this.getProduct(item.productId);
-      return { ...item, product };
-    }));
-    
-    return itemsWithProducts;
+  async getLowStockProducts(tenantId?: string): Promise<any[]> {
+    const query = db.select({
+      inventory: warehouseInventory,
+      product: products,
+    })
+    .from(warehouseInventory)
+    .leftJoin(products, eq(warehouseInventory.productId, products.id));
+
+    const results = tenantId
+      ? await query.where(eq(warehouseInventory.tenantId, tenantId))
+      : await query;
+
+    return results
+      .filter(r => r.product && (r.inventory.currentStock || 0) <= (r.inventory.reorderPoint || 20))
+      .map(r => ({ ...r.inventory, product: r.product }));
   }
 
   // ==================== MÓDULO COMBUSTIBLE ====================

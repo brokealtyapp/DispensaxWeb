@@ -1403,7 +1403,8 @@ export async function registerRoutes(
   // Proveedores (protegidos con JWT)
   app.get("/api/suppliers", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const suppliers = await storage.getSuppliers();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const suppliers = await storage.getSuppliers(tenantId);
       res.json(suppliers);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener proveedores" });
@@ -1423,8 +1424,8 @@ export async function registerRoutes(
 
   app.post("/api/suppliers", authenticateJWT, authorizeAction("suppliers", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertSupplierSchema.parse(req.body);
-      const supplier = await storage.createSupplier(data);
+      const data = insertSupplierSchema.omit({ tenantId: true }).parse(req.body);
+      const supplier = await storage.createSupplier({ ...data, tenantId: req.user!.tenantId! });
       res.status(201).json(supplier);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1466,7 +1467,8 @@ export async function registerRoutes(
   // Inventario de Almacén (protegido con JWT)
   app.get("/api/warehouse/inventory", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const inventory = await storage.getWarehouseInventory();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const inventory = await storage.getWarehouseInventory(tenantId);
       res.json(inventory);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener inventario de almacén" });
@@ -1475,7 +1477,8 @@ export async function registerRoutes(
 
   app.get("/api/warehouse/low-stock", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const lowStock = await storage.getLowStockAlerts();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const lowStock = await storage.getLowStockAlerts(tenantId);
       res.json(lowStock);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener alertas de stock bajo" });
@@ -1484,6 +1487,7 @@ export async function registerRoutes(
 
   app.patch("/api/warehouse/inventory/:productId", authenticateJWT, authorizeAction("warehouse", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyProductTenant(req.params.productId, req, res)) return;
       const { quantity, minStock, maxStock, reorderPoint } = req.body;
       const inventory = await storage.updateWarehouseInventory(req.params.productId, {
         currentStock: quantity,
@@ -1512,7 +1516,8 @@ export async function registerRoutes(
   app.get("/api/warehouse/lots/expiring", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { days } = req.query;
-      const expiringLots = await storage.getExpiringLots(parseInt(days as string) || 30);
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const expiringLots = await storage.getExpiringLots(parseInt(days as string) || 30, 30, tenantId);
       res.json(expiringLots);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener lotes por vencer" });
@@ -1557,6 +1562,8 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Faltan campos requeridos" });
       }
       
+      if (!await verifyProductTenant(productId, req, res)) return;
+      
       const movement = await storage.registerPurchaseEntry({
         productId,
         quantity: parseInt(quantity),
@@ -1584,6 +1591,8 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Faltan campos requeridos" });
       }
       
+      if (!await verifyProductTenant(productId, req, res)) return;
+      
       const movement = await storage.registerSupplierExit({
         productId,
         quantity: parseInt(quantity),
@@ -1610,6 +1619,8 @@ export async function registerRoutes(
       if (!productId || physicalCount === undefined) {
         return res.status(400).json({ error: "Faltan campos requeridos: productId y physicalCount" });
       }
+      
+      if (!await verifyProductTenant(productId, req, res)) return;
       
       const movement = await storage.registerInventoryAdjustment({
         productId,
@@ -1640,6 +1651,14 @@ export async function registerRoutes(
         if (!item.productId || !item.quantity || item.quantity <= 0) {
           return res.status(400).json({ error: "Cada item debe tener productId y quantity > 0" });
         }
+      }
+      
+      // Verificar que el vehículo pertenece al tenant del usuario
+      if (!await verifyVehicleTenant(vehicleId, req, res)) return;
+      
+      // Verificar que todos los productos pertenecen al tenant del usuario
+      for (const item of items) {
+        if (!await verifyProductTenant(item.productId, req, res)) return;
       }
       
       const result = await storage.dispatchToVehicle({
@@ -1714,10 +1733,10 @@ export async function registerRoutes(
   // Estadísticas del almacén (protegido con JWT)
   app.get("/api/warehouse/stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const inventory = await storage.getWarehouseInventory();
-      const lowStock = await storage.getLowStockAlerts();
-      const expiringLots = await storage.getExpiringLots(30);
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const inventory = await storage.getWarehouseInventory(tenantId);
+      const lowStock = await storage.getLowStockAlerts(tenantId);
+      const expiringLots = await storage.getExpiringLots(30, 30, tenantId);
       const movements = await storage.getWarehouseMovements(undefined, 10, tenantId);
       
       const totalProducts = inventory.length;
@@ -1744,7 +1763,7 @@ export async function registerRoutes(
   app.get("/api/warehouse/valuation", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
-      const inventory = await storage.getWarehouseInventory();
+      const inventory = await storage.getWarehouseInventory(tenantId);
       const lots = await storage.getProductLots(undefined, 50, tenantId);
       
       // Calcular valorización por producto usando costo promedio ponderado de lotes
@@ -1830,7 +1849,8 @@ export async function registerRoutes(
   // Exportar inventario a CSV
   app.get("/api/warehouse/export/inventory", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const inventory = await storage.getWarehouseInventory();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const inventory = await storage.getWarehouseInventory(tenantId);
       
       const headers = ["Código", "Producto", "Categoría", "Stock Actual", "Stock Mínimo", "Stock Máximo", "Punto Reorden", "Costo Unitario", "Valor Total"];
       const rows = inventory.map(inv => [
@@ -4061,7 +4081,9 @@ export async function registerRoutes(
   app.get("/api/purchase-orders", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { supplierId, status, startDate, endDate } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const filters: any = {};
+      if (tenantId) filters.tenantId = tenantId;
       if (supplierId) filters.supplierId = supplierId as string;
       if (status) filters.status = status as string;
       if (startDate) filters.startDate = new Date(startDate as string);
@@ -4086,9 +4108,11 @@ export async function registerRoutes(
   app.get("/api/purchase-orders/stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const stats = await storage.getPurchaseStats(
         startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined
+        endDate ? new Date(endDate as string) : undefined,
+        tenantId
       );
       res.json(stats);
     } catch (error) {
@@ -4098,7 +4122,8 @@ export async function registerRoutes(
 
   app.get("/api/purchase-orders/low-stock", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const products = await storage.getLowStockProducts();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const products = await storage.getLowStockProducts(tenantId);
       res.json(products);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener productos con bajo stock" });
