@@ -118,7 +118,7 @@ export interface IStorage {
   updateProduct(id: string, product: Partial<InsertProduct>): Promise<Product | undefined>;
   deleteProduct(id: string): Promise<boolean>;
   
-  getMachines(filters?: { status?: string; zone?: string }): Promise<Machine[]>;
+  getMachines(tenantId: string, filters?: { status?: string; zone?: string }): Promise<Machine[]>;
   getMachine(id: string): Promise<Machine | undefined>;
   getMachineWithDetails(id: string): Promise<any>;
   createMachine(machine: InsertMachine): Promise<Machine>;
@@ -371,7 +371,7 @@ export interface IStorage {
   
   // ==================== MÓDULO REPORTES ====================
   
-  getReportsOverview(startDate?: Date, endDate?: Date): Promise<{
+  getReportsOverview(tenantId: string, startDate?: Date, endDate?: Date): Promise<{
     totalSales: number;
     totalPurchases: number;
     totalFuelCost: number;
@@ -409,7 +409,7 @@ export interface IStorage {
     groupBy?: 'category' | 'user' | 'day';
   }): Promise<any[]>;
   
-  getMachinePerformance(startDate?: Date, endDate?: Date): Promise<any[]>;
+  getMachinePerformance(tenantId: string, startDate?: Date, endDate?: Date): Promise<any[]>;
   
   getTopProducts(startDate?: Date, endDate?: Date, limit?: number): Promise<any[]>;
   
@@ -680,20 +680,17 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getMachines(filters?: { status?: string; zone?: string }): Promise<Machine[]> {
-    let query = db.select().from(machines).where(eq(machines.isActive, true));
-    
+  async getMachines(tenantId: string, filters?: { status?: string; zone?: string }): Promise<Machine[]> {
+    const baseConditions = [eq(machines.isActive, true), eq(machines.tenantId, tenantId)];
+
     if (filters?.status) {
-      query = db.select().from(machines).where(and(eq(machines.isActive, true), eq(machines.status, filters.status)));
+      baseConditions.push(eq(machines.status, filters.status));
     }
     if (filters?.zone) {
-      query = db.select().from(machines).where(and(eq(machines.isActive, true), eq(machines.zone, filters.zone)));
+      baseConditions.push(eq(machines.zone, filters.zone));
     }
-    if (filters?.status && filters?.zone) {
-      query = db.select().from(machines).where(and(eq(machines.isActive, true), eq(machines.status, filters.status), eq(machines.zone, filters.zone)));
-    }
-    
-    return query.orderBy(machines.name);
+
+    return db.select().from(machines).where(and(...baseConditions)).orderBy(machines.name);
   }
 
   async getMachine(id: string): Promise<Machine | undefined> {
@@ -3815,7 +3812,7 @@ export class DatabaseStorage implements IStorage {
 
   // ==================== MÓDULO REPORTES ====================
 
-  async getReportsOverview(startDate?: Date, endDate?: Date): Promise<{
+  async getReportsOverview(tenantId: string, startDate?: Date, endDate?: Date): Promise<{
     totalSales: number;
     totalPurchases: number;
     totalFuelCost: number;
@@ -3831,7 +3828,7 @@ export class DatabaseStorage implements IStorage {
     const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     const end = endDate || new Date();
 
-    const allMachines = await this.getMachines();
+    const allMachines = await this.getMachines(tenantId);
     const allProducts = await this.getProducts();
     const allRoutes = await this.getRoutes();
     
@@ -4167,12 +4164,12 @@ export class DatabaseStorage implements IStorage {
     return expenses;
   }
 
-  async getMachinePerformance(startDate?: Date, endDate?: Date): Promise<any[]> {
+  async getMachinePerformance(tenantId: string, startDate?: Date, endDate?: Date): Promise<any[]> {
     const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     const end = endDate || new Date();
 
     const [allMachines, allSales, allAlerts] = await Promise.all([
-      this.getMachines(),
+      this.getMachines(tenantId),
       db.select().from(machineSales)
         .where(and(
           gte(machineSales.saleDate, start),

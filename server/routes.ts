@@ -722,6 +722,7 @@ export async function registerRoutes(
   app.get("/api/machines", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { status, zone } = req.query;
+      const tenantId = req.user!.tenantId;
       
       // Si es supervisor, filtrar automáticamente por su zona asignada
       let effectiveZone = zone as string | undefined;
@@ -732,17 +733,12 @@ export async function registerRoutes(
         }
       }
       
-      const cache = getDashboardCache();
-      if (cache && isCacheValid() && !status && !effectiveZone) {
-        return res.json(cache.machinesList);
-      }
-      
       const filters = {
         status: status as string | undefined,
         zone: effectiveZone,
       };
-      const machines = await storage.getMachines(filters);
-      res.json(machines);
+      const machinesList = await storage.getMachines(tenantId, filters);
+      res.json(machinesList);
     } catch (error) {
       console.error("Error getting machines:", error);
       res.status(500).json({ error: "Error al obtener máquinas" });
@@ -1409,7 +1405,7 @@ export async function registerRoutes(
 
   app.get("/api/stats/zones", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const machines = await storage.getMachines();
+      const machines = await storage.getMachines(req.user!.tenantId);
       const zonesSet = new Set(machines.map(m => m.zone).filter(Boolean));
       const zones = Array.from(zonesSet);
       res.json(zones);
@@ -4821,6 +4817,7 @@ export async function registerRoutes(
     try {
       const { startDate, endDate } = reportFiltersSchema.parse(req.query);
       const overview = await storage.getReportsOverview(
+        req.user!.tenantId,
         startDate ? new Date(startDate) : undefined,
         endDate ? new Date(endDate) : undefined
       );
@@ -4915,6 +4912,7 @@ export async function registerRoutes(
     try {
       const { startDate, endDate } = reportFiltersSchema.parse(req.query);
       const performance = await storage.getMachinePerformance(
+        req.user!.tenantId,
         startDate ? new Date(startDate) : undefined,
         endDate ? new Date(endDate) : undefined
       );
@@ -6542,8 +6540,9 @@ export async function registerRoutes(
   // Machines Summary
   app.get("/api/summary/machines", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user!.tenantId;
       const dashCache = getDashboardCache();
-      const machines = dashCache.machinesList;
+      const machines = await storage.getMachines(tenantId);
       const alerts = dashCache.recentAlerts;
       const machineSales = await storage.getAllMachineSales();
       
@@ -6611,7 +6610,7 @@ export async function registerRoutes(
       const allUsers = await storage.getEmployees();
       const supervisors = allUsers.filter((u: any) => u.role === "supervisor");
       
-      const machines = await storage.getMachines();
+      const machines = await storage.getMachines(req.user!.tenantId);
       const routesList = await db.select().from(routesTable).limit(500);
       const alerts = await storage.getMachineAlerts();
       const tasks = await storage.getTasks();
@@ -6678,7 +6677,7 @@ export async function registerRoutes(
       }
       
       const allUsers = await storage.getEmployees();
-      const machines = await storage.getMachines();
+      const machines = await storage.getMachines(req.user!.tenantId);
       const routesList = await db.select().from(routesTable).where(eq(routesTable.supervisorId, id)).limit(50);
       const alerts = await storage.getMachineAlerts();
       const tasks = await storage.getTasks();
@@ -6776,7 +6775,7 @@ export async function registerRoutes(
       const results: any[] = [];
 
       // Search machines
-      const machines = await storage.getMachines();
+      const machines = await storage.getMachines(req.user!.tenantId);
       machines.forEach(m => {
         if (m.name?.toLowerCase().includes(query) || m.code?.toLowerCase().includes(query) || m.zone?.toLowerCase().includes(query)) {
           results.push({

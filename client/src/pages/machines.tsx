@@ -158,6 +158,7 @@ export function MachinesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
       setIsAddDialogOpen(false);
       form.reset();
       toast({ title: "Máquina creada", description: "La máquina se ha registrado correctamente" });
@@ -180,6 +181,7 @@ export function MachinesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
       setIsAddDialogOpen(false);
       setEditingMachine(null);
       form.reset();
@@ -196,6 +198,7 @@ export function MachinesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
       setDeletingMachineId(null);
       toast({ title: "Máquina eliminada", description: "La máquina se ha eliminado correctamente" });
     },
@@ -467,7 +470,7 @@ export function MachinesPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Tipo</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger data-testid="select-machine-type">
                             <SelectValue placeholder="Selecciona un tipo" />
@@ -503,7 +506,7 @@ export function MachinesPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Ubicación</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value || ""}>
                         <FormControl>
                           <SelectTrigger data-testid="select-machine-location">
                             <SelectValue placeholder="Selecciona una ubicación" />

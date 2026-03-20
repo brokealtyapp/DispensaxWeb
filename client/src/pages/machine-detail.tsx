@@ -229,8 +229,13 @@ export function MachineDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
       setIsAlertDialogOpen(false);
       alertForm.reset();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo crear la alerta", variant: "destructive" });
     },
   });
 
@@ -241,6 +246,11 @@ export function MachineDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo resolver la alerta", variant: "destructive" });
     },
   });
 
@@ -262,7 +272,12 @@ export function MachineDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
       setIsEditDialogOpen(false);
+      toast({ title: "Máquina actualizada", description: "Los cambios se han guardado correctamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo actualizar la máquina", variant: "destructive" });
     },
   });
 
@@ -274,6 +289,10 @@ export function MachineDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo desactivar la máquina", variant: "destructive" });
     },
   });
 
@@ -286,6 +305,10 @@ export function MachineDetailPage() {
       queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       setIsInventoryDialogOpen(false);
       inventoryForm.reset();
+      toast({ title: "Producto agregado", description: "El producto se agregó al inventario de la máquina" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo agregar el producto al inventario", variant: "destructive" });
     },
   });
 
@@ -297,6 +320,9 @@ export function MachineDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       setEditingInventoryId(null);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo actualizar el inventario", variant: "destructive" });
     },
   });
 
@@ -719,10 +745,10 @@ export function MachineDetailPage() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="mixta">Mixta</SelectItem>
-                        <SelectItem value="bebidas">Bebidas</SelectItem>
+                        <SelectItem value="bebidas_frias">Bebidas Frías</SelectItem>
+                        <SelectItem value="bebidas_calientes">Bebidas Calientes</SelectItem>
                         <SelectItem value="snacks">Snacks</SelectItem>
-                        <SelectItem value="cafe">Café</SelectItem>
+                        <SelectItem value="mixta">Mixta</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
