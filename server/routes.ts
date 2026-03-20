@@ -5803,12 +5803,28 @@ export async function registerRoutes(
 
   // ==================== MÓDULO CALENDARIO ====================
 
+  // Schema para el body de eventos de calendario (sin tenantId - siempre viene del JWT)
+  const calendarEventBodySchema = z.object({
+    title: z.string().min(1, "Título requerido"),
+    description: z.string().optional(),
+    eventType: z.string().optional(),
+    startDate: z.coerce.date(),
+    endDate: z.coerce.date().optional(),
+    allDay: z.boolean().optional(),
+    color: z.string().optional(),
+    userId: z.string().optional(),
+    taskId: z.string().optional(),
+    isRecurring: z.boolean().optional(),
+    recurringPattern: z.string().optional(),
+  });
+
   app.get("/api/calendar/events", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, startDate, endDate, eventType } = req.query;
-      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      // superAdmin recibe null → sin filtro de tenant (ve todos); usuario normal recibe su tenantId
+      const tenantId: string | null = req.user?.isSuperAdmin ? null : (req.user?.tenantId ?? null);
 
-      if (!tenantId && !req.user?.isSuperAdmin) {
+      if (tenantId === null && !req.user?.isSuperAdmin) {
         return res.status(400).json({ error: "Tenant requerido" });
       }
 
@@ -5867,17 +5883,13 @@ export async function registerRoutes(
 
   app.post("/api/calendar/events", authenticateJWT, authorizeAction("tasks", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const tenantId = req.user?.tenantId;
-      if (!tenantId && !req.user?.isSuperAdmin) {
+      // Para super admin se requiere tenantId en el body; para usuarios normales viene del JWT
+      const tenantId = req.user?.isSuperAdmin ? (req.body.tenantId as string | undefined) : req.user?.tenantId;
+      if (!tenantId) {
         return res.status(400).json({ error: "Tenant requerido" });
       }
-      const body = {
-        ...req.body,
-        startDate: req.body.startDate ? new Date(req.body.startDate) : req.body.startDate,
-        endDate: req.body.endDate ? new Date(req.body.endDate) : req.body.endDate,
-      };
-      const data = insertCalendarEventSchema.omit({ tenantId: true } as any).parse(body);
-      const event = await storage.createCalendarEvent({ ...data, tenantId: tenantId! });
+      const data = calendarEventBodySchema.parse(req.body);
+      const event = await storage.createCalendarEvent({ ...data, tenantId });
       res.status(201).json(event);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -5892,12 +5904,7 @@ export async function registerRoutes(
     try {
       if (!await verifyCalendarEventTenant(req.params.id, req, res)) return;
 
-      const patchBody = {
-        ...req.body,
-        startDate: req.body.startDate ? new Date(req.body.startDate) : req.body.startDate,
-        endDate: req.body.endDate ? new Date(req.body.endDate) : req.body.endDate,
-      };
-      const data = insertCalendarEventSchema.omit({ tenantId: true } as any).partial().parse(patchBody);
+      const data = calendarEventBodySchema.partial().parse(req.body);
       const event = await storage.updateCalendarEvent(req.params.id, data);
       if (!event) {
         return res.status(404).json({ error: "Evento no encontrado" });

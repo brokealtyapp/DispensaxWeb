@@ -544,7 +544,7 @@ export interface IStorage {
   
   // ==================== MÓDULO CALENDARIO ====================
   
-  getCalendarEvents(filters?: { tenantId?: string; userId?: string; startDate?: Date; endDate?: Date; eventType?: string }): Promise<any[]>;
+  getCalendarEvents(filters: { tenantId: string | null; userId?: string; startDate?: Date; endDate?: Date; eventType?: string }): Promise<any[]>;
   getCalendarEvent(id: string): Promise<any>;
   createCalendarEvent(event: InsertCalendarEvent): Promise<CalendarEvent>;
   updateCalendarEvent(id: string, data: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined>;
@@ -5681,10 +5681,11 @@ export class DatabaseStorage implements IStorage {
 
   // ==================== MÓDULO CALENDARIO ====================
 
-  async getCalendarEvents(filters?: { tenantId?: string; userId?: string; startDate?: Date; endDate?: Date; eventType?: string }): Promise<any[]> {
+  async getCalendarEvents(filters: { tenantId: string | null; userId?: string; startDate?: Date; endDate?: Date; eventType?: string }): Promise<any[]> {
     const conditions: any[] = [];
 
-    if (filters?.tenantId) {
+    // null = superAdmin (sin filtro de tenant); string = filtro por tenant específico
+    if (filters.tenantId !== null) {
       conditions.push(eq(calendarEvents.tenantId, filters.tenantId));
     }
     if (filters?.userId) {
