@@ -1813,6 +1813,9 @@ export async function registerRoutes(
   app.patch("/api/warehouse/inventory/:productId/alerts", authenticateJWT, authorizeAction("warehouse", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { productId } = req.params;
+      
+      if (!await verifyProductTenant(productId, req, res)) return;
+      
       const { minStock, maxStock, reorderPoint } = req.body;
       
       // Validar que al menos un campo esté presente
