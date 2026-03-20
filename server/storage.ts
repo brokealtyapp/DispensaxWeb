@@ -66,7 +66,7 @@ import {
   type SuperAdminAuditLog, type InsertSuperAdminAuditLog
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, asc, or, inArray } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, asc, or, inArray, count } from "drizzle-orm";
 
 // =====================
 // SECURITY: User without password for API responses
@@ -119,6 +119,7 @@ export interface IStorage {
   deleteProduct(id: string): Promise<boolean>;
   
   getMachines(tenantId: string, filters?: { status?: string; zone?: string }): Promise<Machine[]>;
+  getMachinesEnriched(tenantId: string, filters?: { status?: string; zone?: string }): Promise<any[]>;
   getMachine(id: string): Promise<Machine | undefined>;
   getMachineWithDetails(id: string): Promise<any>;
   createMachine(machine: InsertMachine): Promise<Machine>;
@@ -691,6 +692,65 @@ export class DatabaseStorage implements IStorage {
     }
 
     return db.select().from(machines).where(and(...baseConditions)).orderBy(machines.name);
+  }
+
+  async getMachinesEnriched(tenantId: string, filters?: { status?: string; zone?: string }): Promise<any[]> {
+    const baseConditions: any[] = [eq(machines.isActive, true), eq(machines.tenantId, tenantId)];
+    if (filters?.status) baseConditions.push(eq(machines.status, filters.status));
+    if (filters?.zone) baseConditions.push(eq(machines.zone, filters.zone));
+
+    const machineData = await db
+      .select({
+        id: machines.id,
+        name: machines.name,
+        code: machines.code,
+        status: machines.status,
+        zone: machines.zone,
+        type: machines.type,
+        locationId: machines.locationId,
+        tenantId: machines.tenantId,
+        locationName: locations.name,
+      })
+      .from(machines)
+      .leftJoin(locations, eq(machines.locationId, locations.id))
+      .where(and(...baseConditions))
+      .orderBy(machines.name);
+
+    if (machineData.length === 0) return [];
+
+    const machineIds = machineData.map(m => m.id);
+
+    const [alertCounts, inventoryStats] = await Promise.all([
+      db
+        .select({ machineId: machineAlerts.machineId, cnt: count() })
+        .from(machineAlerts)
+        .where(and(eq(machineAlerts.isResolved, false), inArray(machineAlerts.machineId, machineIds)))
+        .groupBy(machineAlerts.machineId),
+      db
+        .select({
+          machineId: machineInventory.machineId,
+          totalCurrent: sql<number>`sum(${machineInventory.currentQuantity})`,
+          totalMax: sql<number>`sum(${machineInventory.maxCapacity})`,
+        })
+        .from(machineInventory)
+        .where(inArray(machineInventory.machineId, machineIds))
+        .groupBy(machineInventory.machineId),
+    ]);
+
+    const alertMap = new Map(alertCounts.map(a => [a.machineId, Number(a.cnt)]));
+    const inventoryMap = new Map(inventoryStats.map(i => [i.machineId, {
+      current: Number(i.totalCurrent) || 0,
+      max: Number(i.totalMax) || 1,
+    }]));
+
+    return machineData.map(m => {
+      const inv = inventoryMap.get(m.id) || { current: 0, max: 1 };
+      return {
+        ...m,
+        alertCount: alertMap.get(m.id) || 0,
+        inventoryPercentage: Math.round((inv.current / Math.max(inv.max, 1)) * 100),
+      };
+    });
   }
 
   async getMachine(id: string): Promise<Machine | undefined> {

@@ -739,7 +739,7 @@ export async function registerRoutes(
         status: status as string | undefined,
         zone: effectiveZone,
       };
-      const machinesList = await storage.getMachines(tenantId, filters);
+      const machinesList = await storage.getMachinesEnriched(tenantId, filters);
       res.json(machinesList);
     } catch (error) {
       console.error("Error getting machines:", error);
@@ -6543,11 +6543,16 @@ export async function registerRoutes(
   app.get("/api/summary/machines", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
-      const dashCache = getDashboardCache();
-      const machines = await storage.getMachines(tenantId);
-      const alerts = dashCache.recentAlerts;
-      const machineSales = await storage.getAllMachineSales();
-      
+      const { machineAlerts: machineAlertsTable } = await import("@shared/schema");
+      const { eq: eqOp, and: andOp } = await import("drizzle-orm");
+      const [machines, machineSales, alerts] = await Promise.all([
+        storage.getMachines(tenantId),
+        storage.getAllMachineSales(tenantId),
+        db.select().from(machineAlertsTable).where(
+          andOp(eqOp(machineAlertsTable.tenantId, tenantId), eqOp(machineAlertsTable.isResolved, false))
+        ),
+      ]);
+
       // Status counts
       const statusCounts = {
         operando: machines.filter(m => m.status === "operando").length,
