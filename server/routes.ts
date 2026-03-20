@@ -671,7 +671,7 @@ export async function registerRoutes(
     try {
       if (!await verifyProductTenant(req.params.id, req, res)) return;
       
-      const data = insertProductSchema.partial().parse(req.body);
+      const data = insertProductSchema.omit({ tenantId: true }).partial().parse(req.body);
       const product = await storage.updateProduct(req.params.id, data);
       if (!product) {
         return res.status(404).json({ error: "Producto no encontrado" });
@@ -1501,7 +1501,8 @@ export async function registerRoutes(
   app.get("/api/warehouse/lots", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { productId } = req.query;
-      const lots = await storage.getProductLots(productId as string | undefined);
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const lots = await storage.getProductLots(productId as string | undefined, 50, tenantId);
       res.json(lots);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener lotes" });
@@ -1742,8 +1743,9 @@ export async function registerRoutes(
   // Valorización del inventario con costo promedio ponderado
   app.get("/api/warehouse/valuation", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const inventory = await storage.getWarehouseInventory();
-      const lots = await storage.getProductLots();
+      const lots = await storage.getProductLots(undefined, 50, tenantId);
       
       // Calcular valorización por producto usando costo promedio ponderado de lotes
       const valuation = inventory.map(inv => {
@@ -1900,7 +1902,8 @@ export async function registerRoutes(
   // Exportar lotes a CSV
   app.get("/api/warehouse/export/lots", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const lots = await storage.getProductLots();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const lots = await storage.getProductLots(undefined, 500, tenantId);
       
       const headers = ["Número Lote", "Producto", "Cantidad Original", "Cantidad Restante", "Fecha Vencimiento", "Costo Unitario", "Proveedor", "Fecha Compra", "Estado"];
       const rows = lots.map(lot => {
@@ -5971,7 +5974,7 @@ export async function registerRoutes(
     try {
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const products = await storage.getProducts(tenantId);
-      const productLots = await storage.getProductLots();
+      const productLots = await storage.getProductLots(undefined, 50, tenantId);
       const movements = await storage.getWarehouseMovements(undefined, 20, tenantId);
       
       const lowStockProducts: any[] = [];
@@ -6165,8 +6168,8 @@ export async function registerRoutes(
     try {
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const products = await storage.getProducts(tenantId);
-      const productLots = await storage.getProductLots();
-      const machineSales = await storage.getAllMachineSales();
+      const productLots = await storage.getProductLots(undefined, 50, tenantId);
+      const machineSales = await storage.getAllMachineSales(tenantId);
       
       // Calculate stock per product
       const productStocks: Record<string, number> = {};

@@ -141,7 +141,7 @@ export interface IStorage {
   endMachineVisit(id: string, endTime: Date, notes?: string): Promise<MachineVisit | undefined>;
   
   getMachineSales(machineId: string, startDate?: Date, endDate?: Date): Promise<MachineSale[]>;
-  getAllMachineSales(): Promise<MachineSale[]>;
+  getAllMachineSales(tenantId?: string): Promise<MachineSale[]>;
   createMachineSale(sale: InsertMachineSale): Promise<MachineSale>;
   getMachineSalesSummary(machineId: string): Promise<{ today: number; week: number; month: number }>;
   
@@ -160,7 +160,7 @@ export interface IStorage {
   getLowStockAlerts(): Promise<(WarehouseInventory & { product: Product })[]>;
   
   // Almacén - Lotes
-  getProductLots(productId?: string): Promise<(ProductLot & { product: Product; supplier?: Supplier })[]>;
+  getProductLots(productId?: string, limit?: number, tenantId?: string): Promise<(ProductLot & { product: Product; supplier?: Supplier })[]>;
   getProductLot(id: string): Promise<ProductLot | undefined>;
   createProductLot(lot: InsertProductLot): Promise<ProductLot>;
   updateProductLot(id: string, lot: Partial<InsertProductLot>): Promise<ProductLot | undefined>;
@@ -871,7 +871,12 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(machineSales.saleDate));
   }
 
-  async getAllMachineSales(): Promise<MachineSale[]> {
+  async getAllMachineSales(tenantId?: string): Promise<MachineSale[]> {
+    if (tenantId) {
+      return db.select().from(machineSales)
+        .where(eq(machineSales.tenantId, tenantId))
+        .orderBy(desc(machineSales.saleDate));
+    }
     return db.select().from(machineSales)
       .orderBy(desc(machineSales.saleDate));
   }
@@ -1027,26 +1032,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Lotes de Productos
-  async getProductLots(productId?: string, limit: number = 50): Promise<(ProductLot & { product: Product; supplier?: Supplier })[]> {
-    // Usar JOIN para evitar N+1 queries
-    const baseQuery = db.select({
+  async getProductLots(productId?: string, limit: number = 50, tenantId?: string): Promise<(ProductLot & { product: Product; supplier?: Supplier })[]> {
+    // Construir condiciones dinámicamente
+    const conditions: any[] = [eq(productLots.isActive, true)];
+    if (productId) conditions.push(eq(productLots.productId, productId));
+    if (tenantId) conditions.push(eq(productLots.tenantId, tenantId));
+
+    const results = await db.select({
         lot: productLots,
         product: products,
         supplier: suppliers
       })
       .from(productLots)
       .leftJoin(products, eq(productLots.productId, products.id))
-      .leftJoin(suppliers, eq(productLots.supplierId, suppliers.id));
-    
-    const results = productId
-      ? await baseQuery
-          .where(and(eq(productLots.productId, productId), eq(productLots.isActive, true)))
-          .orderBy(asc(productLots.expirationDate))
-          .limit(limit)
-      : await baseQuery
-          .where(eq(productLots.isActive, true))
-          .orderBy(asc(productLots.expirationDate))
-          .limit(limit);
+      .leftJoin(suppliers, eq(productLots.supplierId, suppliers.id))
+      .where(and(...conditions))
+      .orderBy(asc(productLots.expirationDate))
+      .limit(limit);
     
     return results
       .filter(r => r.product)
