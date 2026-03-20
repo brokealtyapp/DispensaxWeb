@@ -27,6 +27,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   refreshAccessToken: () => Promise<string | null>;
   getAuthHeaders: () => { Authorization: string } | {};
+  updateUser: (partial: Partial<User>) => void;
 }
 
 interface RegisterData {
@@ -188,6 +189,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateUser = (partial: Partial<User>) => {
+    setUser((prev) => (prev ? { ...prev, ...partial } : prev));
+  };
+
   const logout = async (): Promise<void> => {
     // JWT Best Practice: Limpiar estado del cliente PRIMERO (síncrono e inmediato)
     // La UI responde instantáneamente sin esperar al servidor
@@ -225,6 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         refreshAccessToken,
         getAuthHeaders,
+        updateUser,
       }}
     >
       {children}

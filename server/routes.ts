@@ -15,6 +15,7 @@ import {
   getSupervisorZone,
   optionalAuth,
   requireSuperAdmin,
+  requireTenant,
   verifyTenantOwnership,
   REFRESH_TOKEN_COOKIE,
   REFRESH_TOKEN_COOKIE_OPTIONS,
@@ -70,6 +71,7 @@ import {
   machineViewerAssignments,
   users,
   tenants,
+  tenantSettings,
   nayaxConfig as nayaxConfigTable
 } from "@shared/schema";
 import { z } from "zod";
@@ -3451,6 +3453,153 @@ export async function registerRoutes(
       }
       console.error("Error updating own profile:", error);
       res.status(500).json({ error: "Error al actualizar perfil" });
+    }
+  });
+
+  // =====================
+  // SETTINGS ROUTES (Tenant self-service configuration)
+  // =====================
+
+  // GET /api/settings/company — Returns current tenant data (admin only)
+  app.get("/api/settings/company", authenticateJWT, requireTenant, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "No autenticado" });
+      // Super admin without tenant context not allowed here
+      if (!req.user.tenantId) return res.status(403).json({ error: "Sin empresa asignada" });
+      
+      const tenant = await storage.getTenant(req.user.tenantId);
+      if (!tenant) return res.status(404).json({ error: "Empresa no encontrada" });
+      
+      res.json({
+        name: tenant.name || "",
+        email: tenant.email || "",
+        phone: tenant.phone || "",
+        address: tenant.address || "",
+        taxId: tenant.taxId || "",
+        country: tenant.country || "DO",
+      });
+    } catch (error) {
+      console.error("Error getting company settings:", error);
+      res.status(500).json({ error: "Error al obtener datos de empresa" });
+    }
+  });
+
+  // PATCH /api/settings/company — Updates current tenant data (admin only)
+  app.patch("/api/settings/company", authenticateJWT, requireTenant, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "No autenticado" });
+      if (!req.user.tenantId) return res.status(403).json({ error: "Sin empresa asignada" });
+
+      const updateCompanySchema = z.object({
+        name: z.string().min(1, "El nombre de la empresa es requerido").optional(),
+        email: z.string().email("Email inválido").optional().or(z.literal("")),
+        phone: z.string().optional(),
+        address: z.string().optional(),
+        taxId: z.string().optional(),
+        country: z.string().optional(),
+      });
+
+      const data = updateCompanySchema.parse(req.body);
+      
+      // Filter out empty strings for optional fields
+      const updateData: Partial<typeof data> = {};
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.email !== undefined) updateData.email = data.email;
+      if (data.phone !== undefined) updateData.phone = data.phone;
+      if (data.address !== undefined) updateData.address = data.address;
+      if (data.taxId !== undefined) updateData.taxId = data.taxId;
+      if (data.country !== undefined) updateData.country = data.country;
+
+      const updated = await storage.updateTenant(req.user.tenantId, updateData);
+      if (!updated) return res.status(404).json({ error: "Empresa no encontrada" });
+
+      res.json({
+        name: updated.name || "",
+        email: updated.email || "",
+        phone: updated.phone || "",
+        address: updated.address || "",
+        taxId: updated.taxId || "",
+        country: updated.country || "DO",
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error updating company settings:", error);
+      res.status(500).json({ error: "Error al actualizar datos de empresa" });
+    }
+  });
+
+  // GET /api/settings/notifications — Returns tenant notification settings (admin only)
+  app.get("/api/settings/notifications", authenticateJWT, requireTenant, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "No autenticado" });
+      if (!req.user.tenantId) return res.status(403).json({ error: "Sin empresa asignada" });
+
+      const [settings] = await db.select().from(tenantSettings)
+        .where(eq(tenantSettings.tenantId, req.user.tenantId));
+
+      res.json({
+        notifyLowStock: settings?.notifyLowStock ?? true,
+        notifyMaintenanceDue: settings?.notifyMaintenanceDue ?? true,
+        lowStockThreshold: settings?.lowStockThreshold ?? 5,
+      });
+    } catch (error) {
+      console.error("Error getting notification settings:", error);
+      res.status(500).json({ error: "Error al obtener preferencias de notificación" });
+    }
+  });
+
+  // PATCH /api/settings/notifications — Updates tenant notification settings (admin only)
+  app.patch("/api/settings/notifications", authenticateJWT, requireTenant, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "No autenticado" });
+      if (!req.user.tenantId) return res.status(403).json({ error: "Sin empresa asignada" });
+
+      const notificationsSchema = z.object({
+        notifyLowStock: z.boolean().optional(),
+        notifyMaintenanceDue: z.boolean().optional(),
+        lowStockThreshold: z.number().int().min(0).max(1000).optional(),
+      });
+
+      const data = notificationsSchema.parse(req.body);
+
+      // Upsert tenant settings
+      const existing = await db.select().from(tenantSettings)
+        .where(eq(tenantSettings.tenantId, req.user.tenantId));
+
+      let result;
+      if (existing.length === 0) {
+        const [inserted] = await db.insert(tenantSettings).values({
+          tenantId: req.user.tenantId,
+          notifyLowStock: data.notifyLowStock ?? true,
+          notifyMaintenanceDue: data.notifyMaintenanceDue ?? true,
+          lowStockThreshold: data.lowStockThreshold ?? 5,
+        }).returning();
+        result = inserted;
+      } else {
+        const updateValues: Record<string, unknown> = { updatedAt: new Date() };
+        if (data.notifyLowStock !== undefined) updateValues.notifyLowStock = data.notifyLowStock;
+        if (data.notifyMaintenanceDue !== undefined) updateValues.notifyMaintenanceDue = data.notifyMaintenanceDue;
+        if (data.lowStockThreshold !== undefined) updateValues.lowStockThreshold = data.lowStockThreshold;
+        const [updated] = await db.update(tenantSettings)
+          .set(updateValues)
+          .where(eq(tenantSettings.tenantId, req.user.tenantId))
+          .returning();
+        result = updated;
+      }
+
+      res.json({
+        notifyLowStock: result.notifyLowStock ?? true,
+        notifyMaintenanceDue: result.notifyMaintenanceDue ?? true,
+        lowStockThreshold: result.lowStockThreshold ?? 5,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error updating notification settings:", error);
+      res.status(500).json({ error: "Error al actualizar preferencias de notificación" });
     }
   });
 
