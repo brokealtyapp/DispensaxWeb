@@ -65,9 +65,9 @@ export function AlmacenPanelPage() {
 
   const getStockLevelColor = (current: number, min: number, max: number) => {
     const percentage = (current / max) * 100;
-    if (current <= min) return "bg-destructive";
-    if (percentage < 30) return "bg-amber-500";
-    return "bg-emerald-500";
+    if (current <= min) return "[&>div]:bg-destructive";
+    if (percentage < 30) return "[&>div]:bg-amber-500";
+    return "[&>div]:bg-emerald-500";
   };
 
   const getDaysUntilExpiry = (date: Date | string | null) => {
@@ -209,7 +209,7 @@ export function AlmacenPanelPage() {
                             <p className="text-xs text-muted-foreground">{item.product?.code}</p>
                           </div>
                           <Badge variant="destructive" className="text-xs">
-                            {item.currentStock ?? 0} / {item.minStock} min
+                            {item.currentStock ?? 0} / {item.minStock ?? 0} min
                           </Badge>
                         </div>
                         <Progress
@@ -272,7 +272,7 @@ export function AlmacenPanelPage() {
                             </Badge>
                           </div>
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{lot.quantity} unidades</span>
+                            <span>{lot.remainingQuantity} unidades</span>
                             {lot.expirationDate && (
                               <span>{formatDateShort(lot.expirationDate)}</span>
                             )}

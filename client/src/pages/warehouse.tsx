@@ -53,7 +53,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Product, Supplier, Vehicle, WarehouseInventory, WarehouseMovement, ProductLot } from "@shared/schema";
+import type { Product, Supplier, Vehicle, WarehouseInventory, WarehouseMovement, ProductLot, User } from "@shared/schema";
 import { formatDateShort, formatTime, formatCurrency } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -191,6 +191,36 @@ export function WarehousePage() {
     queryKey: ["/api/vehicles"],
   });
 
+  const { data: abastecedores = [] } = useQuery<Omit<User, "password">[]>({
+    queryKey: ["/api/users", { role: "abastecedor" }],
+  });
+
+  const downloadCsvExport = async (type: string) => {
+    const filenames: Record<string, string> = {
+      inventory: "inventario",
+      movements: "kardex",
+      lots: "lotes",
+    };
+    try {
+      const response = await apiRequest("GET", `/api/warehouse/export/${type}`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${filenames[type] || type}_${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({
+        title: "Error al exportar",
+        description: "No se pudo descargar el archivo",
+        variant: "destructive",
+      });
+    }
+  };
+
   const entryForm = useForm<EntryFormData>({
     resolver: zodResolver(entrySchema),
     defaultValues: {
@@ -224,6 +254,19 @@ export function WarehousePage() {
     },
   });
 
+  function parseApiError(error: Error): string {
+    const match = error.message.match(/^\d+: ([\s\S]*)/);
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[1]);
+        return parsed.error || parsed.message || match[1];
+      } catch {
+        return match[1];
+      }
+    }
+    return error.message || "Ocurrió un error inesperado";
+  }
+
   const entryMutation = useMutation({
     mutationFn: async (data: EntryFormData) => {
       const response = await apiRequest("POST", "/api/warehouse/entry", data);
@@ -235,8 +278,13 @@ export function WarehousePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse/inventory"] });
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse/movements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse/lots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse/lots/expiring"] });
       setIsEntryDialogOpen(false);
       entryForm.reset();
+      toast({ title: "Entrada registrada", description: "Los productos fueron ingresados al inventario." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error al registrar entrada", description: parseApiError(error), variant: "destructive" });
     },
   });
 
@@ -251,8 +299,13 @@ export function WarehousePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse/inventory"] });
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse/movements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse/lots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/warehouse/lots/expiring"] });
       setIsExitDialogOpen(false);
       exitForm.reset();
+      toast({ title: "Salida registrada", description: "Los productos fueron entregados al abastecedor." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error al registrar salida", description: parseApiError(error), variant: "destructive" });
     },
   });
 
@@ -268,6 +321,10 @@ export function WarehousePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse/movements"] });
       setIsAdjustmentDialogOpen(false);
       adjustmentForm.reset();
+      toast({ title: "Ajuste registrado", description: "El inventario fue ajustado correctamente." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error al registrar ajuste", description: parseApiError(error), variant: "destructive" });
     },
   });
 
@@ -448,10 +505,7 @@ export function WarehousePage() {
               Despachar a Vehículo
             </Button>
           )}
-          <Select onValueChange={(type) => {
-            const url = `/api/warehouse/export/${type}`;
-            window.open(url, "_blank");
-          }}>
+          <Select onValueChange={(type) => downloadCsvExport(type)}>
             <SelectTrigger className="w-36" data-testid="select-export">
               <Download className="w-4 h-4 mr-2" />
               <SelectValue placeholder="Exportar" />
@@ -1108,9 +1162,24 @@ export function WarehousePage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Abastecedor</FormLabel>
-                    <FormControl>
-                      <Input placeholder="ID del abastecedor" {...field} data-testid="input-exit-user" />
-                    </FormControl>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-exit-user">
+                          <SelectValue placeholder="Selecciona un abastecedor" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {abastecedores.length === 0 ? (
+                          <SelectItem value="_none" disabled>No hay abastecedores disponibles</SelectItem>
+                        ) : (
+                          abastecedores.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.fullName || user.username}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1309,7 +1378,6 @@ export function WarehousePage() {
                           type="button"
                           size="icon"
                           variant="ghost"
-                          className="h-6 w-6"
                           onClick={() => handleRemoveDispatchItem(item.productId)}
                           data-testid={`button-remove-dispatch-item-${item.productId}`}
                         >

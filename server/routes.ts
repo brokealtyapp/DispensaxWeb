@@ -1530,7 +1530,14 @@ export async function registerRoutes(
 
   app.post("/api/warehouse/lots", authenticateJWT, authorizeAction("warehouse_movements", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertProductLotSchema.parse(req.body);
+      const tenantId = req.user?.isSuperAdmin
+        ? (req.query.tenantId as string | undefined) || req.user.tenantId
+        : req.user!.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: "No hay tenant asignado" });
+      }
+      const { tenantId: _ignored, ...bodyRest } = req.body;
+      const data = insertProductLotSchema.parse({ ...bodyRest, tenantId });
       const lot = await storage.createProductLot(data);
       res.status(201).json(lot);
     } catch (error) {
@@ -1596,6 +1603,14 @@ export async function registerRoutes(
       }
       
       if (!await verifyProductTenant(productId, req, res)) return;
+      
+      // Verify destinationUserId belongs to the same tenant (fail-closed)
+      if (!req.user!.isSuperAdmin) {
+        const destinationUser = await storage.getUser(destinationUserId);
+        if (!destinationUser || destinationUser.tenantId !== req.user!.tenantId) {
+          return res.status(404).json({ error: "Abastecedor no encontrado" });
+        }
+      }
       
       const movement = await storage.registerSupplierExit({
         productId,
