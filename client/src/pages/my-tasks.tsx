@@ -210,7 +210,7 @@ export function MyTasksPage() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const { data: tasks, isLoading } = useQuery<any[]>({
-    queryKey: [`/api/tasks?userId=${user?.id}`],
+    queryKey: [`/api/tasks?assignedUserId=${user?.id}`],
     enabled: !!user?.id,
   });
 

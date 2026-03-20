@@ -5548,33 +5548,36 @@ export async function registerRoutes(
 
   app.get("/api/tasks", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { status, priority, startDate, endDate, type } = req.query;
-      // Abastecedor solo ve sus propias tareas
-      const effectiveUserId = getEffectiveUserId(req, "assignedUserId");
-      
+      const { status, priority, startDate, endDate, type, assignedUserId: queryAssignedUserId } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+
+      // Abastecedor solo ve sus propias tareas; otherwise use query param if provided
+      const effectiveUserId = getEffectiveUserId(req, "assignedUserId") ?? (queryAssignedUserId as string | undefined);
+
       // Supervisor solo ve tareas de usuarios de su zona
       const supervisorZone = await getSupervisorZone(req);
-      
-      let tasks = await storage.getTasks({
+
+      let taskList = await storage.getTasks({
         status: status as string | undefined,
         priority: priority as string | undefined,
         assignedUserId: effectiveUserId,
         type: type as string | undefined,
         startDate: startDate ? new Date(startDate as string) : undefined,
-        endDate: endDate ? new Date(endDate as string) : undefined
+        endDate: endDate ? new Date(endDate as string) : undefined,
+        tenantId
       });
-      
+
       // Si es supervisor con zona asignada, filtrar tareas por usuarios de su zona
       if (supervisorZone && !effectiveUserId) {
         const zoneUserIds = await storage.getUserIdsByZone(supervisorZone);
         const zoneUserIdsSet = new Set(zoneUserIds);
-        
-        tasks = tasks.filter(task => 
+
+        taskList = taskList.filter(task =>
           !task.assignedUserId || zoneUserIdsSet.has(task.assignedUserId)
         );
       }
-      
-      res.json(tasks);
+
+      res.json(taskList);
     } catch (error) {
       console.error("Error getting tasks:", error);
       res.status(500).json({ error: "Error al obtener tareas" });
@@ -5583,9 +5586,10 @@ export async function registerRoutes(
 
   app.get("/api/tasks/today", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       // Abastecedor solo ve sus propias tareas
       const effectiveUserId = getEffectiveUserId(req, "userId");
-      const tasks = await storage.getTasksForToday(effectiveUserId);
+      const tasks = await storage.getTasksForToday(effectiveUserId, tenantId);
       res.json(tasks);
     } catch (error) {
       console.error("Error getting today tasks:", error);
@@ -5600,12 +5604,14 @@ export async function registerRoutes(
       if (!userId) {
         return res.status(401).json({ error: "Usuario no autenticado" });
       }
-      const tasks = await storage.getTasks({
-        assignedUserId: userId
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const taskList = await storage.getTasks({
+        assignedUserId: userId,
+        tenantId
       });
       // Filtrar solo tareas completadas o canceladas y limitar resultados
       const maxResults = limit ? parseInt(limit as string) : 20;
-      const historyTasks = tasks
+      const historyTasks = taskList
         .filter(t => t.status === "completada" || t.status === "cancelada")
         .slice(0, maxResults);
       res.json(historyTasks);
@@ -5618,12 +5624,14 @@ export async function registerRoutes(
   app.get("/api/tasks/stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       // Abastecedor solo ve sus propias estadísticas
       const effectiveUserId = getEffectiveUserId(req, "userId");
       const stats = await storage.getTaskStats({
         userId: effectiveUserId,
         startDate: startDate ? new Date(startDate as string) : undefined,
-        endDate: endDate ? new Date(endDate as string) : undefined
+        endDate: endDate ? new Date(endDate as string) : undefined,
+        tenantId
       });
       res.json(stats);
     } catch (error) {
@@ -5653,10 +5661,15 @@ export async function registerRoutes(
 
   app.post("/api/tasks", authenticateJWT, authorizeAction("tasks", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: "Tenant no identificado" });
+      }
       const bodyWithParsedDate = {
         ...req.body,
         dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
-        createdBy: req.user?.userId
+        createdBy: req.user?.userId,
+        tenantId // Override tenantId from JWT — never trust request body
       };
       const data = insertTaskSchema.parse(bodyWithParsedDate);
       const task = await storage.createTask(data);

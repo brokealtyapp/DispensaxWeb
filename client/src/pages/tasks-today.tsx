@@ -223,11 +223,8 @@ export function TasksTodayPage() {
     const StatusIcon = status.icon;
 
     return (
-      <Card 
-        className={`hover-elevate transition-all ${
-          task.priority === "urgente" ? "border-l-4 border-l-red-500" : 
-          task.priority === "alta" ? "border-l-4 border-l-orange-500" : ""
-        }`}
+      <Card
+        className="hover-elevate transition-all"
         data-testid={`card-today-task-${task.id}`}
       >
         <CardContent className="p-4">
@@ -267,10 +264,20 @@ export function TasksTodayPage() {
                     </p>
                   )}
                 </div>
-                <Badge className={type.color} variant="secondary">
-                  <TypeIcon className="h-3 w-3 mr-1" />
-                  {type.label}
-                </Badge>
+                <div className="flex items-center gap-1 shrink-0">
+                  {(task.priority === "urgente" || task.priority === "alta") && (
+                    <Badge
+                      variant="secondary"
+                      className={task.priority === "urgente" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}
+                    >
+                      {task.priority === "urgente" ? "Urgente" : "Alta"}
+                    </Badge>
+                  )}
+                  <Badge className={type.color} variant="secondary">
+                    <TypeIcon className="h-3 w-3 mr-1" />
+                    {type.label}
+                  </Badge>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-4 mt-3">

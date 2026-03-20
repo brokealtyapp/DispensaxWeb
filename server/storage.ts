@@ -525,14 +525,15 @@ export interface IStorage {
   
   // ==================== MÓDULO TAREAS ====================
   
-  getTasks(filters?: { status?: string; priority?: string; assignedUserId?: string; startDate?: Date; endDate?: Date; type?: string }): Promise<any[]>;
+  getTasks(filters?: { status?: string; priority?: string; assignedUserId?: string; startDate?: Date; endDate?: Date; type?: string; tenantId?: string }): Promise<any[]>;
   getTask(id: string): Promise<any>;
-  getTasksForToday(userId?: string): Promise<any[]>;
+  getTasksForToday(userId?: string, tenantId?: string): Promise<any[]>;
   createTask(task: InsertTask): Promise<Task>;
   updateTask(id: string, data: Partial<InsertTask>): Promise<Task | undefined>;
   completeTask(id: string, completedBy: string): Promise<Task | undefined>;
+  cancelTask(id: string, cancelledBy: string): Promise<Task | undefined>;
   deleteTask(id: string): Promise<boolean>;
-  getTaskStats(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<{
+  getTaskStats(filters?: { userId?: string; startDate?: Date; endDate?: Date; tenantId?: string }): Promise<{
     total: number;
     pending: number;
     inProgress: number;
@@ -5432,9 +5433,12 @@ export class DatabaseStorage implements IStorage {
 
   // ==================== MÓDULO TAREAS ====================
 
-  async getTasks(filters?: { status?: string; priority?: string; assignedUserId?: string; startDate?: Date; endDate?: Date; type?: string }): Promise<any[]> {
+  async getTasks(filters?: { status?: string; priority?: string; assignedUserId?: string; startDate?: Date; endDate?: Date; type?: string; tenantId?: string }): Promise<any[]> {
     const conditions: any[] = [];
-    
+
+    if (filters?.tenantId) {
+      conditions.push(eq(tasks.tenantId, filters.tenantId));
+    }
     if (filters?.status) {
       conditions.push(eq(tasks.status, filters.status));
     }
@@ -5458,11 +5462,38 @@ export class DatabaseStorage implements IStorage {
       ? await db.select().from(tasks).where(and(...conditions)).orderBy(desc(tasks.dueDate))
       : await db.select().from(tasks).orderBy(desc(tasks.dueDate));
 
-    return Promise.all(taskList.map(async (task) => {
-      const assignedUser = task.assignedUserId ? await this.getUser(task.assignedUserId) : null;
-      const machine = task.machineId ? await this.getMachine(task.machineId) : null;
-      const route = task.routeId ? await this.getRoute(task.routeId) : null;
-      const creator = task.createdBy ? await this.getUser(task.createdBy) : null;
+    // Batch fetch related entities to avoid N+1 queries
+    const userIds = new Set<string>();
+    const machineIdSet = new Set<string>();
+    const routeIdSet = new Set<string>();
+
+    for (const task of taskList) {
+      if (task.assignedUserId) userIds.add(task.assignedUserId);
+      if (task.createdBy) userIds.add(task.createdBy);
+      if (task.machineId) machineIdSet.add(task.machineId);
+      if (task.routeId) routeIdSet.add(task.routeId);
+    }
+
+    const [usersMap, machinesMap, routesMap] = await Promise.all([
+      userIds.size > 0
+        ? db.select().from(users).where(inArray(users.id, [...userIds]))
+            .then(rows => new Map(rows.map(u => [u.id, u])))
+        : Promise.resolve(new Map<string, any>()),
+      machineIdSet.size > 0
+        ? db.select().from(machines).where(inArray(machines.id, [...machineIdSet]))
+            .then(rows => new Map(rows.map(m => [m.id, m])))
+        : Promise.resolve(new Map<string, any>()),
+      routeIdSet.size > 0
+        ? db.select().from(routes).where(inArray(routes.id, [...routeIdSet]))
+            .then(rows => new Map(rows.map(r => [r.id, r])))
+        : Promise.resolve(new Map<string, any>()),
+    ]);
+
+    return taskList.map(task => {
+      const assignedUser = task.assignedUserId ? usersMap.get(task.assignedUserId) : null;
+      const machine = task.machineId ? machinesMap.get(task.machineId) : null;
+      const route = task.routeId ? routesMap.get(task.routeId) : null;
+      const creator = task.createdBy ? usersMap.get(task.createdBy) : null;
 
       return {
         ...task,
@@ -5471,7 +5502,7 @@ export class DatabaseStorage implements IStorage {
         route: route ? { id: route.id, name: route.name } : null,
         creator: creator ? { id: creator.id, name: creator.fullName || creator.username } : null
       };
-    }));
+    });
   }
 
   async getTask(id: string): Promise<any> {
@@ -5494,14 +5525,14 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getTasksForToday(userId?: string): Promise<any[]> {
+  async getTasksForToday(userId?: string, tenantId?: string): Promise<any[]> {
     // Use timezone-aware date for "today"
     // For DATE-only columns stored as midnight UTC, we need to use the UTC date representation
     const todayInTZ = getTodayInTimezone();
     const year = todayInTZ.getFullYear();
     const month = todayInTZ.getMonth();
     const day = todayInTZ.getDate();
-    
+
     // Create dates that will match UTC midnight representation of the target date
     const nextDateUTC = new Date(Date.UTC(year, month, day + 1, 0, 0, 0, 0));
 
@@ -5511,6 +5542,9 @@ export class DatabaseStorage implements IStorage {
       or(eq(tasks.status, "pendiente"), eq(tasks.status, "en_progreso"))
     ];
 
+    if (tenantId) {
+      conditions.push(eq(tasks.tenantId, tenantId));
+    }
     if (userId) {
       conditions.push(eq(tasks.assignedUserId, userId));
     }
@@ -5518,22 +5552,46 @@ export class DatabaseStorage implements IStorage {
     const taskList = await db.select().from(tasks)
       .where(and(...conditions))
       .orderBy(
-        asc(tasks.dueDate), // Overdue first
+        asc(tasks.dueDate),
         sql`CASE tasks.priority WHEN 'urgente' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END`,
         asc(tasks.startTime)
       )
       .limit(20);
 
-    return Promise.all(taskList.map(async (task) => {
-      const assignedUser = task.assignedUserId ? await this.getUser(task.assignedUserId) : null;
-      const machine = task.machineId ? await this.getMachine(task.machineId) : null;
+    // Batch fetch related entities to avoid N+1 queries
+    const userIds = new Set<string>();
+    const machineIdSet = new Set<string>();
+
+    for (const task of taskList) {
+      if (task.assignedUserId) userIds.add(task.assignedUserId);
+      if (task.machineId) machineIdSet.add(task.machineId);
+    }
+
+    const [usersMap, machinesMap] = await Promise.all([
+      userIds.size > 0
+        ? db.select().from(users).where(inArray(users.id, [...userIds]))
+            .then(rows => new Map(rows.map(u => [u.id, u])))
+        : Promise.resolve(new Map<string, any>()),
+      machineIdSet.size > 0
+        ? db.select().from(machines).where(inArray(machines.id, [...machineIdSet]))
+            .then(rows => new Map(rows.map(m => [m.id, m])))
+        : Promise.resolve(new Map<string, any>()),
+    ]);
+
+    return taskList.map(task => {
+      const assignedUser = task.assignedUserId ? usersMap.get(task.assignedUserId) : null;
+      const machine = task.machineId ? machinesMap.get(task.machineId) : null;
 
       return {
         ...task,
-        assignedUser: assignedUser ? { id: assignedUser.id, name: assignedUser.fullName || assignedUser.username, initials: (assignedUser.fullName || assignedUser.username || "").split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) } : null,
+        assignedUser: assignedUser ? {
+          id: assignedUser.id,
+          name: assignedUser.fullName || assignedUser.username,
+          initials: (assignedUser.fullName || assignedUser.username || "").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
+        } : null,
         machine: machine ? { id: machine.id, name: machine.name, code: machine.code } : null
       };
-    }));
+    });
   }
 
   async createTask(task: InsertTask): Promise<Task> {
@@ -5564,10 +5622,9 @@ export class DatabaseStorage implements IStorage {
 
   async cancelTask(id: string, cancelledBy: string): Promise<Task | undefined> {
     const [updated] = await db.update(tasks)
-      .set({ 
-        status: "cancelada", 
+      .set({
+        status: "cancelada",
         updatedAt: new Date(),
-        notes: `Cancelada por usuario`
       })
       .where(eq(tasks.id, id))
       .returning();
@@ -5579,7 +5636,7 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getTaskStats(filters?: { userId?: string; startDate?: Date; endDate?: Date }): Promise<{
+  async getTaskStats(filters?: { userId?: string; startDate?: Date; endDate?: Date; tenantId?: string }): Promise<{
     total: number;
     pending: number;
     inProgress: number;
@@ -5588,7 +5645,10 @@ export class DatabaseStorage implements IStorage {
     overdue: number;
   }> {
     const conditions: any[] = [];
-    
+
+    if (filters?.tenantId) {
+      conditions.push(eq(tasks.tenantId, filters.tenantId));
+    }
     if (filters?.userId) {
       conditions.push(eq(tasks.assignedUserId, filters.userId));
     }
