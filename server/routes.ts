@@ -4182,10 +4182,14 @@ export async function registerRoutes(
 
   app.post("/api/purchase-orders", authenticateJWT, authorizeAction("purchase_orders", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertPurchaseOrderSchema.omit({ orderNumber: true }).parse(req.body);
-      const orderNumber = await storage.getNextOrderNumber();
+      const tenantId = req.user!.tenantId!;
+      const { tenantId: _dropTenant, ...rest } = req.body;
+      const data = insertPurchaseOrderSchema.omit({ orderNumber: true }).parse({ ...rest, tenantId });
+      if (!await verifySupplierTenant(data.supplierId, req, res)) return;
+      const orderNumber = await storage.getNextOrderNumber(tenantId);
       const order = await storage.createPurchaseOrder({
         ...data,
+        tenantId,
         orderNumber,
         createdBy: req.user!.userId
       });
@@ -4219,6 +4223,7 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-orders/:id/status", authenticateJWT, authorizeAction("purchase_orders", "approve"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyPurchaseOrderTenant(req.params.id, req, res)) return;
       const statusSchema = z.object({
         status: z.enum(["borrador", "enviada", "parcialmente_recibida", "recibida", "cancelada"]),
         reason: z.string().optional()
@@ -4265,11 +4270,16 @@ export async function registerRoutes(
 
   app.post("/api/purchase-orders/:id/items", authenticateJWT, authorizeAction("purchase_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (!await verifyPurchaseOrderTenant(req.params.id, req, res)) return;
+      const verifyResult = await verifyPurchaseOrderTenant(req.params.id, req, res);
+      if (!verifyResult) return;
       
-      const data = insertPurchaseOrderItemSchema.omit({ orderId: true }).parse(req.body);
+      const order = await storage.getPurchaseOrder(req.params.id);
+      const tenantId = order!.tenantId;
+      const { tenantId: _dropTenant, orderId: _dropOrderId, ...rest } = req.body;
+      const data = insertPurchaseOrderItemSchema.omit({ orderId: true }).parse({ ...rest, tenantId });
       const item = await storage.addPurchaseOrderItem({
         ...data,
+        tenantId,
         orderId: req.params.id
       });
       res.status(201).json(item);
@@ -4320,7 +4330,9 @@ export async function registerRoutes(
   app.get("/api/purchase-receptions", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { orderId, startDate, endDate } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const filters: any = {};
+      if (tenantId) filters.tenantId = tenantId;
       if (orderId) filters.orderId = orderId as string;
       if (startDate) filters.startDate = new Date(startDate as string);
       if (endDate) filters.endDate = new Date(endDate as string);
@@ -4334,7 +4346,8 @@ export async function registerRoutes(
 
   app.get("/api/purchase-receptions/next-number", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const receptionNumber = await storage.getNextReceptionNumber();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const receptionNumber = await storage.getNextReceptionNumber(tenantId);
       res.json({ receptionNumber });
     } catch (error) {
       res.status(500).json({ error: "Error al generar número de recepción" });
@@ -4347,6 +4360,9 @@ export async function registerRoutes(
       if (!reception) {
         return res.status(404).json({ error: "Recepción no encontrada" });
       }
+      if (!verifyTenantOwnership(reception.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+        return res.status(404).json({ error: "Recepción no encontrada" });
+      }
       res.json(reception);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener recepción" });
@@ -4355,16 +4371,20 @@ export async function registerRoutes(
 
   app.post("/api/purchase-receptions", authenticateJWT, authorizeAction("purchase_orders", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user!.tenantId!;
       const bodySchema = z.object({
-        reception: insertPurchaseReceptionSchema.omit({ receptionNumber: true }),
-        items: z.array(insertReceptionItemSchema.omit({ receptionId: true }))
+        reception: insertPurchaseReceptionSchema.omit({ receptionNumber: true, tenantId: true }),
+        items: z.array(insertReceptionItemSchema.omit({ receptionId: true, tenantId: true }))
       });
       const { reception, items } = bodySchema.parse(req.body);
-      const receptionNumber = await storage.getNextReceptionNumber();
+      
+      if (!await verifyPurchaseOrderTenant(reception.orderId, req, res)) return;
+      
+      const receptionNumber = await storage.getNextReceptionNumber(tenantId);
       
       const newReception = await storage.createPurchaseReception(
-        { ...reception, receptionNumber, receivedBy: req.user!.userId },
-        items,
+        { ...reception, tenantId, receptionNumber, receivedBy: req.user!.userId },
+        items.map(item => ({ ...item, tenantId })),
         req.user!.userId
       );
       res.status(201).json(newReception);
@@ -4380,10 +4400,13 @@ export async function registerRoutes(
   // Historial de compras por proveedor
   app.get("/api/suppliers/:id/purchase-history", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifySupplierTenant(req.params.id, req, res)) return;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const { limit } = req.query;
       const history = await storage.getSupplierPurchaseHistory(
         req.params.id,
-        limit ? parseInt(limit as string) : undefined
+        limit ? parseInt(limit as string) : undefined,
+        tenantId
       );
       res.json(history);
     } catch (error) {

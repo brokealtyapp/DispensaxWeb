@@ -320,7 +320,7 @@ export interface IStorage {
   updatePurchaseOrder(id: string, data: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined>;
   updatePurchaseOrderStatus(id: string, status: string, userId?: string, reason?: string): Promise<PurchaseOrder | undefined>;
   deletePurchaseOrder(id: string): Promise<boolean>;
-  getNextOrderNumber(): Promise<string>;
+  getNextOrderNumber(tenantId?: string): Promise<string>;
   
   // Items de Orden de Compra
   getPurchaseOrderItems(orderId: string): Promise<any[]>;
@@ -330,14 +330,14 @@ export interface IStorage {
   recalculateOrderTotals(orderId: string): Promise<void>;
   
   // Recepciones de Mercancía
-  getPurchaseReceptions(filters?: { orderId?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getPurchaseReceptions(filters?: { orderId?: string; startDate?: Date; endDate?: Date; tenantId?: string }): Promise<any[]>;
   getPurchaseReception(id: string): Promise<any>;
   createPurchaseReception(reception: InsertPurchaseReception, items: Omit<InsertReceptionItem, 'receptionId'>[], userId?: string): Promise<PurchaseReception>;
-  getNextReceptionNumber(): Promise<string>;
+  getNextReceptionNumber(tenantId?: string): Promise<string>;
   
   // Estadísticas de Compras
   getPurchaseStats(startDate?: Date, endDate?: Date, tenantId?: string): Promise<{ totalOrders: number; totalAmount: number; pendingOrders: number; topSuppliers: any[] }>;
-  getSupplierPurchaseHistory(supplierId: string, limit?: number): Promise<any[]>;
+  getSupplierPurchaseHistory(supplierId: string, limit?: number, tenantId?: string): Promise<any[]>;
   getLowStockProducts(tenantId?: string): Promise<any[]>;
   
   // ==================== MÓDULO COMBUSTIBLE ====================
@@ -3217,16 +3217,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deletePurchaseOrder(id: string): Promise<boolean> {
+    const receptions = await db.select({ id: purchaseReceptions.id }).from(purchaseReceptions).where(eq(purchaseReceptions.orderId, id));
+    for (const reception of receptions) {
+      await db.delete(receptionItems).where(eq(receptionItems.receptionId, reception.id));
+    }
+    await db.delete(purchaseReceptions).where(eq(purchaseReceptions.orderId, id));
     await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.orderId, id));
-    const result = await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
+    await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
     return true;
   }
 
-  async getNextOrderNumber(): Promise<string> {
+  async getNextOrderNumber(tenantId?: string): Promise<string> {
     const year = new Date().getFullYear();
+    const conditions = [sql`EXTRACT(YEAR FROM ${purchaseOrders.createdAt}) = ${year}`];
+    if (tenantId) conditions.push(eq(purchaseOrders.tenantId, tenantId));
     const result = await db.select({ count: sql<number>`COUNT(*)` })
       .from(purchaseOrders)
-      .where(sql`EXTRACT(YEAR FROM ${purchaseOrders.createdAt}) = ${year}`);
+      .where(and(...conditions));
     
     const count = (result[0]?.count || 0) + 1;
     return `OC-${year}-${String(count).padStart(4, "0")}`;
@@ -3288,9 +3295,12 @@ export class DatabaseStorage implements IStorage {
       .where(eq(purchaseOrders.id, orderId));
   }
 
-  async getPurchaseReceptions(filters?: { orderId?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+  async getPurchaseReceptions(filters?: { orderId?: string; startDate?: Date; endDate?: Date; tenantId?: string }): Promise<any[]> {
     let conditions = [];
     
+    if (filters?.tenantId) {
+      conditions.push(eq(purchaseReceptions.tenantId, filters.tenantId));
+    }
     if (filters?.orderId) {
       conditions.push(eq(purchaseReceptions.orderId, filters.orderId));
     }
@@ -3412,11 +3422,13 @@ export class DatabaseStorage implements IStorage {
     return newReception;
   }
 
-  async getNextReceptionNumber(): Promise<string> {
+  async getNextReceptionNumber(tenantId?: string): Promise<string> {
     const year = new Date().getFullYear();
+    const conditions = [sql`EXTRACT(YEAR FROM ${purchaseReceptions.createdAt}) = ${year}`];
+    if (tenantId) conditions.push(eq(purchaseReceptions.tenantId, tenantId));
     const result = await db.select({ count: sql<number>`COUNT(*)` })
       .from(purchaseReceptions)
-      .where(sql`EXTRACT(YEAR FROM ${purchaseReceptions.createdAt}) = ${year}`);
+      .where(and(...conditions));
     
     const count = (result[0]?.count || 0) + 1;
     return `REC-${year}-${String(count).padStart(4, "0")}`;
@@ -3460,14 +3472,16 @@ export class DatabaseStorage implements IStorage {
     return { totalOrders, totalAmount, pendingOrders, topSuppliers };
   }
 
-  async getSupplierPurchaseHistory(supplierId: string, limit?: number): Promise<any[]> {
+  async getSupplierPurchaseHistory(supplierId: string, limit?: number, tenantId?: string): Promise<any[]> {
+    const conditions = [eq(purchaseOrders.supplierId, supplierId)];
+    if (tenantId) conditions.push(eq(purchaseOrders.tenantId, tenantId));
     const query = limit
       ? db.select().from(purchaseOrders)
-          .where(eq(purchaseOrders.supplierId, supplierId))
+          .where(and(...conditions))
           .orderBy(desc(purchaseOrders.createdAt))
           .limit(limit)
       : db.select().from(purchaseOrders)
-          .where(eq(purchaseOrders.supplierId, supplierId))
+          .where(and(...conditions))
           .orderBy(desc(purchaseOrders.createdAt));
     
     const orders = await query;

@@ -154,7 +154,7 @@ export default function PurchasesPage() {
     queryKey: ["/api/purchase-orders/low-stock"],
   });
 
-  const { data: supplierHistory } = useQuery<any[]>({
+  const { data: supplierHistory, isLoading: supplierHistoryLoading } = useQuery<any[]>({
     queryKey: ["/api/suppliers", selectedSupplier?.id, "purchase-history"],
     enabled: !!selectedSupplier?.id && isSupplierHistoryOpen,
   });
@@ -204,10 +204,11 @@ export default function PurchasesPage() {
 
   const createOrderMutation = useMutation({
     mutationFn: async (data: OrderFormData) => {
-      return apiRequest("POST", "/api/purchase-orders", {
+      const res = await apiRequest("POST", "/api/purchase-orders", {
         ...data,
         expectedDeliveryDate: data.expectedDeliveryDate ? new Date(data.expectedDeliveryDate) : undefined,
       });
+      return res.json();
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
@@ -237,9 +238,12 @@ export default function PurchasesPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
-      const updatedOrders = queryClient.getQueryData<any[]>(["/api/purchase-orders"]);
-      const updatedOrder = updatedOrders?.find((o: any) => o.id === selectedOrder?.id);
-      if (updatedOrder) setSelectedOrder(updatedOrder);
+      if (selectedOrder?.id) {
+        const updatedOrder = await queryClient.fetchQuery({
+          queryKey: ["/api/purchase-orders", selectedOrder.id],
+        });
+        if (updatedOrder) setSelectedOrder(updatedOrder);
+      }
       toast({ title: "Producto agregado", description: "El producto se ha agregado a la orden" });
       orderItemForm.reset({ productId: "", quantity: 1, unitPrice: 0, notes: "" });
     },
@@ -254,9 +258,12 @@ export default function PurchasesPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
-      const updatedOrders = queryClient.getQueryData<any[]>(["/api/purchase-orders"]);
-      const updatedOrder = updatedOrders?.find((o: any) => o.id === selectedOrder?.id);
-      if (updatedOrder) setSelectedOrder(updatedOrder);
+      if (selectedOrder?.id) {
+        const updatedOrder = await queryClient.fetchQuery({
+          queryKey: ["/api/purchase-orders", selectedOrder.id],
+        });
+        if (updatedOrder) setSelectedOrder(updatedOrder);
+      }
       toast({ title: "Producto eliminado", description: "El producto se ha eliminado de la orden" });
     },
   });
@@ -318,6 +325,12 @@ export default function PurchasesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders/stats"] });
       toast({ title: "Orden eliminada", description: "La orden se ha eliminado correctamente" });
       setIsOrderDetailOpen(false);
+      setIsDeleteOrderOpen(false);
+      setOrderToDelete(null);
+      setSelectedOrder(null);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo eliminar la orden", variant: "destructive" });
     },
   });
 
@@ -1426,7 +1439,11 @@ export default function PurchasesPage() {
           </DialogHeader>
           
           <ScrollArea className="h-[400px]">
-            {supplierHistory?.length === 0 ? (
+            {supplierHistoryLoading ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Cargando historial...
+              </div>
+            ) : supplierHistory?.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No hay historial de compras para este proveedor
               </div>
@@ -1447,7 +1464,7 @@ export default function PurchasesPage() {
                       <TableCell className="font-mono">{order.orderNumber}</TableCell>
                       <TableCell>{formatDateShort(order.issueDate)}</TableCell>
                       <TableCell>{order.itemCount}</TableCell>
-                      <TableCell>${parseFloat(order.total || "0").toFixed(2)}</TableCell>
+                      <TableCell>{formatCurrency(parseFloat(order.total || "0"))}</TableCell>
                       <TableCell>{getStatusBadge(order.status)}</TableCell>
                     </TableRow>
                   ))}
