@@ -705,16 +705,35 @@ export async function registerRoutes(
   app.get("/api/machines/summary", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
-      const cache = getDashboardCache();
       const tenantMachines = await storage.getMachines(tenantId);
+
+      const stats = {
+        totalMachines: tenantMachines.length,
+        operatingMachines: tenantMachines.filter(m => m.status === "operando").length,
+        needsServiceMachines: tenantMachines.filter(m => m.status === "necesita_servicio").length,
+        maintenanceMachines: tenantMachines.filter(m => m.status === "mantenimiento").length,
+        activeAlerts: 0,
+        todayTasks: 0,
+        completedTasks: 0,
+      };
+
+      const zoneMap: Record<string, { zone: string; total: number; operating: number; percentage: number }> = {};
+      tenantMachines.forEach(m => {
+        const zone = m.zone || "Sin zona";
+        if (!zoneMap[zone]) zoneMap[zone] = { zone, total: 0, operating: 0, percentage: 0 };
+        zoneMap[zone].total++;
+        if (m.status === "operando") zoneMap[zone].operating++;
+      });
+      const machinesByZone = Object.values(zoneMap).map(z => ({
+        ...z,
+        percentage: z.total > 0 ? Math.round((z.operating / z.total) * 100) : 0,
+      }));
+
       res.json({
-        stats: cache.stats,
-        machinesByZone: cache.machinesByZone,
+        stats,
+        machinesByZone,
         machines: tenantMachines,
       });
-      if (!isDashboardCacheValid()) {
-        refreshDashboardCacheIfStale().catch(err => console.error("[Cache] Error refresh dashboard:", err));
-      }
     } catch (error) {
       console.error("Error getting machines summary:", error);
       res.status(500).json({ error: "Error al obtener resumen de máquinas" });
