@@ -61,6 +61,17 @@ export function SettingsPage() {
     phone: user?.phone || "",
   });
 
+  useEffect(() => {
+    if (user) {
+      setProfileData({
+        fullName: user.fullName || "",
+        username: user.username || "",
+        email: user.email || "",
+        phone: user.phone || "",
+      });
+    }
+  }, [user]);
+
   const [passwordData, setPasswordData] = useState({
     currentPassword: "",
     newPassword: "",
@@ -797,7 +808,7 @@ export function SettingsPage() {
                         Añade una capa extra de seguridad a tu cuenta
                       </p>
                     </div>
-                    <Button variant="outline" disabled data-testid="button-setup-2fa">Configurar</Button>
+                    <Button variant="outline" disabled data-testid="button-setup-2fa">Configurar 2FA</Button>
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between">
