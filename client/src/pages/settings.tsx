@@ -135,8 +135,8 @@ export function SettingsPage() {
   const [notifications, setNotifications] = useState({
     email: localStorage.getItem("notif_email") !== "false",
     push: localStorage.getItem("notif_push") !== "false",
-    lowStock: true,
-    machineAlerts: true,
+    lowStock: localStorage.getItem("notif_low_stock") !== "false",
+    machineAlerts: localStorage.getItem("notif_machine_alerts") !== "false",
     reports: localStorage.getItem("notif_reports") === "true",
   });
 
@@ -285,6 +285,8 @@ export function SettingsPage() {
       // Persist to localStorage for non-admin users
       localStorage.setItem("notif_email", String(notifications.email));
       localStorage.setItem("notif_push", String(notifications.push));
+      localStorage.setItem("notif_low_stock", String(notifications.lowStock));
+      localStorage.setItem("notif_machine_alerts", String(notifications.machineAlerts));
       localStorage.setItem("notif_reports", String(notifications.reports));
       toast({
         title: "Notificaciones guardadas",
@@ -582,7 +584,10 @@ export function SettingsPage() {
                     </div>
                     <Select
                       value={language}
-                      onValueChange={(value) => setLanguage(value)}
+                      onValueChange={(value) => {
+                        setLanguage(value);
+                        localStorage.setItem("dispensax_language", value);
+                      }}
                     >
                       <SelectTrigger className="w-[200px]" data-testid="select-language">
                         <Globe className="h-4 w-4 mr-2" />

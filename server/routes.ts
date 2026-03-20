@@ -3461,7 +3461,7 @@ export async function registerRoutes(
   // =====================
 
   // GET /api/settings/company — Returns current tenant data (admin only)
-  app.get("/api/settings/company", authenticateJWT, requireTenant, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/settings/company", authenticateJWT, requireTenant, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!req.user) return res.status(401).json({ error: "No autenticado" });
       // Super admin without tenant context not allowed here
