@@ -112,7 +112,7 @@ export interface IStorage {
   updateLocation(id: string, location: Partial<InsertLocation>): Promise<Location | undefined>;
   deleteLocation(id: string): Promise<boolean>;
   
-  getProducts(): Promise<Product[]>;
+  getProducts(tenantId?: string): Promise<Product[]>;
   getProduct(id: string): Promise<Product | undefined>;
   createProduct(product: InsertProduct): Promise<Product>;
   updateProduct(id: string, product: Partial<InsertProduct>): Promise<Product | undefined>;
@@ -167,7 +167,7 @@ export interface IStorage {
   getExpiringLots(days: number, limit?: number): Promise<(ProductLot & { product: Product })[]>;
   
   // Almacén - Movimientos (Kardex)
-  getWarehouseMovements(productId?: string, limit?: number): Promise<(WarehouseMovement & { product: Product })[]>;
+  getWarehouseMovements(productId?: string, limit?: number, tenantId?: string): Promise<(WarehouseMovement & { product: Product })[]>;
   createWarehouseMovement(movement: InsertWarehouseMovement): Promise<WarehouseMovement>;
   registerPurchaseEntry(data: { productId: string; quantity: number; unitCost: number; supplierId?: string; lotNumber: string; expirationDate?: Date; notes?: string; userId?: string }): Promise<WarehouseMovement>;
   registerSupplierExit(data: { productId: string; quantity: number; destinationUserId?: string; notes?: string; userId?: string; movementType?: "salida_abastecedor" | "salida_maquina" }): Promise<WarehouseMovement>;
@@ -652,12 +652,15 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getProducts(): Promise<Product[]> {
+  async getProducts(tenantId?: string): Promise<Product[]> {
+    if (tenantId) {
+      return db.select().from(products).where(and(eq(products.isActive, true), eq(products.tenantId, tenantId))).orderBy(products.name);
+    }
     return db.select().from(products).where(eq(products.isActive, true)).orderBy(products.name);
   }
 
   async getProduct(id: string): Promise<Product | undefined> {
-    const [product] = await db.select().from(products).where(eq(products.id, id));
+    const [product] = await db.select().from(products).where(and(eq(products.id, id), eq(products.isActive, true)));
     return product;
   }
 
@@ -1092,26 +1095,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Movimientos de Almacén (Kardex)
-  async getWarehouseMovements(productId?: string, limit: number = 20): Promise<(WarehouseMovement & { product: Product })[]> {
-    // Usar JOIN en lugar de Promise.all para evitar N+1 queries
-    const query = productId
-      ? db.select({
-          movement: warehouseMovements,
-          product: products
-        })
-        .from(warehouseMovements)
-        .leftJoin(products, eq(warehouseMovements.productId, products.id))
-        .where(eq(warehouseMovements.productId, productId))
-        .orderBy(desc(warehouseMovements.createdAt))
-        .limit(limit)
-      : db.select({
-          movement: warehouseMovements,
-          product: products
-        })
-        .from(warehouseMovements)
-        .leftJoin(products, eq(warehouseMovements.productId, products.id))
-        .orderBy(desc(warehouseMovements.createdAt))
-        .limit(limit);
+  async getWarehouseMovements(productId?: string, limit: number = 20, tenantId?: string): Promise<(WarehouseMovement & { product: Product })[]> {
+    // Construir condición WHERE combinando filtros disponibles
+    const conditions = [];
+    if (tenantId) conditions.push(eq(warehouseMovements.tenantId, tenantId));
+    if (productId) conditions.push(eq(warehouseMovements.productId, productId));
+
+    const query = db.select({
+        movement: warehouseMovements,
+        product: products
+      })
+      .from(warehouseMovements)
+      .leftJoin(products, eq(warehouseMovements.productId, products.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(warehouseMovements.createdAt))
+      .limit(limit);
     
     const results = await query;
     

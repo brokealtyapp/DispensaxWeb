@@ -136,13 +136,7 @@ export function ProductsPage() {
   });
 
   const { data: kardexMovements = [], isLoading: isLoadingKardex } = useQuery<(WarehouseMovement & { product: Product })[]>({
-    queryKey: ["/api/warehouse/movements", kardexProduct?.id],
-    queryFn: async () => {
-      if (!kardexProduct) return [];
-      const response = await fetch(`/api/warehouse/movements?productId=${kardexProduct.id}`);
-      if (!response.ok) return [];
-      return response.json();
-    },
+    queryKey: [`/api/warehouse/movements?productId=${kardexProduct?.id}`],
     enabled: !!kardexProduct,
   });
 

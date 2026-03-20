@@ -635,7 +635,8 @@ export async function registerRoutes(
 
   app.get("/api/products", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const products = await storage.getProducts();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const products = await storage.getProducts(tenantId);
       res.json(products);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener productos" });
@@ -655,8 +656,8 @@ export async function registerRoutes(
 
   app.post("/api/products", authenticateJWT, authorizeAction("products", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertProductSchema.parse(req.body);
-      const product = await storage.createProduct(data);
+      const data = insertProductSchema.omit({ tenantId: true }).parse(req.body);
+      const product = await storage.createProduct({ ...data, tenantId: req.user!.tenantId! });
       res.status(201).json(product);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1534,9 +1535,11 @@ export async function registerRoutes(
   app.get("/api/warehouse/movements", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { productId, limit } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const movements = await storage.getWarehouseMovements(
         productId as string | undefined,
-        limit ? parseInt(limit as string) : undefined
+        limit ? parseInt(limit as string) : undefined,
+        tenantId
       );
       res.json(movements);
     } catch (error) {
@@ -1713,7 +1716,8 @@ export async function registerRoutes(
       const inventory = await storage.getWarehouseInventory();
       const lowStock = await storage.getLowStockAlerts();
       const expiringLots = await storage.getExpiringLots(30);
-      const movements = await storage.getWarehouseMovements(undefined, 10);
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const movements = await storage.getWarehouseMovements(undefined, 10, tenantId);
       
       const totalProducts = inventory.length;
       const totalStock = inventory.reduce((sum, inv) => sum + (inv.currentStock || 0), 0);
@@ -1854,7 +1858,8 @@ export async function registerRoutes(
   app.get("/api/warehouse/export/movements", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { limit } = req.query;
-      const movements = await storage.getWarehouseMovements(undefined, limit ? parseInt(limit as string) : 500);
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const movements = await storage.getWarehouseMovements(undefined, limit ? parseInt(limit as string) : 500, tenantId);
       
       const typeLabels: Record<string, string> = {
         entrada_compra: "Entrada (Compra)",
@@ -5964,9 +5969,10 @@ export async function registerRoutes(
   // Warehouse Summary
   app.get("/api/summary/warehouse", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const products = await storage.getProducts();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const products = await storage.getProducts(tenantId);
       const productLots = await storage.getProductLots();
-      const movements = await storage.getWarehouseMovements();
+      const movements = await storage.getWarehouseMovements(undefined, 20, tenantId);
       
       const lowStockProducts: any[] = [];
       const productStocks: Record<string, number> = {};
@@ -6157,7 +6163,8 @@ export async function registerRoutes(
   // Products Summary
   app.get("/api/summary/products", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const products = await storage.getProducts();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const products = await storage.getProducts(tenantId);
       const productLots = await storage.getProductLots();
       const machineSales = await storage.getAllMachineSales();
       
@@ -6491,7 +6498,8 @@ export async function registerRoutes(
       });
 
       // Search products
-      const products = await storage.getProducts();
+      const searchTenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const products = await storage.getProducts(searchTenantId);
       products.forEach(p => {
         if (p.name?.toLowerCase().includes(query) || p.code?.toLowerCase().includes(query) || p.category?.toLowerCase().includes(query)) {
           results.push({
