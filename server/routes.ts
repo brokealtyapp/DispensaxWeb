@@ -5806,27 +5806,33 @@ export async function registerRoutes(
   app.get("/api/calendar/events", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId, startDate, endDate, eventType } = req.query;
-      
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+
+      if (!tenantId && !req.user?.isSuperAdmin) {
+        return res.status(400).json({ error: "Tenant requerido" });
+      }
+
       // Supervisor solo ve eventos de usuarios de su zona
       const supervisorZone = await getSupervisorZone(req);
-      
+
       let events = await storage.getCalendarEvents({
+        tenantId,
         userId: userId as string | undefined,
         eventType: eventType as string | undefined,
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined
       });
-      
+
       // Filtrar por zona si es supervisor usando storage layer
       if (supervisorZone) {
         const zoneUserIds = await storage.getUserIdsByZone(supervisorZone);
         const zoneUserIdsSet = new Set(zoneUserIds);
-        
-        events = events.filter(event => 
+
+        events = events.filter(event =>
           !event.userId || zoneUserIdsSet.has(event.userId)
         );
       }
-      
+
       res.json(events);
     } catch (error) {
       console.error("Error getting calendar events:", error);
@@ -5861,8 +5867,17 @@ export async function registerRoutes(
 
   app.post("/api/calendar/events", authenticateJWT, authorizeAction("tasks", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertCalendarEventSchema.parse(req.body);
-      const event = await storage.createCalendarEvent(data);
+      const tenantId = req.user?.tenantId;
+      if (!tenantId && !req.user?.isSuperAdmin) {
+        return res.status(400).json({ error: "Tenant requerido" });
+      }
+      const body = {
+        ...req.body,
+        startDate: req.body.startDate ? new Date(req.body.startDate) : req.body.startDate,
+        endDate: req.body.endDate ? new Date(req.body.endDate) : req.body.endDate,
+      };
+      const data = insertCalendarEventSchema.omit({ tenantId: true } as any).parse(body);
+      const event = await storage.createCalendarEvent({ ...data, tenantId: tenantId! });
       res.status(201).json(event);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -5876,8 +5891,13 @@ export async function registerRoutes(
   app.patch("/api/calendar/events/:id", authenticateJWT, authorizeAction("tasks", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyCalendarEventTenant(req.params.id, req, res)) return;
-      
-      const data = insertCalendarEventSchema.partial().parse(req.body);
+
+      const patchBody = {
+        ...req.body,
+        startDate: req.body.startDate ? new Date(req.body.startDate) : req.body.startDate,
+        endDate: req.body.endDate ? new Date(req.body.endDate) : req.body.endDate,
+      };
+      const data = insertCalendarEventSchema.omit({ tenantId: true } as any).partial().parse(patchBody);
       const event = await storage.updateCalendarEvent(req.params.id, data);
       if (!event) {
         return res.status(404).json({ error: "Evento no encontrado" });

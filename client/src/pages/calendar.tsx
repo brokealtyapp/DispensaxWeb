@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, startOfWeek, endOfWeek, parseISO, format } from "date-fns";
+import { startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, addWeeks, subWeeks, isToday, startOfWeek, endOfWeek, parseISO, format } from "date-fns";
 import { es } from "date-fns/locale";
-import { formatDate, formatWeekday } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,10 +12,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  Clock,
-  User,
-  MapPin,
-  MoreHorizontal,
   Trash2,
   Edit,
   Wrench,
@@ -25,7 +21,7 @@ import {
   ListTodo,
   X
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -36,7 +32,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -112,25 +107,27 @@ export function CalendarPage() {
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
 
+  const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
+
+  const rangeStart = viewMode === "week" ? weekStart : monthStart;
+  const rangeEnd = viewMode === "week" ? weekEnd : monthEnd;
+
   const { data: events, isLoading: eventsLoading } = useQuery<any[]>({
-    queryKey: ["/api/calendar/events", format(monthStart, "yyyy-MM-dd"), format(monthEnd, "yyyy-MM-dd")],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      params.append("startDate", monthStart.toISOString());
-      params.append("endDate", monthEnd.toISOString());
-      const response = await fetch(`/api/calendar/events?${params.toString()}`);
-      if (!response.ok) throw new Error("Error fetching events");
-      return response.json();
-    },
+    queryKey: ["/api/calendar/events", { startDate: rangeStart.toISOString(), endDate: rangeEnd.toISOString() }],
   });
 
   const { data: tasks } = useQuery<any[]>({
-    queryKey: ["/api/tasks"],
+    queryKey: ["/api/tasks", { startDate: monthStart.toISOString(), endDate: monthEnd.toISOString() }],
   });
 
   const { data: users } = useQuery<any[]>({
     queryKey: ["/api/users"],
   });
+
+  const invalidateEvents = () => {
+    queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "/api/calendar/events" });
+  };
 
   const createEventMutation = useMutation({
     mutationFn: async (data: EventFormData) => {
@@ -142,9 +139,7 @@ export function CalendarPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ 
-        predicate: (query) => (query.queryKey[0] as string)?.startsWith("/api/calendar/events") 
-      });
+      invalidateEvents();
       toast({ title: "Evento creado", description: "El evento se ha agregado al calendario" });
       setIsNewEventOpen(false);
       createForm.reset();
@@ -164,9 +159,7 @@ export function CalendarPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ 
-        predicate: (query) => (query.queryKey[0] as string)?.startsWith("/api/calendar/events") 
-      });
+      invalidateEvents();
       toast({ title: "Evento actualizado" });
       setIsEditEventOpen(false);
       setSelectedEvent(null);
@@ -181,9 +174,7 @@ export function CalendarPage() {
       return apiRequest("DELETE", `/api/calendar/events/${id}`, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ 
-        predicate: (query) => (query.queryKey[0] as string)?.startsWith("/api/calendar/events") 
-      });
+      invalidateEvents();
       toast({ title: "Evento eliminado" });
       setSelectedDate(null);
     },
@@ -196,7 +187,11 @@ export function CalendarPage() {
     const start = startOfWeek(monthStart, { weekStartsOn: 1 });
     const end = endOfWeek(monthEnd, { weekStartsOn: 1 });
     return eachDayOfInterval({ start, end });
-  }, [currentDate]);
+  }, [monthStart, monthEnd]);
+
+  const weekDays7 = useMemo(() => {
+    return eachDayOfInterval({ start: weekStart, end: weekEnd });
+  }, [weekStart, weekEnd]);
 
   const getEventsForDay = (day: Date) => {
     return events?.filter(event => {
@@ -213,8 +208,14 @@ export function CalendarPage() {
     }) || [];
   };
 
-  const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
-  const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
+  const handlePrev = () => {
+    if (viewMode === "week") setCurrentDate(subWeeks(currentDate, 1));
+    else setCurrentDate(subMonths(currentDate, 1));
+  };
+  const handleNext = () => {
+    if (viewMode === "week") setCurrentDate(addWeeks(currentDate, 1));
+    else setCurrentDate(addMonths(currentDate, 1));
+  };
   const handleToday = () => setCurrentDate(new Date());
 
   const handleDayClick = (day: Date) => {
@@ -261,7 +262,62 @@ export function CalendarPage() {
     }
   };
 
-  const weekDays = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+  const weekDayLabels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+  const currentPeriodLabel = viewMode === "week"
+    ? `${format(weekStart, "d MMM", { locale: es })} – ${format(weekEnd, "d MMM yyyy", { locale: es })}`
+    : format(currentDate, "MMMM yyyy", { locale: es });
+
+  const renderDayCell = (day: Date, opts?: { tall?: boolean; showFullDate?: boolean }) => {
+    const dayEvents = getEventsForDay(day);
+    const dayTasks = getTasksForDay(day);
+    const allItems = [...dayEvents, ...dayTasks.map(t => ({ ...t, isTask: true }))];
+    const isSelected = selectedDate && isSameDay(day, selectedDate);
+    const tall = opts?.tall ?? false;
+    const showFull = opts?.showFullDate ?? false;
+
+    return (
+      <div
+        className={`${tall ? "min-h-[200px]" : "min-h-[100px] sm:min-h-[120px]"} p-1 sm:p-2 border-b border-r cursor-pointer transition-colors hover:bg-muted/50 ${
+          !isSameMonth(day, currentDate) && !tall ? "bg-muted/30 text-muted-foreground" : ""
+        } ${isToday(day) ? "bg-primary/5" : ""} ${isSelected ? "ring-2 ring-primary ring-inset" : ""}`}
+        onClick={() => handleDayClick(day)}
+        data-testid={`calendar-day-${format(day, "yyyy-MM-dd")}`}
+      >
+        <div className="mb-1">
+          {showFull ? (
+            <div className="text-xs text-muted-foreground mb-0.5 capitalize">{format(day, "EEEE", { locale: es })}</div>
+          ) : null}
+          <span className={`text-sm font-medium inline-flex items-center justify-center ${
+            isToday(day)
+              ? "bg-primary text-primary-foreground w-6 h-6 rounded-full"
+              : ""
+          }`}>
+            {format(day, "d")}
+          </span>
+        </div>
+        <div className="space-y-1">
+          {allItems.slice(0, tall ? 10 : 3).map((item, i) => {
+            const type = eventTypeConfig[(item as any).isTask ? "tarea" : (item.eventType || "otro")];
+            return (
+              <div
+                key={i}
+                className={`text-xs px-1 py-0.5 rounded truncate ${type.color} text-white`}
+                title={item.title}
+              >
+                {item.title}
+              </div>
+            );
+          })}
+          {allItems.length > (tall ? 10 : 3) && (
+            <div className="text-xs text-muted-foreground">
+              +{allItems.length - (tall ? 10 : 3)} más
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <ScrollArea className="h-full">
@@ -301,20 +357,20 @@ export function CalendarPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" onClick={handlePrevMonth} data-testid="button-prev-month">
+                <Button variant="outline" size="icon" onClick={handlePrev} data-testid="button-prev">
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" size="icon" onClick={handleNextMonth} data-testid="button-next-month">
+                <Button variant="outline" size="icon" onClick={handleNext} data-testid="button-next">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleToday} data-testid="button-today">
                   Hoy
                 </Button>
               </div>
-              <h2 className="text-xl font-bold capitalize" data-testid="text-current-month">
-                {format(currentDate, "MMMM yyyy", { locale: es })}
+              <h2 className="text-lg font-bold capitalize" data-testid="text-current-month">
+                {currentPeriodLabel}
               </h2>
               <div className="flex items-center gap-2">
                 <Button
@@ -339,10 +395,28 @@ export function CalendarPage() {
           <CardContent>
             {eventsLoading ? (
               <Skeleton className="h-[600px] w-full" />
+            ) : viewMode === "week" ? (
+              <div className="border rounded-lg overflow-hidden">
+                <div className="grid grid-cols-7 bg-muted">
+                  {weekDays7.map((day) => (
+                    <div key={day.toString()} className={`py-3 text-center text-sm font-medium border-b ${isToday(day) ? "text-primary" : ""}`}>
+                      <span className="hidden sm:inline capitalize">{format(day, "EEE", { locale: es })} </span>
+                      {format(day, "d")}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7">
+                  {weekDays7.map((day) => (
+                    <div key={day.toString()}>
+                      {renderDayCell(day, { tall: true, showFullDate: false })}
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
               <div className="border rounded-lg overflow-hidden">
                 <div className="grid grid-cols-7 bg-muted">
-                  {weekDays.map((day) => (
+                  {weekDayLabels.map((day) => (
                     <div key={day} className="py-3 text-center text-sm font-medium border-b">
                       {day}
                     </div>
@@ -350,51 +424,11 @@ export function CalendarPage() {
                 </div>
 
                 <div className="grid grid-cols-7">
-                  {calendarDays.map((day, idx) => {
-                    const dayEvents = getEventsForDay(day);
-                    const dayTasks = getTasksForDay(day);
-                    const allItems = [...dayEvents, ...dayTasks.map(t => ({ ...t, isTask: true }))];
-                    const isCurrentMonth = isSameMonth(day, currentDate);
-                    const isSelected = selectedDate && isSameDay(day, selectedDate);
-
-                    return (
-                      <div
-                        key={idx}
-                        className={`min-h-[100px] sm:min-h-[120px] p-1 sm:p-2 border-b border-r cursor-pointer transition-colors hover:bg-muted/50 ${
-                          !isCurrentMonth ? "bg-muted/30 text-muted-foreground" : ""
-                        } ${isToday(day) ? "bg-primary/5" : ""} ${isSelected ? "ring-2 ring-primary ring-inset" : ""}`}
-                        onClick={() => handleDayClick(day)}
-                        data-testid={`calendar-day-${format(day, "yyyy-MM-dd")}`}
-                      >
-                        <div className={`text-sm font-medium mb-1 ${
-                          isToday(day) 
-                            ? "bg-primary text-primary-foreground w-6 h-6 rounded-full flex items-center justify-center" 
-                            : ""
-                        }`}>
-                          {format(day, "d")}
-                        </div>
-                        <div className="space-y-1">
-                          {allItems.slice(0, 3).map((item, i) => {
-                            const type = eventTypeConfig[(item as any).isTask ? "tarea" : (item.eventType || "otro")];
-                            return (
-                              <div
-                                key={i}
-                                className={`text-xs px-1 py-0.5 rounded truncate ${type.color} text-white`}
-                                title={item.title}
-                              >
-                                {item.title}
-                              </div>
-                            );
-                          })}
-                          {allItems.length > 3 && (
-                            <div className="text-xs text-muted-foreground">
-                              +{allItems.length - 3} más
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {calendarDays.map((day, idx) => (
+                    <div key={idx}>
+                      {renderDayCell(day)}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

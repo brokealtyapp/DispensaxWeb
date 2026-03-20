@@ -544,7 +544,7 @@ export interface IStorage {
   
   // ==================== MÓDULO CALENDARIO ====================
   
-  getCalendarEvents(filters?: { userId?: string; startDate?: Date; endDate?: Date; eventType?: string }): Promise<any[]>;
+  getCalendarEvents(filters?: { tenantId?: string; userId?: string; startDate?: Date; endDate?: Date; eventType?: string }): Promise<any[]>;
   getCalendarEvent(id: string): Promise<any>;
   createCalendarEvent(event: InsertCalendarEvent): Promise<CalendarEvent>;
   updateCalendarEvent(id: string, data: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined>;
@@ -5681,9 +5681,12 @@ export class DatabaseStorage implements IStorage {
 
   // ==================== MÓDULO CALENDARIO ====================
 
-  async getCalendarEvents(filters?: { userId?: string; startDate?: Date; endDate?: Date; eventType?: string }): Promise<any[]> {
+  async getCalendarEvents(filters?: { tenantId?: string; userId?: string; startDate?: Date; endDate?: Date; eventType?: string }): Promise<any[]> {
     const conditions: any[] = [];
-    
+
+    if (filters?.tenantId) {
+      conditions.push(eq(calendarEvents.tenantId, filters.tenantId));
+    }
     if (filters?.userId) {
       conditions.push(eq(calendarEvents.userId, filters.userId));
     }
@@ -5701,16 +5704,29 @@ export class DatabaseStorage implements IStorage {
       ? await db.select().from(calendarEvents).where(and(...conditions)).orderBy(asc(calendarEvents.startDate))
       : await db.select().from(calendarEvents).orderBy(asc(calendarEvents.startDate));
 
-    return Promise.all(events.map(async (event) => {
-      const user = event.userId ? await this.getUser(event.userId) : null;
-      const task = event.taskId ? await this.getTask(event.taskId) : null;
+    if (events.length === 0) return [];
+
+    const userIds = [...new Set(events.map(e => e.userId).filter(Boolean) as string[])];
+    const taskIds = [...new Set(events.map(e => e.taskId).filter(Boolean) as string[])];
+
+    const [usersRows, tasksRows] = await Promise.all([
+      userIds.length > 0 ? db.select().from(users).where(inArray(users.id, userIds)) : Promise.resolve([]),
+      taskIds.length > 0 ? db.select().from(tasks).where(inArray(tasks.id, taskIds)) : Promise.resolve([]),
+    ]);
+
+    const usersMap = new Map(usersRows.map(u => [u.id, u]));
+    const tasksMap = new Map(tasksRows.map(t => [t.id, t]));
+
+    return events.map((event) => {
+      const user = event.userId ? usersMap.get(event.userId) : null;
+      const task = event.taskId ? tasksMap.get(event.taskId) : null;
 
       return {
         ...event,
         user: user ? { id: user.id, name: user.fullName || user.username, initials: (user.fullName || user.username || "").split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) } : null,
         task: task ? { id: task.id, title: task.title } : null
       };
-    }));
+    });
   }
 
   async getCalendarEvent(id: string): Promise<any> {
