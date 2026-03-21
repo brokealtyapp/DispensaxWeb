@@ -141,14 +141,17 @@ export function TasksPage() {
 
   const { data: users } = useQuery<any[]>({
     queryKey: ["/api/users"],
+    enabled: isNewTaskOpen || isEditTaskOpen,
   });
 
   const { data: machines } = useQuery<any[]>({
     queryKey: ["/api/machines"],
+    enabled: isNewTaskOpen || isEditTaskOpen,
   });
 
   const { data: routes } = useQuery<any[]>({
     queryKey: ["/api/supplier/routes"],
+    enabled: isNewTaskOpen || isEditTaskOpen,
   });
 
   const invalidateTaskQueries = () => {
@@ -649,7 +652,7 @@ export function TasksPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Tipo</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger data-testid="select-task-type">
                               <SelectValue placeholder="Seleccionar tipo" />
@@ -672,7 +675,7 @@ export function TasksPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Prioridad</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger data-testid="select-task-priority">
                               <SelectValue placeholder="Seleccionar prioridad" />
@@ -763,7 +766,7 @@ export function TasksPage() {
                         <FormLabel>Asignar a</FormLabel>
                         <Select 
                           onValueChange={(val) => field.onChange(val === "unassigned" ? "" : val)} 
-                          defaultValue={field.value || "unassigned"}
+                          value={field.value || "unassigned"}
                         >
                           <FormControl>
                             <SelectTrigger data-testid="select-task-assigned">
@@ -792,7 +795,7 @@ export function TasksPage() {
                         <FormLabel>Máquina (opcional)</FormLabel>
                         <Select 
                           onValueChange={(val) => field.onChange(val === "none" ? "" : val)} 
-                          defaultValue={field.value || "none"}
+                          value={field.value || "none"}
                         >
                           <FormControl>
                             <SelectTrigger data-testid="select-task-machine">
@@ -813,6 +816,35 @@ export function TasksPage() {
                     )}
                   />
                 </div>
+
+                <FormField
+                  control={taskForm.control}
+                  name="routeId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Ruta (opcional)</FormLabel>
+                      <Select 
+                        onValueChange={(val) => field.onChange(val === "none" ? "" : val)} 
+                        value={field.value || "none"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-task-route">
+                            <SelectValue placeholder="Seleccionar ruta" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Ninguna</SelectItem>
+                          {routes?.map((route) => (
+                            <SelectItem key={route.id} value={route.id}>
+                              {route.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={taskForm.control}
@@ -1050,6 +1082,35 @@ export function TasksPage() {
                     )}
                   />
                 </div>
+
+                <FormField
+                  control={taskForm.control}
+                  name="routeId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Ruta (opcional)</FormLabel>
+                      <Select 
+                        onValueChange={(val) => field.onChange(val === "none" ? "" : val)} 
+                        value={field.value || "none"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-edit-task-route">
+                            <SelectValue placeholder="Seleccionar ruta" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Ninguna</SelectItem>
+                          {routes?.map((route) => (
+                            <SelectItem key={route.id} value={route.id}>
+                              {route.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={taskForm.control}

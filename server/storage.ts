@@ -66,7 +66,7 @@ import {
   type SuperAdminAuditLog, type InsertSuperAdminAuditLog
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, asc, or, inArray, count } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, asc, or, inArray, count, isNull } from "drizzle-orm";
 
 // =====================
 // SECURITY: User without password for API responses
@@ -5603,7 +5603,11 @@ export class DatabaseStorage implements IStorage {
 
       return {
         ...task,
-        assignedUser: assignedUser ? { id: assignedUser.id, name: assignedUser.fullName || assignedUser.username } : null,
+        assignedUser: assignedUser ? {
+          id: assignedUser.id,
+          name: assignedUser.fullName || assignedUser.username,
+          initials: (assignedUser.fullName || assignedUser.username || "").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)
+        } : null,
         machine: machine ? { id: machine.id, name: machine.name, code: machine.code } : null,
         route: route ? { id: route.id, name: route.name } : null,
         creator: creator ? { id: creator.id, name: creator.fullName || creator.username } : null
@@ -5643,8 +5647,9 @@ export class DatabaseStorage implements IStorage {
     const nextDateUTC = new Date(Date.UTC(year, month, day + 1, 0, 0, 0, 0));
 
     // Include today's tasks AND overdue tasks (pending/in_progress from past days)
+    // Also include tasks with no dueDate (always visible until completed)
     const conditions: any[] = [
-      lte(tasks.dueDate, nextDateUTC),
+      or(isNull(tasks.dueDate), lte(tasks.dueDate, nextDateUTC)),
       or(eq(tasks.status, "pendiente"), eq(tasks.status, "en_progreso"))
     ];
 
