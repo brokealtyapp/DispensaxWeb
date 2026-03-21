@@ -3943,14 +3943,17 @@ export async function registerRoutes(
   // Depósitos Bancarios
   app.get("/api/bank-deposits", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, status, startDate, endDate } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const { userId, status, startDate, endDate, limit } = req.query;
       const filters = {
+        tenantId,
         userId: userId as string | undefined,
         status: status as string | undefined,
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined,
       };
-      const deposits = await storage.getBankDeposits(filters);
+      let deposits = await storage.getBankDeposits(filters);
+      if (limit) deposits = deposits.slice(0, parseInt(limit as string, 10));
       res.json(deposits);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener depósitos" });
@@ -3970,8 +3973,9 @@ export async function registerRoutes(
 
   app.post("/api/bank-deposits", authenticateJWT, authorizeAction("cash_collections", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertBankDepositSchema.parse(req.body);
-      const deposit = await storage.createBankDeposit(data);
+      const tenantId = req.user!.tenantId;
+      const data = insertBankDepositSchema.omit({ tenantId: true } as any).parse(req.body);
+      const deposit = await storage.createBankDeposit({ ...data, tenantId });
       res.status(201).json(deposit);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -3983,6 +3987,7 @@ export async function registerRoutes(
 
   app.post("/api/bank-deposits/:id/reconcile", authenticateJWT, authorizeAction("cash_collections", "approve"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyBankDepositTenant(req.params.id, req, res)) return;
       const { amount } = req.body;
       if (amount === undefined) {
         return res.status(400).json({ error: "Falta el monto conciliado" });
@@ -4170,8 +4175,10 @@ export async function registerRoutes(
   // Gastos de Caja Chica
   app.get("/api/petty-cash/expenses", authenticateJWT, authorizeAction("petty_cash", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const { userId, category, status, startDate, endDate } = req.query;
       const filters = {
+        tenantId,
         userId: userId as string | undefined,
         category: category as string | undefined,
         status: status as string | undefined,
@@ -4198,8 +4205,9 @@ export async function registerRoutes(
 
   app.post("/api/petty-cash/expenses", authenticateJWT, authorizeAction("petty_cash", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertPettyCashExpenseSchema.parse(req.body);
-      const expense = await storage.createPettyCashExpense(data);
+      const tenantId = req.user!.tenantId;
+      const data = insertPettyCashExpenseSchema.omit({ tenantId: true } as any).parse(req.body);
+      const expense = await storage.createPettyCashExpense({ ...data, tenantId });
       res.status(201).json(expense);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -4211,11 +4219,9 @@ export async function registerRoutes(
 
   app.post("/api/petty-cash/expenses/:id/approve", authenticateJWT, authorizeAction("petty_cash_approval", "approve"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId } = req.body;
-      if (!userId) {
-        return res.status(400).json({ error: "Falta el usuario que aprueba" });
-      }
-      const expense = await storage.approvePettyCashExpense(req.params.id, userId);
+      if (!await verifyPettyCashExpenseTenant(req.params.id, req, res)) return;
+      const approvedBy = req.user!.userId;
+      const expense = await storage.approvePettyCashExpense(req.params.id, approvedBy);
       if (!expense) {
         return res.status(404).json({ error: "Gasto no encontrado" });
       }
@@ -4227,11 +4233,13 @@ export async function registerRoutes(
 
   app.post("/api/petty-cash/expenses/:id/reject", authenticateJWT, authorizeAction("petty_cash_approval", "approve"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, reason } = req.body;
-      if (!userId || !reason) {
+      if (!await verifyPettyCashExpenseTenant(req.params.id, req, res)) return;
+      const { reason } = req.body;
+      if (!reason) {
         return res.status(400).json({ error: "Faltan datos requeridos" });
       }
-      const expense = await storage.rejectPettyCashExpense(req.params.id, userId, reason);
+      const rejectedBy = req.user!.userId;
+      const expense = await storage.rejectPettyCashExpense(req.params.id, rejectedBy, reason);
       if (!expense) {
         return res.status(404).json({ error: "Gasto no encontrado" });
       }
@@ -4243,6 +4251,7 @@ export async function registerRoutes(
 
   app.post("/api/petty-cash/expenses/:id/pay", authenticateJWT, authorizeAction("petty_cash", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyPettyCashExpenseTenant(req.params.id, req, res)) return;
       const expense = await storage.markPettyCashExpenseAsPaid(req.params.id);
       if (!expense) {
         return res.status(400).json({ error: "No se puede pagar este gasto" });
@@ -4256,7 +4265,8 @@ export async function registerRoutes(
   // Fondo de Caja Chica
   app.get("/api/petty-cash/fund", authenticateJWT, authorizeAction("petty_cash", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const fund = await storage.getPettyCashFund();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const fund = await storage.getPettyCashFund(tenantId);
       res.json(fund || { initialized: false });
     } catch (error) {
       res.status(500).json({ error: "Error al obtener fondo" });
@@ -4265,8 +4275,9 @@ export async function registerRoutes(
 
   app.post("/api/petty-cash/fund", authenticateJWT, authorizeAction("petty_cash", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertPettyCashFundSchema.parse(req.body);
-      const fund = await storage.initializePettyCashFund(data);
+      const tenantId = req.user!.tenantId;
+      const data = insertPettyCashFundSchema.omit({ tenantId: true } as any).parse(req.body);
+      const fund = await storage.initializePettyCashFund({ ...data, tenantId });
       res.status(201).json(fund);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -4278,11 +4289,13 @@ export async function registerRoutes(
 
   app.post("/api/petty-cash/fund/replenish", authenticateJWT, authorizeAction("petty_cash", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { amount, userId } = req.body;
-      if (!amount || !userId) {
+      const tenantId = req.user!.tenantId;
+      const { amount } = req.body;
+      if (!amount) {
         return res.status(400).json({ error: "Faltan datos requeridos" });
       }
-      const fund = await storage.replenishPettyCashFund(parseFloat(amount), userId);
+      const userId = req.user!.userId;
+      const fund = await storage.replenishPettyCashFund(parseFloat(amount), userId, tenantId);
       if (!fund) {
         return res.status(400).json({ error: "El fondo no está inicializado" });
       }
@@ -4295,9 +4308,11 @@ export async function registerRoutes(
   // Transacciones de Caja Chica
   app.get("/api/petty-cash/transactions", authenticateJWT, authorizeAction("petty_cash", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const { limit } = req.query;
       const transactions = await storage.getPettyCashTransactions(
-        limit ? parseInt(limit as string) : undefined
+        limit ? parseInt(limit as string) : undefined,
+        tenantId
       );
       res.json(transactions);
     } catch (error) {
@@ -5083,19 +5098,25 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/accounting/sales-summary", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/accounting/sales-summary", authenticateJWT, authorizeAction("accounting", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const { startDate, endDate } = req.query;
       const start = startDate ? new Date(startDate as string) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
       const end = endDate ? new Date(endDate as string) : new Date();
-      
-      const salesData = await db.select().from(machineSales)
-        .where(and(
-          gte(machineSales.saleDate, start),
-          lte(machineSales.saleDate, end)
-        ));
-      
-      const machinesList = await db.select().from(machines);
+
+      const salesConditions: any[] = [
+        gte(machineSales.saleDate, start),
+        lte(machineSales.saleDate, end),
+      ];
+      if (tenantId) salesConditions.push(eq(machineSales.tenantId, tenantId));
+
+      const salesData = await db.select().from(machineSales).where(and(...salesConditions));
+
+      const machinesConditions: any[] = tenantId ? [eq(machines.tenantId, tenantId)] : [];
+      const machinesList = machinesConditions.length
+        ? await db.select().from(machines).where(and(...machinesConditions))
+        : await db.select().from(machines);
       const machineMap = new Map(machinesList.map(m => [m.id, m.name]));
       
       const totalRevenue = salesData.reduce((sum, s) => sum + Number(s.totalAmount), 0);
@@ -5132,20 +5153,22 @@ export async function registerRoutes(
 
   app.get("/api/accounting/cash-summary", authenticateJWT, authorizeAction("accounting", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const collectionsData = await db.select().from(cashCollections)
-        .orderBy(desc(cashCollections.createdAt))
-        .limit(100);
-      
-      const depositsData = await db.select().from(bankDeposits);
-      
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+
+      const collectionsQuery = db.select().from(cashCollections).orderBy(desc(cashCollections.createdAt)).limit(100);
+      const collectionsData = tenantId
+        ? await db.select().from(cashCollections).where(eq(cashCollections.tenantId, tenantId)).orderBy(desc(cashCollections.createdAt)).limit(100)
+        : await collectionsQuery;
+
+      const depositsData = await storage.getBankDeposits({ tenantId });
+
       const totalCollected = collectionsData.reduce((sum, c) => sum + Number(c.actualAmount), 0);
       const totalDeposited = depositsData.reduce((sum, d) => sum + Number(d.amount), 0);
       const pendingDeposit = totalCollected - totalDeposited;
-      
-      const recentMovements = await db.select().from(cashMovements)
-        .orderBy(desc(cashMovements.createdAt))
-        .limit(10);
-      
+
+      const allMovements = await storage.getCashMovements({ tenantId });
+      const recentMovements = allMovements.slice(0, 10);
+
       res.json({
         totalCollected,
         pendingDeposit: pendingDeposit > 0 ? pendingDeposit : 0,

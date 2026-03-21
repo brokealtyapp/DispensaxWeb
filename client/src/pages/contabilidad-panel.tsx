@@ -61,26 +61,34 @@ export function ContabilidadPanelPage() {
     queryKey: ["/api/accounting/cash-summary"],
   });
 
-  const { data: pettyCashFund } = useQuery<{ currentBalance: number } | null>({
+  const { data: pettyCashFund, isLoading: fundLoading } = useQuery<{ currentBalance: number } | null>({
     queryKey: ["/api/petty-cash/fund"],
   });
 
-  const { data: allExpenses = [] } = useQuery<PettyCashExpense[]>({
+  const { data: allExpenses = [], isLoading: expensesLoading } = useQuery<PettyCashExpense[]>({
     queryKey: ["/api/petty-cash/expenses"],
+  });
+
+  const monthStart = startOfMonth(new Date());
+  const monthEnd = endOfMonth(new Date());
+
+  const monthExpenses = allExpenses.filter((e) => {
+    const d = new Date(e.createdAt ?? "");
+    return d >= monthStart && d <= monthEnd;
   });
 
   const pettyCashStats: PettyCashStats = {
     currentBalance: Number(pettyCashFund?.currentBalance ?? 0),
-    totalExpenses: allExpenses.reduce((sum, e) => sum + Number(e.amount), 0),
+    totalExpenses: monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0),
     pendingApproval: allExpenses.filter((e) => e.status === "pendiente").length,
     approvedExpenses: allExpenses.filter((e) => e.status === "aprobado")
       .reduce((sum, e) => sum + Number(e.amount), 0),
   };
 
-  const pettyCashLoading = !pettyCashFund && !allExpenses.length;
+  const pettyCashLoading = fundLoading || expensesLoading;
 
   const { data: recentDeposits = [] } = useQuery<BankDeposit[]>({
-    queryKey: ["/api/bank-deposits", { limit: "5" }],
+    queryKey: ["/api/bank-deposits", { limit: 5 }],
   });
 
   const { data: pendingExpenses = [] } = useQuery<PettyCashExpense[]>({

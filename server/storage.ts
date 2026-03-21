@@ -294,7 +294,7 @@ export interface IStorage {
   // ==================== MÓDULO CAJA CHICA ====================
   
   // Gastos de Caja Chica
-  getPettyCashExpenses(filters?: { userId?: string; category?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getPettyCashExpenses(filters?: { tenantId?: string; userId?: string; category?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
   getPettyCashExpense(id: string): Promise<any>;
   createPettyCashExpense(expense: InsertPettyCashExpense): Promise<PettyCashExpense>;
   approvePettyCashExpense(id: string, approvedBy: string): Promise<PettyCashExpense | undefined>;
@@ -302,13 +302,13 @@ export interface IStorage {
   markPettyCashExpenseAsPaid(id: string): Promise<PettyCashExpense | undefined>;
   
   // Fondo de Caja Chica
-  getPettyCashFund(): Promise<PettyCashFund | undefined>;
+  getPettyCashFund(tenantId?: string): Promise<PettyCashFund | undefined>;
   initializePettyCashFund(fund: InsertPettyCashFund): Promise<PettyCashFund>;
-  updatePettyCashBalance(amount: number, type: 'add' | 'subtract'): Promise<PettyCashFund | undefined>;
-  replenishPettyCashFund(amount: number, userId: string): Promise<PettyCashFund | undefined>;
+  updatePettyCashBalance(amount: number, type: 'add' | 'subtract', tenantId?: string): Promise<PettyCashFund | undefined>;
+  replenishPettyCashFund(amount: number, userId: string, tenantId?: string): Promise<PettyCashFund | undefined>;
   
   // Transacciones de Caja Chica
-  getPettyCashTransactions(limit?: number): Promise<any[]>;
+  getPettyCashTransactions(limit?: number, tenantId?: string): Promise<any[]>;
   createPettyCashTransaction(transaction: InsertPettyCashTransaction): Promise<PettyCashTransaction>;
   getPettyCashStats(): Promise<{ currentBalance: number; todayExpenses: number; pendingApprovals: number; monthlyExpenses: number }>;
   
@@ -2992,9 +2992,10 @@ export class DatabaseStorage implements IStorage {
   // ==================== MÓDULO CAJA CHICA ====================
 
   // Gastos de Caja Chica
-  async getPettyCashExpenses(filters?: { userId?: string; category?: string; status?: string; startDate?: Date; endDate?: Date }, limit: number = 30): Promise<any[]> {
+  async getPettyCashExpenses(filters?: { tenantId?: string; userId?: string; category?: string; status?: string; startDate?: Date; endDate?: Date }, limit: number = 500): Promise<any[]> {
     let conditions: any[] = [];
     
+    if (filters?.tenantId) conditions.push(eq(pettyCashExpenses.tenantId, filters.tenantId));
     if (filters?.userId) conditions.push(eq(pettyCashExpenses.userId, filters.userId));
     if (filters?.category) conditions.push(eq(pettyCashExpenses.category, filters.category));
     if (filters?.status) conditions.push(eq(pettyCashExpenses.status, filters.status));
@@ -3063,10 +3064,10 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     // Actualizar el saldo de caja chica
-    await this.updatePettyCashBalance(parseFloat(expense.amount), 'subtract');
+    await this.updatePettyCashBalance(parseFloat(expense.amount), 'subtract', expense.tenantId);
     
     // Registrar la transacción
-    const fund = await this.getPettyCashFund();
+    const fund = await this.getPettyCashFund(expense.tenantId);
     if (fund && expense.tenantId) {
       await this.createPettyCashTransaction({
         tenantId: expense.tenantId,
@@ -3084,13 +3085,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Fondo de Caja Chica
-  async getPettyCashFund(): Promise<PettyCashFund | undefined> {
+  async getPettyCashFund(tenantId?: string): Promise<PettyCashFund | undefined> {
+    if (tenantId) {
+      const [fund] = await db.select().from(pettyCashFund).where(eq(pettyCashFund.tenantId, tenantId)).limit(1);
+      return fund;
+    }
     const [fund] = await db.select().from(pettyCashFund).limit(1);
     return fund;
   }
 
   async initializePettyCashFund(fund: InsertPettyCashFund): Promise<PettyCashFund> {
-    const existing = await this.getPettyCashFund();
+    const existing = await this.getPettyCashFund(fund.tenantId);
     if (existing) {
       const [updated] = await db.update(pettyCashFund)
         .set({ ...fund, updatedAt: new Date() })
@@ -3103,8 +3108,8 @@ export class DatabaseStorage implements IStorage {
     return newFund;
   }
 
-  async updatePettyCashBalance(amount: number, type: 'add' | 'subtract'): Promise<PettyCashFund | undefined> {
-    const fund = await this.getPettyCashFund();
+  async updatePettyCashBalance(amount: number, type: 'add' | 'subtract', tenantId?: string): Promise<PettyCashFund | undefined> {
+    const fund = await this.getPettyCashFund(tenantId);
     if (!fund) return undefined;
     
     const currentBalance = parseFloat(fund.currentBalance);
@@ -3117,8 +3122,8 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async replenishPettyCashFund(amount: number, userId: string): Promise<PettyCashFund | undefined> {
-    const fund = await this.getPettyCashFund();
+  async replenishPettyCashFund(amount: number, userId: string, tenantId?: string): Promise<PettyCashFund | undefined> {
+    const fund = await this.getPettyCashFund(tenantId);
     if (!fund) return undefined;
     
     const previousBalance = parseFloat(fund.currentBalance);
@@ -3151,10 +3156,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Transacciones de Caja Chica
-  async getPettyCashTransactions(limit?: number): Promise<any[]> {
-    const query = limit
-      ? db.select().from(pettyCashTransactions).orderBy(desc(pettyCashTransactions.createdAt)).limit(limit)
-      : db.select().from(pettyCashTransactions).orderBy(desc(pettyCashTransactions.createdAt));
+  async getPettyCashTransactions(limit?: number, tenantId?: string): Promise<any[]> {
+    const baseQ = db.select().from(pettyCashTransactions)
+      .where(tenantId ? eq(pettyCashTransactions.tenantId, tenantId) : undefined)
+      .orderBy(desc(pettyCashTransactions.createdAt));
+    const query = limit ? baseQ.limit(limit) : baseQ;
     
     const transactions = await query;
     
