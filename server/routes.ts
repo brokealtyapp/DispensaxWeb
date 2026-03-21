@@ -5692,16 +5692,32 @@ export async function registerRoutes(
         }
         delete body.period;
       }
+      if (body.periodStart && !(body.periodStart instanceof Date)) {
+        body.periodStart = new Date(body.periodStart);
+      }
+      if (body.periodEnd && !(body.periodEnd instanceof Date)) {
+        body.periodEnd = new Date(body.periodEnd);
+      }
       const baseSalary = parseFloat(body.baseSalary) || 0;
       const bonuses = parseFloat(body.bonuses) || 0;
       const deductions = parseFloat(body.deductions) || 0;
       const taxWithholding = parseFloat(body.taxWithholding) || 0;
       const socialSecurity = parseFloat(body.socialSecurity) || 0;
       const overtimePay = parseFloat(body.overtimePay) || 0;
-      if (!body.netPay) {
-        body.netPay = (baseSalary + bonuses + overtimePay - deductions - taxWithholding - socialSecurity).toFixed(2);
-      }
-      const data = insertPayrollRecordSchema.parse({ ...body, tenantId: req.user!.tenantId });
+      const netPay = body.netPay
+        ? parseFloat(body.netPay)
+        : baseSalary + bonuses + overtimePay - deductions - taxWithholding - socialSecurity;
+      const data = insertPayrollRecordSchema.parse({
+        ...body,
+        baseSalary: baseSalary.toFixed(2),
+        bonuses: bonuses.toFixed(2),
+        deductions: deductions.toFixed(2),
+        taxWithholding: taxWithholding.toFixed(2),
+        socialSecurity: socialSecurity.toFixed(2),
+        overtimePay: overtimePay.toFixed(2),
+        netPay: netPay.toFixed(2),
+        tenantId: req.user!.tenantId,
+      });
       const record = await storage.createPayrollRecord(data);
       res.status(201).json(record);
     } catch (error) {
@@ -5788,12 +5804,17 @@ export async function registerRoutes(
     try {
       const userId = req.body.userId || req.user?.userId;
       const body = { ...req.body, userId };
-      if (body.startDate && body.endDate && !body.daysRequested) {
-        const start = new Date(body.startDate);
-        const end = new Date(body.endDate);
-        body.daysRequested = Math.ceil((end.getTime() - start.getTime()) / 86400000) + 1;
+      const startDate = body.startDate ? new Date(body.startDate) : undefined;
+      const endDate = body.endDate ? new Date(body.endDate) : undefined;
+      if (startDate && endDate && !body.daysRequested) {
+        body.daysRequested = Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
       }
-      const data = insertVacationRequestSchema.parse({ ...body, tenantId: req.user!.tenantId });
+      const data = insertVacationRequestSchema.parse({
+        ...body,
+        startDate,
+        endDate,
+        tenantId: req.user!.tenantId,
+      });
       const request = await storage.createVacationRequest(data);
       res.status(201).json(request);
     } catch (error) {
@@ -5899,7 +5920,17 @@ export async function registerRoutes(
   app.post("/api/hr/reviews", authenticateJWT, authorizeRoles("admin", "rh", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const reviewerId = req.body.reviewerId || req.user?.userId;
-      const data = insertPerformanceReviewSchema.parse({ ...req.body, reviewerId, tenantId: req.user!.tenantId });
+      const toDecimalStr = (v: unknown) => v != null && v !== "" ? parseFloat(String(v)).toFixed(1) : undefined;
+      const data = insertPerformanceReviewSchema.parse({
+        ...req.body,
+        reviewerId,
+        tenantId: req.user!.tenantId,
+        overallScore: toDecimalStr(req.body.overallScore),
+        productivityScore: toDecimalStr(req.body.productivityScore),
+        initiativeScore: toDecimalStr(req.body.initiativeScore),
+        punctualityScore: toDecimalStr(req.body.punctualityScore),
+        teamworkScore: toDecimalStr(req.body.teamworkScore),
+      });
       const review = await storage.createPerformanceReview(data);
       res.status(201).json(review);
     } catch (error) {
@@ -5970,7 +6001,13 @@ export async function registerRoutes(
   app.post("/api/hr/documents", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const uploadedBy = req.user?.userId;
-      const data = insertEmployeeDocumentSchema.parse({ ...req.body, uploadedBy, tenantId: req.user!.tenantId });
+      const expirationDate = req.body.expirationDate ? new Date(req.body.expirationDate) : undefined;
+      const data = insertEmployeeDocumentSchema.parse({
+        ...req.body,
+        expirationDate,
+        uploadedBy,
+        tenantId: req.user!.tenantId,
+      });
       const document = await storage.createEmployeeDocument(data);
       res.status(201).json(document);
     } catch (error) {
