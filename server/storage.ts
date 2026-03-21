@@ -452,7 +452,7 @@ export interface IStorage {
   // ==================== MÓDULO RRHH ====================
   
   // Empleados (SafeUser excluye password para seguridad)
-  getEmployees(filters?: { role?: string; isActive?: boolean; search?: string }): Promise<SafeUser[]>;
+  getEmployees(filters?: { role?: string; isActive?: boolean; search?: string; tenantId?: string }): Promise<SafeUser[]>;
   getEmployee(id: string): Promise<SafeUser | undefined>;
   createEmployee(employee: InsertEmployee): Promise<SafeUser>;
   updateEmployee(id: string, data: Partial<InsertEmployee>): Promise<SafeUser | undefined>;
@@ -460,12 +460,12 @@ export interface IStorage {
   
   // Perfiles de empleados
   getEmployeeProfile(userId: string): Promise<EmployeeProfile | undefined>;
-  getEmployeeProfiles(): Promise<(EmployeeProfile & { user: SafeUser })[]>;
+  getEmployeeProfiles(tenantId?: string): Promise<(EmployeeProfile & { user: SafeUser })[]>;
   createEmployeeProfile(profile: InsertEmployeeProfile): Promise<EmployeeProfile>;
   updateEmployeeProfile(userId: string, data: Partial<InsertEmployeeProfile>): Promise<EmployeeProfile | undefined>;
   
   // Asistencia
-  getAttendance(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(EmployeeAttendance & { user: SafeUser })[]>;
+  getAttendance(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string; tenantId?: string }): Promise<(EmployeeAttendance & { user: SafeUser })[]>;
   getAttendanceRecord(id: string): Promise<EmployeeAttendance | undefined>;
   createAttendance(attendance: InsertEmployeeAttendance): Promise<EmployeeAttendance>;
   updateAttendance(id: string, data: Partial<InsertEmployeeAttendance>): Promise<EmployeeAttendance | undefined>;
@@ -482,7 +482,7 @@ export interface IStorage {
   }>;
   
   // Nómina
-  getPayrollRecords(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(PayrollRecord & { user: SafeUser })[]>;
+  getPayrollRecords(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string; tenantId?: string }): Promise<(PayrollRecord & { user: SafeUser })[]>;
   getPayrollRecord(id: string): Promise<PayrollRecord | undefined>;
   createPayrollRecord(record: InsertPayrollRecord): Promise<PayrollRecord>;
   updatePayrollRecord(id: string, data: Partial<InsertPayrollRecord>): Promise<PayrollRecord | undefined>;
@@ -490,7 +490,7 @@ export interface IStorage {
   processPayroll(id: string, processedBy: string): Promise<PayrollRecord | undefined>;
   
   // Vacaciones
-  getVacationRequests(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<(VacationRequest & { user: SafeUser })[]>;
+  getVacationRequests(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date; tenantId?: string }): Promise<(VacationRequest & { user: SafeUser })[]>;
   getVacationRequest(id: string): Promise<VacationRequest | undefined>;
   createVacationRequest(request: InsertVacationRequest): Promise<VacationRequest>;
   updateVacationRequest(id: string, data: Partial<InsertVacationRequest>): Promise<VacationRequest | undefined>;
@@ -499,14 +499,14 @@ export interface IStorage {
   cancelVacation(id: string): Promise<VacationRequest | undefined>;
   
   // Evaluaciones de desempeño
-  getPerformanceReviews(filters?: { userId?: string; reviewerId?: string; status?: string; period?: string }): Promise<(PerformanceReview & { user: SafeUser; reviewer: SafeUser })[]>;
+  getPerformanceReviews(filters?: { userId?: string; reviewerId?: string; status?: string; period?: string; tenantId?: string }): Promise<(PerformanceReview & { user: SafeUser; reviewer: SafeUser })[]>;
   getPerformanceReview(id: string): Promise<PerformanceReview | undefined>;
   createPerformanceReview(review: InsertPerformanceReview): Promise<PerformanceReview>;
   updatePerformanceReview(id: string, data: Partial<InsertPerformanceReview>): Promise<PerformanceReview | undefined>;
   deletePerformanceReview(id: string): Promise<boolean>;
   
   // Documentos
-  getEmployeeDocuments(filters?: { userId?: string; documentType?: string }): Promise<(EmployeeDocument & { user: SafeUser })[]>;
+  getEmployeeDocuments(filters?: { userId?: string; documentType?: string; tenantId?: string }): Promise<(EmployeeDocument & { user: SafeUser })[]>;
   getEmployeeDocument(id: string): Promise<EmployeeDocument | undefined>;
   createEmployeeDocument(document: InsertEmployeeDocument): Promise<EmployeeDocument>;
   updateEmployeeDocument(id: string, data: Partial<InsertEmployeeDocument>): Promise<EmployeeDocument | undefined>;
@@ -4956,9 +4956,12 @@ export class DatabaseStorage implements IStorage {
 
   // ==================== MÓDULO RRHH ====================
 
-  async getEmployees(filters?: { role?: string; isActive?: boolean; search?: string }): Promise<SafeUser[]> {
+  async getEmployees(filters?: { role?: string; isActive?: boolean; search?: string; tenantId?: string }): Promise<SafeUser[]> {
     const conditions: any[] = [];
     
+    if (filters?.tenantId) {
+      conditions.push(eq(users.tenantId, filters.tenantId));
+    }
     if (filters?.role) {
       conditions.push(eq(users.role, filters.role));
     }
@@ -5141,16 +5144,20 @@ export class DatabaseStorage implements IStorage {
     return profile;
   }
 
-  async getEmployeeProfiles(): Promise<(EmployeeProfile & { user: SafeUser })[]> {
-    const result = await db.select({
+  async getEmployeeProfiles(tenantId?: string): Promise<(EmployeeProfile & { user: SafeUser })[]> {
+    let query = db.select({
       profile: employeeProfiles,
       user: users
     })
     .from(employeeProfiles)
-    .leftJoin(users, eq(employeeProfiles.userId, users.id))
-    .orderBy(asc(users.fullName));
+    .leftJoin(users, eq(employeeProfiles.userId, users.id)) as any;
     
-    return result.map(r => ({ ...r.profile, user: excludePassword(r.user!)! }));
+    if (tenantId) {
+      query = query.where(eq(users.tenantId, tenantId));
+    }
+    
+    const result = await query.orderBy(asc(users.fullName));
+    return result.map((r: any) => ({ ...r.profile, user: excludePassword(r.user!)! }));
   }
 
   async createEmployeeProfile(profile: InsertEmployeeProfile): Promise<EmployeeProfile> {
@@ -5167,9 +5174,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Asistencia
-  async getAttendance(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(EmployeeAttendance & { user: SafeUser })[]> {
+  async getAttendance(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string; tenantId?: string }): Promise<(EmployeeAttendance & { user: SafeUser })[]> {
     const conditions: any[] = [];
     
+    if (filters?.tenantId) {
+      conditions.push(eq(employeeAttendance.tenantId, filters.tenantId));
+    }
     if (filters?.userId) {
       conditions.push(eq(employeeAttendance.userId, filters.userId));
     }
@@ -5315,9 +5325,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Nómina
-  async getPayrollRecords(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string }): Promise<(PayrollRecord & { user: SafeUser })[]> {
+  async getPayrollRecords(filters?: { userId?: string; startDate?: Date; endDate?: Date; status?: string; tenantId?: string }): Promise<(PayrollRecord & { user: SafeUser })[]> {
     const conditions: any[] = [];
     
+    if (filters?.tenantId) {
+      conditions.push(eq(payrollRecords.tenantId, filters.tenantId));
+    }
     if (filters?.userId) {
       conditions.push(eq(payrollRecords.userId, filters.userId));
     }
@@ -5376,9 +5389,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Vacaciones
-  async getVacationRequests(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<(VacationRequest & { user: SafeUser })[]> {
+  async getVacationRequests(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date; tenantId?: string }): Promise<(VacationRequest & { user: SafeUser })[]> {
     const conditions: any[] = [];
     
+    if (filters?.tenantId) {
+      conditions.push(eq(vacationRequests.tenantId, filters.tenantId));
+    }
     if (filters?.userId) {
       conditions.push(eq(vacationRequests.userId, filters.userId));
     }
@@ -5458,9 +5474,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Evaluaciones de desempeño
-  async getPerformanceReviews(filters?: { userId?: string; reviewerId?: string; status?: string; period?: string }): Promise<(PerformanceReview & { user: SafeUser; reviewer: SafeUser })[]> {
+  async getPerformanceReviews(filters?: { userId?: string; reviewerId?: string; status?: string; period?: string; tenantId?: string }): Promise<(PerformanceReview & { user: SafeUser; reviewer: SafeUser })[]> {
     const conditions: any[] = [];
     
+    if (filters?.tenantId) {
+      conditions.push(eq(performanceReviews.tenantId, filters.tenantId));
+    }
     if (filters?.userId) {
       conditions.push(eq(performanceReviews.userId, filters.userId));
     }
@@ -5521,9 +5540,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Documentos de empleados
-  async getEmployeeDocuments(filters?: { userId?: string; documentType?: string }): Promise<(EmployeeDocument & { user: SafeUser })[]> {
+  async getEmployeeDocuments(filters?: { userId?: string; documentType?: string; tenantId?: string }): Promise<(EmployeeDocument & { user: SafeUser })[]> {
     const conditions: any[] = [];
     
+    if (filters?.tenantId) {
+      conditions.push(eq(employeeDocuments.tenantId, filters.tenantId));
+    }
     if (filters?.userId) {
       conditions.push(eq(employeeDocuments.userId, filters.userId));
     }

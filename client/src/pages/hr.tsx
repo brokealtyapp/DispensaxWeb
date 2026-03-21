@@ -91,13 +91,14 @@ interface AttendanceRecord {
 interface PayrollRecord {
   id: string;
   userId: string;
-  period: string;
+  periodStart: string;
+  periodEnd: string;
   baseSalary: string | number;
   bonuses: string | number;
   deductions: string | number;
-  netSalary: string | number;
+  netPay: string | number;
   status: string;
-  processedAt: string | null;
+  paymentDate: string | null;
   user?: { fullName: string; username: string };
 }
 
@@ -106,7 +107,7 @@ interface VacationRequest {
   userId: string;
   startDate: string;
   endDate: string;
-  days: number;
+  daysRequested: number;
   reason: string | null;
   status: string;
   approvedBy: string | null;
@@ -118,12 +119,12 @@ interface PerformanceReview {
   id: string;
   userId: string;
   reviewerId: string;
-  period: string;
-  overallRating: string | number;
-  productivity: string | number;
-  quality: string | number;
-  punctuality: string | number;
-  teamwork: string | number;
+  reviewPeriod: string;
+  overallScore: string | number;
+  productivityScore: string | number;
+  initiativeScore: string | number;
+  punctualityScore: string | number;
+  teamworkScore: string | number;
   comments: string | null;
   user?: { fullName: string; username: string };
   reviewer?: { fullName: string };
@@ -132,10 +133,10 @@ interface PerformanceReview {
 interface EmployeeDocument {
   id: string;
   userId: string;
-  type: string;
+  documentType: string;
   name: string;
-  url: string | null;
-  expiresAt: string | null;
+  fileUrl: string | null;
+  expirationDate: string | null;
   user?: { fullName: string; username: string };
 }
 
@@ -167,7 +168,8 @@ const attendanceSchema = z.object({
 
 const payrollSchema = z.object({
   userId: z.string().min(1, "Selecciona un empleado"),
-  period: z.string().min(1, "Periodo requerido"),
+  periodStart: z.string().min(1, "Fecha de inicio requerida"),
+  periodEnd: z.string().min(1, "Fecha de fin requerida"),
   baseSalary: z.coerce.number().min(0, "Salario inválido"),
   bonuses: z.coerce.number().min(0).default(0),
   deductions: z.coerce.number().min(0).default(0),
@@ -187,21 +189,21 @@ const vacationSchema = z.object({
 
 const reviewSchema = z.object({
   userId: z.string().min(1, "Selecciona un empleado"),
-  period: z.string().min(1, "Periodo requerido"),
-  overallRating: z.coerce.number().min(1).max(5),
-  productivity: z.coerce.number().min(1).max(5),
-  quality: z.coerce.number().min(1).max(5),
-  punctuality: z.coerce.number().min(1).max(5),
-  teamwork: z.coerce.number().min(1).max(5),
+  reviewPeriod: z.string().min(1, "Periodo requerido"),
+  overallScore: z.coerce.number().min(1).max(5),
+  productivityScore: z.coerce.number().min(1).max(5),
+  initiativeScore: z.coerce.number().min(1).max(5),
+  punctualityScore: z.coerce.number().min(1).max(5),
+  teamworkScore: z.coerce.number().min(1).max(5),
   comments: z.string().optional(),
 });
 
 const documentSchema = z.object({
   userId: z.string().min(1, "Selecciona un empleado"),
-  type: z.string().min(1, "Tipo requerido"),
+  documentType: z.string().min(1, "Tipo requerido"),
   name: z.string().min(1, "Nombre requerido"),
-  url: z.string().optional(),
-  expiresAt: z.string().optional(),
+  fileUrl: z.string().optional(),
+  expirationDate: z.string().optional(),
 });
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
@@ -222,30 +224,25 @@ const roleLabels: Record<string, string> = {
 };
 
 const attendanceStatusLabels: Record<string, string> = {
-  present: "Presente",
   presente: "Presente",
-  absent: "Ausente",
   ausente: "Ausente",
-  late: "Tardanza",
   tarde: "Tardanza",
-  vacation: "Vacaciones",
   vacaciones: "Vacaciones",
-  sick: "Enfermedad",
   enfermedad: "Enfermedad",
   permiso: "Permiso",
 };
 
 const payrollStatusLabels: Record<string, string> = {
-  pending: "Pendiente",
-  processed: "Procesado",
-  paid: "Pagado",
+  pendiente: "Pendiente",
+  procesado: "Procesado",
+  pagado: "Pagado",
 };
 
 const vacationStatusLabels: Record<string, string> = {
-  pending: "Pendiente",
-  approved: "Aprobada",
-  rejected: "Rechazada",
-  cancelled: "Cancelada",
+  pendiente: "Pendiente",
+  aprobado: "Aprobada",
+  rechazado: "Rechazada",
+  cancelado: "Cancelada",
 };
 
 const documentTypeLabels: Record<string, string> = {
@@ -300,12 +297,12 @@ export function HRPage() {
 
   const attendanceForm = useForm<AttendanceFormData>({
     resolver: zodResolver(attendanceSchema),
-    defaultValues: { userId: "", date: "", checkIn: "", checkOut: "", status: "present", notes: "" },
+    defaultValues: { userId: "", date: "", checkIn: "", checkOut: "", status: "presente", notes: "" },
   });
 
   const payrollForm = useForm<PayrollFormData>({
     resolver: zodResolver(payrollSchema),
-    defaultValues: { userId: "", period: "", baseSalary: 0, bonuses: 0, deductions: 0 },
+    defaultValues: { userId: "", periodStart: "", periodEnd: "", baseSalary: 0, bonuses: 0, deductions: 0 },
   });
 
   const vacationForm = useForm<VacationFormData>({
@@ -315,12 +312,12 @@ export function HRPage() {
 
   const reviewForm = useForm<ReviewFormData>({
     resolver: zodResolver(reviewSchema),
-    defaultValues: { userId: "", period: "", overallRating: 3, productivity: 3, quality: 3, punctuality: 3, teamwork: 3, comments: "" },
+    defaultValues: { userId: "", reviewPeriod: "", overallScore: 3, productivityScore: 3, initiativeScore: 3, punctualityScore: 3, teamworkScore: 3, comments: "" },
   });
 
   const documentForm = useForm<DocumentFormData>({
     resolver: zodResolver(documentSchema),
-    defaultValues: { userId: "", type: "", name: "", url: "", expiresAt: "" },
+    defaultValues: { userId: "", documentType: "", name: "", fileUrl: "", expirationDate: "" },
   });
 
   const { data: employees, isLoading: loadingEmployees } = useQuery<Employee[]>({
@@ -561,7 +558,8 @@ export function HRPage() {
     setEditingPayroll(record);
     payrollForm.reset({
       userId: record.userId,
-      period: record.period,
+      periodStart: record.periodStart ? record.periodStart.substring(0, 10) : "",
+      periodEnd: record.periodEnd ? record.periodEnd.substring(0, 10) : "",
       baseSalary: Number(record.baseSalary) || 0,
       bonuses: Number(record.bonuses) || 0,
       deductions: Number(record.deductions) || 0,
@@ -573,12 +571,12 @@ export function HRPage() {
     setEditingReview(review);
     reviewForm.reset({
       userId: review.userId,
-      period: review.period,
-      overallRating: Number(review.overallRating) || 3,
-      productivity: Number(review.productivity) || 3,
-      quality: Number(review.quality) || 3,
-      punctuality: Number(review.punctuality) || 3,
-      teamwork: Number(review.teamwork) || 3,
+      reviewPeriod: review.reviewPeriod,
+      overallScore: Number(review.overallScore) || 3,
+      productivityScore: Number(review.productivityScore) || 3,
+      initiativeScore: Number(review.initiativeScore) || 3,
+      punctualityScore: Number(review.punctualityScore) || 3,
+      teamworkScore: Number(review.teamworkScore) || 3,
       comments: review.comments || "",
     });
     setIsReviewDialogOpen(true);
@@ -588,10 +586,10 @@ export function HRPage() {
     setEditingDocument(doc);
     documentForm.reset({
       userId: doc.userId,
-      type: doc.type,
+      documentType: doc.documentType,
       name: doc.name,
-      url: doc.url || "",
-      expiresAt: doc.expiresAt || "",
+      fileUrl: doc.fileUrl || "",
+      expirationDate: doc.expirationDate ? doc.expirationDate.substring(0, 10) : "",
     });
     setIsDocumentDialogOpen(true);
   };
@@ -650,10 +648,10 @@ export function HRPage() {
   const hasActiveFilters = searchQuery || roleFilter !== "all" || statusFilter !== "all";
 
   const activeEmployees = (employees || []).filter((e) => e.isActive).length;
-  const pendingVacations = (vacationRequests || []).filter((v) => v.status === "pending").length;
-  const pendingPayroll = (payrollRecords || []).filter((p) => p.status === "pending").length;
+  const pendingVacations = (vacationRequests || []).filter((v) => v.status === "pendiente").length;
+  const pendingPayroll = (payrollRecords || []).filter((p) => p.status === "pendiente").length;
   const avgRating = performanceReviews?.length
-    ? (performanceReviews.reduce((acc, p) => acc + (Number(p.overallRating) || 0), 0) / performanceReviews.length).toFixed(1)
+    ? (performanceReviews.reduce((acc, p) => acc + (Number(p.overallScore) || 0), 0) / performanceReviews.length).toFixed(1)
     : "0";
 
   const employeeColumns: Column<Employee>[] = [
@@ -720,7 +718,7 @@ export function HRPage() {
       key: "status",
       header: "Estado",
       render: (item) => (
-        <Badge variant="secondary" className={item.status === "present" ? "bg-emerald-500/10 text-emerald-500" : item.status === "absent" ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-500"}>
+        <Badge variant="secondary" className={item.status === "presente" ? "bg-emerald-500/10 text-emerald-500" : item.status === "ausente" ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-500"}>
           {attendanceStatusLabels[item.status] || item.status}
         </Badge>
       ),
@@ -744,17 +742,20 @@ export function HRPage() {
   ];
 
   const payrollColumns: Column<PayrollRecord>[] = [
-    { key: "period", header: "Periodo" },
+    { key: "periodStart", header: "Periodo", render: (item) => {
+      const start = item.periodStart ? new Date(item.periodStart).toLocaleDateString("es-DO", { month: "short", year: "numeric" }) : "-";
+      return start;
+    }},
     { key: "userId", header: "Empleado", render: (item) => item.user?.fullName || item.user?.username || "-" },
     { key: "baseSalary", header: "Salario Base", render: (item) => formatCurrency(item.baseSalary) },
     { key: "bonuses", header: "Bonos", render: (item) => formatCurrency(item.bonuses) },
     { key: "deductions", header: "Deducciones", render: (item) => formatCurrency(item.deductions) },
-    { key: "netSalary", header: "Neto", render: (item) => <span className="font-semibold">{formatCurrency(item.netSalary)}</span> },
+    { key: "netPay", header: "Neto", render: (item) => <span className="font-semibold">{formatCurrency(item.netPay)}</span> },
     {
       key: "status",
       header: "Estado",
       render: (item) => (
-        <Badge variant="secondary" className={item.status === "paid" ? "bg-emerald-500/10 text-emerald-500" : item.status === "processed" ? "bg-blue-500/10 text-blue-500" : "bg-amber-500/10 text-amber-500"}>
+        <Badge variant="secondary" className={item.status === "pagado" ? "bg-emerald-500/10 text-emerald-500" : item.status === "procesado" ? "bg-blue-500/10 text-blue-500" : "bg-amber-500/10 text-amber-500"}>
           {payrollStatusLabels[item.status] || item.status}
         </Badge>
       ),
@@ -764,7 +765,7 @@ export function HRPage() {
       header: "",
       render: (item) => (
         <div className="flex items-center gap-1">
-          {item.status === "pending" && canEdit("payroll") && (
+          {item.status === "pendiente" && canEdit("payroll") && (
             <>
               <Button variant="ghost" size="icon" onClick={() => openEditPayroll(item)} data-testid={`button-edit-payroll-${item.id}`}>
                 <Pencil className="h-4 w-4" />
@@ -783,13 +784,13 @@ export function HRPage() {
     { key: "userId", header: "Empleado", render: (item) => item.user?.fullName || item.user?.username || "-" },
     { key: "startDate", header: "Inicio" },
     { key: "endDate", header: "Fin" },
-    { key: "days", header: "Días" },
+    { key: "daysRequested", header: "Días" },
     { key: "reason", header: "Razón", render: (item) => item.reason || "-" },
     {
       key: "status",
       header: "Estado",
       render: (item) => (
-        <Badge variant="secondary" className={item.status === "approved" ? "bg-emerald-500/10 text-emerald-500" : item.status === "rejected" ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-500"}>
+        <Badge variant="secondary" className={item.status === "aprobado" ? "bg-emerald-500/10 text-emerald-500" : item.status === "rechazado" ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-500"}>
           {vacationStatusLabels[item.status] || item.status}
         </Badge>
       ),
@@ -797,7 +798,7 @@ export function HRPage() {
     {
       key: "id",
       header: "",
-      render: (item) => item.status === "pending" && canEdit("vacations") ? (
+      render: (item) => item.status === "pendiente" && canEdit("vacations") ? (
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon" className="text-emerald-500" onClick={() => approveVacationMutation.mutate(item.id)} data-testid={`button-approve-vacation-${item.id}`}>
             <Check className="h-4 w-4" />
@@ -812,16 +813,16 @@ export function HRPage() {
 
   const reviewColumns: Column<PerformanceReview>[] = [
     { key: "userId", header: "Empleado", render: (item) => item.user?.fullName || item.user?.username || "-" },
-    { key: "period", header: "Periodo" },
-    { key: "overallRating", header: "Calificación", render: (item) => (
+    { key: "reviewPeriod", header: "Periodo" },
+    { key: "overallScore", header: "Calificación", render: (item) => (
       <div className="flex items-center gap-1">
         <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
-        <span>{item.overallRating}/5</span>
+        <span>{item.overallScore}/5</span>
       </div>
     )},
-    { key: "productivity", header: "Productividad", render: (item) => `${item.productivity}/5` },
-    { key: "quality", header: "Calidad", render: (item) => `${item.quality}/5` },
-    { key: "punctuality", header: "Puntualidad", render: (item) => `${item.punctuality}/5` },
+    { key: "productivityScore", header: "Productividad", render: (item) => `${item.productivityScore}/5` },
+    { key: "initiativeScore", header: "Iniciativa", render: (item) => `${item.initiativeScore}/5` },
+    { key: "punctualityScore", header: "Puntualidad", render: (item) => `${item.punctualityScore}/5` },
     { key: "reviewerId", header: "Evaluador", render: (item) => item.reviewer?.fullName || "-" },
     {
       key: "id",
@@ -843,17 +844,17 @@ export function HRPage() {
 
   const documentColumns: Column<EmployeeDocument>[] = [
     { key: "userId", header: "Empleado", render: (item) => item.user?.fullName || item.user?.username || "-" },
-    { key: "type", header: "Tipo", render: (item) => <Badge variant="secondary">{documentTypeLabels[item.type] || item.type}</Badge> },
+    { key: "documentType", header: "Tipo", render: (item) => <Badge variant="secondary">{documentTypeLabels[item.documentType] || item.documentType}</Badge> },
     { key: "name", header: "Nombre" },
-    { key: "expiresAt", header: "Vence", render: (item) => item.expiresAt || "Sin vencimiento" },
+    { key: "expirationDate", header: "Vence", render: (item) => item.expirationDate ? new Date(item.expirationDate).toLocaleDateString("es-DO") : "Sin vencimiento" },
     {
       key: "id",
       header: "",
       render: (item) => (
         <div className="flex items-center gap-1">
-          {item.url && (
+          {item.fileUrl && (
             <Button variant="ghost" size="icon" asChild data-testid={`button-view-doc-${item.id}`}>
-              <a href={item.url} target="_blank" rel="noopener noreferrer"><Eye className="h-4 w-4" /></a>
+              <a href={item.fileUrl} target="_blank" rel="noopener noreferrer"><Eye className="h-4 w-4" /></a>
             </Button>
           )}
           {canEdit("employee_documents") && (
@@ -1157,7 +1158,10 @@ export function HRPage() {
                     <SelectContent>{(employees || []).filter(e => e.isActive).map((emp) => (<SelectItem key={emp.id} value={emp.id}>{emp.fullName || emp.username}</SelectItem>))}</SelectContent></Select>
                 <FormMessage /></FormItem>
               )} />
-              <FormField control={payrollForm.control} name="period" render={({ field }) => (<FormItem><FormLabel>Periodo</FormLabel><FormControl><Input placeholder="Ej: 2026-01" {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={payrollForm.control} name="periodStart" render={({ field }) => (<FormItem><FormLabel>Inicio de Periodo</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                <FormField control={payrollForm.control} name="periodEnd" render={({ field }) => (<FormItem><FormLabel>Fin de Periodo</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+              </div>
               <FormField control={payrollForm.control} name="baseSalary" render={({ field }) => (<FormItem><FormLabel>Salario Base (RD$)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>)} />
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={payrollForm.control} name="bonuses" render={({ field }) => (<FormItem><FormLabel>Bonos (RD$)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>)} />
@@ -1221,13 +1225,13 @@ export function HRPage() {
                     <SelectContent>{(employees || []).filter(e => e.isActive).map((emp) => (<SelectItem key={emp.id} value={emp.id}>{emp.fullName || emp.username}</SelectItem>))}</SelectContent></Select>
                 <FormMessage /></FormItem>
               )} />
-              <FormField control={reviewForm.control} name="period" render={({ field }) => (<FormItem><FormLabel>Periodo</FormLabel><FormControl><Input placeholder="Ej: Q4 2025" {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={reviewForm.control} name="reviewPeriod" render={({ field }) => (<FormItem><FormLabel>Periodo</FormLabel><FormControl><Input placeholder="Ej: Q4 2025" {...field} /></FormControl><FormMessage /></FormItem>)} />
               <div className="grid grid-cols-2 gap-4">
-                <FormField control={reviewForm.control} name="overallRating" render={({ field }) => (<FormItem><FormLabel>Calificación General (1-5)</FormLabel><FormControl><Input type="number" min={1} max={5} {...field} /></FormControl><FormMessage /></FormItem>)} />
-                <FormField control={reviewForm.control} name="productivity" render={({ field }) => (<FormItem><FormLabel>Productividad (1-5)</FormLabel><FormControl><Input type="number" min={1} max={5} {...field} /></FormControl><FormMessage /></FormItem>)} />
-                <FormField control={reviewForm.control} name="quality" render={({ field }) => (<FormItem><FormLabel>Calidad (1-5)</FormLabel><FormControl><Input type="number" min={1} max={5} {...field} /></FormControl><FormMessage /></FormItem>)} />
-                <FormField control={reviewForm.control} name="punctuality" render={({ field }) => (<FormItem><FormLabel>Puntualidad (1-5)</FormLabel><FormControl><Input type="number" min={1} max={5} {...field} /></FormControl><FormMessage /></FormItem>)} />
-                <FormField control={reviewForm.control} name="teamwork" render={({ field }) => (<FormItem><FormLabel>Trabajo en Equipo (1-5)</FormLabel><FormControl><Input type="number" min={1} max={5} {...field} /></FormControl><FormMessage /></FormItem>)} />
+                <FormField control={reviewForm.control} name="overallScore" render={({ field }) => (<FormItem><FormLabel>Calificación General (1-5)</FormLabel><FormControl><Input type="number" min={1} max={5} {...field} /></FormControl><FormMessage /></FormItem>)} />
+                <FormField control={reviewForm.control} name="productivityScore" render={({ field }) => (<FormItem><FormLabel>Productividad (1-5)</FormLabel><FormControl><Input type="number" min={1} max={5} {...field} /></FormControl><FormMessage /></FormItem>)} />
+                <FormField control={reviewForm.control} name="initiativeScore" render={({ field }) => (<FormItem><FormLabel>Iniciativa (1-5)</FormLabel><FormControl><Input type="number" min={1} max={5} {...field} /></FormControl><FormMessage /></FormItem>)} />
+                <FormField control={reviewForm.control} name="punctualityScore" render={({ field }) => (<FormItem><FormLabel>Puntualidad (1-5)</FormLabel><FormControl><Input type="number" min={1} max={5} {...field} /></FormControl><FormMessage /></FormItem>)} />
+                <FormField control={reviewForm.control} name="teamworkScore" render={({ field }) => (<FormItem><FormLabel>Trabajo en Equipo (1-5)</FormLabel><FormControl><Input type="number" min={1} max={5} {...field} /></FormControl><FormMessage /></FormItem>)} />
               </div>
               <FormField control={reviewForm.control} name="comments" render={({ field }) => (<FormItem><FormLabel>Comentarios</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
               <div className="flex justify-end gap-2 pt-4">
@@ -1251,15 +1255,15 @@ export function HRPage() {
                     <SelectContent>{(employees || []).filter(e => e.isActive).map((emp) => (<SelectItem key={emp.id} value={emp.id}>{emp.fullName || emp.username}</SelectItem>))}</SelectContent></Select>
                 <FormMessage /></FormItem>
               )} />
-              <FormField control={documentForm.control} name="type" render={({ field }) => (
+              <FormField control={documentForm.control} name="documentType" render={({ field }) => (
                 <FormItem><FormLabel>Tipo de Documento</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Selecciona tipo" /></SelectTrigger></FormControl>
                     <SelectContent>{Object.entries(documentTypeLabels).map(([value, label]) => (<SelectItem key={value} value={value}>{label}</SelectItem>))}</SelectContent></Select>
                 <FormMessage /></FormItem>
               )} />
               <FormField control={documentForm.control} name="name" render={({ field }) => (<FormItem><FormLabel>Nombre del Documento</FormLabel><FormControl><Input placeholder="Ej: Cédula de identidad" {...field} /></FormControl><FormMessage /></FormItem>)} />
-              <FormField control={documentForm.control} name="url" render={({ field }) => (<FormItem><FormLabel>URL del Documento (opcional)</FormLabel><FormControl><Input placeholder="https://..." {...field} /></FormControl><FormMessage /></FormItem>)} />
-              <FormField control={documentForm.control} name="expiresAt" render={({ field }) => (<FormItem><FormLabel>Fecha de Vencimiento (opcional)</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={documentForm.control} name="fileUrl" render={({ field }) => (<FormItem><FormLabel>URL del Documento (opcional)</FormLabel><FormControl><Input placeholder="https://..." {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={documentForm.control} name="expirationDate" render={({ field }) => (<FormItem><FormLabel>Fecha de Vencimiento (opcional)</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDocumentDialogOpen(false)}>Cancelar</Button>
                 <Button type="submit" disabled={createDocumentMutation.isPending || updateDocumentMutation.isPending}>{editingDocument ? "Guardar" : "Subir"}</Button>
@@ -1278,7 +1282,7 @@ export function HRPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => deletingEmployeeId && deleteEmployeeMutation.mutate(deletingEmployeeId)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-delete">Desactivar</AlertDialogAction>
+            <AlertDialogAction onClick={() => deletingEmployeeId && deleteEmployeeMutation.mutate(deletingEmployeeId)} className="bg-destructive text-destructive-foreground" data-testid="button-confirm-delete">Desactivar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

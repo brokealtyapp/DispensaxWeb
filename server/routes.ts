@@ -5340,7 +5340,8 @@ export async function registerRoutes(
       const employees = await storage.getEmployees({
         role: role as string | undefined,
         isActive: isActive === "true" ? true : isActive === "false" ? false : undefined,
-        search: search as string | undefined
+        search: search as string | undefined,
+        tenantId: req.user?.isSuperAdmin ? undefined : req.user!.tenantId
       });
       res.json(employees);
     } catch (error) {
@@ -5363,7 +5364,7 @@ export async function registerRoutes(
 
   app.post("/api/hr/employees", authenticateJWT, authorizeAction("employees", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertEmployeeSchema.parse(req.body);
+      const data = insertEmployeeSchema.parse({ ...req.body, tenantId: req.user!.tenantId });
       
       if (!data.password || data.password.length < 6) {
         return res.status(400).json({ error: "La contraseña debe tener al menos 6 caracteres" });
@@ -5477,7 +5478,8 @@ export async function registerRoutes(
   // Employee Profiles
   app.get("/api/hr/profiles", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const profiles = await storage.getEmployeeProfiles();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const profiles = await storage.getEmployeeProfiles(tenantId);
       res.json(profiles);
     } catch (error) {
       console.error("Error getting employee profiles:", error);
@@ -5537,7 +5539,8 @@ export async function registerRoutes(
         userId: userId as string | undefined,
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined,
-        status: status as string | undefined
+        status: status as string | undefined,
+        tenantId: req.user?.isSuperAdmin ? undefined : req.user!.tenantId
       });
       res.json(attendance);
     } catch (error) {
@@ -5561,7 +5564,7 @@ export async function registerRoutes(
 
   app.post("/api/hr/attendance", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertEmployeeAttendanceSchema.parse(req.body);
+      const data = insertEmployeeAttendanceSchema.parse({ ...req.body, tenantId: req.user!.tenantId });
       const attendance = await storage.createAttendance(data);
       res.status(201).json(attendance);
     } catch (error) {
@@ -5652,7 +5655,8 @@ export async function registerRoutes(
         userId: userId as string | undefined,
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined,
-        status: status as string | undefined
+        status: status as string | undefined,
+        tenantId: req.user?.isSuperAdmin ? undefined : req.user!.tenantId
       });
       res.json(records);
     } catch (error) {
@@ -5676,7 +5680,25 @@ export async function registerRoutes(
 
   app.post("/api/hr/payroll", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertPayrollRecordSchema.parse(req.body);
+      const body = { ...req.body };
+      if (body.period && !body.periodStart && !body.periodEnd) {
+        const [year, month] = String(body.period).split("-").map(Number);
+        if (year && month) {
+          body.periodStart = new Date(year, month - 1, 1);
+          body.periodEnd = new Date(year, month, 0, 23, 59, 59);
+        }
+        delete body.period;
+      }
+      const baseSalary = parseFloat(body.baseSalary) || 0;
+      const bonuses = parseFloat(body.bonuses) || 0;
+      const deductions = parseFloat(body.deductions) || 0;
+      const taxWithholding = parseFloat(body.taxWithholding) || 0;
+      const socialSecurity = parseFloat(body.socialSecurity) || 0;
+      const overtimePay = parseFloat(body.overtimePay) || 0;
+      if (!body.netPay) {
+        body.netPay = (baseSalary + bonuses + overtimePay - deductions - taxWithholding - socialSecurity).toFixed(2);
+      }
+      const data = insertPayrollRecordSchema.parse({ ...body, tenantId: req.user!.tenantId });
       const record = await storage.createPayrollRecord(data);
       res.status(201).json(record);
     } catch (error) {
@@ -5736,7 +5758,8 @@ export async function registerRoutes(
         userId: userId as string | undefined,
         status: status as string | undefined,
         startDate: startDate ? new Date(startDate as string) : undefined,
-        endDate: endDate ? new Date(endDate as string) : undefined
+        endDate: endDate ? new Date(endDate as string) : undefined,
+        tenantId: req.user?.isSuperAdmin ? undefined : req.user!.tenantId
       });
       res.json(requests);
     } catch (error) {
@@ -5761,7 +5784,13 @@ export async function registerRoutes(
   app.post("/api/hr/vacations", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const userId = req.body.userId || req.user?.userId;
-      const data = insertVacationRequestSchema.parse({ ...req.body, userId });
+      const body = { ...req.body, userId };
+      if (body.startDate && body.endDate && !body.daysRequested) {
+        const start = new Date(body.startDate);
+        const end = new Date(body.endDate);
+        body.daysRequested = Math.ceil((end.getTime() - start.getTime()) / 86400000) + 1;
+      }
+      const data = insertVacationRequestSchema.parse({ ...body, tenantId: req.user!.tenantId });
       const request = await storage.createVacationRequest(data);
       res.status(201).json(request);
     } catch (error) {
@@ -5841,7 +5870,8 @@ export async function registerRoutes(
         userId: userId as string | undefined,
         reviewerId: reviewerId as string | undefined,
         status: status as string | undefined,
-        period: period as string | undefined
+        period: period as string | undefined,
+        tenantId: req.user?.isSuperAdmin ? undefined : req.user!.tenantId
       });
       res.json(reviews);
     } catch (error) {
@@ -5866,7 +5896,7 @@ export async function registerRoutes(
   app.post("/api/hr/reviews", authenticateJWT, authorizeRoles("admin", "rh", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const reviewerId = req.body.reviewerId || req.user?.userId;
-      const data = insertPerformanceReviewSchema.parse({ ...req.body, reviewerId });
+      const data = insertPerformanceReviewSchema.parse({ ...req.body, reviewerId, tenantId: req.user!.tenantId });
       const review = await storage.createPerformanceReview(data);
       res.status(201).json(review);
     } catch (error) {
@@ -5911,7 +5941,8 @@ export async function registerRoutes(
       const { userId, documentType } = req.query;
       const documents = await storage.getEmployeeDocuments({
         userId: userId as string | undefined,
-        documentType: documentType as string | undefined
+        documentType: documentType as string | undefined,
+        tenantId: req.user?.isSuperAdmin ? undefined : req.user!.tenantId
       });
       res.json(documents);
     } catch (error) {
@@ -5936,7 +5967,7 @@ export async function registerRoutes(
   app.post("/api/hr/documents", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const uploadedBy = req.user?.userId;
-      const data = insertEmployeeDocumentSchema.parse({ ...req.body, uploadedBy });
+      const data = insertEmployeeDocumentSchema.parse({ ...req.body, uploadedBy, tenantId: req.user!.tenantId });
       const document = await storage.createEmployeeDocument(data);
       res.status(201).json(document);
     } catch (error) {
