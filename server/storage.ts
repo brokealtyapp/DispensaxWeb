@@ -5735,6 +5735,7 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(tasks)
       .set({
         status: "cancelada",
+        cancelledBy,
         updatedAt: new Date(),
       })
       .where(eq(tasks.id, id))
@@ -5770,23 +5771,24 @@ export class DatabaseStorage implements IStorage {
       conditions.push(lte(tasks.dueDate, filters.endDate));
     }
 
-    const taskList = conditions.length > 0
-      ? await db.select().from(tasks).where(and(...conditions))
-      : await db.select().from(tasks);
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const now = new Date();
-    const overdue = taskList.filter(t => 
-      t.dueDate && new Date(t.dueDate) < now && 
-      (t.status === "pendiente" || t.status === "en_progreso")
-    ).length;
+    const [result] = await db.select({
+      total: count(),
+      pending: sql<number>`COUNT(CASE WHEN ${tasks.status} = 'pendiente' THEN 1 END)`,
+      inProgress: sql<number>`COUNT(CASE WHEN ${tasks.status} = 'en_progreso' THEN 1 END)`,
+      completed: sql<number>`COUNT(CASE WHEN ${tasks.status} = 'completada' THEN 1 END)`,
+      cancelled: sql<number>`COUNT(CASE WHEN ${tasks.status} = 'cancelada' THEN 1 END)`,
+      overdue: sql<number>`COUNT(CASE WHEN ${tasks.dueDate} < NOW() AND ${tasks.status} IN ('pendiente', 'en_progreso') THEN 1 END)`,
+    }).from(tasks).where(whereClause);
 
     return {
-      total: taskList.length,
-      pending: taskList.filter(t => t.status === "pendiente").length,
-      inProgress: taskList.filter(t => t.status === "en_progreso").length,
-      completed: taskList.filter(t => t.status === "completada").length,
-      cancelled: taskList.filter(t => t.status === "cancelada").length,
-      overdue
+      total: Number(result.total),
+      pending: Number(result.pending),
+      inProgress: Number(result.inProgress),
+      completed: Number(result.completed),
+      cancelled: Number(result.cancelled),
+      overdue: Number(result.overdue),
     };
   }
 

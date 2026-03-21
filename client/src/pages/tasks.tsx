@@ -27,13 +27,15 @@ import {
   Edit,
   Flag,
   Wrench,
+  Hammer,
   Package,
   Truck,
   ClipboardList,
   Sparkles,
   Coffee,
   Users,
-  ListTodo
+  ListTodo,
+  X
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -89,7 +91,7 @@ const typeConfig: Record<string, { label: string; icon: any }> = {
   recoleccion: { label: "Recolección", icon: Truck },
   revision: { label: "Revisión", icon: ClipboardList },
   limpieza: { label: "Limpieza", icon: Sparkles },
-  reparacion: { label: "Reparación", icon: Wrench },
+  reparacion: { label: "Reparación", icon: Hammer },
   reunion: { label: "Reunión", icon: Users },
   otro: { label: "Otro", icon: Coffee },
 };
@@ -103,7 +105,6 @@ export function TasksPage() {
   const [isEditTaskOpen, setIsEditTaskOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [filterPriority, setFilterPriority] = useState<string>("");
-  const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterType, setFilterType] = useState<string>("");
 
   const taskForm = useForm<TaskFormData>({
@@ -125,7 +126,6 @@ export function TasksPage() {
   const buildTasksQueryKey = () => {
     const params = new URLSearchParams();
     if (filterPriority && filterPriority !== "all") params.append("priority", filterPriority);
-    if (filterStatus && filterStatus !== "all") params.append("status", filterStatus);
     if (filterType && filterType !== "all") params.append("type", filterType);
     const queryString = params.toString();
     return queryString ? `/api/tasks?${queryString}` : "/api/tasks";
@@ -701,28 +701,41 @@ export function TasksPage() {
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
                         <FormLabel>Fecha</FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant="outline"
-                                className="justify-start text-left font-normal"
-                                data-testid="button-task-date"
-                              >
-                                <Calendar className="mr-2 h-4 w-4" />
-                                {field.value ? formatDate(field.value) : "Seleccionar"}
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <CalendarComponent
-                              mode="single"
-                              selected={field.value}
-                              onSelect={field.onChange}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
+                        <div className="flex items-center gap-1">
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant="outline"
+                                  className="flex-1 justify-start text-left font-normal"
+                                  data-testid="button-task-date"
+                                >
+                                  <Calendar className="mr-2 h-4 w-4" />
+                                  {field.value ? formatDate(field.value) : "Seleccionar"}
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <CalendarComponent
+                                mode="single"
+                                selected={field.value}
+                                onSelect={field.onChange}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          {field.value && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => field.onChange(undefined)}
+                              data-testid="button-task-date-clear"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -967,28 +980,41 @@ export function TasksPage() {
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
                         <FormLabel>Fecha</FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant="outline"
-                                className="justify-start text-left font-normal"
-                                data-testid="button-edit-task-date"
-                              >
-                                <Calendar className="mr-2 h-4 w-4" />
-                                {field.value ? formatDate(field.value) : "Seleccionar"}
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <CalendarComponent
-                              mode="single"
-                              selected={field.value}
-                              onSelect={field.onChange}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
+                        <div className="flex items-center gap-1">
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant="outline"
+                                  className="flex-1 justify-start text-left font-normal"
+                                  data-testid="button-edit-task-date"
+                                >
+                                  <Calendar className="mr-2 h-4 w-4" />
+                                  {field.value ? formatDate(field.value) : "Seleccionar"}
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <CalendarComponent
+                                mode="single"
+                                selected={field.value}
+                                onSelect={field.onChange}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          {field.value && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => field.onChange(undefined)}
+                              data-testid="button-edit-task-date-clear"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}

@@ -1730,6 +1730,7 @@ export const tasks = pgTable("tasks", {
   notes: text("notes"),
   completedAt: timestamp("completed_at"),
   completedBy: varchar("completed_by").references(() => users.id),
+  cancelledBy: varchar("cancelled_by").references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -1741,6 +1742,7 @@ export const insertTaskSchema = createInsertSchema(tasks).omit({
   updatedAt: true,
   completedAt: true,
   completedBy: true,
+  cancelledBy: true,
 });
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
