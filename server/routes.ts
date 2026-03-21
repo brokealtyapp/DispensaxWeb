@@ -2057,10 +2057,12 @@ export async function registerRoutes(
       const { date, status } = req.query;
       // Abastecedor solo ve sus propias rutas
       const effectiveUserId = getEffectiveUserId(req, "userId");
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const routes = await storage.getRoutes(
         effectiveUserId,
         date ? new Date(date as string) : undefined,
-        status as string | undefined
+        status as string | undefined,
+        tenantId
       );
       res.json(routes);
     } catch (error) {
@@ -2102,8 +2104,9 @@ export async function registerRoutes(
 
   app.post("/api/supplier/routes", authenticateJWT, authorizeAction("routes", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertRouteSchema.parse(req.body);
-      const route = await storage.createRoute(data);
+      const tenantId = req.user!.tenantId;
+      const data = insertRouteSchema.omit({ tenantId: true }).parse(req.body);
+      const route = await storage.createRoute({ ...data, tenantId });
       res.status(201).json(route);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2134,6 +2137,7 @@ export async function registerRoutes(
 
   app.post("/api/supplier/routes/:id/start", authenticateJWT, authorizeAction("routes", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyRouteTenant(req.params.id, req, res)) return;
       // Verificar ownership para abastecedor
       const existingRoute = await storage.getRoute(req.params.id);
       if (!existingRoute) {
@@ -2151,6 +2155,7 @@ export async function registerRoutes(
 
   app.post("/api/supplier/routes/:id/complete", authenticateJWT, authorizeAction("routes", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyRouteTenant(req.params.id, req, res)) return;
       // Verificar ownership para abastecedor
       const existingRoute = await storage.getRoute(req.params.id);
       if (!existingRoute) {
@@ -2169,6 +2174,7 @@ export async function registerRoutes(
   // Paradas de Ruta
   app.get("/api/supplier/routes/:routeId/stops", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyRouteTenant(req.params.routeId, req, res)) return;
       // Verificar ownership para abastecedor
       if (req.user?.role === "abastecedor") {
         const route = await storage.getRoute(req.params.routeId);
@@ -2194,13 +2200,19 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Se requiere un array de routeIds" });
       }
       
-      // Verificar ownership para abastecedor - solo puede obtener paradas de sus propias rutas
-      if (req.user?.role === "abastecedor") {
-        for (const routeId of routeIds) {
-          const route = await storage.getRoute(routeId);
-          if (!route || route.supplierId !== req.user.userId) {
-            return res.status(403).json({ error: "No tienes permiso para ver las paradas de una o más rutas" });
-          }
+      const userTenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      
+      // Verificar tenant y ownership para cada routeId
+      for (const routeId of routeIds) {
+        const route = await storage.getRoute(routeId);
+        if (!route) {
+          return res.status(404).json({ error: "Ruta no encontrada" });
+        }
+        if (userTenantId && route.tenantId !== userTenantId) {
+          return res.status(404).json({ error: "Ruta no encontrada" });
+        }
+        if (req.user?.role === "abastecedor" && route.supplierId !== req.user.userId) {
+          return res.status(403).json({ error: "No tienes permiso para ver las paradas de una o más rutas" });
         }
       }
       
@@ -2235,11 +2247,13 @@ export async function registerRoutes(
 
   app.post("/api/supplier/routes/:routeId/stops", authenticateJWT, authorizeAction("stops", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertRouteStopSchema.parse({
+      if (!await verifyRouteTenant(req.params.routeId, req, res)) return;
+      const tenantId = req.user!.tenantId;
+      const data = insertRouteStopSchema.omit({ tenantId: true }).parse({
         ...req.body,
         routeId: req.params.routeId,
       });
-      const stop = await storage.createRouteStop(data);
+      const stop = await storage.createRouteStop({ ...data, tenantId });
       
       // Actualizar total de paradas en la ruta
       const route = await storage.getRoute(req.params.routeId);
@@ -2259,6 +2273,7 @@ export async function registerRoutes(
 
   app.post("/api/supplier/stops/:id/start", authenticateJWT, authorizeAction("stops", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyStopTenant(req.params.id, req, res)) return;
       // Verificar ownership para abastecedor
       if (req.user?.role === "abastecedor") {
         const existingStop = await storage.getRouteStop(req.params.id);
@@ -2282,6 +2297,7 @@ export async function registerRoutes(
 
   app.post("/api/supplier/stops/:id/complete", authenticateJWT, authorizeAction("stops", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyStopTenant(req.params.id, req, res)) return;
       // Verificar ownership para abastecedor
       if (req.user?.role === "abastecedor") {
         const existingStop = await storage.getRouteStop(req.params.id);

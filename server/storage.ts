@@ -1380,9 +1380,10 @@ export class DatabaseStorage implements IStorage {
   // ==================== MÓDULO ABASTECEDOR ====================
 
   // Rutas
-  async getRoutes(userId?: string, date?: Date, status?: string): Promise<any[]> {
+  async getRoutes(userId?: string, date?: Date, status?: string, tenantId?: string): Promise<any[]> {
     let conditions: any[] = [];
     
+    if (tenantId) conditions.push(eq(routes.tenantId, tenantId));
     if (userId) conditions.push(eq(routes.supplierId, userId));
     if (status) conditions.push(eq(routes.status, status));
     if (date) {
