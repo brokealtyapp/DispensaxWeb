@@ -3416,8 +3416,8 @@ export async function registerRoutes(
     }
   });
 
-  // Usuarios (para demo)
-  app.get("/api/users", optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  // Usuarios
+  app.get("/api/users", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { db } = await import("./db");
       const { users } = await import("@shared/schema");
