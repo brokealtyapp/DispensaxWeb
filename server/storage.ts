@@ -668,6 +668,18 @@ export class DatabaseStorage implements IStorage {
 
   async createProduct(product: InsertProduct): Promise<Product> {
     const [newProduct] = await db.insert(products).values(product).returning();
+    // Auto-create warehouse inventory entry for the new product
+    const existing = await this.getWarehouseInventoryItem(newProduct.id);
+    if (!existing) {
+      await db.insert(warehouseInventory).values({
+        productId: newProduct.id,
+        tenantId: newProduct.tenantId,
+        currentStock: 0,
+        minStock: 10,
+        maxStock: 100,
+        reorderPoint: 20,
+      });
+    }
     return newProduct;
   }
 
@@ -1084,20 +1096,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getLowStockAlerts(tenantId?: string): Promise<(WarehouseInventory & { product: Product })[]> {
-    const query = db.select({
+    const conditions: any[] = [
+      lte(warehouseInventory.currentStock, warehouseInventory.minStock),
+    ];
+    if (tenantId) conditions.push(eq(warehouseInventory.tenantId, tenantId));
+
+    const results = await db.select({
         inventory: warehouseInventory,
         product: products
       })
       .from(warehouseInventory)
       .leftJoin(products, eq(warehouseInventory.productId, products.id))
-      .limit(50);
+      .where(and(...conditions))
+      .limit(200);
 
-    const results = tenantId
-      ? await query.where(eq(warehouseInventory.tenantId, tenantId))
-      : await query;
-    
     return results
-      .filter(r => r.product && (r.inventory.currentStock || 0) <= (r.inventory.reorderPoint || 20))
+      .filter(r => r.product)
       .map(r => ({ ...r.inventory, product: r.product! }));
   }
 

@@ -87,7 +87,9 @@ import {
   productTransfers,
   shrinkageRecords,
   tasks as tasksTable,
-  machineAlerts
+  machineAlerts,
+  products,
+  warehouseInventory
 } from "@shared/schema";
 import { z } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
@@ -1819,18 +1821,40 @@ export async function registerRoutes(
   app.get("/api/warehouse/stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
-      const inventory = await storage.getWarehouseInventory(tenantId);
-      const lowStock = await storage.getLowStockAlerts(tenantId);
-      const expiringLots = await storage.getExpiringLots(30, 30, tenantId);
-      const movements = await storage.getWarehouseMovements(undefined, 10, tenantId);
-      
-      const totalProducts = inventory.length;
+
+      const [allProducts, inventory, lowStock, expiringLots, movements] = await Promise.all([
+        storage.getProducts(tenantId),
+        storage.getWarehouseInventory(tenantId),
+        storage.getLowStockAlerts(tenantId),
+        storage.getExpiringLots(30, 30, tenantId),
+        storage.getWarehouseMovements(undefined, 10, tenantId),
+      ]);
+
+      // Auto-create inventory rows for products that don't have one yet (backfill)
+      if (tenantId) {
+        const inventoryProductIds = new Set(inventory.map(inv => inv.productId));
+        const missingProducts = allProducts.filter(p => !inventoryProductIds.has(p.id));
+        if (missingProducts.length > 0) {
+          await Promise.all(missingProducts.map(p =>
+            db.insert(warehouseInventory).values({
+              productId: p.id,
+              tenantId: p.tenantId,
+              currentStock: 0,
+              minStock: 10,
+              maxStock: 100,
+              reorderPoint: 20,
+            }).onConflictDoNothing()
+          ));
+        }
+      }
+
+      const totalProducts = allProducts.length;
       const totalStock = inventory.reduce((sum, inv) => sum + (inv.currentStock || 0), 0);
       const totalValue = inventory.reduce((sum, inv) => {
         const cost = parseFloat(inv.product.costPrice || "0");
         return sum + (inv.currentStock || 0) * cost;
       }, 0);
-      
+
       res.json({
         totalProducts,
         totalStock,
@@ -6559,7 +6583,7 @@ export async function registerRoutes(
           active: sql<number>`count(*) filter (where ${vehiclesTable.isActive} = true)`,
         }).from(vehiclesTable).where(vehicleCond),
         db.select().from(fuelRecords)
-          .where(fuelCond ? and(fuelCond, gte(fuelRecords.recordDate, monthAgo.toISOString().split('T')[0])) : gte(fuelRecords.recordDate, monthAgo.toISOString().split('T')[0]))
+          .where(fuelCond ? and(fuelCond, gte(fuelRecords.recordDate, monthAgo)) : gte(fuelRecords.recordDate, monthAgo))
           .limit(500),
       ]);
 
