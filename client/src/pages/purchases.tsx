@@ -238,6 +238,7 @@ export default function PurchasesPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders/stats"] });
       if (selectedOrder?.id) {
         const updatedOrder = await queryClient.fetchQuery({
           queryKey: ["/api/purchase-orders", selectedOrder.id],
@@ -258,6 +259,7 @@ export default function PurchasesPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders/stats"] });
       if (selectedOrder?.id) {
         const updatedOrder = await queryClient.fetchQuery({
           queryKey: ["/api/purchase-orders", selectedOrder.id],
@@ -305,6 +307,7 @@ export default function PurchasesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-receptions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/warehouse/inventory"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders/low-stock"] });
       toast({ title: "Recepción registrada", description: "La mercancía se ha registrado correctamente" });
       setIsReceiveOrderOpen(false);
       setReceptionItems([]);
@@ -1171,7 +1174,7 @@ export default function PurchasesPage() {
               </div>
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Subtotal: {formatCurrency(selectedOrder?.subtotal || 0)}</p>
-                <p className="text-sm text-muted-foreground">IVA 16%: {formatCurrency(selectedOrder?.taxAmount || 0)}</p>
+                <p className="text-sm text-muted-foreground">ITBIS 18%: {formatCurrency(selectedOrder?.taxAmount || 0)}</p>
                 <p className="text-lg font-bold">Total: {formatCurrency(selectedOrder?.total || 0)}</p>
               </div>
             </div>
@@ -1260,7 +1263,7 @@ export default function PurchasesPage() {
             <div className="flex justify-end pt-4 border-t">
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Subtotal: {formatCurrency(selectedOrder?.subtotal || 0)}</p>
-                <p className="text-sm text-muted-foreground">IVA 16%: {formatCurrency(selectedOrder?.taxAmount || 0)}</p>
+                <p className="text-sm text-muted-foreground">ITBIS 18%: {formatCurrency(selectedOrder?.taxAmount || 0)}</p>
                 <p className="text-lg font-bold">Total: {formatCurrency(selectedOrder?.total || 0)}</p>
               </div>
             </div>

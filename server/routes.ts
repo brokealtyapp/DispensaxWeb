@@ -1455,7 +1455,7 @@ export async function registerRoutes(
   // ==================== MÓDULO ALMACÉN ====================
 
   // Proveedores (protegidos con JWT)
-  app.get("/api/suppliers", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/suppliers", authenticateJWT, authorizeAction("suppliers", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const suppliers = await storage.getSuppliers(tenantId);
@@ -1465,7 +1465,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/suppliers/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/suppliers/:id", authenticateJWT, authorizeAction("suppliers", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifySupplierTenant(req.params.id, req, res)) return;
       
@@ -4392,7 +4392,7 @@ export async function registerRoutes(
   // ==================== MÓDULO COMPRAS (protegidos con JWT) ====================
 
   // Órdenes de Compra
-  app.get("/api/purchase-orders", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/purchase-orders", authenticateJWT, authorizeAction("purchase_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { supplierId, status, startDate, endDate } = req.query;
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
@@ -4410,7 +4410,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/purchase-orders/next-number", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/purchase-orders/next-number", authenticateJWT, authorizeAction("purchase_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const orderNumber = await storage.getNextOrderNumber(tenantId);
@@ -4420,7 +4420,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/purchase-orders/stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/purchase-orders/stats", authenticateJWT, authorizeAction("purchase_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
@@ -4435,7 +4435,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/purchase-orders/low-stock", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/purchase-orders/low-stock", authenticateJWT, authorizeAction("purchase_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const products = await storage.getLowStockProducts(tenantId);
@@ -4445,7 +4445,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/purchase-orders/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/purchase-orders/:id", authenticateJWT, authorizeAction("purchase_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyPurchaseOrderTenant(req.params.id, req, res)) return;
       
@@ -4483,7 +4483,7 @@ export async function registerRoutes(
     try {
       if (!await verifyPurchaseOrderTenant(req.params.id, req, res)) return;
       
-      const data = insertPurchaseOrderSchema.partial().parse(req.body);
+      const data = insertPurchaseOrderSchema.omit({ tenantId: true }).partial().parse(req.body);
       const order = await storage.updatePurchaseOrder(req.params.id, data);
       if (!order) {
         return res.status(404).json({ error: "Orden no encontrada" });
@@ -4533,7 +4533,7 @@ export async function registerRoutes(
   });
 
   // Items de Orden de Compra
-  app.get("/api/purchase-orders/:id/items", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/purchase-orders/:id/items", authenticateJWT, authorizeAction("purchase_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyPurchaseOrderTenant(req.params.id, req, res)) return;
       
@@ -4603,7 +4603,7 @@ export async function registerRoutes(
   });
 
   // Recepciones de Mercancía
-  app.get("/api/purchase-receptions", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/purchase-receptions", authenticateJWT, authorizeAction("purchase_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { orderId, startDate, endDate } = req.query;
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
@@ -4620,7 +4620,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/purchase-receptions/next-number", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/purchase-receptions/next-number", authenticateJWT, authorizeAction("purchase_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const receptionNumber = await storage.getNextReceptionNumber(tenantId);
@@ -4630,7 +4630,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/purchase-receptions/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/purchase-receptions/:id", authenticateJWT, authorizeAction("purchase_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyReceptionTenant(req.params.id, req, res)) return;
       const reception = await storage.getPurchaseReception(req.params.id);
@@ -4669,7 +4669,7 @@ export async function registerRoutes(
   });
 
   // Historial de compras por proveedor
-  app.get("/api/suppliers/:id/purchase-history", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/suppliers/:id/purchase-history", authenticateJWT, authorizeAction("suppliers", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifySupplierTenant(req.params.id, req, res)) return;
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;

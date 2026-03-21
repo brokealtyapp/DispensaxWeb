@@ -3245,7 +3245,7 @@ export class DatabaseStorage implements IStorage {
   // ==================== MÓDULO COMPRAS ====================
 
   async getPurchaseOrders(filters?: { supplierId?: string; status?: string; startDate?: Date; endDate?: Date; tenantId?: string }): Promise<any[]> {
-    let conditions = [];
+    const conditions: (SQL<unknown> | undefined)[] = [];
     
     if (filters?.tenantId) {
       conditions.push(eq(purchaseOrders.tenantId, filters.tenantId));
@@ -3254,7 +3254,7 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(purchaseOrders.supplierId, filters.supplierId));
     }
     if (filters?.status) {
-      conditions.push(eq(purchaseOrders.status, filters.status as any));
+      conditions.push(eq(purchaseOrders.status, filters.status as "borrador" | "enviada" | "parcialmente_recibida" | "recibida" | "cancelada"));
     }
     if (filters?.startDate) {
       conditions.push(gte(purchaseOrders.issueDate, filters.startDate));
@@ -3270,7 +3270,8 @@ export class DatabaseStorage implements IStorage {
     const ordersWithDetails = await Promise.all(orders.map(async (order) => {
       const supplier = await this.getSupplier(order.supplierId);
       const items = await this.getPurchaseOrderItems(order.id);
-      const createdByUser = await this.getUser(order.createdBy);
+      const rawUser = await this.getUser(order.createdBy);
+      const createdByUser = rawUser ? excludePassword(rawUser) : undefined;
       return { ...order, supplier, items, createdByUser, itemCount: items.length };
     }));
     
@@ -3283,7 +3284,8 @@ export class DatabaseStorage implements IStorage {
     
     const supplier = await this.getSupplier(order.supplierId);
     const items = await this.getPurchaseOrderItems(order.id);
-    const createdByUser = await this.getUser(order.createdBy);
+    const rawUser = await this.getUser(order.createdBy);
+    const createdByUser = rawUser ? excludePassword(rawUser) : undefined;
     const receptions = await this.getPurchaseReceptions({ orderId: id });
     
     return { ...order, supplier, items, createdByUser, receptions };
@@ -3323,13 +3325,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deletePurchaseOrder(id: string): Promise<boolean> {
-    const receptions = await db.select({ id: purchaseReceptions.id }).from(purchaseReceptions).where(eq(purchaseReceptions.orderId, id));
-    for (const reception of receptions) {
-      await db.delete(receptionItems).where(eq(receptionItems.receptionId, reception.id));
-    }
-    await db.delete(purchaseReceptions).where(eq(purchaseReceptions.orderId, id));
-    await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.orderId, id));
-    await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
+    await db.transaction(async (tx) => {
+      const receptions = await tx.select({ id: purchaseReceptions.id }).from(purchaseReceptions).where(eq(purchaseReceptions.orderId, id));
+      for (const reception of receptions) {
+        await tx.delete(receptionItems).where(eq(receptionItems.receptionId, reception.id));
+      }
+      await tx.delete(purchaseReceptions).where(eq(purchaseReceptions.orderId, id));
+      await tx.delete(purchaseOrderItems).where(eq(purchaseOrderItems.orderId, id));
+      await tx.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
+    });
     return true;
   }
 
@@ -3388,7 +3392,7 @@ export class DatabaseStorage implements IStorage {
     const items = await db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.orderId, orderId));
     
     const subtotal = items.reduce((sum, item) => sum + parseFloat(item.subtotal), 0);
-    const taxAmount = subtotal * 0.16; // 16% IVA
+    const taxAmount = subtotal * 0.18; // 18% ITBIS
     const total = subtotal + taxAmount;
     
     await db.update(purchaseOrders)
@@ -3402,7 +3406,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPurchaseReceptions(filters?: { orderId?: string; startDate?: Date; endDate?: Date; tenantId?: string }): Promise<any[]> {
-    let conditions = [];
+    const conditions: (SQL<unknown> | undefined)[] = [];
     
     if (filters?.tenantId) {
       conditions.push(eq(purchaseReceptions.tenantId, filters.tenantId));
@@ -3423,7 +3427,8 @@ export class DatabaseStorage implements IStorage {
     
     const receptionsWithDetails = await Promise.all(receptions.map(async (reception) => {
       const order = await this.getPurchaseOrder(reception.orderId);
-      const receivedByUser = await this.getUser(reception.receivedBy);
+      const rawUser = await this.getUser(reception.receivedBy);
+      const receivedByUser = rawUser ? excludePassword(rawUser) : undefined;
       const items = await db.select().from(receptionItems).where(eq(receptionItems.receptionId, reception.id));
       
       const itemsWithProducts = await Promise.all(items.map(async (item) => {
@@ -3442,7 +3447,8 @@ export class DatabaseStorage implements IStorage {
     if (!reception) return undefined;
     
     const order = await this.getPurchaseOrder(reception.orderId);
-    const receivedByUser = await this.getUser(reception.receivedBy);
+    const rawUser = await this.getUser(reception.receivedBy);
+    const receivedByUser = rawUser ? excludePassword(rawUser) : undefined;
     const items = await db.select().from(receptionItems).where(eq(receptionItems.receptionId, id));
     
     const itemsWithProducts = await Promise.all(items.map(async (item) => {
@@ -3541,7 +3547,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPurchaseStats(startDate?: Date, endDate?: Date, tenantId?: string): Promise<{ totalOrders: number; totalAmount: number; pendingOrders: number; topSuppliers: any[] }> {
-    let conditions = [];
+    const conditions: (SQL<unknown> | undefined)[] = [];
     if (tenantId) conditions.push(eq(purchaseOrders.tenantId, tenantId));
     if (startDate) conditions.push(gte(purchaseOrders.createdAt, startDate));
     if (endDate) conditions.push(lte(purchaseOrders.createdAt, endDate));
