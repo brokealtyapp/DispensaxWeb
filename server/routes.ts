@@ -4653,14 +4653,27 @@ export async function registerRoutes(
       const { status, type } = req.query;
       // Abastecedor solo ve vehículos asignados a él
       const effectiveUserId = getEffectiveUserId(req, "assignedUserId");
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const vehicles = await storage.getVehicles({
         status: status as string,
         type: type as string,
-        assignedUserId: effectiveUserId as string
+        assignedUserId: effectiveUserId as string,
+        tenantId
       });
       res.json(vehicles);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener vehículos" });
+    }
+  });
+
+  // Vehículos con bajo rendimiento — DEBE ir antes de /:id para que Express no lo intercepte
+  app.get("/api/vehicles/low-mileage", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const vehicles = await storage.getLowMileageVehicles(tenantId);
+      res.json(vehicles);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener vehículos con bajo rendimiento" });
     }
   });
 
@@ -4677,8 +4690,8 @@ export async function registerRoutes(
 
   app.post("/api/vehicles", authenticateJWT, authorizeAction("vehicles", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const validated = insertVehicleSchema.parse(req.body);
-      const vehicle = await storage.createVehicle(validated);
+      const data = insertVehicleSchema.omit({ tenantId: true }).parse(req.body);
+      const vehicle = await storage.createVehicle({ ...data, tenantId: req.user!.tenantId });
       res.status(201).json(vehicle);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -4721,6 +4734,8 @@ export async function registerRoutes(
   // Estadísticas de vehículo
   app.get("/api/vehicles/:id/fuel-stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyVehicleTenant(req.params.id, req, res)) return;
+      
       const { startDate, endDate } = req.query;
       const stats = await storage.getVehicleFuelStats(
         req.params.id,
@@ -4737,12 +4752,14 @@ export async function registerRoutes(
   app.get("/api/fuel-records", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { vehicleId, userId, startDate, endDate, limit } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const records = await storage.getFuelRecords({
         vehicleId: vehicleId as string,
         userId: userId as string,
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined,
-        limit: limit ? parseInt(limit as string) : 50
+        limit: limit ? parseInt(limit as string) : 50,
+        tenantId
       });
       res.json(records);
     } catch (error) {
@@ -4763,8 +4780,8 @@ export async function registerRoutes(
 
   app.post("/api/fuel-records", authenticateJWT, authorizeAction("fuel", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const validated = insertFuelRecordSchema.parse(req.body);
-      const record = await storage.createFuelRecord(validated);
+      const data = insertFuelRecordSchema.omit({ tenantId: true }).parse(req.body);
+      const record = await storage.createFuelRecord({ ...data, tenantId: req.user!.tenantId });
       res.status(201).json(record);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -4808,11 +4825,13 @@ export async function registerRoutes(
   app.get("/api/fuel-stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { vehicleId, userId, startDate, endDate } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const stats = await storage.getFuelStats({
         vehicleId: vehicleId as string,
         userId: userId as string,
         startDate: startDate ? new Date(startDate as string) : undefined,
-        endDate: endDate ? new Date(endDate as string) : undefined
+        endDate: endDate ? new Date(endDate as string) : undefined,
+        tenantId
       });
       res.json(stats);
     } catch (error) {
@@ -4823,6 +4842,13 @@ export async function registerRoutes(
   // Estadísticas por usuario
   app.get("/api/users/:id/fuel-stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const targetUser = await storage.getUser(req.params.id);
+      if (!targetUser) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+      }
+      if (!req.user?.isSuperAdmin && targetUser.tenantId !== req.user?.tenantId) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+      }
       const { startDate, endDate } = req.query;
       const stats = await storage.getUserFuelStats(
         req.params.id,
@@ -4839,23 +4865,15 @@ export async function registerRoutes(
   app.get("/api/fuel-stats/by-route", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const stats = await storage.getFuelStatsPerRoute(
         startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined
+        endDate ? new Date(endDate as string) : undefined,
+        tenantId
       );
       res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener estadísticas por ruta" });
-    }
-  });
-
-  // Vehículos con bajo rendimiento
-  app.get("/api/vehicles/low-mileage", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const vehicles = await storage.getLowMileageVehicles();
-      res.json(vehicles);
-    } catch (error) {
-      res.status(500).json({ error: "Error al obtener vehículos con bajo rendimiento" });
     }
   });
 

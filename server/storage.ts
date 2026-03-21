@@ -344,21 +344,21 @@ export interface IStorage {
   // ==================== MÓDULO COMBUSTIBLE ====================
   
   // Vehículos
-  getVehicles(filters?: { status?: string; type?: string; assignedUserId?: string }): Promise<any[]>;
+  getVehicles(filters?: { status?: string; type?: string; assignedUserId?: string; tenantId?: string }): Promise<any[]>;
   getVehicle(id: string): Promise<any>;
   createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
   updateVehicle(id: string, data: Partial<InsertVehicle>): Promise<Vehicle | undefined>;
   deleteVehicle(id: string): Promise<boolean>;
   
   // Registros de Combustible
-  getFuelRecords(filters?: { vehicleId?: string; userId?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]>;
+  getFuelRecords(filters?: { vehicleId?: string; userId?: string; startDate?: Date; endDate?: Date; limit?: number; tenantId?: string }): Promise<any[]>;
   getFuelRecord(id: string): Promise<any>;
   createFuelRecord(record: InsertFuelRecord): Promise<FuelRecord>;
   updateFuelRecord(id: string, data: Partial<InsertFuelRecord>): Promise<FuelRecord | undefined>;
   deleteFuelRecord(id: string): Promise<boolean>;
   
   // Estadísticas de Combustible
-  getFuelStats(filters?: { vehicleId?: string; userId?: string; startDate?: Date; endDate?: Date }): Promise<{
+  getFuelStats(filters?: { vehicleId?: string; userId?: string; startDate?: Date; endDate?: Date; tenantId?: string }): Promise<{
     totalLiters: number;
     totalAmount: number;
     averageMileage: number;
@@ -367,8 +367,8 @@ export interface IStorage {
   }>;
   getVehicleFuelStats(vehicleId: string, startDate?: Date, endDate?: Date): Promise<any>;
   getUserFuelStats(userId: string, startDate?: Date, endDate?: Date): Promise<any>;
-  getFuelStatsPerRoute(startDate?: Date, endDate?: Date): Promise<any[]>;
-  getLowMileageVehicles(): Promise<any[]>;
+  getFuelStatsPerRoute(startDate?: Date, endDate?: Date, tenantId?: string): Promise<any[]>;
+  getLowMileageVehicles(tenantId?: string): Promise<any[]>;
   
   // ==================== MÓDULO REPORTES ====================
   
@@ -3601,9 +3601,10 @@ export class DatabaseStorage implements IStorage {
 
   // ==================== MÓDULO COMBUSTIBLE ====================
 
-  async getVehicles(filters?: { status?: string; type?: string; assignedUserId?: string }): Promise<any[]> {
+  async getVehicles(filters?: { status?: string; type?: string; assignedUserId?: string; tenantId?: string }): Promise<any[]> {
     let conditions: any[] = [eq(vehicles.isActive, true)];
     
+    if (filters?.tenantId) conditions.push(eq(vehicles.tenantId, filters.tenantId));
     if (filters?.status) conditions.push(eq(vehicles.status, filters.status));
     if (filters?.type) conditions.push(eq(vehicles.type, filters.type));
     if (filters?.assignedUserId) conditions.push(eq(vehicles.assignedUserId, filters.assignedUserId));
@@ -3650,9 +3651,10 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getFuelRecords(filters?: { vehicleId?: string; userId?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]> {
+  async getFuelRecords(filters?: { vehicleId?: string; userId?: string; startDate?: Date; endDate?: Date; limit?: number; tenantId?: string }): Promise<any[]> {
     let conditions: any[] = [];
     
+    if (filters?.tenantId) conditions.push(eq(fuelRecords.tenantId, filters.tenantId));
     if (filters?.vehicleId) conditions.push(eq(fuelRecords.vehicleId, filters.vehicleId));
     if (filters?.userId) conditions.push(eq(fuelRecords.userId, filters.userId));
     if (filters?.startDate) conditions.push(gte(fuelRecords.recordDate, filters.startDate));
@@ -3752,7 +3754,7 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getFuelStats(filters?: { vehicleId?: string; userId?: string; startDate?: Date; endDate?: Date }): Promise<{
+  async getFuelStats(filters?: { vehicleId?: string; userId?: string; startDate?: Date; endDate?: Date; tenantId?: string }): Promise<{
     totalLiters: number;
     totalAmount: number;
     averageMileage: number;
@@ -3761,6 +3763,7 @@ export class DatabaseStorage implements IStorage {
   }> {
     let conditions: any[] = [];
     
+    if (filters?.tenantId) conditions.push(eq(fuelRecords.tenantId, filters.tenantId));
     if (filters?.vehicleId) conditions.push(eq(fuelRecords.vehicleId, filters.vehicleId));
     if (filters?.userId) conditions.push(eq(fuelRecords.userId, filters.userId));
     if (filters?.startDate) conditions.push(gte(fuelRecords.recordDate, filters.startDate));
@@ -3846,8 +3849,9 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getFuelStatsPerRoute(startDate?: Date, endDate?: Date): Promise<any[]> {
+  async getFuelStatsPerRoute(startDate?: Date, endDate?: Date, tenantId?: string): Promise<any[]> {
     let conditions: any[] = [];
+    if (tenantId) conditions.push(eq(fuelRecords.tenantId, tenantId));
     if (startDate) conditions.push(gte(fuelRecords.recordDate, startDate));
     if (endDate) conditions.push(lte(fuelRecords.recordDate, endDate));
     
@@ -3879,8 +3883,8 @@ export class DatabaseStorage implements IStorage {
     return routeStats.sort((a, b) => b.amount - a.amount);
   }
 
-  async getLowMileageVehicles(): Promise<any[]> {
-    const vehiclesList = await this.getVehicles();
+  async getLowMileageVehicles(tenantId?: string): Promise<any[]> {
+    const vehiclesList = await this.getVehicles({ tenantId });
     
     const vehiclesWithStats = await Promise.all(vehiclesList.map(async (v) => {
       const stats = await this.getFuelStats({ vehicleId: v.id });
