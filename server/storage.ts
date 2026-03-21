@@ -235,7 +235,7 @@ export interface IStorage {
   }): Promise<{ warehouseMovements: WarehouseMovement[]; vehicleInventoryItems: VehicleInventory[]; inventoryTransfers: InventoryTransfer[] }>;
   
   // Transferencias de Inventario
-  getInventoryTransfers(filters?: { vehicleId?: string; machineId?: string; transferType?: string; limit?: number }): Promise<any[]>;
+  getInventoryTransfers(filters?: { vehicleId?: string; machineId?: string; transferType?: string; limit?: number; tenantId?: string }): Promise<any[]>;
   createInventoryTransfer(transfer: InsertInventoryTransfer): Promise<InventoryTransfer>;
   
   // Inventario de Máquina con Lotes
@@ -2296,9 +2296,12 @@ export class DatabaseStorage implements IStorage {
     });
   }
   
-  async getInventoryTransfers(filters?: { vehicleId?: string; machineId?: string; transferType?: string; limit?: number }): Promise<any[]> {
+  async getInventoryTransfers(filters?: { vehicleId?: string; machineId?: string; transferType?: string; limit?: number; tenantId?: string }): Promise<any[]> {
     let conditions: any[] = [];
     
+    if (filters?.tenantId) {
+      conditions.push(eq(inventoryTransfers.tenantId, filters.tenantId));
+    }
     if (filters?.vehicleId) {
       conditions.push(or(
         eq(inventoryTransfers.sourceVehicleId, filters.vehicleId),

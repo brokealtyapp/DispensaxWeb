@@ -149,6 +149,7 @@ export function WarehousePage() {
   const [selectedMovementTypeFilter, setSelectedMovementTypeFilter] = useState<string>("all");
   const [movementsPage, setMovementsPage] = useState(1);
   const MOVEMENTS_PER_PAGE = 20;
+  const [exportSelectValue, setExportSelectValue] = useState<string>("");
 
   const { canCreate, canEdit, canDelete } = usePermissions();
 
@@ -477,7 +478,7 @@ export function WarehousePage() {
                 entryForm.setValue("lotNumber", generateLotNumber());
                 setIsEntryDialogOpen(true);
               }}
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-emerald-600"
               data-testid="button-new-entry"
             >
               <ArrowDownCircle className="w-4 h-4 mr-2" />
@@ -488,7 +489,7 @@ export function WarehousePage() {
             <Button
               onClick={() => setIsExitDialogOpen(true)}
               variant="outline"
-              className="border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
+              className="border-amber-500 text-amber-600"
               data-testid="button-new-exit"
             >
               <ArrowUpCircle className="w-4 h-4 mr-2" />
@@ -498,14 +499,20 @@ export function WarehousePage() {
           {canCreate("warehouse_movements") && (
             <Button
               onClick={() => setIsDispatchToVehicleDialogOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-blue-600"
               data-testid="button-dispatch-vehicle"
             >
               <Truck className="w-4 h-4 mr-2" />
               Despachar a Vehículo
             </Button>
           )}
-          <Select onValueChange={(type) => downloadCsvExport(type)}>
+          <Select
+            value={exportSelectValue}
+            onValueChange={(type) => {
+              downloadCsvExport(type);
+              setExportSelectValue("");
+            }}
+          >
             <SelectTrigger className="w-36" data-testid="select-export">
               <Download className="w-4 h-4 mr-2" />
               <SelectValue placeholder="Exportar" />
@@ -1424,7 +1431,7 @@ export function WarehousePage() {
                 type="button"
                 onClick={handleSubmitDispatch}
                 disabled={dispatchToVehicleMutation.isPending || dispatchItems.length === 0}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-blue-600"
                 data-testid="button-submit-dispatch"
               >
                 {dispatchToVehicleMutation.isPending ? "Despachando..." : `Despachar ${dispatchItems.length} producto(s)`}

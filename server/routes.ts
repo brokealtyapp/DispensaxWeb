@@ -1780,6 +1780,7 @@ export async function registerRoutes(
   app.get("/api/vehicle-inventory/:vehicleId", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { vehicleId } = req.params;
+      if (!await verifyVehicleTenant(vehicleId, req, res)) return;
       const inventory = await storage.getVehicleInventory(vehicleId);
       res.json(inventory);
     } catch (error) {
@@ -1803,11 +1804,13 @@ export async function registerRoutes(
   app.get("/api/inventory-transfers", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { vehicleId, machineId, transferType, limit } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const transfers = await storage.getInventoryTransfers({
         vehicleId: vehicleId as string,
         machineId: machineId as string,
         transferType: transferType as string,
         limit: limit ? parseInt(limit as string) : undefined,
+        tenantId,
       });
       res.json(transfers);
     } catch (error) {
@@ -3433,6 +3436,11 @@ export async function registerRoutes(
       
       if (supervisorZone) {
         conditions.push(eq(users.assignedZone, supervisorZone));
+      }
+
+      // Aislamiento multi-tenant: filtrar por tenantId del JWT salvo superAdmin
+      if (req.user && !req.user.isSuperAdmin && req.user.tenantId) {
+        conditions.push(eq(users.tenantId, req.user.tenantId));
       }
       
       if (conditions.length > 0) {
