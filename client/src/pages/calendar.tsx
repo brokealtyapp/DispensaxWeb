@@ -600,12 +600,14 @@ export function CalendarPage() {
                             {isTask && (
                               <Button
                                 variant="ghost"
-                                size="icon"
+                                size="sm"
                                 onClick={() => handleViewTask(item)}
                                 title="Ver tarea"
                                 data-testid={`button-view-task-${item.id}`}
+                                className="gap-1"
                               >
                                 <ArrowUpRight className="h-4 w-4" />
+                                Ver
                               </Button>
                             )}
                             {!isTask && (canEdit("tasks") || canDelete("tasks")) && (
