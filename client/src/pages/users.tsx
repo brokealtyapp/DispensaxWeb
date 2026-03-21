@@ -46,6 +46,7 @@ import {
   Users,
   Search,
   Plus,
+  User as UserIcon,
   UserCog,
   Shield,
   Truck,
@@ -184,7 +185,7 @@ function getRoleInfo(role: string) {
   return ROLES.find(r => r.value === role) || {
     value: role,
     label: role,
-    icon: Users,
+    icon: UserIcon,
     color: "bg-gray-100 text-gray-700 dark:bg-gray-800/50 dark:text-gray-400",
   };
 }
