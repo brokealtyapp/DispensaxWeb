@@ -1804,6 +1804,10 @@ export async function registerRoutes(
   app.get("/api/inventory-transfers", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { vehicleId, machineId, transferType, limit } = req.query;
+      // Fail-closed: exigir tenantId para no-superAdmin
+      if (req.user && !req.user.isSuperAdmin && !req.user.tenantId) {
+        return res.status(403).json({ error: "Contexto de tenant requerido" });
+      }
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const transfers = await storage.getInventoryTransfers({
         vehicleId: vehicleId as string,
@@ -3438,8 +3442,11 @@ export async function registerRoutes(
         conditions.push(eq(users.assignedZone, supervisorZone));
       }
 
-      // Aislamiento multi-tenant: filtrar por tenantId del JWT salvo superAdmin
-      if (req.user && !req.user.isSuperAdmin && req.user.tenantId) {
+      // Aislamiento multi-tenant: fail-closed — exigir tenantId para no-superAdmin
+      if (req.user && !req.user.isSuperAdmin) {
+        if (!req.user.tenantId) {
+          return res.status(403).json({ error: "Contexto de tenant requerido" });
+        }
         conditions.push(eq(users.tenantId, req.user.tenantId));
       }
       
