@@ -7,6 +7,8 @@ import { formatDate } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useLocation } from "wouter";
+import { useAuth } from "@/lib/auth-context";
 import { 
   CalendarIcon,
   ChevronLeft,
@@ -19,7 +21,8 @@ import {
   Truck,
   ClipboardList,
   ListTodo,
-  X
+  X,
+  ArrowUpRight,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,7 +45,9 @@ const eventFormSchema = z.object({
   description: z.string().optional(),
   eventType: z.string().min(1, "Tipo requerido"),
   startDate: z.date({ required_error: "Fecha de inicio requerida" }),
+  startTime: z.string().optional(),
   endDate: z.date().optional(),
+  endTime: z.string().optional(),
   allDay: z.boolean().default(false),
   color: z.string().optional(),
   userId: z.string().optional(),
@@ -69,8 +74,45 @@ const colorOptions = [
   { value: "pink", label: "Rosa", class: "bg-pink-500" },
 ];
 
+const colorToClass: Record<string, string> = {
+  blue: "bg-blue-500",
+  green: "bg-green-500",
+  orange: "bg-orange-500",
+  purple: "bg-purple-500",
+  red: "bg-red-500",
+  cyan: "bg-cyan-500",
+  pink: "bg-pink-500",
+};
+
+function getEventColorClass(item: any): string {
+  if (!(item as any).isTask && item.color && colorToClass[item.color]) {
+    return colorToClass[item.color];
+  }
+  const key = (item as any).isTask ? "tarea" : (item.eventType || "otro");
+  return (eventTypeConfig[key] ?? eventTypeConfig.otro).color;
+}
+
+function combineDateAndTime(date: Date, time?: string): Date {
+  if (!time) return date;
+  const [hours, minutes] = time.split(":").map(Number);
+  const combined = new Date(date);
+  combined.setHours(hours, minutes, 0, 0);
+  return combined;
+}
+
+function extractTime(isoString?: string | null): string {
+  if (!isoString) return "";
+  const d = parseISO(isoString);
+  const h = d.getHours().toString().padStart(2, "0");
+  const m = d.getMinutes().toString().padStart(2, "0");
+  if (h === "00" && m === "00") return "";
+  return `${h}:${m}`;
+}
+
 export function CalendarPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isNewEventOpen, setIsNewEventOpen] = useState(false);
@@ -80,6 +122,8 @@ export function CalendarPage() {
 
   const { canCreate, canEdit, canDelete } = usePermissions();
 
+  const canViewUsers = user?.role === "admin" || user?.role === "supervisor";
+
   const createForm = useForm<EventFormData>({
     resolver: zodResolver(eventFormSchema),
     defaultValues: {
@@ -87,6 +131,8 @@ export function CalendarPage() {
       description: "",
       eventType: "otro",
       allDay: false,
+      startTime: "",
+      endTime: "",
       color: "blue",
       userId: "",
     },
@@ -99,10 +145,15 @@ export function CalendarPage() {
       description: "",
       eventType: "otro",
       allDay: false,
+      startTime: "",
+      endTime: "",
       color: "blue",
       userId: "",
     },
   });
+
+  const createAllDay = createForm.watch("allDay");
+  const editAllDay = editForm.watch("allDay");
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -123,6 +174,7 @@ export function CalendarPage() {
 
   const { data: users } = useQuery<any[]>({
     queryKey: ["/api/users"],
+    enabled: canViewUsers,
   });
 
   const invalidateEvents = () => {
@@ -131,11 +183,17 @@ export function CalendarPage() {
 
   const createEventMutation = useMutation({
     mutationFn: async (data: EventFormData) => {
+      const startDate = data.allDay ? data.startDate : combineDateAndTime(data.startDate, data.startTime);
+      const endDate = data.endDate
+        ? (data.allDay ? data.endDate : combineDateAndTime(data.endDate, data.endTime))
+        : undefined;
       return apiRequest("POST", "/api/calendar/events", {
         ...data,
-        startDate: data.startDate.toISOString(),
-        endDate: data.endDate?.toISOString(),
+        startDate: startDate.toISOString(),
+        endDate: endDate?.toISOString(),
         userId: data.userId || undefined,
+        startTime: undefined,
+        endTime: undefined,
       });
     },
     onSuccess: () => {
@@ -151,11 +209,19 @@ export function CalendarPage() {
 
   const updateEventMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<EventFormData> }) => {
+      const startDate = data.startDate
+        ? (data.allDay ? data.startDate : combineDateAndTime(data.startDate, data.startTime))
+        : undefined;
+      const endDate = data.endDate
+        ? (data.allDay ? data.endDate : combineDateAndTime(data.endDate, data.endTime))
+        : undefined;
       return apiRequest("PATCH", `/api/calendar/events/${id}`, {
         ...data,
-        startDate: data.startDate?.toISOString(),
-        endDate: data.endDate?.toISOString(),
+        startDate: startDate?.toISOString(),
+        endDate: endDate?.toISOString(),
         userId: data.userId || undefined,
+        startTime: undefined,
+        endTime: undefined,
       });
     },
     onSuccess: () => {
@@ -228,6 +294,8 @@ export function CalendarPage() {
       description: "",
       eventType: "otro",
       startDate: date,
+      startTime: "",
+      endTime: "",
       allDay: false,
       color: "blue",
       userId: "",
@@ -243,7 +311,9 @@ export function CalendarPage() {
       description: event.description || "",
       eventType: event.eventType || "otro",
       startDate: parseISO(event.startDate),
+      startTime: extractTime(event.startDate),
       endDate: event.endDate ? parseISO(event.endDate) : undefined,
+      endTime: extractTime(event.endDate),
       allDay: event.allDay || false,
       color: event.color || "blue",
       userId: event.userId || "",
@@ -260,6 +330,12 @@ export function CalendarPage() {
     if (selectedEvent) {
       updateEventMutation.mutate({ id: selectedEvent.id, data });
     }
+  };
+
+  const handleViewTask = (task: any) => {
+    const isAbastecedor = user?.role === "abastecedor";
+    navigate(isAbastecedor ? "/mis-tareas" : "/todas-tareas");
+    setSelectedDate(null);
   };
 
   const weekDayLabels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -298,11 +374,11 @@ export function CalendarPage() {
         </div>
         <div className="space-y-1">
           {allItems.slice(0, tall ? 10 : 3).map((item, i) => {
-            const type = eventTypeConfig[(item as any).isTask ? "tarea" : (item.eventType || "otro")];
+            const colorClass = getEventColorClass(item);
             return (
               <div
                 key={i}
-                className={`text-xs px-1 py-0.5 rounded truncate ${type.color} text-white`}
+                className={`text-xs px-1 py-0.5 rounded truncate ${colorClass} text-white`}
                 title={item.title}
               >
                 {item.title}
@@ -340,6 +416,8 @@ export function CalendarPage() {
                   description: "",
                   eventType: "otro",
                   startDate: new Date(),
+                  startTime: "",
+                  endTime: "",
                   allDay: false,
                   color: "blue",
                   userId: "",
@@ -435,6 +513,7 @@ export function CalendarPage() {
           </CardContent>
         </Card>
 
+        {/* Day Detail Dialog */}
         <Dialog open={selectedDate !== null} onOpenChange={() => setSelectedDate(null)}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
@@ -456,15 +535,19 @@ export function CalendarPage() {
                 <>
                   <div className="space-y-2">
                     {[...getEventsForDay(selectedDate), ...getTasksForDay(selectedDate).map(t => ({ ...t, isTask: true }))].map((item, i) => {
-                      const type = eventTypeConfig[(item as any).isTask ? "tarea" : (item.eventType || "otro")];
+                      const isTask = !!(item as any).isTask;
+                      const key = isTask ? "tarea" : (item.eventType || "otro");
+                      const type = eventTypeConfig[key] ?? eventTypeConfig.otro;
                       const TypeIcon = type.icon;
+                      const colorClass = getEventColorClass(item);
+                      const timeStr = !isTask && !item.allDay ? extractTime(item.startDate) : "";
                       return (
                         <div
                           key={i}
                           className={`p-3 rounded-lg ${type.bgColor} flex items-start justify-between gap-2`}
                         >
                           <div className="flex items-start gap-3">
-                            <div className={`p-2 rounded-lg ${type.color} text-white`}>
+                            <div className={`p-2 rounded-lg ${colorClass} text-white`}>
                               <TypeIcon className="h-4 w-4" />
                             </div>
                             <div>
@@ -472,35 +555,54 @@ export function CalendarPage() {
                               {item.description && (
                                 <p className="text-sm text-muted-foreground">{item.description}</p>
                               )}
-                              {!(item as any).isTask && item.allDay && (
+                              {timeStr && (
+                                <p className="text-xs text-muted-foreground mt-0.5">{timeStr}</p>
+                              )}
+                              {!isTask && item.allDay && (
                                 <Badge variant="outline" className="mt-1">Todo el día</Badge>
+                              )}
+                              {isTask && item.status && (
+                                <Badge variant="outline" className="mt-1 capitalize">{item.status.replace("_", " ")}</Badge>
                               )}
                             </div>
                           </div>
-                          {!(item as any).isTask && (canEdit("tasks") || canDelete("tasks")) && (
-                            <div className="flex items-center gap-1">
-                              {canEdit("tasks") && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleEditEvent(item)}
-                                  data-testid={`button-edit-event-${item.id}`}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                              )}
-                              {canDelete("tasks") && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => deleteEventMutation.mutate(item.id)}
-                                  data-testid={`button-delete-event-${item.id}`}
-                                >
-                                  <Trash2 className="h-4 w-4 text-red-500" />
-                                </Button>
-                              )}
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1">
+                            {isTask && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleViewTask(item)}
+                                title="Ver tarea"
+                                data-testid={`button-view-task-${item.id}`}
+                              >
+                                <ArrowUpRight className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {!isTask && (canEdit("tasks") || canDelete("tasks")) && (
+                              <>
+                                {canEdit("tasks") && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleEditEvent(item)}
+                                    data-testid={`button-edit-event-${item.id}`}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {canDelete("tasks") && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => deleteEventMutation.mutate(item.id)}
+                                    data-testid={`button-delete-event-${item.id}`}
+                                  >
+                                    <Trash2 className="h-4 w-4 text-red-500" />
+                                  </Button>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -529,6 +631,7 @@ export function CalendarPage() {
           </DialogContent>
         </Dialog>
 
+        {/* Create Event Dialog */}
         <Dialog open={isNewEventOpen} onOpenChange={setIsNewEventOpen}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
@@ -574,7 +677,7 @@ export function CalendarPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Tipo</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger data-testid="select-event-type">
                               <SelectValue placeholder="Seleccionar tipo" />
@@ -597,7 +700,7 @@ export function CalendarPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Color</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger data-testid="select-event-color">
                               <SelectValue placeholder="Seleccionar color" />
@@ -707,31 +810,64 @@ export function CalendarPage() {
                   )}
                 />
 
-                <FormField
-                  control={createForm.control}
-                  name="userId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Asignar a (opcional)</FormLabel>
-                      <Select onValueChange={(val) => field.onChange(val === "unassigned" ? undefined : val)} value={field.value || "unassigned"}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-event-user">
-                            <SelectValue placeholder="Seleccionar usuario" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="unassigned">Sin asignar</SelectItem>
-                          {users?.map((user) => (
-                            <SelectItem key={user.id} value={user.id}>
-                              {user.fullName || user.username}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {!createAllDay && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={createForm.control}
+                      name="startTime"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Hora inicio</FormLabel>
+                          <FormControl>
+                            <Input type="time" {...field} data-testid="input-event-start-time" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={createForm.control}
+                      name="endTime"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Hora fin (opcional)</FormLabel>
+                          <FormControl>
+                            <Input type="time" {...field} data-testid="input-event-end-time" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                )}
+
+                {canViewUsers && (
+                  <FormField
+                    control={createForm.control}
+                    name="userId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Asignar a (opcional)</FormLabel>
+                        <Select onValueChange={(val) => field.onChange(val === "unassigned" ? undefined : val)} value={field.value || "unassigned"}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-event-user">
+                              <SelectValue placeholder="Seleccionar usuario" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="unassigned">Sin asignar</SelectItem>
+                            {users?.map((u) => (
+                              <SelectItem key={u.id} value={u.id}>
+                                {u.fullName || u.username}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setIsNewEventOpen(false)}>
@@ -746,6 +882,7 @@ export function CalendarPage() {
           </DialogContent>
         </Dialog>
 
+        {/* Edit Event Dialog */}
         <Dialog open={isEditEventOpen} onOpenChange={setIsEditEventOpen}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
@@ -924,31 +1061,64 @@ export function CalendarPage() {
                   )}
                 />
 
-                <FormField
-                  control={editForm.control}
-                  name="userId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Asignar a (opcional)</FormLabel>
-                      <Select onValueChange={(val) => field.onChange(val === "unassigned" ? undefined : val)} value={field.value || "unassigned"}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-edit-event-user">
-                            <SelectValue placeholder="Seleccionar usuario" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="unassigned">Sin asignar</SelectItem>
-                          {users?.map((user) => (
-                            <SelectItem key={user.id} value={user.id}>
-                              {user.fullName || user.username}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {!editAllDay && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={editForm.control}
+                      name="startTime"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Hora inicio</FormLabel>
+                          <FormControl>
+                            <Input type="time" {...field} data-testid="input-edit-event-start-time" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="endTime"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Hora fin (opcional)</FormLabel>
+                          <FormControl>
+                            <Input type="time" {...field} data-testid="input-edit-event-end-time" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                )}
+
+                {canViewUsers && (
+                  <FormField
+                    control={editForm.control}
+                    name="userId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Asignar a (opcional)</FormLabel>
+                        <Select onValueChange={(val) => field.onChange(val === "unassigned" ? undefined : val)} value={field.value || "unassigned"}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-edit-event-user">
+                              <SelectValue placeholder="Seleccionar usuario" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="unassigned">Sin asignar</SelectItem>
+                            {users?.map((u) => (
+                              <SelectItem key={u.id} value={u.id}>
+                                {u.fullName || u.username}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setIsEditEventOpen(false)}>
