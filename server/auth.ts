@@ -73,6 +73,11 @@ export function authorizeRoles(...allowedRoles: string[]) {
       return res.status(401).json({ error: "No autenticado" });
     }
     
+    // Super Admin bypasses all role-based restrictions
+    if (req.user.isSuperAdmin) {
+      return next();
+    }
+    
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({ error: "No tienes permiso para acceder a este recurso" });
     }

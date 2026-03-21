@@ -7030,21 +7030,47 @@ export async function registerRoutes(
   });
 
   // Supervisors management endpoints
+  const SUPERVISOR_VALID_ZONES = ["Zona Norte", "Zona Sur", "Zona Centro", "Zona Oriente", "Zona Poniente"] as const;
+  const supervisorZoneSchema = z.object({
+    zone: z.enum(SUPERVISOR_VALID_ZONES).nullable().optional(),
+  });
+
   app.get("/api/supervisors", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { db } = await import("./db");
       const { routes: routesTable, users: usersTable } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-      
-      const allUsers = await storage.getEmployees();
+      const { eq, and } = await import("drizzle-orm");
+
+      // Aislamiento multi-tenant: fail-closed para no-superAdmin
+      const tenantId = req.user?.isSuperAdmin ? null : req.user?.tenantId;
+      if (!req.user?.isSuperAdmin && !tenantId) {
+        return res.status(403).json({ error: "Contexto de tenant requerido" });
+      }
+
+      // Obtener usuarios del tenant (query directa con filtro de tenantId)
+      const rawUsers = tenantId
+        ? await db.select().from(usersTable).where(eq(usersTable.tenantId, tenantId))
+        : await db.select().from(usersTable);
+      const allUsers = rawUsers.map(({ password, ...u }) => u);
       const supervisors = allUsers.filter((u: any) => u.role === "supervisor");
-      
-      const machines = await storage.getMachines(req.user!.tenantId);
-      const routesList = await db.select().from(routesTable).limit(500);
-      const alerts = await storage.getMachineAlerts();
-      const tasks = await storage.getTasks();
       const abastecedores = allUsers.filter((u: any) => u.role === "abastecedor");
-      
+
+      // Máquinas del tenant (ya filtradas por tenantId)
+      const machines = await storage.getMachines(req.user?.isSuperAdmin ? undefined : req.user!.tenantId!);
+
+      // Rutas del tenant
+      const routesList = tenantId
+        ? await db.select().from(routesTable).where(eq(routesTable.tenantId, tenantId)).limit(500)
+        : await db.select().from(routesTable).limit(500);
+
+      // Alertas: filtrar por máquinas del tenant (las alertas no tienen tenantId propio)
+      const tenantMachineIds = new Set(machines.map(m => m.id));
+      const allAlerts = await storage.getMachineAlerts(undefined, undefined, 2000);
+      const alerts = allAlerts.filter((a: any) => tenantMachineIds.has(a.machineId));
+
+      // Tareas del tenant
+      const tasks = await storage.getTasks(tenantId ? { tenantId } : {});
+
       const supervisorsWithMetrics = supervisors.map((sup: any) => {
         const zone = sup.assignedZone;
         const zoneMachines = zone ? machines.filter(m => m.zone === zone) : [];
@@ -7054,20 +7080,20 @@ export async function registerRoutes(
           const machine = machines.find(m => m.id === a.machineId);
           return machine?.zone === zone && !a.isResolved;
         }) : [];
-        const assignedTasks = tasks.filter(t => t.assignedUserId === sup.id);
-        const completedTasks = assignedTasks.filter(t => t.status === "completada");
-        
+        const assignedTasks = tasks.filter((t: any) => t.assignedUserId === sup.id);
+        const completedTasks = assignedTasks.filter((t: any) => t.status === "completada");
+
         const operativeMachines = zoneMachines.filter(m => m.status === "operando").length;
-        const operativityRate = zoneMachines.length > 0 
-          ? Math.round((operativeMachines / zoneMachines.length) * 100) 
+        const operativityRate = zoneMachines.length > 0
+          ? Math.round((operativeMachines / zoneMachines.length) * 100)
           : 0;
-        
+
         const completionRate = assignedTasks.length > 0
           ? Math.round((completedTasks.length / assignedTasks.length) * 100)
           : 100;
-        
+
         const criticalAlerts = zoneAlerts.filter((a: any) => a.priority === "critica").length;
-        
+
         return {
           ...sup,
           metrics: {
@@ -7084,7 +7110,7 @@ export async function registerRoutes(
           }
         };
       });
-      
+
       res.json(supervisorsWithMetrics);
     } catch (error) {
       console.error("Error getting supervisors:", error);
@@ -7096,34 +7122,63 @@ export async function registerRoutes(
     try {
       const { db } = await import("./db");
       const { routes: routesTable, users: usersTable } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-      
+      const { eq, and } = await import("drizzle-orm");
+
+      const tenantId = req.user?.isSuperAdmin ? null : req.user?.tenantId;
+      if (!req.user?.isSuperAdmin && !tenantId) {
+        return res.status(403).json({ error: "Contexto de tenant requerido" });
+      }
+
       const { id } = req.params;
       const supervisor = await storage.getEmployee(id);
-      
+
+      // SECURITY: verificar que el supervisor pertenece al tenant del solicitante
       if (!supervisor || supervisor.role !== "supervisor") {
         return res.status(404).json({ error: "Supervisor no encontrado" });
       }
-      
-      const allUsers = await storage.getEmployees();
-      const machines = await storage.getMachines(req.user!.tenantId);
-      const routesList = await db.select().from(routesTable).where(eq(routesTable.supervisorId, id)).limit(50);
-      const alerts = await storage.getMachineAlerts();
-      const tasks = await storage.getTasks();
-      
+      if (!req.user?.isSuperAdmin && supervisor.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Supervisor no encontrado" });
+      }
+
+      // Usuarios del tenant
+      const rawUsers = tenantId
+        ? await db.select().from(usersTable).where(eq(usersTable.tenantId, tenantId))
+        : await db.select().from(usersTable);
+      const allUsers = rawUsers.map(({ password, ...u }) => u);
+
+      // Máquinas del tenant
+      const machines = await storage.getMachines(req.user?.isSuperAdmin ? undefined : req.user!.tenantId!);
+
+      // Rutas del supervisor dentro del tenant
+      const routesList = tenantId
+        ? await db.select().from(routesTable).where(
+            and(eq(routesTable.supervisorId, id), eq(routesTable.tenantId, tenantId))
+          ).limit(50)
+        : await db.select().from(routesTable).where(eq(routesTable.supervisorId, id)).limit(50);
+
+      // Alertas filtradas por máquinas del tenant
+      const tenantMachineIds = new Set(machines.map(m => m.id));
+      const allAlerts = await storage.getMachineAlerts(undefined, undefined, 2000);
+      const alerts = allAlerts.filter((a: any) => tenantMachineIds.has(a.machineId));
+
+      // Tareas del supervisor dentro del tenant
+      const tasks = await storage.getTasks(
+        tenantId ? { tenantId, assignedUserId: id } : { assignedUserId: id }
+      );
+
       const zone = supervisor.assignedZone;
       const zoneMachines = zone ? machines.filter(m => m.zone === zone) : [];
-      const abastecedores = zone 
+      const abastecedores = zone
         ? allUsers.filter((u: any) => u.role === "abastecedor" && u.assignedZone === zone)
         : [];
       const zoneAlerts = zone ? alerts.filter((a: any) => {
         const machine = machines.find(m => m.id === a.machineId);
         return machine?.zone === zone;
       }) : [];
-      
-      const assignedTasks = tasks.filter(t => t.assignedUserId === id);
+
       const operativeMachines = zoneMachines.filter(m => m.status === "operando").length;
-      
+      const completedTasks = tasks.filter((t: any) => t.status === "completada");
+
       const recentRoutes = routesList.slice(0, 10).map((r: any) => ({
         id: r.id,
         date: r.date,
@@ -7131,7 +7186,7 @@ export async function registerRoutes(
         totalStops: r.totalStops,
         completedStops: r.completedStops,
       }));
-      
+
       res.json({
         ...supervisor,
         zone,
@@ -7148,18 +7203,21 @@ export async function registerRoutes(
         })),
         recentRoutes,
         alerts: zoneAlerts.filter((a: any) => !a.isResolved).slice(0, 10),
-        tasks: assignedTasks.slice(0, 10),
+        tasks: tasks.slice(0, 10),
         metrics: {
           machinesCount: zoneMachines.length,
           operativeMachines,
-          operativityRate: zoneMachines.length > 0 
-            ? Math.round((operativeMachines / zoneMachines.length) * 100) 
+          operativityRate: zoneMachines.length > 0
+            ? Math.round((operativeMachines / zoneMachines.length) * 100)
             : 0,
           abastecedoresCount: abastecedores.length,
           pendingAlerts: zoneAlerts.filter((a: any) => !a.isResolved).length,
           criticalAlerts: zoneAlerts.filter((a: any) => a.priority === "critica" && !a.isResolved).length,
-          tasksCompleted: assignedTasks.filter(t => t.status === "completada").length,
-          tasksTotal: assignedTasks.length,
+          tasksCompleted: completedTasks.length,
+          tasksTotal: tasks.length,
+          completionRate: tasks.length > 0
+            ? Math.round((completedTasks.length / tasks.length) * 100)
+            : 100,
         }
       });
     } catch (error) {
@@ -7172,19 +7230,40 @@ export async function registerRoutes(
     try {
       const { db } = await import("./db");
       const { users: usersTable } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-      
+      const { eq, and } = await import("drizzle-orm");
+
+      const tenantId = req.user?.isSuperAdmin ? null : req.user?.tenantId;
+      if (!req.user?.isSuperAdmin && !tenantId) {
+        return res.status(403).json({ error: "Contexto de tenant requerido" });
+      }
+
       const { id } = req.params;
-      const { zone } = req.body;
-      
+
+      // Validar zona con Zod
+      let validatedZone: string | null;
+      try {
+        const parsed = supervisorZoneSchema.parse(req.body);
+        validatedZone = parsed.zone ?? null;
+      } catch {
+        return res.status(400).json({ error: "Zona no válida" });
+      }
+
+      // SECURITY: verificar que el supervisor pertenece al tenant del solicitante
       const supervisor = await storage.getEmployee(id);
       if (!supervisor || supervisor.role !== "supervisor") {
         return res.status(404).json({ error: "Supervisor no encontrado" });
       }
-      
-      await db.update(usersTable).set({ assignedZone: zone }).where(eq(usersTable.id, id));
-      
-      res.json({ success: true, message: "Zona asignada correctamente" });
+      if (!req.user?.isSuperAdmin && supervisor.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Supervisor no encontrado" });
+      }
+
+      // Actualizar con guard de tenantId para seguridad adicional
+      const whereClause = tenantId
+        ? and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId))
+        : eq(usersTable.id, id);
+      await db.update(usersTable).set({ assignedZone: validatedZone }).where(whereClause);
+
+      res.json({ success: true, message: validatedZone ? "Zona asignada correctamente" : "Zona desasignada correctamente" });
     } catch (error) {
       console.error("Error assigning zone:", error);
       res.status(500).json({ error: "Error al asignar zona" });

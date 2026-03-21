@@ -34,6 +34,7 @@ import {
 import { formatDate, formatDateShort } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { DataPagination } from "@/components/DataPagination";
 import {
   Users, Search, MapPin, Box, AlertTriangle, CheckCircle2, 
@@ -88,6 +89,7 @@ const ITEMS_PER_PAGE = 10;
 
 export function SupervisorsPage() {
   const { toast } = useToast();
+  const { canEdit } = usePermissions();
   const [searchQuery, setSearchQuery] = useState("");
   const [zoneFilter, setZoneFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -107,21 +109,23 @@ export function SupervisorsPage() {
   });
 
   const assignZoneMutation = useMutation({
-    mutationFn: async ({ id, zone }: { id: string; zone: string }) => {
+    mutationFn: async ({ id, zone }: { id: string; zone: string | null }) => {
       return apiRequest("PATCH", `/api/supervisors/${id}/zone`, { zone });
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/supervisors"] });
       toast({
-        title: "Zona asignada",
-        description: "La zona se asignó correctamente al supervisor",
+        title: variables.zone ? "Zona asignada" : "Zona desasignada",
+        description: variables.zone
+          ? "La zona se asignó correctamente al supervisor"
+          : "Se eliminó la zona del supervisor correctamente",
       });
       setAssignZoneOpen(false);
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "No se pudo asignar la zona",
+        description: "No se pudo actualizar la zona",
         variant: "destructive",
       });
     },
@@ -181,8 +185,9 @@ export function SupervisorsPage() {
   };
 
   const handleAssignZone = () => {
-    if (selectedSupervisor && selectedZone) {
-      assignZoneMutation.mutate({ id: selectedSupervisor.id, zone: selectedZone });
+    if (selectedSupervisor) {
+      const zone = selectedZone === "__none__" ? null : selectedZone || null;
+      assignZoneMutation.mutate({ id: selectedSupervisor.id, zone });
     }
   };
 
@@ -449,7 +454,7 @@ export function SupervisorsPage() {
                     </TableCell>
                     <TableCell className="text-center">
                       {supervisor.isActive ? (
-                        <Badge className="bg-green-500/10 text-green-600 hover:bg-green-500/20">
+                        <Badge className="bg-green-500/10 text-green-600 no-default-hover-elevate">
                           Activo
                         </Badge>
                       ) : (
@@ -466,14 +471,16 @@ export function SupervisorsPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenAssignZone(supervisor)}
-                          data-testid={`button-assign-zone-${supervisor.id}`}
-                        >
-                          <MapPin className="h-4 w-4" />
-                        </Button>
+                        {canEdit("users") && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleOpenAssignZone(supervisor)}
+                            data-testid={`button-assign-zone-${supervisor.id}`}
+                          >
+                            <MapPin className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -516,7 +523,7 @@ export function SupervisorsPage() {
                 {rankedSupervisors.map((supervisor) => (
                   <div 
                     key={supervisor.id}
-                    className="flex items-center gap-4 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                    className="flex items-center gap-4 p-3 rounded-lg border hover-elevate"
                     data-testid={`ranking-supervisor-${supervisor.id}`}
                   >
                     <div className={`flex items-center justify-center w-10 h-10 rounded-full font-bold text-lg ${
@@ -608,11 +615,12 @@ export function SupervisorsPage() {
             </div>
           ) : supervisorDetail ? (
             <Tabs defaultValue="overview" className="mt-4">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="overview">Resumen</TabsTrigger>
                 <TabsTrigger value="machines">Máquinas</TabsTrigger>
                 <TabsTrigger value="team">Equipo</TabsTrigger>
                 <TabsTrigger value="alerts">Alertas</TabsTrigger>
+                <TabsTrigger value="tasks">Tareas</TabsTrigger>
               </TabsList>
 
               <TabsContent value="overview" className="space-y-4 mt-4">
@@ -719,7 +727,7 @@ export function SupervisorsPage() {
                         {supervisorDetail.machines.map((machine) => (
                           <div 
                             key={machine.id} 
-                            className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted/50"
+                            className="flex items-center justify-between py-2 px-3 rounded-lg hover-elevate"
                           >
                             <div className="flex items-center gap-3">
                               <div className={`w-2 h-2 rounded-full ${getStatusColor(machine.status)}`} />
@@ -750,7 +758,7 @@ export function SupervisorsPage() {
                         {supervisorDetail.abastecedores.map((abastecedor) => (
                           <div 
                             key={abastecedor.id} 
-                            className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted/50"
+                            className="flex items-center justify-between py-2 px-3 rounded-lg hover-elevate"
                           >
                             <div className="flex items-center gap-3">
                               <Avatar className="h-8 w-8">
@@ -761,7 +769,7 @@ export function SupervisorsPage() {
                               <p className="font-medium">{abastecedor.fullName || "Sin nombre"}</p>
                             </div>
                             {abastecedor.isActive ? (
-                              <Badge className="bg-green-500/10 text-green-600">Activo</Badge>
+                              <Badge className="bg-green-500/10 text-green-600 no-default-hover-elevate">Activo</Badge>
                             ) : (
                               <Badge variant="secondary">Inactivo</Badge>
                             )}
@@ -786,7 +794,7 @@ export function SupervisorsPage() {
                         {supervisorDetail.alerts.map((alert: any) => (
                           <div 
                             key={alert.id} 
-                            className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted/50"
+                            className="flex items-center justify-between py-2 px-3 rounded-lg hover-elevate"
                           >
                             <div className="flex items-center gap-3">
                               <AlertTriangle className={`h-4 w-4 ${
@@ -799,6 +807,54 @@ export function SupervisorsPage() {
                             </div>
                             <Badge variant={alert.priority === "critica" ? "destructive" : "secondary"}>
                               {alert.priority}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="tasks" className="mt-4">
+                <Card>
+                  <CardContent className="p-4">
+                    {supervisorDetail.tasks.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Activity className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                        <p className="text-muted-foreground">No hay tareas asignadas</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {supervisorDetail.tasks.map((task: any) => (
+                          <div
+                            key={task.id}
+                            className="flex items-center justify-between py-2 px-3 rounded-lg hover-elevate"
+                            data-testid={`task-item-${task.id}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              {task.status === "completada" ? (
+                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                              ) : task.status === "en_progreso" ? (
+                                <Clock className="h-4 w-4 text-blue-500" />
+                              ) : (
+                                <Clock className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              <div>
+                                <p className="font-medium text-sm">{task.title}</p>
+                                {task.dueDate && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Vence: {formatDateShort(new Date(task.dueDate))}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <Badge variant={
+                              task.status === "completada" ? "default" :
+                              task.status === "en_progreso" ? "secondary" : "outline"
+                            }>
+                              {task.status === "completada" ? "Completada" :
+                               task.status === "en_progreso" ? "En progreso" : "Pendiente"}
                             </Badge>
                           </div>
                         ))}
@@ -826,6 +882,7 @@ export function SupervisorsPage() {
                 <SelectValue placeholder="Selecciona una zona" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="__none__">Sin zona (Desasignar)</SelectItem>
                 {ZONES.map(zone => (
                   <SelectItem key={zone} value={zone}>{zone}</SelectItem>
                 ))}
@@ -841,7 +898,7 @@ export function SupervisorsPage() {
               disabled={!selectedZone || assignZoneMutation.isPending}
               data-testid="button-confirm-assign-zone"
             >
-              {assignZoneMutation.isPending ? "Guardando..." : "Asignar Zona"}
+              {assignZoneMutation.isPending ? "Guardando..." : selectedZone === "__none__" ? "Desasignar Zona" : "Asignar Zona"}
             </Button>
           </DialogFooter>
         </DialogContent>
