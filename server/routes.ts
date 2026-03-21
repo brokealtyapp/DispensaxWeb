@@ -88,8 +88,7 @@ import {
   shrinkageRecords,
   tasks as tasksTable,
   machineAlerts,
-  products,
-  warehouseInventory
+  products
 } from "@shared/schema";
 import { z } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
@@ -1829,24 +1828,6 @@ export async function registerRoutes(
         storage.getExpiringLots(30, 30, tenantId),
         storage.getWarehouseMovements(undefined, 10, tenantId),
       ]);
-
-      // Auto-create inventory rows for products that don't have one yet (backfill)
-      if (tenantId) {
-        const inventoryProductIds = new Set(inventory.map(inv => inv.productId));
-        const missingProducts = allProducts.filter(p => !inventoryProductIds.has(p.id));
-        if (missingProducts.length > 0) {
-          await Promise.all(missingProducts.map(p =>
-            db.insert(warehouseInventory).values({
-              productId: p.id,
-              tenantId: p.tenantId,
-              currentStock: 0,
-              minStock: 10,
-              maxStock: 100,
-              reorderPoint: 20,
-            }).onConflictDoNothing()
-          ));
-        }
-      }
 
       const totalProducts = allProducts.length;
       const totalStock = inventory.reduce((sum, inv) => sum + (inv.currentStock || 0), 0);
