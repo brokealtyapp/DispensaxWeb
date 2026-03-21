@@ -111,7 +111,7 @@ export function SuppliersManagementPage() {
   const [periodFilter, setPeriodFilter] = useState("hoy");
 
   const { data: suppliers = [], isLoading: loadingSuppliers } = useQuery<Supplier[]>({
-    queryKey: ["/api/users?role=abastecedor"],
+    queryKey: ["/api/users", { role: "abastecedor" }],
   });
 
   const { data: routes = [], isLoading: loadingRoutes } = useQuery<Route[]>({
@@ -215,8 +215,8 @@ export function SuppliersManagementPage() {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(s => 
-        s.fullName.toLowerCase().includes(query) ||
-        s.email.toLowerCase().includes(query)
+        (s.fullName || "").toLowerCase().includes(query) ||
+        (s.email || "").toLowerCase().includes(query)
       );
     }
 
@@ -276,13 +276,13 @@ export function SuppliersManagementPage() {
     }
     const status = supplier.todayRoute.status;
     if (status === "en_progreso") {
-      return <Badge className="bg-green-500 hover:bg-green-600">En ruta</Badge>;
+      return <Badge className="bg-green-500">En ruta</Badge>;
     }
     if (status === "pendiente") {
       return <Badge variant="outline" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Pendiente</Badge>;
     }
     if (status === "completada") {
-      return <Badge className="bg-blue-500 hover:bg-blue-600">Completada</Badge>;
+      return <Badge className="bg-blue-500">Completada</Badge>;
     }
     return <Badge variant="outline">{status}</Badge>;
   };
@@ -472,7 +472,7 @@ export function SuppliersManagementPage() {
                         <div className="flex items-center gap-3">
                           <Avatar className="h-10 w-10">
                             <AvatarFallback className="bg-green-500 text-white">
-                              {supplier.fullName.split(" ").map(n => n[0]).join("").toUpperCase()}
+                              {(supplier.fullName || "?").split(" ").map((n: string) => n[0]).join("").toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
                           <div>
@@ -534,7 +534,7 @@ export function SuppliersManagementPage() {
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
                           <AvatarFallback className="bg-amber-500 text-white text-xs">
-                            {supplier.fullName.split(" ").map(n => n[0]).join("").toUpperCase()}
+                            {(supplier.fullName || "?").split(" ").map((n: string) => n[0]).join("").toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
@@ -580,7 +580,7 @@ export function SuppliersManagementPage() {
                           <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
                               <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                                {supplier.fullName.split(" ").map(n => n[0]).join("").toUpperCase()}
+                                {(supplier.fullName || "?").split(" ").map((n: string) => n[0]).join("").toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
                             <div>
@@ -659,7 +659,7 @@ export function SuppliersManagementPage() {
                           </div>
                           <Avatar className="h-8 w-8">
                             <AvatarFallback className="text-xs">
-                              {supplier.fullName.split(" ").map(n => n[0]).join("").toUpperCase()}
+                              {(supplier.fullName || "?").split(" ").map((n: string) => n[0]).join("").toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
                           <span className="font-medium">{supplier.fullName}</span>
@@ -704,7 +704,7 @@ export function SuppliersManagementPage() {
                           </div>
                           <Avatar className="h-8 w-8">
                             <AvatarFallback className="text-xs">
-                              {supplier.fullName.split(" ").map(n => n[0]).join("").toUpperCase()}
+                              {(supplier.fullName || "?").split(" ").map((n: string) => n[0]).join("").toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
                           <span className="font-medium">{supplier.fullName}</span>

@@ -2200,7 +2200,7 @@ export async function registerRoutes(
   });
 
   // Endpoint batch para obtener paradas de múltiples rutas en una sola llamada
-  app.post("/api/supplier/route-stops-batch", authenticateJWT, authorizeAction("stops", "create"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/supplier/route-stops-batch", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { routeIds } = req.body;
       if (!Array.isArray(routeIds)) {
@@ -2458,7 +2458,7 @@ export async function registerRoutes(
       
       // Obtener datos completos del servicio activo (checklist, efectivo, cargas, incidencias)
       const [cashCollections, productLoads, serviceIssues] = await Promise.all([
-        storage.getCashCollections(undefined, undefined, undefined, undefined, 100),
+        storage.getCashCollections(req.params.userId, undefined, undefined, undefined, 100),
         storage.getProductLoads(service.id),
         storage.getIssueReportsByService(service.id)
       ]);
@@ -3101,6 +3101,13 @@ export async function registerRoutes(
       if (!userId || !resolution) {
         return res.status(400).json({ error: "Faltan campos requeridos" });
       }
+      const existing = await storage.getIssueReport(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ error: "Reporte no encontrado" });
+      }
+      if (!req.user?.isSuperAdmin && existing.tenantId !== req.user?.tenantId) {
+        return res.status(404).json({ error: "Reporte no encontrado" });
+      }
       const issue = await storage.resolveIssue(req.params.id, userId, resolution);
       if (!issue) {
         return res.status(404).json({ error: "Reporte no encontrado" });
@@ -3467,12 +3474,15 @@ export async function registerRoutes(
   app.get("/api/users/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       // Solo admin puede ver cualquier usuario, otros solo pueden ver su propio perfil
-      if (req.user?.role !== "admin" && req.user?.userId !== req.params.id) {
+      if (req.user?.role !== "admin" && !req.user?.isSuperAdmin && req.user?.userId !== req.params.id) {
         return res.status(403).json({ error: "No tienes permiso para ver este usuario" });
       }
       
       const user = await storage.getUser(req.params.id);
       if (!user) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+      }
+      if (!req.user?.isSuperAdmin && user.tenantId !== req.user?.tenantId) {
         return res.status(404).json({ error: "Usuario no encontrado" });
       }
       const { password, ...userWithoutPassword } = user;

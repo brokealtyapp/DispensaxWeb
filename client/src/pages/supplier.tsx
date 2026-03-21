@@ -298,7 +298,7 @@ export function SupplierPage() {
   const weekDates = getWeekDates();
 
   const { data: weeklyStats, isLoading: isLoadingWeeklyStats } = useQuery<any>({
-    queryKey: [`/api/supplier/stats/${supplierId}?startDate=${weekDates.startOfWeek.toISOString()}&endDate=${weekDates.endOfWeek.toISOString()}`],
+    queryKey: ["/api/supplier/stats", supplierId, { startDate: weekDates.startOfWeek.toISOString(), endDate: weekDates.endOfWeek.toISOString() }],
     enabled: !!supplierId,
   });
 
@@ -326,13 +326,13 @@ export function SupplierPage() {
 
   // Query para registros de combustible del vehículo asignado
   const { data: fuelRecords = [], refetch: refetchFuelRecords } = useQuery<any[]>({
-    queryKey: [`/api/fuel-records?vehicleId=${assignedVehicle?.id}&limit=10`],
+    queryKey: ["/api/fuel-records", { vehicleId: assignedVehicle?.id, limit: 10 }],
     enabled: !!assignedVehicle?.id,
   });
 
   // Query para estadísticas de combustible del vehículo
   const { data: vehicleFuelStats } = useQuery<any>({
-    queryKey: [`/api/vehicles/${assignedVehicle?.id}/fuel-stats`],
+    queryKey: ["/api/vehicles", assignedVehicle?.id, "fuel-stats"],
     enabled: !!assignedVehicle?.id,
   });
 
@@ -490,6 +490,7 @@ export function SupplierPage() {
     },
     onSuccess: (data: any) => {
       setActiveServiceId(data.id);
+      queryClient.invalidateQueries({ queryKey: [activeServiceUrl] });
       toast({ title: "Servicio iniciado" });
     },
   });
@@ -501,6 +502,9 @@ export function SupplierPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/services"] });
       queryClient.invalidateQueries({ queryKey: [`/api/supplier/services/${activeServiceId}/products`] });
+      queryClient.invalidateQueries({ queryKey: [activeServiceUrl] });
+      queryClient.invalidateQueries({ queryKey: [`/api/supplier/today-route/${supplierId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/stats", supplierId] });
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo finalizar el servicio", variant: "destructive" });
@@ -975,9 +979,9 @@ export function SupplierPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completada":
-        return <Badge className="bg-emerald-500 hover:bg-emerald-600">Completada</Badge>;
+        return <Badge className="bg-emerald-500">Completada</Badge>;
       case "en_progreso":
-        return <Badge className="bg-blue-500 hover:bg-blue-600">En progreso</Badge>;
+        return <Badge className="bg-blue-500">En progreso</Badge>;
       default:
         return <Badge variant="secondary">Pendiente</Badge>;
     }
@@ -1098,7 +1102,7 @@ export function SupplierPage() {
               <DollarSign className="h-4 w-4 md:h-5 md:w-5" />
             </div>
             <div>
-              <p className="text-xl md:text-2xl font-bold">${((supplierStats as any)?.cashCollected || 0).toFixed(0)}</p>
+              <p className="text-xl md:text-2xl font-bold">{formatCurrency((supplierStats as any)?.cashCollected || 0)}</p>
               <p className="text-xs md:text-sm text-muted-foreground">Efectivo recolectado</p>
             </div>
           </CardContent>
@@ -1286,7 +1290,7 @@ export function SupplierPage() {
                                 <Button 
                                   size="sm"
                                   variant="outline"
-                                  className="gap-2 text-orange-600 border-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950"
+                                  className="gap-2 text-orange-600 border-orange-600"
                                   onClick={() => recoverStopMutation.mutate(stop.id)}
                                   disabled={recoverStopMutation.isPending}
                                   data-testid={`button-recover-stop-${stop.id}`}
