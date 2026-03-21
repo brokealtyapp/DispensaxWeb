@@ -148,7 +148,7 @@ export function TasksPage() {
   });
 
   const { data: routes } = useQuery<any[]>({
-    queryKey: ["/api/routes"],
+    queryKey: ["/api/supplier/routes"],
   });
 
   const invalidateTaskQueries = () => {

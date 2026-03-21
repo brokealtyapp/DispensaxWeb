@@ -369,10 +369,7 @@ export default function RoutesPage() {
 
   const completeRouteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("PATCH", `/api/supplier/routes/${id}`, { 
-        status: "completada",
-        endTime: new Date().toISOString()
-      });
+      return apiRequest("POST", `/api/supplier/routes/${id}/complete`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });

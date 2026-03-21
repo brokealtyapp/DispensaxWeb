@@ -2105,7 +2105,7 @@ export async function registerRoutes(
   app.post("/api/supplier/routes", authenticateJWT, authorizeAction("routes", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
-      const data = insertRouteSchema.omit({ tenantId: true }).parse(req.body);
+      const data = insertRouteSchema.omit({ tenantId: true }).extend({ date: z.coerce.date() }).parse(req.body);
       const route = await storage.createRoute({ ...data, tenantId });
       res.status(201).json(route);
     } catch (error) {
@@ -2121,7 +2121,7 @@ export async function registerRoutes(
     try {
       if (!await verifyRouteTenant(req.params.id, req, res)) return;
       
-      const data = insertRouteSchema.partial().parse(req.body);
+      const data = insertRouteSchema.extend({ date: z.coerce.date().optional() }).partial().parse(req.body);
       const route = await storage.updateRoute(req.params.id, data);
       if (!route) {
         return res.status(404).json({ error: "Ruta no encontrada" });
@@ -2249,7 +2249,7 @@ export async function registerRoutes(
     try {
       if (!await verifyRouteTenant(req.params.routeId, req, res)) return;
       const tenantId = req.user!.tenantId;
-      const data = insertRouteStopSchema.omit({ tenantId: true }).parse({
+      const data = insertRouteStopSchema.omit({ tenantId: true }).extend({ estimatedArrival: z.coerce.date().optional() }).parse({
         ...req.body,
         routeId: req.params.routeId,
       });

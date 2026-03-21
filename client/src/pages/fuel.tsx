@@ -153,7 +153,7 @@ export function FuelPage() {
   });
 
   const { data: routes = [] } = useQuery<any[]>({
-    queryKey: ["/api/routes"],
+    queryKey: ["/api/supplier/routes"],
   });
 
   const { data: users = [] } = useQuery<any[]>({

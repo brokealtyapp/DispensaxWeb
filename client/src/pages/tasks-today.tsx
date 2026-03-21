@@ -134,7 +134,7 @@ export function TasksTodayPage() {
   });
 
   const { data: routes } = useQuery<any[]>({
-    queryKey: ["/api/routes"],
+    queryKey: ["/api/supplier/routes"],
     enabled: isNewTaskOpen,
   });
 
