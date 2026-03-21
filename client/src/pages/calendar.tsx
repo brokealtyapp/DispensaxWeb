@@ -340,7 +340,7 @@ export function CalendarPage() {
       if (task.priority) params.set("priority", task.priority);
       const qs = params.toString();
       navigate(qs ? `/todas-tareas?${qs}` : "/todas-tareas");
-    } else if (role === "rh") {
+    } else if (role === "abastecedor" || role === "rh") {
       navigate("/mis-tareas");
     } else {
       navigate("/tareas");
