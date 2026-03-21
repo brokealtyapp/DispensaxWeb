@@ -5012,8 +5012,12 @@ export async function registerRoutes(
   app.get("/api/reports/overview", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = reportFiltersSchema.parse(req.query);
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user!.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: "Se requiere tenantId para acceder al resumen de reportes" });
+      }
       const overview = await storage.getReportsOverview(
-        req.user!.tenantId,
+        tenantId,
         startDate ? new Date(startDate) : undefined,
         endDate ? new Date(endDate) : undefined
       );
@@ -5115,8 +5119,12 @@ export async function registerRoutes(
   app.get("/api/reports/machine-performance", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = reportFiltersSchema.parse(req.query);
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user!.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: "Se requiere tenantId para acceder al rendimiento de máquinas" });
+      }
       const performance = await storage.getMachinePerformance(
-        req.user!.tenantId,
+        tenantId,
         startDate ? new Date(startDate) : undefined,
         endDate ? new Date(endDate) : undefined
       );
