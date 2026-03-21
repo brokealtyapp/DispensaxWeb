@@ -267,7 +267,7 @@ export interface IStorage {
   createCashMovement(movement: InsertCashMovement): Promise<CashMovement>;
   updateCashMovementStatus(id: string, status: string): Promise<CashMovement | undefined>;
   reconcileCashMovement(id: string, reconciledBy: string): Promise<CashMovement | undefined>;
-  getCashMovementsSummary(startDate?: Date, endDate?: Date): Promise<{ total: number; pending: number; delivered: number; deposited: number; differences: number }>;
+  getCashMovementsSummary(tenantId?: string, startDate?: Date, endDate?: Date): Promise<{ total: number; pending: number; delivered: number; deposited: number; differences: number }>;
   
   // Depósitos Bancarios
   getBankDeposits(filters?: { tenantId?: string; userId?: string; status?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]>;
@@ -276,20 +276,20 @@ export interface IStorage {
   reconcileBankDeposit(id: string, reconciledAmount: number): Promise<BankDeposit | undefined>;
   
   // Transferencias de Productos
-  getProductTransfers(filters?: { type?: string; productId?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]>;
+  getProductTransfers(filters?: { tenantId?: string; type?: string; productId?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]>;
   getProductTransfer(id: string): Promise<any>;
   createProductTransfer(transfer: InsertProductTransfer): Promise<ProductTransfer>;
   
   // Mermas
-  getShrinkageRecords(filters?: { type?: string; productId?: string; status?: string; limit?: number; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getShrinkageRecords(filters?: { tenantId?: string; type?: string; productId?: string; status?: string; limit?: number; startDate?: Date; endDate?: Date }): Promise<any[]>;
   getShrinkageRecord(id: string): Promise<any>;
   createShrinkageRecord(record: InsertShrinkageRecord): Promise<ShrinkageRecord>;
   approveShrinkage(id: string, approvedBy: string): Promise<ShrinkageRecord | undefined>;
-  getShrinkageSummary(startDate?: Date, endDate?: Date): Promise<{ totalRecords: number; totalQuantity: number; totalCost: number; pendingCount: number; byType: Record<string, { count: number; quantity: number; cost: number }> }>;
+  getShrinkageSummary(tenantId?: string, startDate?: Date, endDate?: Date): Promise<{ totalRecords: number; totalQuantity: number; totalCost: number; pendingCount: number; byType: Record<string, { count: number; quantity: number; cost: number }> }>;
   
   // Conciliación
-  getDailyReconciliation(date: Date, endDate?: Date): Promise<any>;
-  getSupplierReconciliation(userId: string, date: Date): Promise<any>;
+  getDailyReconciliation(date: Date, endDate?: Date, tenantId?: string): Promise<any>;
+  getSupplierReconciliation(userId: string, date: Date, tenantId?: string): Promise<any>;
   
   // ==================== MÓDULO CAJA CHICA ====================
   
@@ -2656,7 +2656,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getCashMovementsSummary(startDate?: Date, endDate?: Date): Promise<{ total: number; pending: number; delivered: number; deposited: number; differences: number }> {
+  async getCashMovementsSummary(tenantId?: string, startDate?: Date, endDate?: Date): Promise<{ total: number; pending: number; delivered: number; deposited: number; differences: number }> {
     // Usar zona horaria GMT-4 (República Dominicana)
     const now = new Date();
     const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' });
@@ -2679,13 +2679,15 @@ export class DatabaseStorage implements IStorage {
       depositDateCondition = and(gte(bankDeposits.depositDate, start), lte(bankDeposits.depositDate, end));
     }
     
-    // Obtener movimientos del rango
-    const movements = await db.select().from(cashMovements)
-      .where(and(gte(cashMovements.createdAt, start), lte(cashMovements.createdAt, end)));
+    // Obtener movimientos del rango filtrados por tenant
+    const movConds: any[] = [gte(cashMovements.createdAt, start), lte(cashMovements.createdAt, end)];
+    if (tenantId) movConds.push(eq(cashMovements.tenantId, tenantId));
+    const movements = await db.select().from(cashMovements).where(and(...movConds));
     
-    // Obtener depósitos bancarios del rango
-    const deposits = await db.select().from(bankDeposits)
-      .where(depositDateCondition);
+    // Obtener depósitos bancarios del rango filtrados por tenant
+    const depConds: any[] = [depositDateCondition as any];
+    if (tenantId) depConds.push(eq(bankDeposits.tenantId, tenantId));
+    const deposits = await db.select().from(bankDeposits).where(and(...depConds));
     
     const totalDeposited = deposits.reduce((sum, d) => sum + parseFloat(d.amount || "0"), 0);
     
@@ -2749,9 +2751,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Transferencias de Productos
-  async getProductTransfers(filters?: { type?: string; productId?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]> {
+  async getProductTransfers(filters?: { tenantId?: string; type?: string; productId?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]> {
     let conditions: any[] = [];
     
+    if (filters?.tenantId) conditions.push(eq(productTransfers.tenantId, filters.tenantId));
     if (filters?.type) conditions.push(eq(productTransfers.transferType, filters.type));
     if (filters?.productId) conditions.push(eq(productTransfers.productId, filters.productId));
     if (filters?.startDate) conditions.push(gte(productTransfers.createdAt, filters.startDate));
@@ -2804,9 +2807,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Mermas
-  async getShrinkageRecords(filters?: { type?: string; productId?: string; status?: string; limit?: number; startDate?: Date; endDate?: Date }): Promise<any[]> {
+  async getShrinkageRecords(filters?: { tenantId?: string; type?: string; productId?: string; status?: string; limit?: number; startDate?: Date; endDate?: Date }): Promise<any[]> {
     let conditions: any[] = [];
     
+    if (filters?.tenantId) conditions.push(eq(shrinkageRecords.tenantId, filters.tenantId));
     if (filters?.type) conditions.push(eq(shrinkageRecords.shrinkageType, filters.type));
     if (filters?.productId) conditions.push(eq(shrinkageRecords.productId, filters.productId));
     if (filters?.status) conditions.push(eq(shrinkageRecords.status, filters.status));
@@ -2815,31 +2819,26 @@ export class DatabaseStorage implements IStorage {
     
     const limit = filters?.limit || 50;
     
-    // Usar JOIN para productos en lugar de N+1 queries
+    // Usar JOIN para productos y usuarios en lugar de N+1 queries
+    const baseQuery = db.select({
+        record: shrinkageRecords,
+        product: products,
+        user: users
+      })
+      .from(shrinkageRecords)
+      .leftJoin(products, eq(shrinkageRecords.productId, products.id))
+      .leftJoin(users, eq(shrinkageRecords.userId, users.id));
+    
     const query = conditions.length > 0
-      ? db.select({
-          record: shrinkageRecords,
-          product: products
-        })
-        .from(shrinkageRecords)
-        .leftJoin(products, eq(shrinkageRecords.productId, products.id))
-        .where(and(...conditions))
-        .orderBy(desc(shrinkageRecords.createdAt))
-        .limit(limit)
-      : db.select({
-          record: shrinkageRecords,
-          product: products
-        })
-        .from(shrinkageRecords)
-        .leftJoin(products, eq(shrinkageRecords.productId, products.id))
-        .orderBy(desc(shrinkageRecords.createdAt))
-        .limit(limit);
+      ? baseQuery.where(and(...conditions)).orderBy(desc(shrinkageRecords.createdAt)).limit(limit)
+      : baseQuery.orderBy(desc(shrinkageRecords.createdAt)).limit(limit);
     
     const results = await query;
     
     return results.map(r => ({
       ...r.record,
-      product: r.product
+      product: r.product,
+      user: r.user
     }));
   }
 
@@ -2872,7 +2871,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getShrinkageSummary(startDate?: Date, endDate?: Date): Promise<{ 
+  async getShrinkageSummary(tenantId?: string, startDate?: Date, endDate?: Date): Promise<{ 
     totalRecords: number; 
     totalQuantity: number; 
     totalCost: number; 
@@ -2882,8 +2881,11 @@ export class DatabaseStorage implements IStorage {
     const start = startDate || new Date(new Date().setDate(new Date().getDate() - 30));
     const end = endDate || new Date();
     
+    const conditions: any[] = [gte(shrinkageRecords.createdAt, start), lte(shrinkageRecords.createdAt, end)];
+    if (tenantId) conditions.push(eq(shrinkageRecords.tenantId, tenantId));
+    
     const records = await db.select().from(shrinkageRecords)
-      .where(and(gte(shrinkageRecords.createdAt, start), lte(shrinkageRecords.createdAt, end)));
+      .where(and(...conditions));
     
     const byType: Record<string, { count: number; quantity: number; cost: number }> = {};
     records.forEach(r => {
@@ -2905,11 +2907,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Conciliación
-  async getDailyReconciliation(date: Date, endDate?: Date): Promise<any> {
+  async getDailyReconciliation(date: Date, endDate?: Date, tenantId?: string): Promise<any> {
     // Usar zona horaria GMT-4 (República Dominicana) para comparación de fechas
     let start: Date;
     let end: Date;
-    let depositDateCondition;
+    let depositDateCondition: any;
     
     if (endDate) {
       // Rango específico solicitado
@@ -2922,11 +2924,14 @@ export class DatabaseStorage implements IStorage {
       const startOfDay = new Date(dateStr + 'T00:00:00-04:00');
       const endOfDay = new Date(dateStr + 'T23:59:59.999-04:00');
       
-      // Verificar si hay datos del día solicitado
-      const dayCollections = await db.select().from(cashCollections)
-        .where(and(gte(cashCollections.createdAt, startOfDay), lte(cashCollections.createdAt, endOfDay)));
-      const dayMovements = await db.select().from(cashMovements)
-        .where(and(gte(cashMovements.createdAt, startOfDay), lte(cashMovements.createdAt, endOfDay)));
+      // Verificar si hay datos del día solicitado (filtrado por tenant)
+      const dayCollConds: any[] = [gte(cashCollections.createdAt, startOfDay), lte(cashCollections.createdAt, endOfDay)];
+      if (tenantId) dayCollConds.push(eq(cashCollections.tenantId, tenantId));
+      const dayMovConds: any[] = [gte(cashMovements.createdAt, startOfDay), lte(cashMovements.createdAt, endOfDay)];
+      if (tenantId) dayMovConds.push(eq(cashMovements.tenantId, tenantId));
+      
+      const dayCollections = await db.select().from(cashCollections).where(and(...dayCollConds));
+      const dayMovements = await db.select().from(cashMovements).where(and(...dayMovConds));
       
       // Si hay datos del día, usar ese día; si no, usar últimos 30 días
       if (dayCollections.length > 0 || dayMovements.length > 0) {
@@ -2941,14 +2946,17 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
-    const collections = await db.select().from(cashCollections)
-      .where(and(gte(cashCollections.createdAt, start), lte(cashCollections.createdAt, end)));
+    const collConds: any[] = [gte(cashCollections.createdAt, start), lte(cashCollections.createdAt, end)];
+    if (tenantId) collConds.push(eq(cashCollections.tenantId, tenantId));
+    const collections = await db.select().from(cashCollections).where(and(...collConds));
     
-    const movements = await db.select().from(cashMovements)
-      .where(and(gte(cashMovements.createdAt, start), lte(cashMovements.createdAt, end)));
+    const movConds: any[] = [gte(cashMovements.createdAt, start), lte(cashMovements.createdAt, end)];
+    if (tenantId) movConds.push(eq(cashMovements.tenantId, tenantId));
+    const movements = await db.select().from(cashMovements).where(and(...movConds));
     
-    const deposits = await db.select().from(bankDeposits)
-      .where(depositDateCondition);
+    const depConds: any[] = [depositDateCondition];
+    if (tenantId) depConds.push(eq(bankDeposits.tenantId, tenantId));
+    const deposits = await db.select().from(bankDeposits).where(and(...depConds));
     
     return {
       date: end,
@@ -2963,18 +2971,21 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getSupplierReconciliation(userId: string, date: Date): Promise<any> {
+  async getSupplierReconciliation(userId: string, date: Date, tenantId?: string): Promise<any> {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
     
+    const conditions: any[] = [
+      eq(cashCollections.userId, userId),
+      gte(cashCollections.createdAt, startOfDay),
+      lte(cashCollections.createdAt, endOfDay),
+    ];
+    if (tenantId) conditions.push(eq(cashCollections.tenantId, tenantId));
+    
     const collections = await db.select().from(cashCollections)
-      .where(and(
-        eq(cashCollections.userId, userId),
-        gte(cashCollections.createdAt, startOfDay),
-        lte(cashCollections.createdAt, endOfDay)
-      ));
+      .where(and(...conditions));
     
     const user = await this.getUser(userId);
     

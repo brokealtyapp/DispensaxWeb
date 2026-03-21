@@ -3895,8 +3895,10 @@ export async function registerRoutes(
   // Movimientos de Efectivo
   app.get("/api/cash-movements", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const { userId, type, status, startDate, endDate } = req.query;
       const filters = {
+        tenantId,
         userId: userId as string | undefined,
         type: type as string | undefined,
         status: status as string | undefined,
@@ -3912,8 +3914,10 @@ export async function registerRoutes(
 
   app.get("/api/cash-movements/summary", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const { startDate, endDate } = req.query;
       const summary = await storage.getCashMovementsSummary(
+        tenantId,
         startDate ? new Date(startDate as string) : undefined,
         endDate ? new Date(endDate as string) : undefined
       );
@@ -3936,8 +3940,8 @@ export async function registerRoutes(
 
   app.post("/api/cash-movements", authenticateJWT, authorizeAction("cash_collections", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertCashMovementSchema.parse(req.body);
-      const movement = await storage.createCashMovement(data);
+      const data = insertCashMovementSchema.omit({ tenantId: true }).parse(req.body);
+      const movement = await storage.createCashMovement({ ...data, tenantId: req.user!.tenantId! });
       res.status(201).json(movement);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -3967,6 +3971,7 @@ export async function registerRoutes(
 
   app.post("/api/cash-movements/:id/reconcile", authenticateJWT, authorizeAction("cash_collections", "approve"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyCashMovementTenant(req.params.id, req, res)) return;
       const reconcilerUserId = req.user?.userId;
       if (!reconcilerUserId) {
         return res.status(401).json({ error: "Usuario no autenticado" });
@@ -4046,10 +4051,12 @@ export async function registerRoutes(
   });
 
   // Transferencias de Productos (protegido con JWT)
-  app.get("/api/product-transfers", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/product-transfers", authenticateJWT, authorizeAction("warehouse_movements", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const { type, productId, startDate, endDate } = req.query;
       const filters = {
+        tenantId,
         type: type as string | undefined,
         productId: productId as string | undefined,
         startDate: startDate ? new Date(startDate as string) : undefined,
@@ -4075,8 +4082,8 @@ export async function registerRoutes(
 
   app.post("/api/product-transfers", authenticateJWT, authorizeAction("warehouse_movements", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertProductTransferSchema.parse(req.body);
-      const transfer = await storage.createProductTransfer(data);
+      const data = insertProductTransferSchema.omit({ tenantId: true }).parse(req.body);
+      const transfer = await storage.createProductTransfer({ ...data, tenantId: req.user!.tenantId! });
       res.status(201).json(transfer);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -4087,10 +4094,12 @@ export async function registerRoutes(
   });
 
   // Mermas (protegido con JWT)
-  app.get("/api/shrinkage", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/shrinkage", authenticateJWT, authorizeAction("warehouse_movements", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const { type, productId, status, startDate, endDate } = req.query;
       const filters = {
+        tenantId,
         type: type as string | undefined,
         productId: productId as string | undefined,
         status: status as string | undefined,
@@ -4104,10 +4113,12 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/shrinkage/summary", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/shrinkage/summary", authenticateJWT, authorizeAction("warehouse_movements", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const { startDate, endDate } = req.query;
       const summary = await storage.getShrinkageSummary(
+        tenantId,
         startDate ? new Date(startDate as string) : undefined,
         endDate ? new Date(endDate as string) : undefined
       );
@@ -4130,13 +4141,14 @@ export async function registerRoutes(
 
   app.post("/api/shrinkage", authenticateJWT, authorizeAction("warehouse_movements", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertShrinkageRecordSchema.parse({
+      const data = insertShrinkageRecordSchema.omit({ tenantId: true }).parse({
         ...req.body,
         userId: req.user!.userId,
       });
+      const dataWithTenant = { ...data, tenantId: req.user!.tenantId! };
       
       // Crear registro de merma
-      const record = await storage.createShrinkageRecord(data);
+      const record = await storage.createShrinkageRecord(dataWithTenant);
       
       // Registrar salida en el inventario del almacén
       const movementType = data.shrinkageType === "caducidad" ? "salida_caducidad" : 
@@ -4175,6 +4187,7 @@ export async function registerRoutes(
 
   app.post("/api/shrinkage/:id/approve", authenticateJWT, authorizeAction("warehouse_movements", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!await verifyShrinkageTenant(req.params.id, req, res)) return;
       const record = await storage.approveShrinkage(req.params.id, req.user!.userId);
       if (!record) {
         return res.status(404).json({ error: "Merma no encontrada" });
@@ -4188,6 +4201,7 @@ export async function registerRoutes(
   // Conciliación
   app.get("/api/reconciliation/daily", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const { date, startDate, endDate } = req.query;
       // Compatibilidad: si se pasa 'date', usar ese día específico
       // Si se pasa 'startDate' y 'endDate', usar rango
@@ -4195,7 +4209,7 @@ export async function registerRoutes(
       const targetDate = date ? new Date(date as string) : 
                          startDate ? new Date(startDate as string) : new Date();
       const end = endDate ? new Date(endDate as string) : undefined;
-      const reconciliation = await storage.getDailyReconciliation(targetDate, end);
+      const reconciliation = await storage.getDailyReconciliation(targetDate, end, tenantId);
       res.json(reconciliation);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener conciliación diaria" });
@@ -4204,9 +4218,10 @@ export async function registerRoutes(
 
   app.get("/api/reconciliation/supplier/:userId", authenticateJWT, authorizeAction("cash_collections", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const { date } = req.query;
       const targetDate = date ? new Date(date as string) : new Date();
-      const reconciliation = await storage.getSupplierReconciliation(req.params.userId, targetDate);
+      const reconciliation = await storage.getSupplierReconciliation(req.params.userId, targetDate, tenantId);
       res.json(reconciliation);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener conciliación del abastecedor" });

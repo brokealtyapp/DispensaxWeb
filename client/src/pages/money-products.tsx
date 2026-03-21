@@ -126,8 +126,6 @@ export function MoneyProductsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/cash-movements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cash-movements/summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/reconciliation/daily"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/product-transfers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/shrinkage/summary"] });
       toast({ title: "Movimiento registrado", description: "El movimiento de efectivo se ha registrado correctamente" });
       setIsNewMovementOpen(false);
       cashMovementForm.reset();
@@ -148,7 +146,6 @@ export function MoneyProductsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/shrinkage"] });
       queryClient.invalidateQueries({ queryKey: ["/api/shrinkage/summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/reconciliation/daily"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/product-transfers"] });
       toast({ title: "Merma registrada", description: "La merma se ha registrado correctamente" });
       setIsNewShrinkageOpen(false);
       shrinkageForm.reset();
@@ -542,9 +539,9 @@ export function MoneyProductsPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-muted-foreground" data-testid="loading-reconciliation">
+                  <div className="text-center py-8 text-muted-foreground" data-testid="empty-state-reconciliation">
                     <CheckCircle2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>Cargando datos de conciliación...</p>
+                    <p>No hay datos de conciliación disponibles</p>
                   </div>
                 )}
               </CardContent>
