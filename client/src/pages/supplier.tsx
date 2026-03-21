@@ -2245,7 +2245,7 @@ export function SupplierPage() {
             {expectedAmount && cashAmount && (
               <div className={`p-3 rounded-lg ${parseFloat(cashAmount) >= parseFloat(expectedAmount) ? "bg-emerald-500/10" : "bg-amber-500/10"}`}>
                 <p className="text-sm">
-                  Diferencia: <span className="font-bold">${(parseFloat(cashAmount) - parseFloat(expectedAmount)).toFixed(2)}</span>
+                  Diferencia: <span className="font-bold">{formatCurrency(parseFloat(cashAmount) - parseFloat(expectedAmount))}</span>
                 </p>
               </div>
             )}
@@ -2465,7 +2465,7 @@ export function SupplierPage() {
                 </div>
                 <div className="p-3 rounded-lg bg-amber-500/10">
                   <p className="text-xs text-muted-foreground">Ingresos</p>
-                  <p className="text-xl font-bold">${currentStop.machine.salesSummary.totalRevenue?.toFixed(0) || 0}</p>
+                  <p className="text-xl font-bold">{formatCurrency(currentStop.machine.salesSummary.totalRevenue || 0)}</p>
                 </div>
               </div>
             )}
