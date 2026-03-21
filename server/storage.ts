@@ -66,7 +66,7 @@ import {
   type SuperAdminAuditLog, type InsertSuperAdminAuditLog
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, asc, or, inArray, count, isNull } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, asc, or, inArray, count, isNull, SQL } from "drizzle-orm";
 
 // =====================
 // SECURITY: User without password for API responses
@@ -2665,7 +2665,7 @@ export class DatabaseStorage implements IStorage {
     // Si se pasan fechas, usar el rango exacto
     let start: Date;
     let end: Date;
-    let depositDateCondition;
+    let depositDateCondition: SQL<unknown> | undefined;
     
     if (startDate || endDate) {
       // Rango específico solicitado
@@ -2680,12 +2680,12 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Obtener movimientos del rango filtrados por tenant
-    const movConds: any[] = [gte(cashMovements.createdAt, start), lte(cashMovements.createdAt, end)];
+    const movConds: (SQL<unknown> | undefined)[] = [gte(cashMovements.createdAt, start), lte(cashMovements.createdAt, end)];
     if (tenantId) movConds.push(eq(cashMovements.tenantId, tenantId));
     const movements = await db.select().from(cashMovements).where(and(...movConds));
     
     // Obtener depósitos bancarios del rango filtrados por tenant
-    const depConds: any[] = [depositDateCondition as any];
+    const depConds: (SQL<unknown> | undefined)[] = [depositDateCondition];
     if (tenantId) depConds.push(eq(bankDeposits.tenantId, tenantId));
     const deposits = await db.select().from(bankDeposits).where(and(...depConds));
     
@@ -2911,7 +2911,7 @@ export class DatabaseStorage implements IStorage {
     // Usar zona horaria GMT-4 (República Dominicana) para comparación de fechas
     let start: Date;
     let end: Date;
-    let depositDateCondition: any;
+    let depositDateCondition: SQL<unknown> | undefined;
     
     if (endDate) {
       // Rango específico solicitado
@@ -2925,9 +2925,9 @@ export class DatabaseStorage implements IStorage {
       const endOfDay = new Date(dateStr + 'T23:59:59.999-04:00');
       
       // Verificar si hay datos del día solicitado (filtrado por tenant)
-      const dayCollConds: any[] = [gte(cashCollections.createdAt, startOfDay), lte(cashCollections.createdAt, endOfDay)];
+      const dayCollConds: (SQL<unknown> | undefined)[] = [gte(cashCollections.createdAt, startOfDay), lte(cashCollections.createdAt, endOfDay)];
       if (tenantId) dayCollConds.push(eq(cashCollections.tenantId, tenantId));
-      const dayMovConds: any[] = [gte(cashMovements.createdAt, startOfDay), lte(cashMovements.createdAt, endOfDay)];
+      const dayMovConds: (SQL<unknown> | undefined)[] = [gte(cashMovements.createdAt, startOfDay), lte(cashMovements.createdAt, endOfDay)];
       if (tenantId) dayMovConds.push(eq(cashMovements.tenantId, tenantId));
       
       const dayCollections = await db.select().from(cashCollections).where(and(...dayCollConds));
@@ -2946,15 +2946,15 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
-    const collConds: any[] = [gte(cashCollections.createdAt, start), lte(cashCollections.createdAt, end)];
+    const collConds: (SQL<unknown> | undefined)[] = [gte(cashCollections.createdAt, start), lte(cashCollections.createdAt, end)];
     if (tenantId) collConds.push(eq(cashCollections.tenantId, tenantId));
     const collections = await db.select().from(cashCollections).where(and(...collConds));
     
-    const movConds: any[] = [gte(cashMovements.createdAt, start), lte(cashMovements.createdAt, end)];
+    const movConds: (SQL<unknown> | undefined)[] = [gte(cashMovements.createdAt, start), lte(cashMovements.createdAt, end)];
     if (tenantId) movConds.push(eq(cashMovements.tenantId, tenantId));
     const movements = await db.select().from(cashMovements).where(and(...movConds));
     
-    const depConds: any[] = [depositDateCondition];
+    const depConds: (SQL<unknown> | undefined)[] = [depositDateCondition];
     if (tenantId) depConds.push(eq(bankDeposits.tenantId, tenantId));
     const deposits = await db.select().from(bankDeposits).where(and(...depConds));
     

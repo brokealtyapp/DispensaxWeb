@@ -541,7 +541,7 @@ export function MoneyProductsPage() {
                 ) : (
                   <div className="text-center py-8 text-muted-foreground" data-testid="empty-state-reconciliation">
                     <CheckCircle2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No hay datos de conciliación disponibles</p>
+                    <p>No hay datos de conciliación</p>
                   </div>
                 )}
               </CardContent>
