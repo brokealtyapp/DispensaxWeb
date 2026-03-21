@@ -389,19 +389,22 @@ export interface IStorage {
   getSalesBreakdown(filters?: { 
     startDate?: Date; 
     endDate?: Date; 
-    groupBy?: 'machine' | 'product' | 'location' | 'day' 
+    groupBy?: 'machine' | 'product' | 'location' | 'day';
+    tenantId?: string;
   }): Promise<any[]>;
   
   getPurchasesBreakdown(filters?: {
     startDate?: Date;
     endDate?: Date;
     groupBy?: 'supplier' | 'product' | 'day';
+    tenantId?: string;
   }): Promise<any[]>;
   
   getFuelBreakdown(filters?: {
     startDate?: Date;
     endDate?: Date;
     groupBy?: 'vehicle' | 'user' | 'route' | 'day';
+    tenantId?: string;
   }): Promise<any[]>;
   
   getPettyCashBreakdown(filters?: {
@@ -413,13 +416,14 @@ export interface IStorage {
   
   getMachinePerformance(tenantId: string, startDate?: Date, endDate?: Date): Promise<any[]>;
   
-  getTopProducts(startDate?: Date, endDate?: Date, limit?: number): Promise<any[]>;
+  getTopProducts(startDate?: Date, endDate?: Date, limit?: number, tenantId?: string): Promise<any[]>;
   
-  getSupplierRanking(startDate?: Date, endDate?: Date): Promise<any[]>;
+  getSupplierRanking(startDate?: Date, endDate?: Date, tenantId?: string): Promise<any[]>;
   
   getExportData(type: 'sales' | 'purchases' | 'fuel' | 'pettycash' | 'inventory', filters?: {
     startDate?: Date;
     endDate?: Date;
+    tenantId?: string;
   }): Promise<any[]>;
   
   // ==================== MÓDULO CONTABILIDAD ====================
@@ -3979,11 +3983,12 @@ export class DatabaseStorage implements IStorage {
     const end = endDate || new Date();
 
     const allMachines = await this.getMachines(tenantId);
-    const allProducts = await this.getProducts();
-    const allRoutes = await this.getRoutes();
+    const allProducts = await this.getProducts(tenantId);
+    const allRoutes = await this.getRoutes(undefined, undefined, undefined, tenantId);
     
     const allSales = await db.select().from(machineSales)
       .where(and(
+        eq(machineSales.tenantId, tenantId),
         gte(machineSales.saleDate, start),
         lte(machineSales.saleDate, end)
       ));
@@ -3991,6 +3996,7 @@ export class DatabaseStorage implements IStorage {
     
     const ordersList = await db.select().from(purchaseOrders)
       .where(and(
+        eq(purchaseOrders.tenantId, tenantId),
         gte(purchaseOrders.createdAt, start),
         lte(purchaseOrders.createdAt, end)
       ));
@@ -4001,6 +4007,7 @@ export class DatabaseStorage implements IStorage {
     
     const fuelRecordsList = await db.select().from(fuelRecords)
       .where(and(
+        eq(fuelRecords.tenantId, tenantId),
         gte(fuelRecords.recordDate, start),
         lte(fuelRecords.recordDate, end)
       ));
@@ -4008,6 +4015,7 @@ export class DatabaseStorage implements IStorage {
     
     const pettyCashList = await db.select().from(pettyCashExpenses)
       .where(and(
+        eq(pettyCashExpenses.tenantId, tenantId),
         gte(pettyCashExpenses.createdAt, start),
         lte(pettyCashExpenses.createdAt, end)
       ));
@@ -4038,20 +4046,24 @@ export class DatabaseStorage implements IStorage {
   async getSalesBreakdown(filters?: { 
     startDate?: Date; 
     endDate?: Date; 
-    groupBy?: 'machine' | 'product' | 'location' | 'day' 
+    groupBy?: 'machine' | 'product' | 'location' | 'day';
+    tenantId?: string;
   }): Promise<any[]> {
     const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     const end = filters?.endDate || new Date();
     const groupBy = filters?.groupBy || 'machine';
+    const tenantId = filters?.tenantId;
+
+    const salesConds: (SQL<unknown> | undefined)[] = [
+      gte(machineSales.saleDate, start),
+      lte(machineSales.saleDate, end),
+    ];
+    if (tenantId) salesConds.push(eq(machineSales.tenantId, tenantId));
 
     const [allSales, allMachines, allProducts] = await Promise.all([
-      db.select().from(machineSales)
-        .where(and(
-          gte(machineSales.saleDate, start),
-          lte(machineSales.saleDate, end)
-        )),
-      db.select().from(machines),
-      db.select().from(products)
+      db.select().from(machineSales).where(and(...salesConds)),
+      tenantId ? db.select().from(machines).where(eq(machines.tenantId, tenantId)) : db.select().from(machines),
+      tenantId ? db.select().from(products).where(eq(products.tenantId, tenantId)) : db.select().from(products),
     ]);
 
     const machineMap = new Map(allMachines.map(m => [m.id, m]));
@@ -4116,18 +4128,22 @@ export class DatabaseStorage implements IStorage {
     startDate?: Date;
     endDate?: Date;
     groupBy?: 'supplier' | 'product' | 'day';
+    tenantId?: string;
   }): Promise<any[]> {
     const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     const end = filters?.endDate || new Date();
     const groupBy = filters?.groupBy || 'supplier';
+    const tenantId = filters?.tenantId;
+
+    const ordersConds: (SQL<unknown> | undefined)[] = [
+      gte(purchaseOrders.createdAt, start),
+      lte(purchaseOrders.createdAt, end),
+    ];
+    if (tenantId) ordersConds.push(eq(purchaseOrders.tenantId, tenantId));
 
     const [orders, allSuppliers] = await Promise.all([
-      db.select().from(purchaseOrders)
-        .where(and(
-          gte(purchaseOrders.createdAt, start),
-          lte(purchaseOrders.createdAt, end)
-        )),
-      db.select().from(suppliers)
+      db.select().from(purchaseOrders).where(and(...ordersConds)),
+      tenantId ? db.select().from(suppliers).where(eq(suppliers.tenantId, tenantId)) : db.select().from(suppliers),
     ]);
 
     const supplierMap = new Map(allSuppliers.map(s => [s.id, s]));
@@ -4170,19 +4186,23 @@ export class DatabaseStorage implements IStorage {
     startDate?: Date;
     endDate?: Date;
     groupBy?: 'vehicle' | 'user' | 'route' | 'day';
+    tenantId?: string;
   }): Promise<any[]> {
     const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     const end = filters?.endDate || new Date();
     const groupBy = filters?.groupBy || 'vehicle';
+    const tenantId = filters?.tenantId;
+
+    const fuelConds: (SQL<unknown> | undefined)[] = [
+      gte(fuelRecords.recordDate, start),
+      lte(fuelRecords.recordDate, end),
+    ];
+    if (tenantId) fuelConds.push(eq(fuelRecords.tenantId, tenantId));
 
     const [records, allVehicles, allUsers] = await Promise.all([
-      db.select().from(fuelRecords)
-        .where(and(
-          gte(fuelRecords.recordDate, start),
-          lte(fuelRecords.recordDate, end)
-        )),
-      db.select().from(vehicles),
-      db.select().from(users)
+      db.select().from(fuelRecords).where(and(...fuelConds)),
+      tenantId ? db.select().from(vehicles).where(eq(vehicles.tenantId, tenantId)) : db.select().from(vehicles),
+      tenantId ? db.select().from(users).where(eq(users.tenantId, tenantId)) : db.select().from(users),
     ]);
 
     const vehicleMap = new Map(allVehicles.map(v => [v.id, v]));
@@ -4327,11 +4347,15 @@ export class DatabaseStorage implements IStorage {
       this.getMachines(tenantId),
       db.select().from(machineSales)
         .where(and(
+          eq(machineSales.tenantId, tenantId),
           gte(machineSales.saleDate, start),
           lte(machineSales.saleDate, end)
         )),
       db.select().from(machineAlerts)
-        .where(eq(machineAlerts.isResolved, false))
+        .where(and(
+          eq(machineAlerts.tenantId, tenantId),
+          eq(machineAlerts.isResolved, false)
+        ))
     ]);
 
     const alertsByMachine = new Map<string, number>();
@@ -4367,17 +4391,19 @@ export class DatabaseStorage implements IStorage {
     return machineStats.sort((a, b) => b.totalSales - a.totalSales);
   }
 
-  async getTopProducts(startDate?: Date, endDate?: Date, limit: number = 10): Promise<any[]> {
+  async getTopProducts(startDate?: Date, endDate?: Date, limit: number = 10, tenantId?: string): Promise<any[]> {
     const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     const end = endDate || new Date();
 
+    const salesConds: (SQL<unknown> | undefined)[] = [
+      gte(machineSales.saleDate, start),
+      lte(machineSales.saleDate, end),
+    ];
+    if (tenantId) salesConds.push(eq(machineSales.tenantId, tenantId));
+
     const [allSales, allProducts] = await Promise.all([
-      db.select().from(machineSales)
-        .where(and(
-          gte(machineSales.saleDate, start),
-          lte(machineSales.saleDate, end)
-        )),
-      db.select().from(products)
+      db.select().from(machineSales).where(and(...salesConds)),
+      tenantId ? db.select().from(products).where(eq(products.tenantId, tenantId)) : db.select().from(products),
     ]);
 
     const productMap = new Map(allProducts.map(p => [p.id, p]));
@@ -4403,17 +4429,19 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async getSupplierRanking(startDate?: Date, endDate?: Date): Promise<any[]> {
+  async getSupplierRanking(startDate?: Date, endDate?: Date, tenantId?: string): Promise<any[]> {
     const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     const end = endDate || new Date();
 
+    const ordersConds: (SQL<unknown> | undefined)[] = [
+      gte(purchaseOrders.createdAt, start),
+      lte(purchaseOrders.createdAt, end),
+    ];
+    if (tenantId) ordersConds.push(eq(purchaseOrders.tenantId, tenantId));
+
     const [orders, allSuppliers] = await Promise.all([
-      db.select().from(purchaseOrders)
-        .where(and(
-          gte(purchaseOrders.createdAt, start),
-          lte(purchaseOrders.createdAt, end)
-        )),
-      db.select().from(suppliers)
+      db.select().from(purchaseOrders).where(and(...ordersConds)),
+      tenantId ? db.select().from(suppliers).where(eq(suppliers.tenantId, tenantId)) : db.select().from(suppliers),
     ]);
 
     const supplierMap = new Map(allSuppliers.map(s => [s.id, s]));
@@ -4443,21 +4471,24 @@ export class DatabaseStorage implements IStorage {
   async getExportData(type: 'sales' | 'purchases' | 'fuel' | 'pettycash' | 'inventory', filters?: {
     startDate?: Date;
     endDate?: Date;
+    tenantId?: string;
   }): Promise<any[]> {
     const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     const end = filters?.endDate || new Date();
+    const tenantId = filters?.tenantId;
 
     switch (type) {
       case 'sales': {
+        const salesConds: (SQL<unknown> | undefined)[] = [
+          gte(machineSales.saleDate, start),
+          lte(machineSales.saleDate, end),
+        ];
+        if (tenantId) salesConds.push(eq(machineSales.tenantId, tenantId));
+
         const [sales, allMachines, allProducts] = await Promise.all([
-          db.select().from(machineSales)
-            .where(and(
-              gte(machineSales.saleDate, start),
-              lte(machineSales.saleDate, end)
-            ))
-            .orderBy(machineSales.saleDate),
-          db.select().from(machines),
-          db.select().from(products)
+          db.select().from(machineSales).where(and(...salesConds)).orderBy(machineSales.saleDate),
+          tenantId ? db.select().from(machines).where(eq(machines.tenantId, tenantId)) : db.select().from(machines),
+          tenantId ? db.select().from(products).where(eq(products.tenantId, tenantId)) : db.select().from(products),
         ]);
         const machineMap = new Map(allMachines.map(m => [m.id, m]));
         const productMap = new Map(allProducts.map(p => [p.id, p]));
@@ -4471,14 +4502,15 @@ export class DatabaseStorage implements IStorage {
       }
 
       case 'purchases': {
+        const purchaseConds: (SQL<unknown> | undefined)[] = [
+          gte(purchaseOrders.createdAt, start),
+          lte(purchaseOrders.createdAt, end),
+        ];
+        if (tenantId) purchaseConds.push(eq(purchaseOrders.tenantId, tenantId));
+
         const [purchases, allSuppliers] = await Promise.all([
-          db.select().from(purchaseOrders)
-            .where(and(
-              gte(purchaseOrders.createdAt, start),
-              lte(purchaseOrders.createdAt, end)
-            ))
-            .orderBy(purchaseOrders.createdAt),
-          db.select().from(suppliers)
+          db.select().from(purchaseOrders).where(and(...purchaseConds)).orderBy(purchaseOrders.createdAt),
+          tenantId ? db.select().from(suppliers).where(eq(suppliers.tenantId, tenantId)) : db.select().from(suppliers),
         ]);
         const supplierMap = new Map(allSuppliers.map(s => [s.id, s]));
         return purchases.map(p => ({
@@ -4491,14 +4523,15 @@ export class DatabaseStorage implements IStorage {
       }
 
       case 'fuel': {
+        const fuelConds: (SQL<unknown> | undefined)[] = [
+          gte(fuelRecords.recordDate, start),
+          lte(fuelRecords.recordDate, end),
+        ];
+        if (tenantId) fuelConds.push(eq(fuelRecords.tenantId, tenantId));
+
         const [fuel, allVehicles] = await Promise.all([
-          db.select().from(fuelRecords)
-            .where(and(
-              gte(fuelRecords.recordDate, start),
-              lte(fuelRecords.recordDate, end)
-            ))
-            .orderBy(fuelRecords.recordDate),
-          db.select().from(vehicles)
+          db.select().from(fuelRecords).where(and(...fuelConds)).orderBy(fuelRecords.recordDate),
+          tenantId ? db.select().from(vehicles).where(eq(vehicles.tenantId, tenantId)) : db.select().from(vehicles),
         ]);
         const vehicleMap = new Map(allVehicles.map(v => [v.id, v]));
         return fuel.map(f => ({
@@ -4511,11 +4544,14 @@ export class DatabaseStorage implements IStorage {
       }
 
       case 'pettycash': {
+        const pettyConds: (SQL<unknown> | undefined)[] = [
+          gte(pettyCashExpenses.createdAt, start),
+          lte(pettyCashExpenses.createdAt, end),
+        ];
+        if (tenantId) pettyConds.push(eq(pettyCashExpenses.tenantId, tenantId));
+
         const pettycash = await db.select().from(pettyCashExpenses)
-          .where(and(
-            gte(pettyCashExpenses.createdAt, start),
-            lte(pettyCashExpenses.createdAt, end)
-          ))
+          .where(and(...pettyConds))
           .orderBy(pettyCashExpenses.createdAt);
         return pettycash.map(p => ({
           fecha: p.createdAt ? p.createdAt.toISOString().split('T')[0] : '',
@@ -4527,7 +4563,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       case 'inventory': {
-        const inventory = await this.getWarehouseInventory();
+        const inventory = await this.getWarehouseInventory(tenantId);
         return inventory.map(i => ({
           producto: i.product?.name || i.productId,
           codigo: i.product?.code,

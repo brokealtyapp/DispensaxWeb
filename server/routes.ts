@@ -5031,10 +5031,12 @@ export async function registerRoutes(
   app.get("/api/reports/sales", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, groupBy } = salesBreakdownSchema.parse(req.query);
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const breakdown = await storage.getSalesBreakdown({
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
-        groupBy: groupBy as 'machine' | 'product' | 'location' | 'day'
+        groupBy: groupBy as 'machine' | 'product' | 'location' | 'day',
+        tenantId,
       });
       res.json(breakdown);
     } catch (error) {
@@ -5050,10 +5052,12 @@ export async function registerRoutes(
   app.get("/api/reports/purchases", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, groupBy } = purchasesBreakdownSchema.parse(req.query);
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const breakdown = await storage.getPurchasesBreakdown({
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
-        groupBy: groupBy as 'supplier' | 'product' | 'day'
+        groupBy: groupBy as 'supplier' | 'product' | 'day',
+        tenantId,
       });
       res.json(breakdown);
     } catch (error) {
@@ -5069,10 +5073,12 @@ export async function registerRoutes(
   app.get("/api/reports/fuel", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, groupBy } = fuelBreakdownSchema.parse(req.query);
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const breakdown = await storage.getFuelBreakdown({
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
-        groupBy: groupBy as 'vehicle' | 'user' | 'route' | 'day'
+        groupBy: groupBy as 'vehicle' | 'user' | 'route' | 'day',
+        tenantId,
       });
       res.json(breakdown);
     } catch (error) {
@@ -5129,10 +5135,12 @@ export async function registerRoutes(
     try {
       const { startDate, endDate } = reportFiltersSchema.parse(req.query);
       const limit = parseInt(req.query.limit as string) || 10;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const topProducts = await storage.getTopProducts(
         startDate ? new Date(startDate) : undefined,
         endDate ? new Date(endDate) : undefined,
-        limit
+        limit,
+        tenantId
       );
       res.json(topProducts);
     } catch (error) {
@@ -5148,9 +5156,11 @@ export async function registerRoutes(
   app.get("/api/reports/supplier-ranking", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = reportFiltersSchema.parse(req.query);
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const ranking = await storage.getSupplierRanking(
         startDate ? new Date(startDate) : undefined,
-        endDate ? new Date(endDate) : undefined
+        endDate ? new Date(endDate) : undefined,
+        tenantId
       );
       res.json(ranking);
     } catch (error) {
@@ -5166,9 +5176,11 @@ export async function registerRoutes(
   app.get("/api/reports/export", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { type, startDate, endDate } = exportDataSchema.parse(req.query);
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const data = await storage.getExportData(type, {
         startDate: startDate ? new Date(startDate) : undefined,
-        endDate: endDate ? new Date(endDate) : undefined
+        endDate: endDate ? new Date(endDate) : undefined,
+        tenantId,
       });
       res.json(data);
     } catch (error) {
