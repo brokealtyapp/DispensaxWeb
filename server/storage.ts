@@ -5145,19 +5145,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getEmployeeProfiles(tenantId?: string): Promise<(EmployeeProfile & { user: SafeUser })[]> {
-    let query = db.select({
+    const conditions = tenantId ? eq(users.tenantId, tenantId) : undefined;
+    const result = await db.select({
       profile: employeeProfiles,
       user: users
     })
     .from(employeeProfiles)
-    .leftJoin(users, eq(employeeProfiles.userId, users.id)) as any;
+    .leftJoin(users, eq(employeeProfiles.userId, users.id))
+    .where(conditions)
+    .orderBy(asc(users.fullName));
     
-    if (tenantId) {
-      query = query.where(eq(users.tenantId, tenantId));
-    }
-    
-    const result = await query.orderBy(asc(users.fullName));
-    return result.map((r: any) => ({ ...r.profile, user: excludePassword(r.user!)! }));
+    return result.map(r => ({ ...r.profile, user: excludePassword(r.user!)! }));
   }
 
   async createEmployeeProfile(profile: InsertEmployeeProfile): Promise<EmployeeProfile> {

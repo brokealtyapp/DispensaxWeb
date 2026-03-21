@@ -5336,12 +5336,15 @@ export async function registerRoutes(
 
   app.get("/api/hr/employees", authenticateJWT, authorizeRoles("admin", "supervisor", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { role, isActive, search } = req.query;
+      const { role, isActive, search, tenantId: queryTenantId } = req.query;
+      const tenantId = req.user?.isSuperAdmin
+        ? (queryTenantId as string | undefined)
+        : req.user!.tenantId;
       const employees = await storage.getEmployees({
         role: role as string | undefined,
         isActive: isActive === "true" ? true : isActive === "false" ? false : undefined,
         search: search as string | undefined,
-        tenantId: req.user?.isSuperAdmin ? undefined : req.user!.tenantId
+        tenantId
       });
       res.json(employees);
     } catch (error) {
@@ -5502,7 +5505,7 @@ export async function registerRoutes(
 
   app.post("/api/hr/profiles", authenticateJWT, authorizeRoles("admin", "rh"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertEmployeeProfileSchema.parse(req.body);
+      const data = insertEmployeeProfileSchema.parse({ ...req.body, tenantId: req.user!.tenantId });
       const profile = await storage.createEmployeeProfile(data);
       res.status(201).json(profile);
     } catch (error) {
