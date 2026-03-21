@@ -63,7 +63,7 @@ import {
   Cell
 } from "recharts";
 
-const vehicleFormSchema = insertVehicleSchema.extend({
+const vehicleFormSchema = insertVehicleSchema.omit({ tenantId: true }).extend({
   plate: z.string().min(1, "La placa es requerida"),
   brand: z.string().min(1, "La marca es requerida"),
   model: z.string().min(1, "El modelo es requerido"),
@@ -75,7 +75,7 @@ const vehicleFormSchema = insertVehicleSchema.extend({
   assignedUserId: z.string().optional().nullable(),
 });
 
-const fuelRecordFormSchema = insertFuelRecordSchema.extend({
+const fuelRecordFormSchema = insertFuelRecordSchema.omit({ tenantId: true }).extend({
   vehicleId: z.string().min(1, "Selecciona un vehículo"),
   userId: z.string().min(1, "El usuario es requerido"),
   routeId: z.string().optional().nullable(),
