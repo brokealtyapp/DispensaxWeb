@@ -334,7 +334,15 @@ export function CalendarPage() {
 
   const handleViewTask = (task: any) => {
     const isAbastecedor = user?.role === "abastecedor";
-    navigate(isAbastecedor ? "/mis-tareas" : "/todas-tareas");
+    if (isAbastecedor) {
+      navigate("/mis-tareas");
+    } else {
+      const params = new URLSearchParams();
+      if (task.type) params.set("type", task.type);
+      if (task.priority) params.set("priority", task.priority);
+      const qs = params.toString();
+      navigate(qs ? `/todas-tareas?${qs}` : "/todas-tareas");
+    }
     setSelectedDate(null);
   };
 
@@ -540,7 +548,11 @@ export function CalendarPage() {
                       const type = eventTypeConfig[key] ?? eventTypeConfig.otro;
                       const TypeIcon = type.icon;
                       const colorClass = getEventColorClass(item);
-                      const timeStr = !isTask && !item.allDay ? extractTime(item.startDate) : "";
+                      const startTimeStr = !isTask && !item.allDay ? extractTime(item.startDate) : "";
+                      const endTimeStr = !isTask && !item.allDay && item.endDate ? extractTime(item.endDate) : "";
+                      const timeStr = startTimeStr
+                        ? (endTimeStr ? `${startTimeStr} - ${endTimeStr}` : startTimeStr)
+                        : "";
                       return (
                         <div
                           key={i}

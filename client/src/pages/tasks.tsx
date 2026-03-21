@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { isToday, isTomorrow, isPast, parseISO } from "date-fns";
@@ -106,6 +106,14 @@ export function TasksPage() {
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [filterPriority, setFilterPriority] = useState<string>("");
   const [filterType, setFilterType] = useState<string>("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const typeParam = params.get("type");
+    const priorityParam = params.get("priority");
+    if (typeParam) setFilterType(typeParam);
+    if (priorityParam) setFilterPriority(priorityParam);
+  }, []);
 
   const taskForm = useForm<TaskFormData>({
     resolver: zodResolver(taskFormSchema),
