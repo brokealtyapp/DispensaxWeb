@@ -237,9 +237,7 @@ export function DashboardPage() {
       if (machine.status === "operando") {
         zones[zone].activeCount++;
       }
-      if (machine.alerts && machine.alerts.length > 0) {
-        zones[zone].alertCount += machine.alerts.filter((a: any) => !a.isResolved).length;
-      }
+      zones[zone].alertCount += (machine.alertCount || 0);
     });
     return Object.entries(zones).map(([name, data], index) => ({
       id: name,
@@ -422,7 +420,7 @@ export function DashboardPage() {
               </Card>
             </Link>
 
-            <Link href="/abastecedor">
+            <Link href="/rutas">
               <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-routes">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3 mb-3">
@@ -566,7 +564,7 @@ export function DashboardPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Balance</span>
-                      <span className="font-medium text-green-600">{formatCurrency(pettyCashSummary?.currentBalance || 0)}</span>
+                      <span className="font-medium text-green-600">{formatCurrency(parseFloat(pettyCashSummary?.currentBalance || "0"))}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Gastos sem.</span>

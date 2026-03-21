@@ -262,7 +262,7 @@ export interface IStorage {
   // ==================== MÓDULO PRODUCTOS Y DINERO ====================
   
   // Movimientos de Efectivo
-  getCashMovements(filters?: { userId?: string; type?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getCashMovements(filters?: { tenantId?: string; userId?: string; type?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
   getCashMovement(id: string): Promise<any>;
   createCashMovement(movement: InsertCashMovement): Promise<CashMovement>;
   updateCashMovementStatus(id: string, status: string): Promise<CashMovement | undefined>;
@@ -270,7 +270,7 @@ export interface IStorage {
   getCashMovementsSummary(startDate?: Date, endDate?: Date): Promise<{ total: number; pending: number; delivered: number; deposited: number; differences: number }>;
   
   // Depósitos Bancarios
-  getBankDeposits(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getBankDeposits(filters?: { tenantId?: string; userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
   getBankDeposit(id: string): Promise<any>;
   createBankDeposit(deposit: InsertBankDeposit): Promise<BankDeposit>;
   reconcileBankDeposit(id: string, reconciledAmount: number): Promise<BankDeposit | undefined>;
@@ -2574,9 +2574,10 @@ export class DatabaseStorage implements IStorage {
   // ==================== MÓDULO PRODUCTOS Y DINERO ====================
 
   // Movimientos de Efectivo
-  async getCashMovements(filters?: { userId?: string; type?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+  async getCashMovements(filters?: { tenantId?: string; userId?: string; type?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
     let conditions: any[] = [];
     
+    if (filters?.tenantId) conditions.push(eq(cashMovements.tenantId, filters.tenantId));
     if (filters?.userId) conditions.push(eq(cashMovements.userId, filters.userId));
     if (filters?.type) conditions.push(eq(cashMovements.type, filters.type));
     if (filters?.status) conditions.push(eq(cashMovements.status, filters.status));
@@ -2680,9 +2681,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Depósitos Bancarios
-  async getBankDeposits(filters?: { userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+  async getBankDeposits(filters?: { tenantId?: string; userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
     let conditions: any[] = [];
     
+    if (filters?.tenantId) conditions.push(eq(bankDeposits.tenantId, filters.tenantId));
     if (filters?.userId) conditions.push(eq(bankDeposits.userId, filters.userId));
     if (filters?.status) conditions.push(eq(bankDeposits.status, filters.status));
     if (filters?.startDate) conditions.push(gte(bankDeposits.depositDate, filters.startDate));

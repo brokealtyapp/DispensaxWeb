@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, asc, or, inArray } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, asc, or, inArray, count } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { 
   signAccessToken, 
@@ -72,7 +72,22 @@ import {
   users,
   tenants,
   tenantSettings,
-  nayaxConfig as nayaxConfigTable
+  nayaxConfig as nayaxConfigTable,
+  routes as routesTable,
+  routeStops,
+  serviceRecords,
+  pettyCashFund,
+  pettyCashExpenses,
+  purchaseOrders,
+  purchaseReceptions,
+  receptionItems,
+  vehicles as vehiclesTable,
+  fuelRecords,
+  machineVisits,
+  productTransfers,
+  shrinkageRecords,
+  tasks as tasksTable,
+  machineAlerts
 } from "@shared/schema";
 import { z } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
@@ -6266,11 +6281,61 @@ export async function registerRoutes(
   // Routes/Supplier Summary (con cache)
   app.get("/api/summary/routes", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const cache = getSummaryCache();
-      res.json(cache.routes);
-      if (!isSummaryCacheValid()) {
-        refreshSummaryCacheIfStale().catch(err => console.error("[Cache] Error refresh routes:", err));
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+
+      const routeConditions = tenantId ? [eq(routesTable.tenantId, tenantId)] : [];
+      const routeStopConditions = tenantId ? [eq(routeStops.tenantId, tenantId)] : [];
+      const serviceConditions = tenantId ? [eq(serviceRecords.tenantId, tenantId)] : [];
+
+      const [routeStats, todayStops, serviceStats, todayRoutes] = await Promise.all([
+        db.select({
+          total: count(),
+          active: sql<number>`count(*) filter (where ${routesTable.status} in ('en_progreso', 'activa'))`,
+        }).from(routesTable).where(routeConditions.length ? and(...routeConditions) : undefined),
+        db.select({
+          total: count(),
+          completed: sql<number>`count(*) filter (where ${routeStops.status} = 'completada')`,
+        }).from(routeStops)
+          .innerJoin(routesTable, eq(routeStops.routeId, routesTable.id))
+          .where(and(...routeStopConditions, gte(routesTable.date, today))),
+        db.select({ avgTime: sql<number>`coalesce(avg(${serviceRecords.durationMinutes}), 0)` })
+          .from(serviceRecords)
+          .where(serviceConditions.length ? and(...serviceConditions, gte(serviceRecords.createdAt, weekAgo)) : gte(serviceRecords.createdAt, weekAgo)),
+        db.select({ id: routesTable.id, date: routesTable.date, status: routesTable.status, totalStops: routesTable.totalStops, supplierId: routesTable.supplierId })
+          .from(routesTable)
+          .where(and(...routeConditions, gte(routesTable.date, today), sql`${routesTable.date} < ${tomorrow}`))
+          .orderBy(desc(routesTable.date))
+          .limit(10),
+      ]);
+
+      const supplierIds = Array.from(new Set(todayRoutes.map(r => r.supplierId).filter(Boolean))) as string[];
+      const userNames = new Map<string, string>();
+      if (supplierIds.length > 0) {
+        const usersData = await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, supplierIds));
+        usersData.forEach(u => userNames.set(u.id, u.fullName || 'Sin nombre'));
       }
+
+      res.json({
+        activeRoutes: Number(routeStats[0]?.active) || 0,
+        totalRoutes: routeStats[0]?.total || 0,
+        todayStops: todayStops[0]?.total || 0,
+        completedStops: Number(todayStops[0]?.completed) || 0,
+        pendingStops: (todayStops[0]?.total || 0) - (Number(todayStops[0]?.completed) || 0),
+        avgServiceTimeMinutes: Math.round(Number(serviceStats[0]?.avgTime) || 0),
+        recentRoutes: todayRoutes.map(r => ({
+          id: r.id,
+          name: r.supplierId ? `Ruta de ${userNames.get(r.supplierId) || 'Desconocido'}` : `Ruta ${r.id.slice(-4)}`,
+          date: r.date?.toISOString() || new Date().toISOString(),
+          status: r.status || 'pendiente',
+          stopsCount: r.totalStops || 0,
+        })),
+      });
     } catch (error) {
       if (res.headersSent) return;
       console.error("Error in routes summary:", error);
@@ -6293,7 +6358,7 @@ export async function registerRoutes(
         if (!productStocks[lot.productId]) {
           productStocks[lot.productId] = 0;
         }
-        productStocks[lot.productId] += lot.quantity;
+        productStocks[lot.productId] += lot.remainingQuantity ?? lot.quantity ?? 0;
       });
       
       products.forEach(p => {
@@ -6321,8 +6386,8 @@ export async function registerRoutes(
         lowStockCount: lowStockProducts.length,
         lowStockProducts: lowStockProducts.slice(0, 5),
         weekMovements: weekMovements.length,
-        entriesThisWeek: weekMovements.filter(m => m.movementType === "entrada").length,
-        exitsThisWeek: weekMovements.filter(m => m.movementType === "salida").length
+        entriesThisWeek: weekMovements.filter(m => String(m.movementType).startsWith("entrada")).length,
+        exitsThisWeek: weekMovements.filter(m => String(m.movementType).startsWith("salida")).length
       });
     } catch (error) {
       console.error("Error in warehouse summary:", error);
@@ -6333,9 +6398,10 @@ export async function registerRoutes(
   // Accounting Summary
   app.get("/api/summary/accounting", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const machineSales = await storage.getAllMachineSales();
-      const cashMovements = await storage.getCashMovements();
-      const bankDeposits = await storage.getBankDeposits();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const machineSales = await storage.getAllMachineSales(tenantId);
+      const cashMovements = await storage.getCashMovements({ tenantId });
+      const bankDeposits = await storage.getBankDeposits({ tenantId });
       
       // Use timezone-aware date calculations
       const today = getTodayInTimezone();
@@ -6399,28 +6465,77 @@ export async function registerRoutes(
     }
   });
 
-  // Petty Cash Summary (con cache)
+  // Petty Cash Summary
   app.get("/api/summary/petty-cash", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const cache = getSummaryCache();
-      res.json(cache.pettyCash);
-      if (!isSummaryCacheValid()) {
-        refreshSummaryCacheIfStale().catch(err => console.error("[Cache] Error refresh petty-cash:", err));
-      }
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+
+      const fundCond = tenantId ? eq(pettyCashFund.tenantId, tenantId) : undefined;
+      const expCond = tenantId ? eq(pettyCashExpenses.tenantId, tenantId) : undefined;
+
+      const [fund, expenseStats, recentExpenses] = await Promise.all([
+        db.select().from(pettyCashFund).where(fundCond).limit(1),
+        db.select({
+          pending: sql<number>`count(*) filter (where ${pettyCashExpenses.status} = 'pendiente')`,
+          approved: sql<number>`count(*) filter (where ${pettyCashExpenses.status} = 'aprobado')`,
+          weekTotal: sql<number>`coalesce(sum(case when ${pettyCashExpenses.createdAt} >= ${weekAgo} and ${pettyCashExpenses.status} = 'aprobado' then ${pettyCashExpenses.amount} else 0 end), 0)`,
+        }).from(pettyCashExpenses).where(expCond),
+        db.select({
+          id: pettyCashExpenses.id,
+          description: pettyCashExpenses.description,
+          amount: pettyCashExpenses.amount,
+          category: pettyCashExpenses.category,
+          status: pettyCashExpenses.status,
+        }).from(pettyCashExpenses).where(expCond).orderBy(desc(pettyCashExpenses.createdAt)).limit(5),
+      ]);
+
+      const currentFund = fund[0];
+      res.json({
+        currentBalance: currentFund?.currentBalance?.toString() || "0",
+        initialAmount: currentFund?.initialBalance?.toString() || "0",
+        weekExpenses: Number(expenseStats[0]?.weekTotal) || 0,
+        pendingCount: Number(expenseStats[0]?.pending) || 0,
+        approvedCount: Number(expenseStats[0]?.approved) || 0,
+        recentExpenses,
+      });
     } catch (error) {
       console.error("Error in petty cash summary:", error);
       res.status(500).json({ error: "Error al obtener resumen de caja chica" });
     }
   });
 
-  // Purchases Summary (con cache)
+  // Purchases Summary
   app.get("/api/summary/purchases", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const cache = getSummaryCache();
-      res.json(cache.purchases);
-      if (!isSummaryCacheValid()) {
-        refreshSummaryCacheIfStale().catch(err => console.error("[Cache] Error refresh purchases:", err));
-      }
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const monthAgo = new Date();
+      monthAgo.setDate(monthAgo.getDate() - 30);
+
+      const orderCond = tenantId ? eq(purchaseOrders.tenantId, tenantId) : undefined;
+      const receptionCond = tenantId ? eq(purchaseReceptions.tenantId, tenantId) : undefined;
+
+      const [orderStats, monthSpending, pendingReceptions] = await Promise.all([
+        db.select({
+          total: count(),
+          open: sql<number>`count(*) filter (where ${purchaseOrders.status} in ('borrador', 'enviada'))`,
+        }).from(purchaseOrders).where(orderCond),
+        db.select({
+          monthTotal: sql<number>`coalesce(sum(cast(${receptionItems.quantityReceived} as numeric) * cast(${receptionItems.unitCost} as numeric)), 0)`,
+        }).from(receptionItems)
+          .innerJoin(purchaseReceptions, eq(receptionItems.receptionId, purchaseReceptions.id))
+          .where(and(...(receptionCond ? [receptionCond] : []), gte(purchaseReceptions.receptionDate, monthAgo))),
+        db.select({ total: count() }).from(purchaseOrders)
+          .where(and(...(orderCond ? [orderCond] : []), eq(purchaseOrders.status, 'enviada'))),
+      ]);
+
+      res.json({
+        openOrders: Number(orderStats[0]?.open) || 0,
+        totalOrders: orderStats[0]?.total || 0,
+        monthSpending: Number(monthSpending[0]?.monthTotal) || 0,
+        pendingReceptions: pendingReceptions[0]?.total || 0,
+      });
     } catch (error) {
       if (res.headersSent) return;
       console.error("Error in purchases summary:", error);
@@ -6428,14 +6543,42 @@ export async function registerRoutes(
     }
   });
 
-  // Fuel Summary (con cache)
+  // Fuel Summary
   app.get("/api/summary/fuel", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const cache = getSummaryCache();
-      res.json(cache.fuel);
-      if (!isSummaryCacheValid()) {
-        refreshSummaryCacheIfStale().catch(err => console.error("[Cache] Error refresh fuel:", err));
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const monthAgo = new Date();
+      monthAgo.setDate(monthAgo.getDate() - 30);
+
+      const vehicleCond = tenantId ? eq(vehiclesTable.tenantId, tenantId) : undefined;
+      const fuelCond = tenantId ? eq(fuelRecords.tenantId, tenantId) : undefined;
+
+      const [vehicleStats, recentFuel] = await Promise.all([
+        db.select({
+          total: count(),
+          active: sql<number>`count(*) filter (where ${vehiclesTable.isActive} = true)`,
+        }).from(vehiclesTable).where(vehicleCond),
+        db.select().from(fuelRecords)
+          .where(fuelCond ? and(fuelCond, gte(fuelRecords.recordDate, monthAgo.toISOString().split('T')[0])) : gte(fuelRecords.recordDate, monthAgo.toISOString().split('T')[0]))
+          .limit(500),
+      ]);
+
+      let monthCost = 0, monthLiters = 0, effSum = 0, effCount = 0, lowEff = 0;
+      for (const r of recentFuel) {
+        monthCost += Number(r.totalAmount) || 0;
+        monthLiters += Number(r.liters) || 0;
+        const eff = Number(r.calculatedMileage) || 0;
+        if (eff > 0) { effSum += eff; effCount++; if (eff < 8) lowEff++; }
       }
+
+      res.json({
+        totalVehicles: vehicleStats[0]?.total || 0,
+        activeVehicles: Number(vehicleStats[0]?.active) || 0,
+        monthCost,
+        monthLiters,
+        avgEfficiency: effCount > 0 ? (effSum / effCount).toFixed(2) : "0",
+        lowEfficiencyAlerts: lowEff,
+      });
     } catch (error) {
       if (res.headersSent) return;
       console.error("Error in fuel summary:", error);
@@ -6443,14 +6586,68 @@ export async function registerRoutes(
     }
   });
 
-  // HR Summary (con cache)
+  // HR Summary
   app.get("/api/summary/hr", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const cache = getSummaryCache();
-      res.json(cache.hr);
-      if (!isSummaryCacheValid()) {
-        refreshSummaryCacheIfStale().catch(err => console.error("[Cache] Error refresh hr:", err));
-      }
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+
+      const userCond = tenantId ? eq(users.tenantId, tenantId) : undefined;
+      const visitCond = tenantId ? eq(machineVisits.tenantId, tenantId) : undefined;
+      const taskCond = tenantId ? eq(tasksTable.tenantId, tenantId) : undefined;
+
+      const [employeeStats, visitStats, taskStats, topPerformersData] = await Promise.all([
+        db.select({
+          total: count(),
+          active: sql<number>`count(*) filter (where ${users.isActive} = true)`,
+          technicians: sql<number>`count(*) filter (where ${users.role} in ('abastecedor', 'tecnico') and ${users.isActive} = true)`,
+          admins: sql<number>`count(*) filter (where ${users.role} = 'admin' and ${users.isActive} = true)`,
+          supervisors: sql<number>`count(*) filter (where ${users.role} = 'supervisor' and ${users.isActive} = true)`,
+        }).from(users).where(userCond),
+        db.select({ total: count() }).from(machineVisits)
+          .where(visitCond ? and(visitCond, gte(machineVisits.createdAt, weekAgo)) : gte(machineVisits.createdAt, weekAgo)),
+        db.select({ completed: sql<number>`count(*) filter (where ${tasksTable.status} = 'completada')` })
+          .from(tasksTable)
+          .where(taskCond ? and(taskCond, gte(tasksTable.createdAt, weekAgo)) : gte(tasksTable.createdAt, weekAgo)),
+        db.select({ userId: machineVisits.userId })
+          .from(machineVisits)
+          .where(visitCond ? and(visitCond, gte(machineVisits.createdAt, weekAgo)) : gte(machineVisits.createdAt, weekAgo))
+          .groupBy(machineVisits.userId)
+          .limit(5),
+      ]);
+
+      const userIds = topPerformersData.map(p => p.userId).filter(Boolean) as string[];
+      const [usersList, visitsPerUser, tasksPerUser] = await Promise.all([
+        userIds.length > 0 ? db.select().from(users).where(inArray(users.id, userIds)) : Promise.resolve([]),
+        userIds.length > 0 ? db.select({ userId: machineVisits.userId, cnt: count() }).from(machineVisits)
+          .where(visitCond ? and(visitCond, gte(machineVisits.createdAt, weekAgo)) : gte(machineVisits.createdAt, weekAgo))
+          .groupBy(machineVisits.userId) : Promise.resolve([]),
+        userIds.length > 0 ? db.select({ userId: tasksTable.assignedUserId, cnt: sql<number>`count(*) filter (where ${tasksTable.status} = 'completada')` })
+          .from(tasksTable)
+          .where(taskCond ? and(taskCond, gte(tasksTable.createdAt, weekAgo)) : gte(tasksTable.createdAt, weekAgo))
+          .groupBy(tasksTable.assignedUserId) : Promise.resolve([]),
+      ]);
+
+      const usersMap = new Map(usersList.map(u => [u.id, u]));
+      const visitsMap = new Map(visitsPerUser.map(v => [v.userId, v.cnt]));
+      const tasksMap = new Map(tasksPerUser.map(t => [t.userId, Number(t.cnt) || 0]));
+
+      res.json({
+        totalEmployees: employeeStats[0]?.total || 0,
+        activeEmployees: Number(employeeStats[0]?.active) || 0,
+        weekVisits: visitStats[0]?.total || 0,
+        weekTasksCompleted: Number(taskStats[0]?.completed) || 0,
+        topPerformers: userIds.slice(0, 5).map(userId => {
+          const u = usersMap.get(userId);
+          return { id: userId, name: u?.fullName || u?.username || 'Desconocido', role: u?.role || 'empleado', visitsThisWeek: visitsMap.get(userId) || 0, tasksCompleted: tasksMap.get(userId) || 0 };
+        }),
+        byRole: {
+          technicians: Number(employeeStats[0]?.technicians) || 0,
+          admins: Number(employeeStats[0]?.admins) || 0,
+          supervisors: Number(employeeStats[0]?.supervisors) || 0,
+        },
+      });
     } catch (error) {
       if (res.headersSent) return;
       console.error("Error in HR summary:", error);
@@ -6458,14 +6655,43 @@ export async function registerRoutes(
     }
   });
 
-  // Money & Products Reconciliation Summary (con cache)
+  // Money & Products Reconciliation Summary
   app.get("/api/summary/reconciliation", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const cache = getSummaryCache();
-      res.json(cache.reconciliation);
-      if (!isSummaryCacheValid()) {
-        refreshSummaryCacheIfStale().catch(err => console.error("[Cache] Error refresh reconciliation:", err));
-      }
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+
+      const transferCond = tenantId ? eq(productTransfers.tenantId, tenantId) : undefined;
+      const shrinkCond = tenantId ? eq(shrinkageRecords.tenantId, tenantId) : undefined;
+      const collCond = tenantId ? eq(cashCollections.tenantId, tenantId) : undefined;
+
+      const [transferStats, shrinkageStats, collectionStats, recentDiscrepancies] = await Promise.all([
+        db.select({
+          weekTotal: sql<number>`count(*) filter (where ${productTransfers.createdAt} >= ${weekAgo})`,
+          pending: sql<number>`count(*) filter (where ${productTransfers.status} = 'pendiente')`,
+        }).from(productTransfers).where(transferCond),
+        db.select({
+          weekTotal: sql<number>`coalesce(sum(case when ${shrinkageRecords.createdAt} >= ${weekAgo} then ${shrinkageRecords.quantity} else 0 end), 0)`,
+          totalRecords: count(),
+        }).from(shrinkageRecords).where(shrinkCond),
+        db.select({
+          weekTotal: sql<number>`coalesce(sum(case when ${cashCollections.createdAt} >= ${weekAgo} then ${cashCollections.actualAmount} else 0 end), 0)`,
+          totalCount: count(),
+        }).from(cashCollections).where(collCond),
+        db.select({ id: shrinkageRecords.id, productId: shrinkageRecords.productId, quantity: shrinkageRecords.quantity, reason: shrinkageRecords.reason })
+          .from(shrinkageRecords).where(shrinkCond).orderBy(desc(shrinkageRecords.createdAt)).limit(5),
+      ]);
+
+      res.json({
+        weekTransfers: Number(transferStats[0]?.weekTotal) || 0,
+        pendingTransfers: Number(transferStats[0]?.pending) || 0,
+        weekShrinkage: Number(shrinkageStats[0]?.weekTotal) || 0,
+        shrinkageRecords: shrinkageStats[0]?.totalRecords || 0,
+        weekCollections: Number(collectionStats[0]?.weekTotal) || 0,
+        collectionsCount: collectionStats[0]?.totalCount || 0,
+        recentDiscrepancies,
+      });
     } catch (error) {
       console.error("Error in reconciliation summary:", error);
       res.status(500).json({ error: "Error al obtener resumen de conciliación" });
@@ -6563,13 +6789,11 @@ export async function registerRoutes(
   app.get("/api/summary/machines", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
-      const { machineAlerts: machineAlertsTable } = await import("@shared/schema");
-      const { eq: eqOp, and: andOp } = await import("drizzle-orm");
       const [machines, machineSales, alerts] = await Promise.all([
         storage.getMachines(tenantId),
         storage.getAllMachineSales(tenantId),
-        db.select().from(machineAlertsTable).where(
-          andOp(eqOp(machineAlertsTable.tenantId, tenantId), eqOp(machineAlertsTable.isResolved, false))
+        db.select().from(machineAlerts).where(
+          and(eq(machineAlerts.tenantId, tenantId), eq(machineAlerts.isResolved, false))
         ),
       ]);
 
