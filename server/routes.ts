@@ -7958,7 +7958,7 @@ export async function registerRoutes(
         const machine = await storage.getMachine(assignment.machineId);
         return {
           ...assignment,
-          machine: machine ? { id: machine.id, code: machine.code, name: machine.name } : null
+          machine: machine ? { id: machine.id, code: machine.code, name: machine.name, location: machine.location } : null
         };
       }));
       
