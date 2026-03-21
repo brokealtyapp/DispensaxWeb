@@ -730,6 +730,7 @@ export function TasksPage() {
                               variant="ghost"
                               size="icon"
                               onClick={() => field.onChange(undefined)}
+                              aria-label="Limpiar fecha"
                               data-testid="button-task-date-clear"
                             >
                               <X className="h-4 w-4" />
@@ -1009,6 +1010,7 @@ export function TasksPage() {
                               variant="ghost"
                               size="icon"
                               onClick={() => field.onChange(undefined)}
+                              aria-label="Limpiar fecha"
                               data-testid="button-edit-task-date-clear"
                             >
                               <X className="h-4 w-4" />
