@@ -3952,8 +3952,10 @@ export async function registerRoutes(
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined,
       };
-      let deposits = await storage.getBankDeposits(filters);
-      if (limit) deposits = deposits.slice(0, parseInt(limit as string, 10));
+      const deposits = await storage.getBankDeposits({
+        ...filters,
+        limit: limit ? parseInt(limit as string, 10) : undefined,
+      });
       res.json(deposits);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener depósitos" });
@@ -3974,7 +3976,7 @@ export async function registerRoutes(
   app.post("/api/bank-deposits", authenticateJWT, authorizeAction("cash_collections", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
-      const data = insertBankDepositSchema.omit({ tenantId: true } as any).parse(req.body);
+      const data = insertBankDepositSchema.omit({ tenantId: true }).parse(req.body);
       const deposit = await storage.createBankDeposit({ ...data, tenantId });
       res.status(201).json(deposit);
     } catch (error) {
@@ -4206,7 +4208,7 @@ export async function registerRoutes(
   app.post("/api/petty-cash/expenses", authenticateJWT, authorizeAction("petty_cash", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
-      const data = insertPettyCashExpenseSchema.omit({ tenantId: true } as any).parse(req.body);
+      const data = insertPettyCashExpenseSchema.omit({ tenantId: true }).parse(req.body);
       const expense = await storage.createPettyCashExpense({ ...data, tenantId });
       res.status(201).json(expense);
     } catch (error) {
@@ -4276,7 +4278,7 @@ export async function registerRoutes(
   app.post("/api/petty-cash/fund", authenticateJWT, authorizeAction("petty_cash", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
-      const data = insertPettyCashFundSchema.omit({ tenantId: true } as any).parse(req.body);
+      const data = insertPettyCashFundSchema.omit({ tenantId: true }).parse(req.body);
       const fund = await storage.initializePettyCashFund({ ...data, tenantId });
       res.status(201).json(fund);
     } catch (error) {
@@ -4323,7 +4325,8 @@ export async function registerRoutes(
   // Estadísticas de Caja Chica
   app.get("/api/petty-cash/stats", authenticateJWT, authorizeAction("petty_cash", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const stats = await storage.getPettyCashStats();
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const stats = await storage.getPettyCashStats(tenantId);
       res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener estadísticas" });
@@ -5160,7 +5163,7 @@ export async function registerRoutes(
         ? await db.select().from(cashCollections).where(eq(cashCollections.tenantId, tenantId)).orderBy(desc(cashCollections.createdAt)).limit(100)
         : await collectionsQuery;
 
-      const depositsData = await storage.getBankDeposits({ tenantId });
+      const depositsData = await storage.getBankDeposits({ tenantId, limit: 100 });
 
       const totalCollected = collectionsData.reduce((sum, c) => sum + Number(c.actualAmount), 0);
       const totalDeposited = depositsData.reduce((sum, d) => sum + Number(d.amount), 0);

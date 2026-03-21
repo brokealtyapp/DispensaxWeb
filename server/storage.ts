@@ -270,7 +270,7 @@ export interface IStorage {
   getCashMovementsSummary(startDate?: Date, endDate?: Date): Promise<{ total: number; pending: number; delivered: number; deposited: number; differences: number }>;
   
   // Depósitos Bancarios
-  getBankDeposits(filters?: { tenantId?: string; userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]>;
+  getBankDeposits(filters?: { tenantId?: string; userId?: string; status?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]>;
   getBankDeposit(id: string): Promise<any>;
   createBankDeposit(deposit: InsertBankDeposit): Promise<BankDeposit>;
   reconcileBankDeposit(id: string, reconciledAmount: number): Promise<BankDeposit | undefined>;
@@ -310,7 +310,7 @@ export interface IStorage {
   // Transacciones de Caja Chica
   getPettyCashTransactions(limit?: number, tenantId?: string): Promise<any[]>;
   createPettyCashTransaction(transaction: InsertPettyCashTransaction): Promise<PettyCashTransaction>;
-  getPettyCashStats(): Promise<{ currentBalance: number; todayExpenses: number; pendingApprovals: number; monthlyExpenses: number }>;
+  getPettyCashStats(tenantId?: string): Promise<{ currentBalance: number; todayExpenses: number; pendingApprovals: number; monthlyExpenses: number }>;
   
   // ==================== MÓDULO COMPRAS ====================
   
@@ -2695,7 +2695,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Depósitos Bancarios
-  async getBankDeposits(filters?: { tenantId?: string; userId?: string; status?: string; startDate?: Date; endDate?: Date }): Promise<any[]> {
+  async getBankDeposits(filters?: { tenantId?: string; userId?: string; status?: string; startDate?: Date; endDate?: Date; limit?: number }): Promise<any[]> {
     let conditions: any[] = [];
     
     if (filters?.tenantId) conditions.push(eq(bankDeposits.tenantId, filters.tenantId));
@@ -2704,11 +2704,12 @@ export class DatabaseStorage implements IStorage {
     if (filters?.startDate) conditions.push(gte(bankDeposits.depositDate, filters.startDate));
     if (filters?.endDate) conditions.push(lte(bankDeposits.depositDate, filters.endDate));
     
-    const query = conditions.length > 0
+    const baseQuery = conditions.length > 0
       ? db.select().from(bankDeposits).where(and(...conditions))
       : db.select().from(bankDeposits);
     
-    const deposits = await query.orderBy(desc(bankDeposits.depositDate));
+    const ordered = baseQuery.orderBy(desc(bankDeposits.depositDate));
+    const deposits = await (filters?.limit ? ordered.limit(filters.limit) : ordered);
     
     const depositsWithDetails = await Promise.all(deposits.map(async (dep) => {
       const user = await this.getUser(dep.userId);
@@ -3178,8 +3179,8 @@ export class DatabaseStorage implements IStorage {
     return newTransaction;
   }
 
-  async getPettyCashStats(): Promise<{ currentBalance: number; todayExpenses: number; pendingApprovals: number; monthlyExpenses: number }> {
-    const fund = await this.getPettyCashFund();
+  async getPettyCashStats(tenantId?: string): Promise<{ currentBalance: number; todayExpenses: number; pendingApprovals: number; monthlyExpenses: number }> {
+    const fund = await this.getPettyCashFund(tenantId);
     const currentBalance = fund ? parseFloat(fund.currentBalance) : 0;
     
     const todayStart = new Date();
@@ -3188,21 +3189,28 @@ export class DatabaseStorage implements IStorage {
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
+
+    const tenantFilter = tenantId ? eq(pettyCashExpenses.tenantId, tenantId) : undefined;
     
     const todayExpensesResult = await db.select({ total: sql<string>`COALESCE(SUM(${pettyCashExpenses.amount}), 0)` })
       .from(pettyCashExpenses)
       .where(and(
+        tenantFilter,
         eq(pettyCashExpenses.status, "pagado"),
         gte(pettyCashExpenses.paidAt, todayStart)
       ));
     
     const pendingResult = await db.select({ count: sql<number>`COUNT(*)` })
       .from(pettyCashExpenses)
-      .where(eq(pettyCashExpenses.status, "pendiente"));
+      .where(and(
+        tenantFilter,
+        eq(pettyCashExpenses.status, "pendiente")
+      ));
     
     const monthlyExpensesResult = await db.select({ total: sql<string>`COALESCE(SUM(${pettyCashExpenses.amount}), 0)` })
       .from(pettyCashExpenses)
       .where(and(
+        tenantFilter,
         eq(pettyCashExpenses.status, "pagado"),
         gte(pettyCashExpenses.paidAt, monthStart)
       ));

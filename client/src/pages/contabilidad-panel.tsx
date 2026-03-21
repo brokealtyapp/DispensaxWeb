@@ -69,12 +69,8 @@ export function ContabilidadPanelPage() {
     queryKey: ["/api/petty-cash/expenses"],
   });
 
-  const monthStart = startOfMonth(new Date());
-  const monthEnd = endOfMonth(new Date());
-
-  const monthExpenses = allExpenses.filter((e) => {
-    const d = new Date(e.createdAt ?? "");
-    return d >= monthStart && d <= monthEnd;
+  const { data: monthExpenses = [], isLoading: monthExpensesLoading } = useQuery<PettyCashExpense[]>({
+    queryKey: ["/api/petty-cash/expenses", { startDate: currentMonth.start, endDate: currentMonth.end }],
   });
 
   const pettyCashStats: PettyCashStats = {
@@ -85,7 +81,7 @@ export function ContabilidadPanelPage() {
       .reduce((sum, e) => sum + Number(e.amount), 0),
   };
 
-  const pettyCashLoading = fundLoading || expensesLoading;
+  const pettyCashLoading = fundLoading || expensesLoading || monthExpensesLoading;
 
   const { data: recentDeposits = [] } = useQuery<BankDeposit[]>({
     queryKey: ["/api/bank-deposits", { limit: 5 }],
