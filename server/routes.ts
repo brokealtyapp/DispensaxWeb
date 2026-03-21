@@ -4348,12 +4348,12 @@ export async function registerRoutes(
   app.post("/api/petty-cash/fund/replenish", authenticateJWT, authorizeAction("petty_cash", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
-      const { amount } = req.body;
+      const { amount, authorizedBy } = req.body;
       if (!amount) {
         return res.status(400).json({ error: "Faltan datos requeridos" });
       }
       const userId = req.user!.userId;
-      const fund = await storage.replenishPettyCashFund(parseFloat(amount), userId, tenantId);
+      const fund = await storage.replenishPettyCashFund(parseFloat(amount), userId, tenantId, authorizedBy || undefined);
       if (!fund) {
         return res.status(400).json({ error: "El fondo no está inicializado" });
       }
@@ -5023,13 +5023,15 @@ export async function registerRoutes(
   });
 
   // Desglose de caja chica
-  app.get("/api/reports/petty-cash", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/reports/petty-cash", authenticateJWT, authorizeAction("petty_cash", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, groupBy } = pettyCashBreakdownSchema.parse(req.query);
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const breakdown = await storage.getPettyCashBreakdown({
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
-        groupBy: groupBy as 'category' | 'user' | 'day'
+        groupBy: groupBy as 'category' | 'user' | 'day',
+        tenantId,
       });
       res.json(breakdown);
     } catch (error) {

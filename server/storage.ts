@@ -305,7 +305,7 @@ export interface IStorage {
   getPettyCashFund(tenantId?: string): Promise<PettyCashFund | undefined>;
   initializePettyCashFund(fund: InsertPettyCashFund): Promise<PettyCashFund>;
   updatePettyCashBalance(amount: number, type: 'add' | 'subtract', tenantId?: string): Promise<PettyCashFund | undefined>;
-  replenishPettyCashFund(amount: number, userId: string, tenantId?: string): Promise<PettyCashFund | undefined>;
+  replenishPettyCashFund(amount: number, userId: string, tenantId?: string, authorizedBy?: string): Promise<PettyCashFund | undefined>;
   
   // Transacciones de Caja Chica
   getPettyCashTransactions(limit?: number, tenantId?: string): Promise<any[]>;
@@ -408,6 +408,7 @@ export interface IStorage {
     startDate?: Date;
     endDate?: Date;
     groupBy?: 'category' | 'user' | 'day';
+    tenantId?: string;
   }): Promise<any[]>;
   
   getMachinePerformance(tenantId: string, startDate?: Date, endDate?: Date): Promise<any[]>;
@@ -3013,7 +3014,7 @@ export class DatabaseStorage implements IStorage {
 
   // Gastos de Caja Chica
   async getPettyCashExpenses(filters?: { tenantId?: string; userId?: string; category?: string; status?: string; startDate?: Date; endDate?: Date }, limit: number = 500): Promise<any[]> {
-    let conditions: any[] = [];
+    const conditions: (SQL<unknown> | undefined)[] = [];
     
     if (filters?.tenantId) conditions.push(eq(pettyCashExpenses.tenantId, filters.tenantId));
     if (filters?.userId) conditions.push(eq(pettyCashExpenses.userId, filters.userId));
@@ -3078,30 +3079,37 @@ export class DatabaseStorage implements IStorage {
     const expense = await this.getPettyCashExpense(id);
     if (!expense || expense.status !== "aprobado") return undefined;
     
-    const [updated] = await db.update(pettyCashExpenses)
-      .set({ status: "pagado", paidAt: new Date() })
-      .where(eq(pettyCashExpenses.id, id))
-      .returning();
-    
-    // Actualizar el saldo de caja chica
-    await this.updatePettyCashBalance(parseFloat(expense.amount), 'subtract', expense.tenantId);
-    
-    // Registrar la transacción
     const fund = await this.getPettyCashFund(expense.tenantId);
-    if (fund && expense.tenantId) {
-      await this.createPettyCashTransaction({
-        tenantId: expense.tenantId,
-        type: "gasto",
-        amount: expense.amount,
-        previousBalance: (parseFloat(fund.currentBalance) + parseFloat(expense.amount)).toString(),
-        newBalance: fund.currentBalance,
-        expenseId: id,
-        userId: expense.userId,
-        reference: `Gasto: ${expense.description}`,
-      });
-    }
-    
-    return updated;
+    if (!fund) return undefined;
+
+    const previousBalance = parseFloat(fund.currentBalance);
+    const newBalance = previousBalance - parseFloat(expense.amount);
+
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx.update(pettyCashExpenses)
+        .set({ status: "pagado", paidAt: new Date() })
+        .where(eq(pettyCashExpenses.id, id))
+        .returning();
+
+      await tx.update(pettyCashFund)
+        .set({ currentBalance: newBalance.toString(), updatedAt: new Date() })
+        .where(eq(pettyCashFund.id, fund.id));
+
+      if (expense.tenantId) {
+        await tx.insert(pettyCashTransactions).values({
+          tenantId: expense.tenantId,
+          type: "gasto",
+          amount: expense.amount,
+          previousBalance: previousBalance.toString(),
+          newBalance: newBalance.toString(),
+          expenseId: id,
+          userId: expense.userId,
+          reference: `Gasto: ${expense.description}`,
+        });
+      }
+
+      return updated;
+    });
   }
 
   // Fondo de Caja Chica
@@ -3142,7 +3150,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async replenishPettyCashFund(amount: number, userId: string, tenantId?: string): Promise<PettyCashFund | undefined> {
+  async replenishPettyCashFund(amount: number, userId: string, tenantId?: string, authorizedBy?: string): Promise<PettyCashFund | undefined> {
     const fund = await this.getPettyCashFund(tenantId);
     if (!fund) return undefined;
     
@@ -3154,6 +3162,7 @@ export class DatabaseStorage implements IStorage {
         currentBalance: newBalance.toString(), 
         lastReplenishmentDate: new Date(),
         lastReplenishmentAmount: amount.toString(),
+        lastReplenishmentBy: authorizedBy || userId,
         updatedAt: new Date() 
       })
       .where(eq(pettyCashFund.id, fund.id))
@@ -3168,7 +3177,9 @@ export class DatabaseStorage implements IStorage {
         previousBalance: previousBalance.toString(),
         newBalance: newBalance.toString(),
         userId,
-        reference: "Reposición de fondo",
+        reference: authorizedBy && authorizedBy !== userId
+          ? `Reposición de fondo (autorizado por usuario ${authorizedBy})`
+          : "Reposición de fondo",
       });
     }
     
@@ -3183,14 +3194,32 @@ export class DatabaseStorage implements IStorage {
     const query = limit ? baseQ.limit(limit) : baseQ;
     
     const transactions = await query;
-    
-    const transactionsWithDetails = await Promise.all(transactions.map(async (t) => {
-      const user = await this.getUser(t.userId);
-      const expense = t.expenseId ? await this.getPettyCashExpense(t.expenseId) : undefined;
-      return { ...t, user, expense };
+    if (!transactions.length) return [];
+
+    // Batch user lookups to avoid N+1
+    const uniqueUserIds = [...new Set(transactions.map(t => t.userId).filter(Boolean))] as string[];
+    const allUsers = uniqueUserIds.length > 0
+      ? await db.select().from(users).where(inArray(users.id, uniqueUserIds))
+      : [];
+    const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+    // Batch expense lookups with JOIN for those that have an expenseId
+    const expenseIds = transactions.map(t => t.expenseId).filter(Boolean) as string[];
+    let expenseMap = new Map<string, any>();
+    if (expenseIds.length > 0) {
+      const expenses = await db.select({ expense: pettyCashExpenses, user: users, machine: machines })
+        .from(pettyCashExpenses)
+        .leftJoin(users, eq(pettyCashExpenses.userId, users.id))
+        .leftJoin(machines, eq(pettyCashExpenses.machineId, machines.id))
+        .where(inArray(pettyCashExpenses.id, expenseIds));
+      expenseMap = new Map(expenses.map(r => [r.expense.id, { ...r.expense, user: r.user || undefined, machine: r.machine || undefined }]));
+    }
+
+    return transactions.map(t => ({
+      ...t,
+      user: userMap.get(t.userId) || undefined,
+      expense: t.expenseId ? expenseMap.get(t.expenseId) : undefined,
     }));
-    
-    return transactionsWithDetails;
   }
 
   async createPettyCashTransaction(transaction: InsertPettyCashTransaction): Promise<PettyCashTransaction> {
@@ -4215,14 +4244,19 @@ export class DatabaseStorage implements IStorage {
     startDate?: Date;
     endDate?: Date;
     groupBy?: 'category' | 'user' | 'day';
+    tenantId?: string;
   }): Promise<any[]> {
     const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     const end = filters?.endDate || new Date();
     const groupBy = filters?.groupBy || 'category';
 
+    const tenantFilter = filters?.tenantId ? eq(pettyCashExpenses.tenantId, filters.tenantId) : undefined;
+    const userTenantFilter = filters?.tenantId ? eq(users.tenantId, filters.tenantId) : undefined;
+
     const [expenses, allUsers] = await Promise.all([
       db.select().from(pettyCashExpenses)
         .where(and(
+          tenantFilter,
           gte(pettyCashExpenses.createdAt, start),
           lte(pettyCashExpenses.createdAt, end),
           or(
@@ -4230,7 +4264,7 @@ export class DatabaseStorage implements IStorage {
             eq(pettyCashExpenses.status, 'aprobado')
           )
         )),
-      db.select().from(users)
+      db.select().from(users).where(userTenantFilter)
     ]);
 
     const userMap = new Map(allUsers.map(u => [u.id, u]));

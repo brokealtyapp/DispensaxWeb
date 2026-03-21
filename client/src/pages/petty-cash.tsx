@@ -53,18 +53,23 @@ const expenseFormSchema = z.object({
   amount: z.string().min(1, "Monto requerido"),
   userId: z.string().min(1, "Solicitante requerido"),
   machineId: z.string().optional(),
-  receiptNumber: z.string().optional(),
-  reason: z.string().optional(),
+  receiptUrl: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 const replenishFormSchema = z.object({
   amount: z.string().min(1, "Monto requerido"),
-  userId: z.string().min(1, "Autorizado por requerido"),
+  authorizedBy: z.string().optional(),
+});
+
+const rejectFormSchema = z.object({
+  reason: z.string().min(1, "Motivo de rechazo requerido"),
 });
 
 type FundFormData = z.infer<typeof fundFormSchema>;
 type ExpenseFormData = z.infer<typeof expenseFormSchema>;
 type ReplenishFormData = z.infer<typeof replenishFormSchema>;
+type RejectFormData = z.infer<typeof rejectFormSchema>;
 
 export function PettyCashPage() {
   const { toast } = useToast();
@@ -72,6 +77,7 @@ export function PettyCashPage() {
   const [isNewExpenseOpen, setIsNewExpenseOpen] = useState(false);
   const [isReplenishOpen, setIsReplenishOpen] = useState(false);
   const [isInitFundOpen, setIsInitFundOpen] = useState(false);
+  const [rejectExpenseId, setRejectExpenseId] = useState<string | null>(null);
   const { canCreate, canEdit, canApprove } = usePermissions();
 
   const fundForm = useForm<FundFormData>({
@@ -92,8 +98,8 @@ export function PettyCashPage() {
       amount: "",
       userId: "",
       machineId: "",
-      receiptNumber: "",
-      reason: "",
+      receiptUrl: "",
+      notes: "",
     },
   });
 
@@ -101,7 +107,14 @@ export function PettyCashPage() {
     resolver: zodResolver(replenishFormSchema),
     defaultValues: {
       amount: "",
-      userId: "",
+      authorizedBy: "",
+    },
+  });
+
+  const rejectForm = useForm<RejectFormData>({
+    resolver: zodResolver(rejectFormSchema),
+    defaultValues: {
+      reason: "",
     },
   });
   
@@ -133,8 +146,9 @@ export function PettyCashPage() {
     mutationFn: async (data: FundFormData) => {
       return apiRequest("POST", "/api/petty-cash/fund", {
         name: data.name,
-        maxAmount: parseFloat(data.maxAmount),
+        initialBalance: parseFloat(data.initialBalance),
         currentBalance: parseFloat(data.initialBalance),
+        maxAmount: parseFloat(data.maxAmount),
         replenishThreshold: data.replenishThreshold ? parseFloat(data.replenishThreshold) : undefined,
       });
     },
@@ -175,8 +189,8 @@ export function PettyCashPage() {
   });
 
   const approveExpenseMutation = useMutation({
-    mutationFn: async ({ id, userId }: { id: string; userId: string }) => {
-      return apiRequest("POST", `/api/petty-cash/expenses/${id}/approve`, { userId });
+    mutationFn: async (id: string) => {
+      return apiRequest("POST", `/api/petty-cash/expenses/${id}/approve`, {});
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/petty-cash/expenses"] });
@@ -184,6 +198,23 @@ export function PettyCashPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/petty-cash/fund"] });
       queryClient.invalidateQueries({ queryKey: ["/api/petty-cash/transactions"] });
       toast({ title: "Gasto aprobado", description: "El gasto ha sido aprobado" });
+    },
+  });
+
+  const rejectExpenseMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      return apiRequest("POST", `/api/petty-cash/expenses/${id}/reject`, { reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/petty-cash/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/petty-cash/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/petty-cash/transactions"] });
+      toast({ title: "Gasto rechazado", description: "El gasto ha sido rechazado" });
+      setRejectExpenseId(null);
+      rejectForm.reset();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo rechazar el gasto", variant: "destructive" });
     },
   });
 
@@ -204,7 +235,7 @@ export function PettyCashPage() {
     mutationFn: async (data: ReplenishFormData) => {
       return apiRequest("POST", "/api/petty-cash/fund/replenish", {
         amount: parseFloat(data.amount),
-        userId: data.userId,
+        authorizedBy: data.authorizedBy || undefined,
       });
     },
     onSuccess: () => {
@@ -230,6 +261,11 @@ export function PettyCashPage() {
 
   const onReplenishSubmit = (data: ReplenishFormData) => {
     replenishMutation.mutate(data);
+  };
+
+  const onRejectSubmit = (data: RejectFormData) => {
+    if (!rejectExpenseId) return;
+    rejectExpenseMutation.mutate({ id: rejectExpenseId, reason: data.reason });
   };
 
   const getStatusBadge = (status: string) => {
@@ -601,10 +637,7 @@ export function PettyCashPage() {
                                 <>
                                   <Button 
                                     size="sm" 
-                                    onClick={() => approveExpenseMutation.mutate({ 
-                                      id: expense.id, 
-                                      userId: users?.[0]?.id || "" 
-                                    })}
+                                    onClick={() => approveExpenseMutation.mutate(expense.id)}
                                     disabled={approveExpenseMutation.isPending}
                                     data-testid={`button-approve-${expense.id}`}
                                   >
@@ -614,6 +647,10 @@ export function PettyCashPage() {
                                   <Button 
                                     size="sm" 
                                     variant="outline"
+                                    onClick={() => {
+                                      setRejectExpenseId(expense.id);
+                                      rejectForm.reset();
+                                    }}
                                     data-testid={`button-reject-${expense.id}`}
                                   >
                                     <XCircle className="h-4 w-4 mr-1" />
@@ -814,12 +851,12 @@ export function PettyCashPage() {
                 </div>
                 <FormField
                   control={expenseForm.control}
-                  name="receiptNumber"
+                  name="receiptUrl"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>No. de Recibo (opcional)</FormLabel>
                       <FormControl>
-                        <Input {...field} data-testid="input-receipt" />
+                        <Input {...field} placeholder="Ej: 001-2024" data-testid="input-receipt" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -827,7 +864,7 @@ export function PettyCashPage() {
                 />
                 <FormField
                   control={expenseForm.control}
-                  name="reason"
+                  name="notes"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Justificación</FormLabel>
@@ -866,7 +903,7 @@ export function PettyCashPage() {
                   </div>
                   <div className="flex justify-between items-center mt-1">
                     <span className="text-muted-foreground">Monto máximo:</span>
-                    <span className="font-bold" data-testid="text-max-amount">${fundLimit.toLocaleString()}</span>
+                    <span className="font-bold" data-testid="text-max-amount">{formatCurrency(fundLimit)}</span>
                   </div>
                 </div>
                 <FormField
@@ -879,7 +916,7 @@ export function PettyCashPage() {
                         <Input {...field} type="number" step="0.01" data-testid="input-replenish-amount" />
                       </FormControl>
                       <p className="text-xs text-muted-foreground">
-                        Sugerido: ${(fundLimit - fundBalance).toLocaleString()} para completar el fondo
+                        Sugerido: {formatCurrency(fundLimit - fundBalance)} para completar el fondo
                       </p>
                       <FormMessage />
                     </FormItem>
@@ -887,14 +924,14 @@ export function PettyCashPage() {
                 />
                 <FormField
                   control={replenishForm.control}
-                  name="userId"
+                  name="authorizedBy"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Autorizado por</FormLabel>
+                      <FormLabel>Autorizado por (opcional)</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger data-testid="select-replenish-user">
-                            <SelectValue placeholder="Seleccionar" />
+                            <SelectValue placeholder="Seleccionar usuario autorizador" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -922,6 +959,55 @@ export function PettyCashPage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Modal Rechazar Gasto */}
+      <Dialog open={rejectExpenseId !== null} onOpenChange={(open) => { if (!open) { setRejectExpenseId(null); rejectForm.reset(); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rechazar Gasto</DialogTitle>
+            <DialogDescription>Indica el motivo por el cual se rechaza esta solicitud de gasto</DialogDescription>
+          </DialogHeader>
+          <Form {...rejectForm}>
+            <form onSubmit={rejectForm.handleSubmit(onRejectSubmit)} className="space-y-4">
+              <FormField
+                control={rejectForm.control}
+                name="reason"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Motivo de Rechazo</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        placeholder="Explica el motivo del rechazo..."
+                        data-testid="input-reject-reason"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => { setRejectExpenseId(null); rejectForm.reset(); }}
+                  data-testid="button-cancel-reject"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  variant="destructive"
+                  disabled={rejectExpenseMutation.isPending}
+                  data-testid="button-confirm-reject"
+                >
+                  {rejectExpenseMutation.isPending ? "Rechazando..." : "Confirmar Rechazo"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </ScrollArea>
   );
 }
