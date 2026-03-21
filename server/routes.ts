@@ -7055,8 +7055,11 @@ export async function registerRoutes(
       const supervisors = allUsers.filter((u: any) => u.role === "supervisor");
       const abastecedores = allUsers.filter((u: any) => u.role === "abastecedor");
 
-      // Máquinas del tenant (ya filtradas por tenantId)
-      const machines = await storage.getMachines(req.user?.isSuperAdmin ? undefined : req.user!.tenantId!);
+      // Máquinas del tenant (query directa para soporte SuperAdmin sin tenantId)
+      const { machines: machinesTable } = await import("@shared/schema");
+      const machines = tenantId
+        ? await storage.getMachines(tenantId)
+        : await db.select().from(machinesTable).limit(2000);
 
       // Rutas del tenant
       const routesList = tenantId
@@ -7146,8 +7149,11 @@ export async function registerRoutes(
         : await db.select().from(usersTable);
       const allUsers = rawUsers.map(({ password, ...u }) => u);
 
-      // Máquinas del tenant
-      const machines = await storage.getMachines(req.user?.isSuperAdmin ? undefined : req.user!.tenantId!);
+      // Máquinas del tenant (query directa para soporte SuperAdmin sin tenantId)
+      const { machines: machinesTable } = await import("@shared/schema");
+      const machines = tenantId
+        ? await storage.getMachines(tenantId)
+        : await db.select().from(machinesTable).limit(2000);
 
       // Rutas del supervisor dentro del tenant
       const routesList = tenantId
