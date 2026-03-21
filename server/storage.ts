@@ -2977,7 +2977,7 @@ export class DatabaseStorage implements IStorage {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
     
-    const conditions: any[] = [
+    const conditions: (SQL<unknown> | undefined)[] = [
       eq(cashCollections.userId, userId),
       gte(cashCollections.createdAt, startOfDay),
       lte(cashCollections.createdAt, endOfDay),
@@ -2987,7 +2987,11 @@ export class DatabaseStorage implements IStorage {
     const collections = await db.select().from(cashCollections)
       .where(and(...conditions));
     
-    const user = await this.getUser(userId);
+    // Fetch user with tenant ownership validation to prevent cross-tenant data exposure
+    const userConds: (SQL<unknown> | undefined)[] = [eq(users.id, userId)];
+    if (tenantId) userConds.push(eq(users.tenantId, tenantId));
+    const [rawUser] = await db.select().from(users).where(and(...userConds));
+    const user = excludePassword(rawUser);
     
     const collectionsWithMachines = await Promise.all(collections.map(async (c) => {
       const machine = await this.getMachine(c.machineId);
