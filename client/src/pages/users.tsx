@@ -181,7 +181,12 @@ function getInitials(name: string | null | undefined): string {
 }
 
 function getRoleInfo(role: string) {
-  return ROLES.find(r => r.value === role) || ROLES[0];
+  return ROLES.find(r => r.value === role) || {
+    value: role,
+    label: role,
+    icon: Users,
+    color: "bg-gray-100 text-gray-700 dark:bg-gray-800/50 dark:text-gray-400",
+  };
 }
 
 export default function UsersPage() {
@@ -294,7 +299,8 @@ export default function UsersPage() {
   });
 
   const filteredUsers = useMemo(() => {
-    let result = [...users];
+    // Exclude visor_establecimiento (managed in /visores) and super admins
+    let result = users.filter(u => u.role !== "visor_establecimiento" && !u.isSuperAdmin);
     
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -429,11 +435,11 @@ export default function UsersPage() {
             Administra todos los usuarios del sistema
           </p>
         </div>
-{canCreate("users") && (
-        <Button onClick={handleOpenCreate} className="gap-2" data-testid="button-create-user">
-          <Plus className="h-4 w-4" />
-          Nuevo Usuario
-        </Button>
+        {canCreate("users") && (
+          <Button onClick={handleOpenCreate} className="gap-2" data-testid="button-create-user">
+            <Plus className="h-4 w-4" />
+            Nuevo Usuario
+          </Button>
         )}
       </div>
 
@@ -1110,7 +1116,7 @@ export default function UsersPage() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleToggleStatus}
-              className={selectedUser?.isActive ? "bg-destructive hover:bg-destructive/90" : "bg-green-600 hover:bg-green-700"}
+              className={selectedUser?.isActive ? "bg-destructive" : "bg-green-600"}
               data-testid="button-confirm-toggle-status"
             >
               {toggleStatusMutation.isPending 

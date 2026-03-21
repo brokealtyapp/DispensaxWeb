@@ -3432,7 +3432,7 @@ export async function registerRoutes(
     try {
       const { db } = await import("./db");
       const { users } = await import("@shared/schema");
-      const { eq, and } = await import("drizzle-orm");
+      const { eq, and, ne } = await import("drizzle-orm");
       const { role } = req.query;
       
       // Si es supervisor, filtrar por su zona asignada
@@ -3455,6 +3455,9 @@ export async function registerRoutes(
           return res.status(403).json({ error: "Contexto de tenant requerido" });
         }
         conditions.push(eq(users.tenantId, req.user.tenantId));
+        // Excluir visor_establecimiento (se gestionan en /visores) y super admins
+        conditions.push(ne(users.role, "visor_establecimiento"));
+        conditions.push(eq(users.isSuperAdmin, false));
       }
       
       if (conditions.length > 0) {
@@ -3692,6 +3695,14 @@ export async function registerRoutes(
       if (req.user.userId !== req.params.id && req.user.role !== "admin") {
         return res.status(403).json({ error: "No tienes permiso para modificar este usuario" });
       }
+
+      // Si es admin editando otro usuario, verificar que pertenezca al mismo tenant
+      if (req.user.userId !== req.params.id && req.user.role === "admin" && !req.user.isSuperAdmin) {
+        const targetUser = await storage.getUser(req.params.id);
+        if (!targetUser || targetUser.tenantId !== req.user.tenantId) {
+          return res.status(404).json({ error: "Usuario no encontrado" });
+        }
+      }
       
       // Validar que solo se actualicen campos permitidos
       const validatedData = updateProfileSchema.parse(req.body);
@@ -3769,15 +3780,26 @@ export async function registerRoutes(
 
   // ==================== GESTIÓN DE USUARIOS (ADMIN) ====================
 
+  const OPERATIONAL_ROLES = ["admin", "supervisor", "abastecedor", "almacen", "contabilidad", "rh"] as const;
+  const ROLES_REQUIRING_ZONE = ["supervisor", "abastecedor"];
+
   const adminUserSchema = z.object({
     username: z.string().min(3),
     password: z.string().min(6).optional(),
     fullName: z.string().min(2),
     email: z.string().email().or(z.literal("")).optional(),
     phone: z.string().optional(),
-    role: z.string().min(1),
+    role: z.enum(OPERATIONAL_ROLES, { errorMap: () => ({ message: "Rol inválido" }) }),
     assignedZone: z.string().optional(),
     isActive: z.boolean().optional(),
+  }).superRefine((data, ctx) => {
+    if (ROLES_REQUIRING_ZONE.includes(data.role) && !data.assignedZone) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La zona asignada es requerida para este rol",
+        path: ["assignedZone"],
+      });
+    }
   });
 
   // Crear usuario (solo admin)
@@ -3807,12 +3829,24 @@ export async function registerRoutes(
 
       const { db } = await import("./db");
       const { users } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
+      const { eq: eqChk, and: andChk } = await import("drizzle-orm");
       
-      // Verificar que el username no exista
-      const existing = await db.select().from(users).where(eq(users.username, validatedData.username)).limit(1);
+      // Verificar que el username no exista dentro del mismo tenant
+      const existing = await db.select().from(users)
+        .where(andChk(eqChk(users.username, validatedData.username), eqChk(users.tenantId, tenantId)))
+        .limit(1);
       if (existing.length > 0) {
         return res.status(400).json({ error: "El nombre de usuario ya existe" });
+      }
+
+      // Verificar unicidad de email dentro del tenant (si se proveyó)
+      if (validatedData.email) {
+        const existingEmail = await db.select().from(users)
+          .where(andChk(eqChk(users.email, validatedData.email), eqChk(users.tenantId, tenantId)))
+          .limit(1);
+        if (existingEmail.length > 0) {
+          return res.status(400).json({ error: "El email ya está en uso" });
+        }
       }
       
       const bcrypt = await import("bcryptjs");
@@ -3844,6 +3878,20 @@ export async function registerRoutes(
   // Actualizar usuario (solo admin - todos los campos)
   app.patch("/api/admin/users/:id", authenticateJWT, authorizeAction("users", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // SECURITY: Verificar que el usuario objetivo pertenece al mismo tenant
+      if (!req.user?.isSuperAdmin) {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) return res.status(403).json({ error: "Contexto de tenant requerido" });
+        const targetUser = await storage.getUser(req.params.id);
+        if (!targetUser || targetUser.tenantId !== tenantId) {
+          return res.status(404).json({ error: "Usuario no encontrado" });
+        }
+        // Impedir modificar visor_establecimiento o superAdmins desde esta ruta
+        if (targetUser.role === "visor_establecimiento" || targetUser.isSuperAdmin) {
+          return res.status(403).json({ error: "No se puede editar este tipo de usuario desde aquí" });
+        }
+      }
+
       const validatedData = adminUserSchema.partial().parse(req.body);
       
       const { db } = await import("./db");
@@ -3877,6 +3925,11 @@ export async function registerRoutes(
       
       if (!updatedUser) {
         return res.status(404).json({ error: "Usuario no encontrado" });
+      }
+
+      // Revocar tokens si se desactiva el usuario o se cambia su contraseña
+      if (validatedData.isActive === false || validatedData.password) {
+        await storage.revokeAllUserRefreshTokens(req.params.id);
       }
       
       const { password, ...userWithoutPassword } = updatedUser;
