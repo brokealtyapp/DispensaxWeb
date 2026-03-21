@@ -177,7 +177,7 @@ export interface IStorage {
   // ==================== MÓDULO ABASTECEDOR ====================
   
   // Rutas
-  getRoutes(userId?: string, date?: Date, status?: string): Promise<any[]>;
+  getRoutes(userId?: string, date?: Date, status?: string, tenantId?: string): Promise<any[]>;
   getRoute(id: string): Promise<any>;
   getTodayRoute(userId: string): Promise<any>;
   createRoute(route: InsertRoute): Promise<Route>;
