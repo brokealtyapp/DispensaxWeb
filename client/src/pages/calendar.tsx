@@ -333,15 +333,17 @@ export function CalendarPage() {
   };
 
   const handleViewTask = (task: any) => {
-    const isAbastecedor = user?.role === "abastecedor";
-    if (isAbastecedor) {
-      navigate("/mis-tareas");
-    } else {
+    const role = user?.role;
+    if (role === "admin" || role === "supervisor") {
       const params = new URLSearchParams();
       if (task.type) params.set("type", task.type);
       if (task.priority) params.set("priority", task.priority);
       const qs = params.toString();
       navigate(qs ? `/todas-tareas?${qs}` : "/todas-tareas");
+    } else if (role === "rh") {
+      navigate("/mis-tareas");
+    } else {
+      navigate("/tareas");
     }
     setSelectedDate(null);
   };
