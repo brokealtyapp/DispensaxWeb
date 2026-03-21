@@ -2699,9 +2699,10 @@ export async function registerRoutes(
     try {
       const { serviceRecords, productLoads, cashCollections, issueReports, products, machines, users, routeStops, routes } = await import("@shared/schema");
       
-      // Obtener el servicio base
+      // Obtener el servicio base (incluye tenantId para validación)
       const [service] = await db.select({
         id: serviceRecords.id,
+        tenantId: serviceRecords.tenantId,
         status: serviceRecords.status,
         startTime: serviceRecords.startTime,
         endTime: serviceRecords.endTime,
@@ -2723,6 +2724,12 @@ export async function registerRoutes(
         .where(eq(serviceRecords.id, req.params.id));
       
       if (!service) {
+        return res.status(404).json({ error: "Servicio no encontrado" });
+      }
+
+      // Tenant isolation: admin/supervisor sólo pueden ver servicios de su tenant
+      // SuperAdmin bypassa esta verificación
+      if (!req.user?.isSuperAdmin && service.tenantId !== req.user!.tenantId) {
         return res.status(404).json({ error: "Servicio no encontrado" });
       }
       
@@ -2866,6 +2873,9 @@ export async function registerRoutes(
     try {
       const { serviceRecords, machines, users, routeStops, routes, productLoads, cashCollections, issueReports } = await import("@shared/schema");
       
+      // Tenant isolation: SuperAdmin puede opcionalmente filtrar por ?tenantId=
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user!.tenantId;
+
       // Si es supervisor, filtrar por usuarios de su zona
       const supervisorZone = await getSupervisorZone(req);
       let zoneUserIds: string[] | null = null;
@@ -2874,12 +2884,15 @@ export async function registerRoutes(
       }
       
       // Construir condiciones de filtro
-      const conditions = [eq(serviceRecords.status, "en_progreso")];
+      const conditions: (SQL<unknown> | undefined)[] = [eq(serviceRecords.status, "en_progreso")];
+      if (tenantId) {
+        conditions.push(eq(serviceRecords.tenantId, tenantId));
+      }
       if (zoneUserIds && zoneUserIds.length > 0) {
         conditions.push(inArray(serviceRecords.userId, zoneUserIds));
       }
       
-      // Obtener servicios activos (en_progreso), filtrados por zona si es supervisor
+      // Obtener servicios activos (en_progreso), filtrados por tenant y zona
       const activeServices = await db.select({
         id: serviceRecords.id,
         status: serviceRecords.status,
@@ -2904,24 +2917,46 @@ export async function registerRoutes(
         .where(and(...conditions))
         .orderBy(desc(serviceRecords.startTime));
       
-      // Enriquecer con datos agregados
-      const enrichedServices = await Promise.all(activeServices.map(async (service) => {
-        // Obtener conteos en paralelo
-        const [productsLoaded, cashCount, issuesCount] = await Promise.all([
-          db.select({ total: sql<number>`COALESCE(SUM(${productLoads.quantity}), 0)` })
-            .from(productLoads)
-            .where(eq(productLoads.serviceRecordId, service.id)),
-          
-          db.select({ total: sql<number>`COALESCE(SUM(CAST(${cashCollections.actualAmount} AS DECIMAL)), 0)` })
-            .from(cashCollections)
-            .where(eq(cashCollections.serviceRecordId, service.id)),
-          
-          db.select({ count: sql<number>`COUNT(*)` })
-            .from(issueReports)
-            .where(eq(issueReports.serviceRecordId, service.id)),
-        ]);
-        
-        // Calcular progreso del checklist
+      if (activeServices.length === 0) {
+        return res.json({ activeCount: 0, services: [] });
+      }
+
+      const serviceIds = activeServices.map((s) => s.id);
+
+      // Agregados en 3 queries únicas (GROUP BY) — sin N+1
+      const [productTotals, cashTotals, issueCounts] = await Promise.all([
+        db.select({
+          serviceRecordId: productLoads.serviceRecordId,
+          total: sql<number>`COALESCE(SUM(${productLoads.quantity}), 0)`,
+        })
+          .from(productLoads)
+          .where(inArray(productLoads.serviceRecordId, serviceIds))
+          .groupBy(productLoads.serviceRecordId),
+
+        db.select({
+          serviceRecordId: cashCollections.serviceRecordId,
+          total: sql<number>`COALESCE(SUM(CAST(${cashCollections.actualAmount} AS DECIMAL)), 0)`,
+        })
+          .from(cashCollections)
+          .where(inArray(cashCollections.serviceRecordId, serviceIds))
+          .groupBy(cashCollections.serviceRecordId),
+
+        db.select({
+          serviceRecordId: issueReports.serviceRecordId,
+          count: sql<number>`COUNT(*)`,
+        })
+          .from(issueReports)
+          .where(inArray(issueReports.serviceRecordId, serviceIds))
+          .groupBy(issueReports.serviceRecordId),
+      ]);
+
+      // Construir mapas O(1) para lookup
+      const productMap = new Map(productTotals.map((r) => [r.serviceRecordId, Number(r.total)]));
+      const cashMap = new Map(cashTotals.map((r) => [r.serviceRecordId, Number(r.total)]));
+      const issueMap = new Map(issueCounts.map((r) => [r.serviceRecordId, Number(r.count)]));
+
+      // Enriquecer sin queries adicionales
+      const enrichedServices = activeServices.map((service) => {
         let checklistProgress = 0;
         if (service.checklistData) {
           try {
@@ -2932,21 +2967,18 @@ export async function registerRoutes(
             // Ignore
           }
         }
-        
-        // Calcular duración en minutos
-        const duration = service.startTime 
+        const duration = service.startTime
           ? Math.round((Date.now() - new Date(service.startTime).getTime()) / 60000)
           : 0;
-        
         return {
           ...service,
-          totalProductsLoaded: Number(productsLoaded[0]?.total || 0),
-          totalCashCollected: Number(cashCount[0]?.total || 0),
-          issuesReported: Number(issuesCount[0]?.count || 0),
+          totalProductsLoaded: productMap.get(service.id) ?? 0,
+          totalCashCollected: cashMap.get(service.id) ?? 0,
+          issuesReported: issueMap.get(service.id) ?? 0,
           checklistProgress,
           duration,
         };
-      }));
+      });
       
       res.json({
         activeCount: enrichedServices.length,

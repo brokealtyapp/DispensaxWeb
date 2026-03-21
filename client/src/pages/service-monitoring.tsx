@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -88,7 +87,6 @@ interface ServiceFullStatus {
 }
 
 export function ServiceMonitoringPage() {
-  const [, navigate] = useLocation();
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
 
@@ -208,9 +206,17 @@ export function ServiceMonitoringPage() {
                       <Navigation className="h-4 w-4 text-primary shrink-0" />
                       {service.machineName || "Máquina"}
                     </CardTitle>
-                    <CardDescription className="flex items-center gap-2 mt-1">
-                      <User className="h-3 w-3" />
-                      {service.userName || "Abastecedor"}
+                    <CardDescription className="mt-1 space-y-0.5">
+                      <span className="flex items-center gap-1.5">
+                        <User className="h-3 w-3 shrink-0" />
+                        {service.userName || "Abastecedor"}
+                      </span>
+                      {service.userPhone && (
+                        <span className="flex items-center gap-1.5">
+                          <Phone className="h-3 w-3 shrink-0" />
+                          {service.userPhone}
+                        </span>
+                      )}
                     </CardDescription>
                   </div>
                   <Badge variant="default" className="bg-emerald-500 shrink-0">
