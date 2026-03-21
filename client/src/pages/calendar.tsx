@@ -55,6 +55,23 @@ const eventFormSchema = z.object({
 
 type EventFormData = z.infer<typeof eventFormSchema>;
 
+interface CalendarDayItem {
+  id: string;
+  title: string;
+  description?: string;
+  eventType?: string;
+  startDate?: string;
+  endDate?: string;
+  allDay?: boolean;
+  color?: string;
+  userId?: string;
+  type?: string;
+  priority?: string;
+  status?: string;
+  dueDate?: string;
+  isTask?: boolean;
+}
+
 const eventTypeConfig: Record<string, { label: string; icon: any; color: string; bgColor: string }> = {
   tarea: { label: "Tarea", icon: ListTodo, color: "bg-blue-500", bgColor: "bg-blue-100 dark:bg-blue-900/30" },
   mantenimiento: { label: "Mantenimiento", icon: Wrench, color: "bg-orange-500", bgColor: "bg-orange-100 dark:bg-orange-900/30" },
@@ -84,11 +101,11 @@ const colorToClass: Record<string, string> = {
   pink: "bg-pink-500",
 };
 
-function getEventColorClass(item: any): string {
-  if (!(item as any).isTask && item.color && colorToClass[item.color]) {
+function getEventColorClass(item: CalendarDayItem): string {
+  if (!item.isTask && item.color && colorToClass[item.color]) {
     return colorToClass[item.color];
   }
-  const key = (item as any).isTask ? "tarea" : (item.eventType || "otro");
+  const key = item.isTask ? "tarea" : (item.eventType || "otro");
   return (eventTypeConfig[key] ?? eventTypeConfig.otro).color;
 }
 
@@ -105,7 +122,6 @@ function extractTime(isoString?: string | null): string {
   const d = parseISO(isoString);
   const h = d.getHours().toString().padStart(2, "0");
   const m = d.getMinutes().toString().padStart(2, "0");
-  if (h === "00" && m === "00") return "";
   return `${h}:${m}`;
 }
 
@@ -259,19 +275,19 @@ export function CalendarPage() {
     return eachDayOfInterval({ start: weekStart, end: weekEnd });
   }, [weekStart, weekEnd]);
 
-  const getEventsForDay = (day: Date) => {
-    return events?.filter(event => {
+  const getEventsForDay = (day: Date): CalendarDayItem[] => {
+    return (events ?? []).filter(event => {
       const eventDate = parseISO(event.startDate);
       return isSameDay(eventDate, day);
-    }) || [];
+    }) as CalendarDayItem[];
   };
 
-  const getTasksForDay = (day: Date) => {
-    return tasks?.filter(task => {
+  const getTasksForDay = (day: Date): CalendarDayItem[] => {
+    return (tasks ?? []).filter(task => {
       if (!task.dueDate) return false;
       const taskDate = parseISO(task.dueDate);
       return isSameDay(taskDate, day);
-    }) || [];
+    }).map(task => ({ ...task, isTask: true as const }));
   };
 
   const handlePrev = () => {
@@ -357,7 +373,7 @@ export function CalendarPage() {
   const renderDayCell = (day: Date, opts?: { tall?: boolean; showFullDate?: boolean }) => {
     const dayEvents = getEventsForDay(day);
     const dayTasks = getTasksForDay(day);
-    const allItems = [...dayEvents, ...dayTasks.map(t => ({ ...t, isTask: true }))];
+    const allItems: CalendarDayItem[] = [...dayEvents, ...dayTasks];
     const isSelected = selectedDate && isSameDay(day, selectedDate);
     const tall = opts?.tall ?? false;
     const showFull = opts?.showFullDate ?? false;
@@ -544,8 +560,8 @@ export function CalendarPage() {
               {selectedDate && (
                 <>
                   <div className="space-y-2">
-                    {[...getEventsForDay(selectedDate), ...getTasksForDay(selectedDate).map(t => ({ ...t, isTask: true }))].map((item, i) => {
-                      const isTask = !!(item as any).isTask;
+                    {([...getEventsForDay(selectedDate), ...getTasksForDay(selectedDate)] as CalendarDayItem[]).map((item, i) => {
+                      const isTask = !!item.isTask;
                       const key = isTask ? "tarea" : (item.eventType || "otro");
                       const type = eventTypeConfig[key] ?? eventTypeConfig.otro;
                       const TypeIcon = type.icon;
