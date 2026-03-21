@@ -3088,8 +3088,10 @@ export class DatabaseStorage implements IStorage {
     return await db.transaction(async (tx) => {
       const [updated] = await tx.update(pettyCashExpenses)
         .set({ status: "pagado", paidAt: new Date() })
-        .where(eq(pettyCashExpenses.id, id))
+        .where(and(eq(pettyCashExpenses.id, id), eq(pettyCashExpenses.status, "aprobado")))
         .returning();
+
+      if (!updated) return undefined;
 
       await tx.update(pettyCashFund)
         .set({ currentBalance: newBalance.toString(), updatedAt: new Date() })

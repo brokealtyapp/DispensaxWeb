@@ -4353,6 +4353,15 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Faltan datos requeridos" });
       }
       const userId = req.user!.userId;
+
+      // Validate authorizedBy belongs to same tenant
+      if (authorizedBy) {
+        const authUser = await storage.getUser(authorizedBy);
+        if (!authUser || authUser.tenantId !== tenantId) {
+          return res.status(400).json({ error: "Usuario autorizador no válido" });
+        }
+      }
+
       const fund = await storage.replenishPettyCashFund(parseFloat(amount), userId, tenantId, authorizedBy || undefined);
       if (!fund) {
         return res.status(400).json({ error: "El fondo no está inicializado" });
