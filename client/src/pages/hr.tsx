@@ -743,8 +743,8 @@ export function HRPage() {
 
   const payrollColumns: Column<PayrollRecord>[] = [
     { key: "periodStart", header: "Periodo", render: (item) => {
-      const start = item.periodStart ? new Date(item.periodStart).toLocaleDateString("es-DO", { month: "short", year: "numeric" }) : "-";
-      return start;
+      const fmt = (d: string | Date | null | undefined) => d ? new Date(d).toLocaleDateString("es-DO", { day: "2-digit", month: "short", year: "numeric" }) : "?";
+      return `${fmt(item.periodStart)} – ${fmt(item.periodEnd)}`;
     }},
     { key: "userId", header: "Empleado", render: (item) => item.user?.fullName || item.user?.username || "-" },
     { key: "baseSalary", header: "Salario Base", render: (item) => formatCurrency(item.baseSalary) },
@@ -1012,7 +1012,7 @@ export function HRPage() {
             <CardContent>
               {loadingPayroll ? <Skeleton className="h-64 w-full" /> : (
                 <>
-                  <DataTable data={paginatedPayroll} columns={payrollColumns} searchPlaceholder="Buscar..." searchKeys={["period"]} />
+                  <DataTable data={paginatedPayroll} columns={payrollColumns} searchPlaceholder="Buscar..." searchKeys={["status"]} />
                   <DataPagination currentPage={payrollPage} totalItems={(payrollRecords || []).length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setPayrollPage} className="mt-4" />
                 </>
               )}
@@ -1052,7 +1052,7 @@ export function HRPage() {
             <CardContent>
               {loadingReviews ? <Skeleton className="h-64 w-full" /> : (
                 <>
-                  <DataTable data={paginatedReviews} columns={reviewColumns} searchPlaceholder="Buscar..." searchKeys={["period"]} />
+                  <DataTable data={paginatedReviews} columns={reviewColumns} searchPlaceholder="Buscar..." searchKeys={["reviewPeriod"]} />
                   <DataPagination currentPage={reviewsPage} totalItems={(performanceReviews || []).length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setReviewsPage} className="mt-4" />
                 </>
               )}
@@ -1073,7 +1073,7 @@ export function HRPage() {
             <CardContent>
               {loadingDocuments ? <Skeleton className="h-64 w-full" /> : (
                 <>
-                  <DataTable data={paginatedDocuments} columns={documentColumns} searchPlaceholder="Buscar..." searchKeys={["name", "type"]} />
+                  <DataTable data={paginatedDocuments} columns={documentColumns} searchPlaceholder="Buscar..." searchKeys={["name", "documentType"]} />
                   <DataPagination currentPage={documentsPage} totalItems={(documents || []).length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setDocumentsPage} className="mt-4" />
                 </>
               )}
