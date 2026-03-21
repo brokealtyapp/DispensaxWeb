@@ -5031,7 +5031,7 @@ export async function registerRoutes(
   app.get("/api/reports/sales", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, groupBy } = salesBreakdownSchema.parse(req.query);
-      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user!.tenantId;
       const breakdown = await storage.getSalesBreakdown({
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
@@ -5052,7 +5052,7 @@ export async function registerRoutes(
   app.get("/api/reports/purchases", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, groupBy } = purchasesBreakdownSchema.parse(req.query);
-      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user!.tenantId;
       const breakdown = await storage.getPurchasesBreakdown({
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
@@ -5073,7 +5073,7 @@ export async function registerRoutes(
   app.get("/api/reports/fuel", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, groupBy } = fuelBreakdownSchema.parse(req.query);
-      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user!.tenantId;
       const breakdown = await storage.getFuelBreakdown({
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
@@ -5094,7 +5094,7 @@ export async function registerRoutes(
   app.get("/api/reports/petty-cash", authenticateJWT, authorizeAction("petty_cash", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, groupBy } = pettyCashBreakdownSchema.parse(req.query);
-      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user!.tenantId;
       const breakdown = await storage.getPettyCashBreakdown({
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
@@ -5135,7 +5135,7 @@ export async function registerRoutes(
     try {
       const { startDate, endDate } = reportFiltersSchema.parse(req.query);
       const limit = parseInt(req.query.limit as string) || 10;
-      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user!.tenantId;
       const topProducts = await storage.getTopProducts(
         startDate ? new Date(startDate) : undefined,
         endDate ? new Date(endDate) : undefined,
@@ -5156,7 +5156,7 @@ export async function registerRoutes(
   app.get("/api/reports/supplier-ranking", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = reportFiltersSchema.parse(req.query);
-      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user!.tenantId;
       const ranking = await storage.getSupplierRanking(
         startDate ? new Date(startDate) : undefined,
         endDate ? new Date(endDate) : undefined,
@@ -5176,7 +5176,7 @@ export async function registerRoutes(
   app.get("/api/reports/export", authenticateJWT, authorizeRoles("admin", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { type, startDate, endDate } = exportDataSchema.parse(req.query);
-      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user!.tenantId;
       const data = await storage.getExportData(type, {
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,

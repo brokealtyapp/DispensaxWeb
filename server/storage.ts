@@ -4024,7 +4024,7 @@ export class DatabaseStorage implements IStorage {
       .reduce((sum, e) => sum + parseFloat(e.amount?.toString() || "0"), 0);
     const pendingExpenses = pettyCashList.filter(e => e.status === 'pending' || e.status === 'pendiente').length;
     
-    const lowStockProducts = await this.getLowStockProducts();
+    const lowStockProducts = await this.getLowStockProducts(tenantId);
     
     const profitMargin = totalSales > 0 ? ((totalSales - totalPurchases - totalFuelCost - totalPettyCash) / totalSales * 100) : 0;
 
