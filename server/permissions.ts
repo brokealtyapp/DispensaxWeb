@@ -23,6 +23,10 @@ export function authorizeAction(resource: Resource, action: Action) {
       return res.status(401).json({ error: "No autenticado" });
     }
 
+    if (req.user.isSuperAdmin) {
+      return next();
+    }
+
     const role = req.user.role as UserRole;
     
     if (!canPerformAction(role, resource, action)) {

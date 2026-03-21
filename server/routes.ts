@@ -7902,9 +7902,9 @@ export async function registerRoutes(
   }
 
   // List all viewers (tenant-scoped)
-  app.get("/api/establishment-viewers", authenticateJWT, authorizeAction("establishment_viewers", "read"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/establishment-viewers", authenticateJWT, authorizeAction("establishment_viewers", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const tenantId = req.user!.tenantId;
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user?.tenantId;
       if (!tenantId) {
         return res.status(400).json({ error: "Tenant no válido" });
       }
@@ -7921,7 +7921,7 @@ export async function registerRoutes(
           const machine = await storage.getMachine(assignment.machineId);
           return {
             ...assignment,
-            machine: machine ? { id: machine.id, code: machine.code, name: machine.name } : null
+            machine: machine ? { id: machine.id, code: machine.code, name: machine.name, location: machine.location } : null
           };
         }));
         
@@ -7940,7 +7940,7 @@ export async function registerRoutes(
   });
 
   // Get single viewer details
-  app.get("/api/establishment-viewers/:id", authenticateJWT, authorizeAction("establishment_viewers", "read"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/establishment-viewers/:id", authenticateJWT, authorizeAction("establishment_viewers", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const viewer = await storage.getEstablishmentViewer(req.params.id);
       if (!viewer) {
@@ -8068,6 +8068,8 @@ export async function registerRoutes(
       
       const updateViewerSchema = z.object({
         establishmentName: z.string().min(1).optional(),
+        contactName: z.string().optional(),
+        contactPhone: z.string().optional(),
         defaultCommissionPercent: z.string().optional(),
         notes: z.string().optional(),
         isActive: z.boolean().optional()
@@ -8495,11 +8497,14 @@ export async function registerRoutes(
         totalCommission += machineCommission;
         
         return {
+          id: assignment.id,
           machineId: machine.id,
           machineName: machine.name || machine.code || machine.id,
-          totalSales: machineTotalSales.toFixed(2),
-          commissionPercent: commissionPercent.toFixed(2),
-          commission: machineCommission.toFixed(2),
+          machineCode: machine.code || machine.id,
+          location: machine.location || "",
+          totalSales: machineTotalSales,
+          commissionPercent: commissionPercent,
+          commission: machineCommission,
           salesCount: sales.length
         };
       }));
@@ -8514,8 +8519,8 @@ export async function registerRoutes(
           endDate: endDate?.toISOString()
         },
         machines: machinesSummary.filter(m => m !== null),
-        totalSales: totalSales.toFixed(2),
-        totalCommission: totalCommission.toFixed(2)
+        totalSales: totalSales,
+        totalCommission: totalCommission
       });
     } catch (error) {
       console.error("Error getting viewer sales summary:", error);

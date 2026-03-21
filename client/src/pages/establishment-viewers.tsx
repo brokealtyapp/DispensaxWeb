@@ -90,17 +90,18 @@ interface EstablishmentViewer {
   id: string;
   userId: string;
   establishmentName: string;
-  contactName: string;
-  email: string;
-  phone?: string;
-  defaultCommissionPercent: number;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  defaultCommissionPercent: number | string;
   isActive: boolean;
   createdAt: string;
   assignments?: MachineAssignment[];
   user?: {
+    id: string;
     fullName: string;
     email: string;
-    isActive: boolean;
+    username: string;
   };
 }
 
@@ -116,7 +117,7 @@ const inviteSchema = z.object({
 const editSchema = z.object({
   establishmentName: z.string().min(2, "El nombre del establecimiento es requerido"),
   contactName: z.string().min(2, "El nombre de contacto es requerido"),
-  phone: z.string().optional(),
+  contactPhone: z.string().optional(),
   defaultCommissionPercent: z.coerce.number().min(0).max(100),
   isActive: z.boolean(),
 });
@@ -162,7 +163,7 @@ export default function EstablishmentViewersPage() {
     defaultValues: {
       establishmentName: "",
       contactName: "",
-      phone: "",
+      contactPhone: "",
       defaultCommissionPercent: 5,
       isActive: true,
     },
@@ -196,7 +197,10 @@ export default function EstablishmentViewersPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<EditFormData> }) => {
-      return apiRequest("PATCH", `/api/establishment-viewers/${id}`, data);
+      return apiRequest("PATCH", `/api/establishment-viewers/${id}`, {
+        ...data,
+        defaultCommissionPercent: data.defaultCommissionPercent !== undefined ? String(data.defaultCommissionPercent) : undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/establishment-viewers"] });
@@ -275,8 +279,8 @@ export default function EstablishmentViewersPage() {
       const query = searchQuery.toLowerCase();
       result = result.filter(viewer =>
         viewer.establishmentName.toLowerCase().includes(query) ||
-        viewer.contactName.toLowerCase().includes(query) ||
-        viewer.email.toLowerCase().includes(query)
+        (viewer.contactName || "").toLowerCase().includes(query) ||
+        (viewer.user?.email || viewer.contactEmail || "").toLowerCase().includes(query)
       );
     }
     
@@ -322,9 +326,9 @@ export default function EstablishmentViewersPage() {
     setSelectedViewer(viewer);
     editForm.reset({
       establishmentName: viewer.establishmentName,
-      contactName: viewer.contactName,
-      phone: viewer.phone || "",
-      defaultCommissionPercent: viewer.defaultCommissionPercent,
+      contactName: viewer.contactName || "",
+      contactPhone: viewer.contactPhone || "",
+      defaultCommissionPercent: parseFloat(String(viewer.defaultCommissionPercent || "5")),
       isActive: viewer.isActive,
     });
     setEditOpen(true);
@@ -467,7 +471,6 @@ export default function EstablishmentViewersPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-6 w-6"
                                 onClick={() => toggleRow(viewer.id)}
                                 data-testid={`button-expand-${viewer.id}`}
                               >
@@ -489,7 +492,7 @@ export default function EstablishmentViewersPage() {
                           <TableCell>
                             <div className="flex items-center gap-1 text-sm text-muted-foreground">
                               <Mail className="h-3 w-3" />
-                              {viewer.email}
+                              {viewer.user?.email || viewer.contactEmail || "—"}
                             </div>
                           </TableCell>
                           <TableCell className="text-center">
@@ -591,7 +594,6 @@ export default function EstablishmentViewersPage() {
                                           <Button
                                             variant="ghost"
                                             size="icon"
-                                            className="h-7 w-7"
                                             onClick={() => handleUnassign(viewer.id, assignment.id)}
                                             data-testid={`button-unassign-${assignment.id}`}
                                           >
@@ -820,7 +822,7 @@ export default function EstablishmentViewersPage() {
               />
               <FormField
                 control={editForm.control}
-                name="phone"
+                name="contactPhone"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Teléfono</FormLabel>
@@ -896,7 +898,7 @@ export default function EstablishmentViewersPage() {
               selectedViewer && getAvailableMachines(selectedViewer).map((machine) => (
                 <label
                   key={machine.id}
-                  className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer"
+                  className="flex items-center gap-2 p-2 rounded-md hover-elevate cursor-pointer"
                 >
                   <Checkbox
                     checked={selectedMachines.includes(machine.id)}
@@ -944,7 +946,7 @@ export default function EstablishmentViewersPage() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground"
               data-testid="button-confirm-delete"
             >
               {deleteMutation.isPending ? "Eliminando..." : "Eliminar"}
