@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, asc, or, inArray, count } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, asc, or, inArray, count, SQL } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { 
   signAccessToken, 
@@ -5121,9 +5121,11 @@ export async function registerRoutes(
   app.get("/api/accounting/overview", authenticateJWT, authorizeAction("accounting", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const overview = await storage.getAccountingOverview(
         startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined
+        endDate ? new Date(endDate as string) : undefined,
+        tenantId
       );
       res.json(overview);
     } catch (error) {
@@ -5135,9 +5137,11 @@ export async function registerRoutes(
   app.get("/api/accounting/machine-sales", authenticateJWT, authorizeAction("accounting", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const sales = await storage.getMachineSalesReport(
         startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined
+        endDate ? new Date(endDate as string) : undefined,
+        tenantId
       );
       res.json(sales);
     } catch (error) {
@@ -5149,10 +5153,12 @@ export async function registerRoutes(
   app.get("/api/accounting/expenses", authenticateJWT, authorizeAction("accounting", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate, category } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const expenses = await storage.getExpensesReport({
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined,
-        category: category as string | undefined
+        category: category as string | undefined,
+        tenantId
       });
       res.json(expenses);
     } catch (error) {
@@ -5163,10 +5169,13 @@ export async function registerRoutes(
 
   app.get("/api/accounting/cash-cut", authenticateJWT, authorizeAction("accounting", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { startDate, endDate } = req.query;
+      const { startDate, endDate, userId } = req.query;
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const report = await storage.getCashCutReport(
         startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined
+        endDate ? new Date(endDate as string) : undefined,
+        tenantId,
+        userId as string | undefined
       );
       res.json(report);
     } catch (error) {
@@ -5182,7 +5191,7 @@ export async function registerRoutes(
       const start = startDate ? new Date(startDate as string) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
       const end = endDate ? new Date(endDate as string) : new Date();
 
-      const salesConditions: any[] = [
+      const salesConditions: (SQL<unknown> | undefined)[] = [
         gte(machineSales.saleDate, start),
         lte(machineSales.saleDate, end),
       ];
@@ -5190,7 +5199,7 @@ export async function registerRoutes(
 
       const salesData = await db.select().from(machineSales).where(and(...salesConditions));
 
-      const machinesConditions: any[] = tenantId ? [eq(machines.tenantId, tenantId)] : [];
+      const machinesConditions: (SQL<unknown> | undefined)[] = tenantId ? [eq(machines.tenantId, tenantId)] : [];
       const machinesList = machinesConditions.length
         ? await db.select().from(machines).where(and(...machinesConditions))
         : await db.select().from(machines);

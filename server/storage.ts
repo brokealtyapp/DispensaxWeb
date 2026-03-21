@@ -423,7 +423,7 @@ export interface IStorage {
   
   // ==================== MÓDULO CONTABILIDAD ====================
   
-  getAccountingOverview(startDate?: Date, endDate?: Date): Promise<{
+  getAccountingOverview(startDate?: Date, endDate?: Date, tenantId?: string): Promise<{
     totalIngresos: number;
     totalGastos: number;
     utilidadNeta: number;
@@ -436,11 +436,11 @@ export interface IStorage {
     categoryData: { name: string; value: number }[];
   }>;
   
-  getMachineSalesReport(startDate?: Date, endDate?: Date): Promise<any[]>;
+  getMachineSalesReport(startDate?: Date, endDate?: Date, tenantId?: string): Promise<any[]>;
   
-  getExpensesReport(filters?: { startDate?: Date; endDate?: Date; category?: string }): Promise<any[]>;
+  getExpensesReport(filters?: { startDate?: Date; endDate?: Date; category?: string; tenantId?: string }): Promise<any[]>;
   
-  getCashCutReport(startDate?: Date, endDate?: Date): Promise<{
+  getCashCutReport(startDate?: Date, endDate?: Date, tenantId?: string, userId?: string): Promise<{
     totalEsperado: number;
     totalRecolectado: number;
     diferencia: number;
@@ -4508,7 +4508,7 @@ export class DatabaseStorage implements IStorage {
 
   // ==================== MÓDULO CONTABILIDAD ====================
 
-  async getAccountingOverview(startDate?: Date, endDate?: Date): Promise<{
+  async getAccountingOverview(startDate?: Date, endDate?: Date, tenantId?: string): Promise<{
     totalIngresos: number;
     totalGastos: number;
     utilidadNeta: number;
@@ -4526,60 +4526,39 @@ export class DatabaseStorage implements IStorage {
     const prevStart = new Date(start.getTime() - (end.getTime() - start.getTime()));
     const prevEnd = start;
 
-    const sales = await db.select().from(machineSales)
-      .where(and(
-        gte(machineSales.saleDate, start),
-        lte(machineSales.saleDate, end)
-      ));
-    
-    const prevSales = await db.select().from(machineSales)
-      .where(and(
-        gte(machineSales.saleDate, prevStart),
-        lte(machineSales.saleDate, prevEnd)
-      ));
+    const salesConds: (SQL<unknown> | undefined)[] = [gte(machineSales.saleDate, start), lte(machineSales.saleDate, end)];
+    if (tenantId) salesConds.push(eq(machineSales.tenantId, tenantId));
+    const prevSalesConds: (SQL<unknown> | undefined)[] = [gte(machineSales.saleDate, prevStart), lte(machineSales.saleDate, prevEnd)];
+    if (tenantId) prevSalesConds.push(eq(machineSales.tenantId, tenantId));
+
+    const pettyCashConds: (SQL<unknown> | undefined)[] = [gte(pettyCashExpenses.createdAt, start), lte(pettyCashExpenses.createdAt, end), eq(pettyCashExpenses.status, "pagado")];
+    if (tenantId) pettyCashConds.push(eq(pettyCashExpenses.tenantId, tenantId));
+    const prevPettyCashConds: (SQL<unknown> | undefined)[] = [gte(pettyCashExpenses.createdAt, prevStart), lte(pettyCashExpenses.createdAt, prevEnd), eq(pettyCashExpenses.status, "pagado")];
+    if (tenantId) prevPettyCashConds.push(eq(pettyCashExpenses.tenantId, tenantId));
+
+    const purchaseConds: (SQL<unknown> | undefined)[] = [gte(purchaseOrders.createdAt, start), lte(purchaseOrders.createdAt, end), eq(purchaseOrders.status, "recibida")];
+    if (tenantId) purchaseConds.push(eq(purchaseOrders.tenantId, tenantId));
+    const prevPurchaseConds: (SQL<unknown> | undefined)[] = [gte(purchaseOrders.createdAt, prevStart), lte(purchaseOrders.createdAt, prevEnd), eq(purchaseOrders.status, "recibida")];
+    if (tenantId) prevPurchaseConds.push(eq(purchaseOrders.tenantId, tenantId));
+
+    const fuelConds: (SQL<unknown> | undefined)[] = [gte(fuelRecords.recordDate, start), lte(fuelRecords.recordDate, end)];
+    if (tenantId) fuelConds.push(eq(fuelRecords.tenantId, tenantId));
+    const prevFuelConds: (SQL<unknown> | undefined)[] = [gte(fuelRecords.recordDate, prevStart), lte(fuelRecords.recordDate, prevEnd)];
+    if (tenantId) prevFuelConds.push(eq(fuelRecords.tenantId, tenantId));
+
+    const [sales, prevSales, pettyCashExp, prevPettyCash, purchaseExp, prevPurchases, fuelExp, prevFuel] = await Promise.all([
+      db.select().from(machineSales).where(and(...salesConds)),
+      db.select().from(machineSales).where(and(...prevSalesConds)),
+      db.select().from(pettyCashExpenses).where(and(...pettyCashConds)),
+      db.select().from(pettyCashExpenses).where(and(...prevPettyCashConds)),
+      db.select().from(purchaseOrders).where(and(...purchaseConds)),
+      db.select().from(purchaseOrders).where(and(...prevPurchaseConds)),
+      db.select().from(fuelRecords).where(and(...fuelConds)),
+      db.select().from(fuelRecords).where(and(...prevFuelConds)),
+    ]);
 
     const totalIngresos = sales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
     const prevIngresos = prevSales.reduce((acc, s) => acc + parseFloat(s.totalAmount?.toString() || "0"), 0);
-
-    const pettyCashExp = await db.select().from(pettyCashExpenses)
-      .where(and(
-        gte(pettyCashExpenses.createdAt, start),
-        lte(pettyCashExpenses.createdAt, end),
-        eq(pettyCashExpenses.status, "pagado")
-      ));
-
-    const prevPettyCash = await db.select().from(pettyCashExpenses)
-      .where(and(
-        gte(pettyCashExpenses.createdAt, prevStart),
-        lte(pettyCashExpenses.createdAt, prevEnd),
-        eq(pettyCashExpenses.status, "pagado")
-      ));
-
-    const purchaseExp = await db.select().from(purchaseOrders)
-      .where(and(
-        gte(purchaseOrders.createdAt, start),
-        lte(purchaseOrders.createdAt, end),
-        eq(purchaseOrders.status, "recibida")
-      ));
-
-    const prevPurchases = await db.select().from(purchaseOrders)
-      .where(and(
-        gte(purchaseOrders.createdAt, prevStart),
-        lte(purchaseOrders.createdAt, prevEnd),
-        eq(purchaseOrders.status, "recibida")
-      ));
-
-    const fuelExp = await db.select().from(fuelRecords)
-      .where(and(
-        gte(fuelRecords.recordDate, start),
-        lte(fuelRecords.recordDate, end)
-      ));
-
-    const prevFuel = await db.select().from(fuelRecords)
-      .where(and(
-        gte(fuelRecords.recordDate, prevStart),
-        lte(fuelRecords.recordDate, prevEnd)
-      ));
 
     const egresosPettyCash = pettyCashExp.reduce((acc, e) => acc + parseFloat(e.amount?.toString() || "0"), 0);
     const egresosCompras = purchaseExp.reduce((acc, p) => acc + parseFloat(p.total?.toString() || "0"), 0);
@@ -4692,7 +4671,7 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getMachineSalesReport(startDate?: Date, endDate?: Date): Promise<any[]> {
+  async getMachineSalesReport(startDate?: Date, endDate?: Date, tenantId?: string): Promise<any[]> {
     const end = endDate || new Date();
     const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     
@@ -4708,11 +4687,18 @@ export class DatabaseStorage implements IStorage {
     const prevWeekStart = new Date(weekStart);
     prevWeekStart.setDate(prevWeekStart.getDate() - 7);
 
+    const machinesConds: (SQL<unknown> | undefined)[] = [];
+    if (tenantId) machinesConds.push(eq(machines.tenantId, tenantId));
+
+    const salesConds: (SQL<unknown> | undefined)[] = [gte(machineSales.saleDate, prevWeekStart)];
+    if (tenantId) salesConds.push(eq(machineSales.tenantId, tenantId));
+
     const [allMachines, allLocations, allSales] = await Promise.all([
-      db.select().from(machines),
+      machinesConds.length > 0
+        ? db.select().from(machines).where(and(...machinesConds))
+        : db.select().from(machines),
       db.select().from(locations),
-      db.select().from(machineSales)
-        .where(gte(machineSales.saleDate, prevWeekStart))
+      db.select().from(machineSales).where(and(...salesConds))
     ]);
 
     const locationMap = new Map(allLocations.map(l => [l.id, l.name]));
@@ -4767,18 +4753,22 @@ export class DatabaseStorage implements IStorage {
     return result.sort((a, b) => b.month - a.month);
   }
 
-  async getExpensesReport(filters?: { startDate?: Date; endDate?: Date; category?: string }): Promise<any[]> {
+  async getExpensesReport(filters?: { startDate?: Date; endDate?: Date; category?: string; tenantId?: string }): Promise<any[]> {
     const start = filters?.startDate || new Date(new Date().setMonth(new Date().getMonth() - 1));
     const end = filters?.endDate || new Date();
+    const tenantId = filters?.tenantId;
 
     const expenses: any[] = [];
 
-    const pettyCashConditions = [
+    const pettyCashConditions: (SQL<unknown> | undefined)[] = [
       gte(pettyCashExpenses.createdAt, start),
       lte(pettyCashExpenses.createdAt, end),
     ];
     if (filters?.category) {
       pettyCashConditions.push(eq(pettyCashExpenses.category, filters.category));
+    }
+    if (tenantId) {
+      pettyCashConditions.push(eq(pettyCashExpenses.tenantId, tenantId));
     }
     
     const pettyCash = await db.select().from(pettyCashExpenses)
@@ -4798,15 +4788,24 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (!filters?.category || filters.category === "compras") {
+      const purchaseConds: (SQL<unknown> | undefined)[] = [
+        gte(purchaseOrders.createdAt, start),
+        lte(purchaseOrders.createdAt, end),
+      ];
+      if (tenantId) purchaseConds.push(eq(purchaseOrders.tenantId, tenantId));
+
       const purchases = await db.select().from(purchaseOrders)
-        .where(and(
-          gte(purchaseOrders.createdAt, start),
-          lte(purchaseOrders.createdAt, end)
-        ))
+        .where(and(...purchaseConds))
         .orderBy(desc(purchaseOrders.createdAt));
 
+      const supplierIds = [...new Set(purchases.map(p => p.supplierId).filter(Boolean))];
+      const suppliersRaw = supplierIds.length > 0
+        ? await Promise.all(supplierIds.map(id => this.getSupplier(id)))
+        : [];
+      const supplierMap = new Map(suppliersRaw.filter(Boolean).map(s => [s!.id, s!]));
+
       for (const po of purchases) {
-        const supplier = await this.getSupplier(po.supplierId);
+        const supplier = po.supplierId ? supplierMap.get(po.supplierId) : undefined;
         expenses.push({
           id: po.id,
           fuente: "compras",
@@ -4820,15 +4819,24 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (!filters?.category || filters.category === "combustible") {
+      const fuelConds: (SQL<unknown> | undefined)[] = [
+        gte(fuelRecords.recordDate, start),
+        lte(fuelRecords.recordDate, end),
+      ];
+      if (tenantId) fuelConds.push(eq(fuelRecords.tenantId, tenantId));
+
       const fuel = await db.select().from(fuelRecords)
-        .where(and(
-          gte(fuelRecords.recordDate, start),
-          lte(fuelRecords.recordDate, end)
-        ))
+        .where(and(...fuelConds))
         .orderBy(desc(fuelRecords.recordDate));
 
+      const vehicleIds = [...new Set(fuel.map(f => f.vehicleId).filter(Boolean))];
+      const vehiclesRaw = vehicleIds.length > 0
+        ? await Promise.all(vehicleIds.map(id => this.getVehicle(id)))
+        : [];
+      const vehicleMap = new Map(vehiclesRaw.filter(Boolean).map(v => [v!.id, v!]));
+
       for (const f of fuel) {
-        const vehicle = await this.getVehicle(f.vehicleId);
+        const vehicle = f.vehicleId ? vehicleMap.get(f.vehicleId) : undefined;
         expenses.push({
           id: f.id,
           fuente: "combustible",
@@ -4844,7 +4852,7 @@ export class DatabaseStorage implements IStorage {
     return expenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
 
-  async getCashCutReport(startDate?: Date, endDate?: Date): Promise<{
+  async getCashCutReport(startDate?: Date, endDate?: Date, tenantId?: string, userId?: string): Promise<{
     totalEsperado: number;
     totalRecolectado: number;
     diferencia: number;
@@ -4854,11 +4862,15 @@ export class DatabaseStorage implements IStorage {
     const start = startDate || new Date(new Date().setHours(0, 0, 0, 0));
     const end = endDate || new Date();
 
+    const conds: (SQL<unknown> | undefined)[] = [
+      gte(cashCollections.createdAt, start),
+      lte(cashCollections.createdAt, end),
+    ];
+    if (tenantId) conds.push(eq(cashCollections.tenantId, tenantId));
+    if (userId) conds.push(eq(cashCollections.userId, userId));
+
     const collections = await db.select().from(cashCollections)
-      .where(and(
-        gte(cashCollections.createdAt, start),
-        lte(cashCollections.createdAt, end)
-      ));
+      .where(and(...conds));
 
     const totalRecolectado = collections.reduce((acc, c) => acc + parseFloat(c.actualAmount?.toString() || "0"), 0);
     const totalEsperado = collections.reduce((acc, c) => acc + parseFloat(c.expectedAmount?.toString() || "0"), 0);
