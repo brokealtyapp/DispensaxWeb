@@ -4785,8 +4785,10 @@ export async function registerRoutes(
   app.get("/api/vehicles", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { status, type } = req.query;
-      // Abastecedor solo ve vehículos asignados a él
-      const effectiveUserId = getEffectiveUserId(req, "assignedUserId");
+      // Abastecedor solo ve vehículos asignados a él; almacén, admin y supervisor ven todos
+      const role = req.user?.role;
+      const canSeeAll = role === "admin" || role === "supervisor" || role === "almacen";
+      const effectiveUserId = canSeeAll ? undefined : getEffectiveUserId(req, "assignedUserId");
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
       const vehicles = await storage.getVehicles({
         status: status as string,
