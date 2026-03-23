@@ -867,9 +867,19 @@ export function WarehousePage() {
                     </TableBody>
                   </Table>
                   {movements.length >= MOVEMENTS_API_LIMIT && (
-                    <div className="mt-3 flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2">
-                      <Info className="w-4 h-4 shrink-0" />
-                      <span>Se muestran los últimos {MOVEMENTS_API_LIMIT} movimientos. Usa el filtro por producto para ver el historial completo de un artículo.</span>
+                    <div className="mt-3 flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2">
+                      <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>
+                        Se muestran los últimos {MOVEMENTS_API_LIMIT} movimientos. Usa el filtro por producto para ver el historial completo de un artículo, o{" "}
+                        <button
+                          type="button"
+                          className="underline font-medium hover:opacity-80"
+                          onClick={() => downloadCsvExport("movements")}
+                          data-testid="link-export-movements-truncated"
+                        >
+                          exporta el Kardex completo en CSV
+                        </button>.
+                      </span>
                     </div>
                   )}
                   {totalMovementsPages > 1 && (
@@ -1314,7 +1324,7 @@ export function WarehousePage() {
                 }`} data-testid="text-adjustment-diff">
                   <span className="font-medium">Diferencia:</span>
                   <span className="font-bold">
-                    {adjDiff > 0 ? `+${adjDiff}` : adjDiff}
+                    {adjDiff > 0 ? `+${adjDiff}` : adjDiff} unidades
                   </span>
                   <span className="text-muted-foreground ml-1">
                     ({adjCurrentStock} → {watchedPhysicalCount})
