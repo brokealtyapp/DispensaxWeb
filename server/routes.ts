@@ -4886,7 +4886,7 @@ export async function registerRoutes(
   app.get("/api/fuel-records", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { vehicleId, userId, startDate, endDate, limit } = req.query;
-      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user?.tenantId;
       const records = await storage.getFuelRecords({
         vehicleId: vehicleId as string,
         userId: userId as string,
@@ -4914,7 +4914,13 @@ export async function registerRoutes(
 
   app.post("/api/fuel-records", authenticateJWT, authorizeAction("fuel", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const data = insertFuelRecordSchema.omit({ tenantId: true }).parse(req.body);
+      const fuelDecimalField = z.union([z.string(), z.number()]).transform(String);
+      const data = insertFuelRecordSchema.omit({ tenantId: true }).extend({
+        liters: fuelDecimalField,
+        pricePerLiter: fuelDecimalField,
+        totalAmount: fuelDecimalField,
+        recordDate: z.union([z.string(), z.date()]).transform((val) => new Date(val)),
+      }).parse(req.body);
       const record = await storage.createFuelRecord({ ...data, tenantId: req.user!.tenantId });
       res.status(201).json(record);
     } catch (error) {
@@ -4930,7 +4936,13 @@ export async function registerRoutes(
     try {
       if (!await verifyFuelRecordTenant(req.params.id, req, res)) return;
       
-      const validated = insertFuelRecordSchema.partial().parse(req.body);
+      const fuelDecimalField = z.union([z.string(), z.number()]).transform(String);
+      const validated = insertFuelRecordSchema.extend({
+        liters: fuelDecimalField,
+        pricePerLiter: fuelDecimalField,
+        totalAmount: fuelDecimalField,
+        recordDate: z.union([z.string(), z.date()]).transform((val) => new Date(val)),
+      }).partial().parse(req.body);
       const record = await storage.updateFuelRecord(req.params.id, validated);
       if (!record) {
         return res.status(404).json({ error: "Registro no encontrado" });
@@ -4959,7 +4971,7 @@ export async function registerRoutes(
   app.get("/api/fuel-stats", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { vehicleId, userId, startDate, endDate } = req.query;
-      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user?.tenantId;
       const stats = await storage.getFuelStats({
         vehicleId: vehicleId as string,
         userId: userId as string,
@@ -4999,7 +5011,7 @@ export async function registerRoutes(
   app.get("/api/fuel-stats/by-route", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { startDate, endDate } = req.query;
-      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const tenantId = req.user?.isSuperAdmin ? (req.query.tenantId as string | undefined) : req.user?.tenantId;
       const stats = await storage.getFuelStatsPerRoute(
         startDate ? new Date(startDate as string) : undefined,
         endDate ? new Date(endDate as string) : undefined,

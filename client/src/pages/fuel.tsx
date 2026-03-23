@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -79,6 +79,7 @@ const fuelRecordFormSchema = insertFuelRecordSchema.omit({ tenantId: true }).ext
   vehicleId: z.string().min(1, "Selecciona un vehículo"),
   userId: z.string().min(1, "El usuario es requerido"),
   routeId: z.string().optional().nullable(),
+  recordDate: z.string().min(1, "La fecha es requerida"),
   liters: z.preprocess((val) => parseFloat(val as string), z.number().positive("Los litros deben ser positivos")),
   pricePerLiter: z.preprocess((val) => parseFloat(val as string), z.number().positive("El precio debe ser positivo")),
   totalAmount: z.preprocess((val) => parseFloat(val as string), z.number().positive("El total debe ser positivo")),
@@ -176,12 +177,19 @@ export function FuelPage() {
     },
   });
 
+  const todayGMT4 = () => {
+    const d = new Date();
+    d.setHours(d.getHours() - 4);
+    return d.toISOString().split("T")[0];
+  };
+
   const fuelForm = useForm<FuelRecordFormData>({
     resolver: zodResolver(fuelRecordFormSchema),
     defaultValues: {
       vehicleId: "",
       userId: "",
       routeId: null,
+      recordDate: todayGMT4(),
       fuelType: "gasolina_regular",
       liters: 0,
       pricePerLiter: 0,
@@ -194,6 +202,20 @@ export function FuelPage() {
     },
   });
 
+  const extractErrorMessage = (error: unknown): string => {
+    const msg = error instanceof Error ? error.message : String(error);
+    const colonIdx = msg.indexOf(": ");
+    if (colonIdx !== -1) {
+      try {
+        const jsonPart = msg.slice(colonIdx + 2);
+        const parsed = JSON.parse(jsonPart);
+        if (typeof parsed.error === "string") return parsed.error;
+        if (Array.isArray(parsed.error) && parsed.error[0]?.message) return parsed.error[0].message;
+      } catch {}
+    }
+    return msg;
+  };
+
   const createVehicleMutation = useMutation({
     mutationFn: (data: VehicleFormData) => apiRequest("POST", "/api/vehicles", data),
     onSuccess: () => {
@@ -202,8 +224,8 @@ export function FuelPage() {
       vehicleForm.reset();
       toast({ title: "Vehículo registrado", description: "El vehículo se ha agregado correctamente" });
     },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo registrar el vehículo", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Error al registrar vehículo", description: extractErrorMessage(error), variant: "destructive" });
     },
   });
 
@@ -217,8 +239,8 @@ export function FuelPage() {
       vehicleForm.reset();
       toast({ title: "Vehículo actualizado", description: "Los cambios se han guardado correctamente" });
     },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo actualizar el vehículo", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Error al actualizar vehículo", description: extractErrorMessage(error), variant: "destructive" });
     },
   });
 
@@ -229,8 +251,8 @@ export function FuelPage() {
       setVehicleToDelete(null);
       toast({ title: "Vehículo eliminado", description: "El vehículo se ha eliminado correctamente" });
     },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo eliminar el vehículo", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Error al eliminar vehículo", description: extractErrorMessage(error), variant: "destructive" });
     },
   });
 
@@ -241,11 +263,11 @@ export function FuelPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/fuel-stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
       setFuelDialogOpen(false);
-      fuelForm.reset();
+      fuelForm.reset({ ...fuelForm.getValues(), recordDate: todayGMT4() });
       toast({ title: "Carga registrada", description: "La carga de combustible se ha registrado correctamente" });
     },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo registrar la carga", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Error al registrar carga", description: extractErrorMessage(error), variant: "destructive" });
     },
   });
 
@@ -258,8 +280,8 @@ export function FuelPage() {
       setFuelRecordToDelete(null);
       toast({ title: "Registro eliminado", description: "El registro de combustible se ha eliminado correctamente" });
     },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo eliminar el registro", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Error al eliminar registro", description: extractErrorMessage(error), variant: "destructive" });
     },
   });
 
@@ -272,11 +294,11 @@ export function FuelPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
       setFuelDialogOpen(false);
       setEditingFuelRecord(null);
-      fuelForm.reset();
+      fuelForm.reset({ ...fuelForm.getValues(), recordDate: todayGMT4() });
       toast({ title: "Registro actualizado", description: "Los cambios se han guardado correctamente" });
     },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo actualizar el registro", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Error al actualizar registro", description: extractErrorMessage(error), variant: "destructive" });
     },
   });
 
@@ -315,10 +337,14 @@ export function FuelPage() {
 
   const openEditFuelRecord = (record: any) => {
     setEditingFuelRecord(record);
+    const dateStr = record.recordDate
+      ? new Date(record.recordDate).toISOString().split("T")[0]
+      : todayGMT4();
     fuelForm.reset({
       vehicleId: record.vehicleId,
       userId: record.userId,
       routeId: record.routeId || null,
+      recordDate: dateStr,
       fuelType: record.fuelType || "gasolina_regular",
       liters: parseFloat(record.liters),
       pricePerLiter: parseFloat(record.pricePerLiter),
@@ -378,14 +404,14 @@ export function FuelPage() {
   const watchLiters = fuelForm.watch("liters");
   const watchPricePerLiter = fuelForm.watch("pricePerLiter");
 
-  const calculateTotal = () => {
+  useEffect(() => {
     const liters = parseFloat(watchLiters?.toString() || "0");
     const price = parseFloat(watchPricePerLiter?.toString() || "0");
     const total = liters * price;
     if (!isNaN(total) && total > 0) {
       fuelForm.setValue("totalAmount", total);
     }
-  };
+  }, [watchLiters, watchPricePerLiter]);
 
   const getStatusBadge = (status: string) => {
     const statusConfig = vehicleStatuses.find((s) => s.value === status);
@@ -800,12 +826,14 @@ export function FuelPage() {
             </Dialog>
 
             <Dialog open={fuelDialogOpen} onOpenChange={setFuelDialogOpen}>
-              <DialogTrigger asChild>
-                <Button data-testid="button-add-fuel-record">
-                  <Fuel className="mr-2 h-4 w-4" />
-                  Registrar Carga
-                </Button>
-              </DialogTrigger>
+              {canCreate("fuel") && (
+                <DialogTrigger asChild>
+                  <Button data-testid="button-add-fuel-record">
+                    <Fuel className="mr-2 h-4 w-4" />
+                    Registrar Carga
+                  </Button>
+                </DialogTrigger>
+              )}
               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>{editingFuelRecord ? "Editar Carga de Combustible" : "Nueva Carga de Combustible"}</DialogTitle>
@@ -859,6 +887,19 @@ export function FuelPage() {
                                   ))}
                               </SelectContent>
                             </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={fuelForm.control}
+                        name="recordDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Fecha de carga *</FormLabel>
+                            <FormControl>
+                              <Input type="date" {...field} value={field.value || ""} data-testid="input-fuel-date" />
+                            </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -938,7 +979,6 @@ export function FuelPage() {
                                 step="0.001"
                                 placeholder="45.5"
                                 {...field}
-                                onBlur={calculateTotal}
                                 data-testid="input-fuel-liters"
                               />
                             </FormControl>
@@ -958,7 +998,6 @@ export function FuelPage() {
                                 step="0.01"
                                 placeholder="290.50"
                                 {...field}
-                                onBlur={calculateTotal}
                                 data-testid="input-fuel-price"
                               />
                             </FormControl>
