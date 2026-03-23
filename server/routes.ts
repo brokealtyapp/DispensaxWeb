@@ -1636,7 +1636,7 @@ export async function registerRoutes(
     try {
       const { productId, quantity, unitCost, supplierId, lotNumber, expirationDate, notes } = req.body;
       
-      if (!productId || !quantity || !unitCost || !lotNumber) {
+      if (!productId || !quantity || unitCost === undefined || unitCost === null || unitCost === "" || !lotNumber) {
         return res.status(400).json({ error: "Faltan campos requeridos" });
       }
       

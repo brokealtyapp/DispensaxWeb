@@ -48,6 +48,8 @@ import {
   Download,
   Truck,
   X,
+  DollarSign,
+  Info,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -173,10 +175,11 @@ export function WarehousePage() {
     queryKey: ["/api/warehouse/lots/expiring", { days: "30" }],
   });
 
+  const MOVEMENTS_API_LIMIT = 200;
   const { data: movements = [] } = useQuery<MovementItem[]>({
     queryKey: ["/api/warehouse/movements", { 
       productId: selectedProductFilter !== "all" ? selectedProductFilter : undefined,
-      limit: "100"
+      limit: String(MOVEMENTS_API_LIMIT)
     }],
   });
 
@@ -254,6 +257,14 @@ export function WarehousePage() {
       notes: "",
     },
   });
+
+  const watchedAdjProductId = adjustmentForm.watch("productId");
+  const watchedPhysicalCount = adjustmentForm.watch("physicalCount");
+  const adjInventoryItem = inventory.find(i => i.productId === watchedAdjProductId);
+  const adjCurrentStock = adjInventoryItem?.currentStock ?? null;
+  const adjDiff = adjCurrentStock !== null && watchedPhysicalCount !== undefined
+    ? watchedPhysicalCount - adjCurrentStock
+    : null;
 
   function parseApiError(error: Error): string {
     const match = error.message.match(/^\d+: ([\s\S]*)/);
@@ -450,8 +461,8 @@ export function WarehousePage() {
     return (
       <div className="p-6 space-y-6">
         <Skeleton className="h-10 w-64" />
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
             <Skeleton key={i} className="h-32" />
           ))}
         </div>
@@ -526,7 +537,7 @@ export function WarehousePage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
@@ -585,6 +596,22 @@ export function WarehousePage() {
                 <p className="text-sm text-muted-foreground">Por Vencer</p>
                 <p className="text-2xl font-bold" data-testid="text-expiring">
                   {stats?.expiringCount || 0} lotes
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900/30">
+                <DollarSign className="w-6 h-6 text-blue-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">Valor Total</p>
+                <p className="text-xl font-bold truncate" data-testid="text-total-value">
+                  {formatCurrency(stats?.totalValue || 0)}
                 </p>
               </div>
             </div>
@@ -839,6 +866,12 @@ export function WarehousePage() {
                       })}
                     </TableBody>
                   </Table>
+                  {movements.length >= MOVEMENTS_API_LIMIT && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2">
+                      <Info className="w-4 h-4 shrink-0" />
+                      <span>Se muestran los últimos {MOVEMENTS_API_LIMIT} movimientos. Usa el filtro por producto para ver el historial completo de un artículo.</span>
+                    </div>
+                  )}
                   {totalMovementsPages > 1 && (
                     <div className="mt-4">
                       <DataPagination
@@ -1271,6 +1304,23 @@ export function WarehousePage() {
                   </FormItem>
                 )}
               />
+              {adjCurrentStock !== null && adjDiff !== null && (
+                <div className={`flex items-center gap-2 text-sm rounded-md px-3 py-2 ${
+                  adjDiff === 0
+                    ? "bg-muted text-muted-foreground"
+                    : adjDiff > 0
+                    ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400"
+                    : "bg-destructive/10 text-destructive"
+                }`} data-testid="text-adjustment-diff">
+                  <span className="font-medium">Diferencia:</span>
+                  <span className="font-bold">
+                    {adjDiff > 0 ? `+${adjDiff}` : adjDiff}
+                  </span>
+                  <span className="text-muted-foreground ml-1">
+                    ({adjCurrentStock} → {watchedPhysicalCount})
+                  </span>
+                </div>
+              )}
               <FormField
                 control={adjustmentForm.control}
                 name="reason"
@@ -1337,7 +1387,7 @@ export function WarehousePage() {
                   <SelectValue placeholder="Selecciona un vehículo" />
                 </SelectTrigger>
                 <SelectContent>
-                  {vehicles.filter(v => v.isActive !== false).map((vehicle) => (
+                  {vehicles.filter(v => v.status === "activo").map((vehicle) => (
                     <SelectItem key={vehicle.id} value={vehicle.id}>
                       {vehicle.plate} - {vehicle.brand} {vehicle.model}
                     </SelectItem>
