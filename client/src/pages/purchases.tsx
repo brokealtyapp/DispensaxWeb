@@ -714,29 +714,27 @@ export default function PurchasesPage() {
                     <p>No hay órdenes pendientes de recibir</p>
                   </div>
                 ) : orders?.filter(o => o.status === "enviada" || o.status === "parcialmente_recibida").map((order) => (
-                  <Card key={order.id} className="hover-elevate cursor-pointer" onClick={() => handleReceiveOrder(order)} data-testid={`card-reception-${order.id}`}>
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="p-2 bg-primary/10 rounded-lg">
-                          <Truck className="h-6 w-6 text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-medium">{order.orderNumber}</p>
-                          <p className="text-sm text-muted-foreground">{order.supplier?.name}</p>
-                        </div>
+                  <div key={order.id} className="flex items-center justify-between p-4 rounded-md border hover-elevate cursor-pointer" onClick={() => handleReceiveOrder(order)} data-testid={`card-reception-${order.id}`}>
+                    <div className="flex items-center gap-4">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <Truck className="h-6 w-6 text-primary" />
                       </div>
-                      <div className="text-right flex items-center gap-4">
-                        <div>
-                          <p className="font-medium">{order.itemCount} productos</p>
-                          <p className="text-sm text-muted-foreground">
-                            {formatCurrency(order.total || 0)}
-                          </p>
-                        </div>
-                        {getStatusBadge(order.status)}
-                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium">{order.orderNumber}</p>
+                        <p className="text-sm text-muted-foreground">{order.supplier?.name}</p>
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                    <div className="text-right flex items-center gap-4">
+                      <div>
+                        <p className="font-medium">{order.itemCount} productos</p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatCurrency(order.total || 0)}
+                        </p>
+                      </div>
+                      {getStatusBadge(order.status)}
+                      <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  </div>
                 ))}
               </div>
             </CardContent>
@@ -788,26 +786,20 @@ export default function PurchasesPage() {
             <CardContent>
               <div className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-3">
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-2xl font-bold">{orders?.filter(o => o.status === "recibida").length || 0}</div>
-                      <p className="text-sm text-muted-foreground">Órdenes Completadas</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-2xl font-bold">
-                        {formatCurrency(orders?.filter(o => o.status === "recibida").reduce((sum, o) => sum + parseFloat(o.total || "0"), 0) || 0)}
-                      </div>
-                      <p className="text-sm text-muted-foreground">Total Comprado</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-2xl font-bold">{stats?.topSuppliers?.length || 0}</div>
-                      <p className="text-sm text-muted-foreground">Proveedores Activos</p>
-                    </CardContent>
-                  </Card>
+                  <div className="rounded-md border p-4">
+                    <div className="text-2xl font-bold">{orders?.filter(o => o.status === "recibida").length || 0}</div>
+                    <p className="text-sm text-muted-foreground">Órdenes Completadas</p>
+                  </div>
+                  <div className="rounded-md border p-4">
+                    <div className="text-2xl font-bold">
+                      {formatCurrency(orders?.filter(o => o.status === "recibida").reduce((sum, o) => sum + parseFloat(o.total || "0"), 0) || 0)}
+                    </div>
+                    <p className="text-sm text-muted-foreground">Total Comprado</p>
+                  </div>
+                  <div className="rounded-md border p-4">
+                    <div className="text-2xl font-bold">{stats?.topSuppliers?.length || 0}</div>
+                    <p className="text-sm text-muted-foreground">Proveedores Activos</p>
+                  </div>
                 </div>
 
                 {stats?.topSuppliers && stats.topSuppliers.length > 0 && (
@@ -954,9 +946,9 @@ export default function PurchasesPage() {
                   name="taxId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>RFC</FormLabel>
+                      <FormLabel>RNC</FormLabel>
                       <FormControl>
-                        <Input {...field} placeholder="RFC del proveedor" data-testid="input-supplier-taxid" />
+                        <Input {...field} placeholder="RNC del proveedor" data-testid="input-supplier-taxid" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
