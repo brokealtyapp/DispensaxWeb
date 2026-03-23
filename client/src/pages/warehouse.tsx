@@ -1408,31 +1408,46 @@ export function WarehousePage() {
 
             <div className="border rounded-lg p-4 space-y-3">
               <label className="text-sm font-medium">Agregar productos</label>
-              <div className="flex gap-2">
-                <Select value={tempProductId} onValueChange={setTempProductId}>
-                  <SelectTrigger className="flex-1" data-testid="select-dispatch-product">
-                    <SelectValue placeholder="Producto" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {inventory.filter(i => (i.currentStock || 0) > 0).map((item) => (
-                      <SelectItem key={item.productId} value={item.productId}>
-                        {item.product.name} (Stock: {item.currentStock})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  type="number"
-                  placeholder="Cantidad"
-                  className="w-24"
-                  value={tempQuantity}
-                  onChange={(e) => setTempQuantity(e.target.value)}
-                  data-testid="input-dispatch-quantity"
-                />
-                <Button type="button" size="icon" onClick={handleAddDispatchItem} data-testid="button-add-dispatch-item">
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
+              {(() => {
+                const availableItems = inventory.filter(i => (i.currentStock || 0) > 0);
+                const hasStock = availableItems.length > 0;
+                return (
+                  <>
+                    {!hasStock && (
+                      <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2">
+                        <Info className="w-4 h-4 shrink-0" />
+                        <span>No hay productos con stock disponible. Registra una entrada de compra primero.</span>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <Select value={tempProductId} onValueChange={setTempProductId} disabled={!hasStock}>
+                        <SelectTrigger className="flex-1" data-testid="select-dispatch-product">
+                          <SelectValue placeholder={hasStock ? "Producto" : "Sin stock disponible"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableItems.map((item) => (
+                            <SelectItem key={item.productId} value={item.productId}>
+                              {item.product.name} (Stock: {item.currentStock})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        placeholder="Cantidad"
+                        className="w-24"
+                        value={tempQuantity}
+                        onChange={(e) => setTempQuantity(e.target.value)}
+                        data-testid="input-dispatch-quantity"
+                        disabled={!hasStock}
+                      />
+                      <Button type="button" size="icon" onClick={handleAddDispatchItem} data-testid="button-add-dispatch-item" disabled={!hasStock}>
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </>
+                );
+              })()}
 
               {dispatchItems.length > 0 && (
                 <div className="space-y-2">
