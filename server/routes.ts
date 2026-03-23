@@ -4919,7 +4919,11 @@ export async function registerRoutes(
         liters: fuelDecimalField,
         pricePerLiter: fuelDecimalField,
         totalAmount: fuelDecimalField,
-        recordDate: z.union([z.string(), z.date()]).transform((val) => new Date(val)),
+        recordDate: z.union([z.string(), z.date()]).transform((val) => {
+          const d = new Date(val);
+          if (isNaN(d.getTime())) throw new Error("Fecha de carga inválida");
+          return d;
+        }),
       }).parse(req.body);
       const record = await storage.createFuelRecord({ ...data, tenantId: req.user!.tenantId });
       res.status(201).json(record);
@@ -4941,7 +4945,11 @@ export async function registerRoutes(
         liters: fuelDecimalField,
         pricePerLiter: fuelDecimalField,
         totalAmount: fuelDecimalField,
-        recordDate: z.union([z.string(), z.date()]).transform((val) => new Date(val)),
+        recordDate: z.union([z.string(), z.date()]).transform((val) => {
+          const d = new Date(val);
+          if (isNaN(d.getTime())) throw new Error("Fecha de carga inválida");
+          return d;
+        }),
       }).partial().parse(req.body);
       const record = await storage.updateFuelRecord(req.params.id, validated);
       if (!record) {

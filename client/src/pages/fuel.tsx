@@ -407,10 +407,8 @@ export function FuelPage() {
   useEffect(() => {
     const liters = parseFloat(watchLiters?.toString() || "0");
     const price = parseFloat(watchPricePerLiter?.toString() || "0");
-    const total = liters * price;
-    if (!isNaN(total) && total > 0) {
-      fuelForm.setValue("totalAmount", total);
-    }
+    const total = isNaN(liters) || isNaN(price) ? 0 : liters * price;
+    fuelForm.setValue("totalAmount", total);
   }, [watchLiters, watchPricePerLiter]);
 
   const getStatusBadge = (status: string) => {
