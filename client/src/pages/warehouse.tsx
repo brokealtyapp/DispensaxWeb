@@ -1425,11 +1425,17 @@ export function WarehousePage() {
                           <SelectValue placeholder={hasStock ? "Producto" : "Sin stock disponible"} />
                         </SelectTrigger>
                         <SelectContent>
-                          {availableItems.map((item) => (
-                            <SelectItem key={item.productId} value={item.productId}>
-                              {item.product.name} (Stock: {item.currentStock})
+                          {availableItems.length === 0 ? (
+                            <SelectItem value="__empty__" disabled>
+                              Sin stock disponible — registra una entrada primero
                             </SelectItem>
-                          ))}
+                          ) : (
+                            availableItems.map((item) => (
+                              <SelectItem key={item.productId} value={item.productId}>
+                                {item.product.name} (Stock: {item.currentStock})
+                              </SelectItem>
+                            ))
+                          )}
                         </SelectContent>
                       </Select>
                       <Input
