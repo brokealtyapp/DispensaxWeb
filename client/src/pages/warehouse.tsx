@@ -1420,7 +1420,7 @@ export function WarehousePage() {
                       </div>
                     )}
                     <div className="flex gap-2">
-                      <Select value={tempProductId} onValueChange={setTempProductId} disabled={!hasStock}>
+                      <Select value={tempProductId} onValueChange={setTempProductId}>
                         <SelectTrigger className="flex-1" data-testid="select-dispatch-product">
                           <SelectValue placeholder={hasStock ? "Producto" : "Sin stock disponible"} />
                         </SelectTrigger>
