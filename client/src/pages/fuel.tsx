@@ -153,8 +153,8 @@ export function FuelPage() {
     queryKey: ["/api/fuel-stats"],
   });
 
-  const { data: routesData } = useQuery<{ data: any[], total: number }>({
-    queryKey: ["/api/supplier/routes"],
+  const { data: routesData } = useQuery<{ data: any[], total: number, page: number, pageSize: number }>({
+    queryKey: ["/api/supplier/routes", { pageSize: 1000 }],
   });
   const routes = routesData?.data ?? [];
 

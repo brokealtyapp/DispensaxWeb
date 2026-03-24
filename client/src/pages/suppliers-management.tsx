@@ -114,8 +114,8 @@ export function SuppliersManagementPage() {
     queryKey: ["/api/users", { role: "abastecedor" }],
   });
 
-  const { data: routesDataRaw, isLoading: loadingRoutes } = useQuery<{ data: Route[], total: number }>({
-    queryKey: ["/api/supplier/routes"],
+  const { data: routesDataRaw, isLoading: loadingRoutes } = useQuery<{ data: Route[], total: number, page: number, pageSize: number }>({
+    queryKey: ["/api/supplier/routes", { pageSize: 1000 }],
   });
   const routes = routesDataRaw?.data ?? [];
 

@@ -157,8 +157,8 @@ export function TasksPage() {
     enabled: isNewTaskOpen || isEditTaskOpen,
   });
 
-  const { data: routesData } = useQuery<{ data: any[], total: number }>({
-    queryKey: ["/api/supplier/routes"],
+  const { data: routesData } = useQuery<{ data: any[], total: number, page: number, pageSize: number }>({
+    queryKey: ["/api/supplier/routes", { pageSize: 1000 }],
     enabled: isNewTaskOpen || isEditTaskOpen,
   });
   const routes = routesData?.data;

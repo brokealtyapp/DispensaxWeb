@@ -348,8 +348,8 @@ export function SupplierPage() {
   });
 
   // Queries adicionales para análisis de admin
-  const { data: supplierRouteHistoryRaw } = useQuery<{ data: any[], total: number }>({
-    queryKey: ["/api/supplier/routes", { userId: supplierId }],
+  const { data: supplierRouteHistoryRaw } = useQuery<{ data: any[], total: number, page: number, pageSize: number }>({
+    queryKey: ["/api/supplier/routes", { userId: supplierId, pageSize: 100 }],
     enabled: isViewingOther && !!supplierId,
   });
   const supplierRouteHistory = supplierRouteHistoryRaw?.data ?? [];

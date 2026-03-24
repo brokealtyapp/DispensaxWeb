@@ -1578,8 +1578,12 @@ export class DatabaseStorage implements IStorage {
     const endTime = new Date();
     const actualDuration = Math.round((endTime.getTime() - effectiveStartTime.getTime()) / 60000);
     
+    // Persist startTime if it was null (auto-assign start time)
+    const setData: any = { status: "completada", endTime, actualDuration };
+    if (!route.startTime) setData.startTime = effectiveStartTime;
+    
     const [updated] = await db.update(routes)
-      .set({ status: "completada", endTime, actualDuration })
+      .set(setData)
       .where(eq(routes.id, id))
       .returning();
     return updated;
