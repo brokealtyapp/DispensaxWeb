@@ -44,6 +44,10 @@ import {
   Pencil,
   Trash2,
   Cpu,
+  ArrowUp,
+  ArrowDown,
+  PowerOff,
+  Power,
   type LucideIcon,
 } from "lucide-react";
 import type { Location, MachineTypeOption } from "@shared/schema";
@@ -385,7 +389,7 @@ export function SettingsPage() {
   const [deletingMachineTypeId, setDeletingMachineTypeId] = useState<string | null>(null);
 
   const { data: machineTypesList = [], isLoading: machineTypesLoading } = useQuery<MachineTypeOption[]>({
-    queryKey: ["/api/machine-types"],
+    queryKey: ["/api/machine-types", { all: "true" }],
     enabled: isAdmin,
   });
 
@@ -397,7 +401,7 @@ export function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/machine-types"] });
       setMachineTypeDialogOpen(false);
-      setMachineTypeForm(emptyMachineTypeForm);
+      setMachineTypeForm({ name: "", value: "" });
       toast({ title: "Tipo creado", description: "Se agregó el tipo de máquina correctamente" });
     },
     onError: (error: Error) => {
@@ -406,7 +410,7 @@ export function SettingsPage() {
   });
 
   const updateMachineTypeMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { name: string; value: string } }) => {
+    mutationFn: async ({ id, data }: { id: string; data: { name: string } }) => {
       const res = await apiRequest("PATCH", `/api/machine-types/${id}`, data);
       return res.json();
     },
@@ -414,11 +418,37 @@ export function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/machine-types"] });
       setMachineTypeDialogOpen(false);
       setMachineTypeEditing(null);
-      setMachineTypeForm(emptyMachineTypeForm);
+      setMachineTypeForm({ name: "", value: "" });
       toast({ title: "Tipo actualizado", description: "Los cambios se guardaron correctamente" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message || "No se pudo actualizar el tipo", variant: "destructive" });
+    },
+  });
+
+  const toggleMachineTypeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/machine-types/${id}/toggle`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/machine-types"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const reorderMachineTypeMutation = useMutation({
+    mutationFn: async ({ id, direction }: { id: string; direction: "up" | "down" }) => {
+      const res = await apiRequest("POST", `/api/machine-types/${id}/reorder`, { direction });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/machine-types"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
@@ -458,17 +488,17 @@ export function SettingsPage() {
       toast({ title: "Error", description: "El nombre es requerido", variant: "destructive" });
       return;
     }
-    if (!machineTypeForm.value.trim()) {
-      toast({ title: "Error", description: "El identificador es requerido", variant: "destructive" });
-      return;
-    }
-    if (!/^[a-z0-9_]+$/.test(machineTypeForm.value)) {
-      toast({ title: "Error", description: "El identificador solo puede contener letras minúsculas, números y guión bajo", variant: "destructive" });
-      return;
-    }
     if (machineTypeEditing) {
-      updateMachineTypeMutation.mutate({ id: machineTypeEditing.id, data: machineTypeForm });
+      updateMachineTypeMutation.mutate({ id: machineTypeEditing.id, data: { name: machineTypeForm.name } });
     } else {
+      if (!machineTypeForm.value.trim()) {
+        toast({ title: "Error", description: "El identificador es requerido", variant: "destructive" });
+        return;
+      }
+      if (!/^[a-z0-9_]+$/.test(machineTypeForm.value)) {
+        toast({ title: "Error", description: "El identificador solo puede contener letras minúsculas, números y guión bajo", variant: "destructive" });
+        return;
+      }
       createMachineTypeMutation.mutate(machineTypeForm);
     }
   };
@@ -1176,17 +1206,60 @@ export function SettingsPage() {
                   </div>
                 ) : (
                   <div className="divide-y">
-                    {machineTypesList.map((mt) => (
+                    {machineTypesList.map((mt, idx) => (
                       <div
                         key={mt.id}
                         className="flex flex-wrap items-center justify-between gap-3 py-4"
                         data-testid={`row-machine-type-${mt.id}`}
                       >
                         <div className="flex-1 min-w-0 space-y-1">
-                          <span className="font-medium" data-testid={`text-machine-type-name-${mt.id}`}>{mt.name}</span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium" data-testid={`text-machine-type-name-${mt.id}`}>{mt.name}</span>
+                            <Badge
+                              variant={mt.isActive ? "default" : "secondary"}
+                              className="text-xs"
+                              data-testid={`badge-machine-type-status-${mt.id}`}
+                            >
+                              {mt.isActive ? "Activo" : "Inactivo"}
+                            </Badge>
+                          </div>
                           <p className="text-xs text-muted-foreground font-mono">{mt.value}</p>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => reorderMachineTypeMutation.mutate({ id: mt.id, direction: "up" })}
+                            disabled={idx === 0 || reorderMachineTypeMutation.isPending}
+                            title="Mover arriba"
+                            data-testid={`button-move-up-machine-type-${mt.id}`}
+                          >
+                            <ArrowUp className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => reorderMachineTypeMutation.mutate({ id: mt.id, direction: "down" })}
+                            disabled={idx === machineTypesList.length - 1 || reorderMachineTypeMutation.isPending}
+                            title="Mover abajo"
+                            data-testid={`button-move-down-machine-type-${mt.id}`}
+                          >
+                            <ArrowDown className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => toggleMachineTypeMutation.mutate(mt.id)}
+                            disabled={toggleMachineTypeMutation.isPending}
+                            title={mt.isActive ? "Desactivar" : "Activar"}
+                            data-testid={`button-toggle-machine-type-${mt.id}`}
+                          >
+                            {mt.isActive ? (
+                              <PowerOff className="h-4 w-4 text-destructive" />
+                            ) : (
+                              <Power className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </Button>
                           <Button
                             size="icon"
                             variant="ghost"

@@ -8683,7 +8683,8 @@ export async function registerRoutes(
     try {
       const tenantId = req.user!.tenantId!;
       await storage.seedDefaultMachineTypes(tenantId);
-      const types = await storage.getMachineTypeOptions(tenantId);
+      const includeInactive = req.query.all === "true" && (req.user!.role === "admin" || req.user!.isSuperAdmin);
+      const types = await storage.getMachineTypeOptions(tenantId, includeInactive);
       res.json(types);
     } catch (error) {
       console.error("Error getting machine types:", error);
@@ -8695,7 +8696,16 @@ export async function registerRoutes(
     try {
       const tenantId = req.user!.tenantId!;
       const data = insertMachineTypeOptionSchema.omit({ tenantId: true }).parse(req.body);
-      const created = await storage.createMachineTypeOption({ ...data, tenantId });
+      const existing = await db.select({ id: machineTypeOptionsTable.id })
+        .from(machineTypeOptionsTable)
+        .where(and(eq(machineTypeOptionsTable.tenantId, tenantId), eq(machineTypeOptionsTable.value, data.value)))
+        .limit(1);
+      if (existing.length > 0) {
+        return res.status(409).json({ error: "Ya existe un tipo con ese identificador" });
+      }
+      const allTypes = await storage.getMachineTypeOptions(tenantId, true);
+      const nextOrder = allTypes.length > 0 ? Math.max(...allTypes.map(t => t.sortOrder ?? 0)) + 1 : 0;
+      const created = await storage.createMachineTypeOption({ ...data, tenantId, sortOrder: nextOrder });
       res.status(201).json(created);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -8723,6 +8733,62 @@ export async function registerRoutes(
       }
       console.error("Error updating machine type:", error);
       res.status(500).json({ error: "Error al actualizar tipo de máquina" });
+    }
+  });
+
+  app.post("/api/machine-types/:id/toggle", authenticateJWT, requireTenant, authorizeAction("settings", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const { id } = req.params;
+      const existing = await db.select().from(machineTypeOptionsTable).where(eq(machineTypeOptionsTable.id, id)).limit(1);
+      if (!existing[0] || existing[0].tenantId !== tenantId) {
+        return res.status(404).json({ error: "Tipo de máquina no encontrado" });
+      }
+      const newActive = !existing[0].isActive;
+      if (!newActive) {
+        const machineCount = await db.select({ id: machines.id })
+          .from(machines)
+          .where(and(eq(machines.tenantId, tenantId), eq(machines.type, existing[0].value)))
+          .limit(1);
+        if (machineCount.length > 0) {
+          return res.status(409).json({ error: "No se puede desactivar: hay máquinas usando este tipo" });
+        }
+      }
+      const updated = await storage.updateMachineTypeOption(id, { isActive: newActive });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error toggling machine type:", error);
+      res.status(500).json({ error: "Error al cambiar estado del tipo" });
+    }
+  });
+
+  app.post("/api/machine-types/:id/reorder", authenticateJWT, requireTenant, authorizeAction("settings", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const { id } = req.params;
+      const { direction } = z.object({ direction: z.enum(["up", "down"]) }).parse(req.body);
+      const allTypes = await storage.getMachineTypeOptions(tenantId, true);
+      const idx = allTypes.findIndex(t => t.id === id);
+      if (idx === -1) {
+        return res.status(404).json({ error: "Tipo de máquina no encontrado" });
+      }
+      const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (swapIdx < 0 || swapIdx >= allTypes.length) {
+        return res.json({ success: true });
+      }
+      const current = allTypes[idx];
+      const swap = allTypes[swapIdx];
+      await Promise.all([
+        storage.updateMachineTypeOption(current.id, { sortOrder: swap.sortOrder ?? swapIdx }),
+        storage.updateMachineTypeOption(swap.id, { sortOrder: current.sortOrder ?? idx }),
+      ]);
+      res.json({ success: true });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error reordering machine type:", error);
+      res.status(500).json({ error: "Error al reordenar tipos de máquina" });
     }
   });
 

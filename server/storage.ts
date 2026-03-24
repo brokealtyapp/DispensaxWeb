@@ -610,7 +610,7 @@ export interface IStorage {
 
   // ==================== TIPOS DE MÁQUINA ====================
 
-  getMachineTypeOptions(tenantId: string): Promise<MachineTypeOption[]>;
+  getMachineTypeOptions(tenantId: string, includeInactive?: boolean): Promise<MachineTypeOption[]>;
   createMachineTypeOption(data: InsertMachineTypeOption): Promise<MachineTypeOption>;
   updateMachineTypeOption(id: string, data: Partial<InsertMachineTypeOption>): Promise<MachineTypeOption | undefined>;
   deleteMachineTypeOption(id: string): Promise<boolean>;
@@ -6433,9 +6433,11 @@ export class DatabaseStorage implements IStorage {
 
   // ==================== TIPOS DE MÁQUINA ====================
 
-  async getMachineTypeOptions(tenantId: string): Promise<MachineTypeOption[]> {
+  async getMachineTypeOptions(tenantId: string, includeInactive = false): Promise<MachineTypeOption[]> {
+    const conditions = [eq(machineTypeOptions.tenantId, tenantId)];
+    if (!includeInactive) conditions.push(eq(machineTypeOptions.isActive, true));
     const results = await db.select().from(machineTypeOptions)
-      .where(and(eq(machineTypeOptions.tenantId, tenantId), eq(machineTypeOptions.isActive, true)))
+      .where(and(...conditions))
       .orderBy(asc(machineTypeOptions.sortOrder), asc(machineTypeOptions.name));
     return results;
   }

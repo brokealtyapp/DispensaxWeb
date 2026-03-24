@@ -145,7 +145,7 @@ export function MachinesPage() {
     queryKey: ["/api/stats/zones"],
   });
 
-  const { data: machineTypes = [] } = useQuery<MachineTypeOption[]>({
+  const { data: machineTypes = [], isLoading: machineTypesLoading } = useQuery<MachineTypeOption[]>({
     queryKey: ["/api/machine-types"],
   });
 
@@ -481,7 +481,9 @@ export function MachinesPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {machineTypes.length > 0 ? (
+                          {machineTypesLoading ? (
+                            <SelectItem value="_loading" disabled>Cargando...</SelectItem>
+                          ) : machineTypes.length > 0 ? (
                             machineTypes.map((mt) => (
                               <SelectItem key={mt.id} value={mt.value}>{mt.name}</SelectItem>
                             ))

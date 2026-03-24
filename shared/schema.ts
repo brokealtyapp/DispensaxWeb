@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, boolean, pgEnum, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, boolean, pgEnum, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -348,7 +348,7 @@ export const machineTypeOptions = pgTable("machine_type_options", {
   isActive: boolean("is_active").default(true),
   sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (t) => [uniqueIndex("machine_type_options_tenant_value_idx").on(t.tenantId, t.value)]);
 
 export const insertMachineTypeOptionSchema = createInsertSchema(machineTypeOptions).omit({
   id: true,
