@@ -67,7 +67,7 @@ import { useState, useEffect } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import type { Machine, Location, MachineInventory, MachineAlert, MachineVisit, Product } from "@shared/schema";
+import type { Machine, Location, MachineInventory, MachineAlert, MachineVisit, Product, MachineTypeOption } from "@shared/schema";
 
 const statusLabels: Record<string, string> = {
   operando: "Operando",
@@ -220,6 +220,10 @@ export function MachineDetailPage() {
 
   const { data: products = [] } = useQuery<Product[]>({
     queryKey: ["/api/products"],
+  });
+
+  const { data: machineTypes = [] } = useQuery<MachineTypeOption[]>({
+    queryKey: ["/api/machine-types"],
   });
 
   const createAlertMutation = useMutation({
@@ -546,13 +550,19 @@ export function MachineDetailPage() {
                 {statusLabels[machine.status || "operando"]}
               </Badge>
             </div>
-            <div className="flex items-center gap-2 text-muted-foreground mt-1">
+            <div className="flex items-center gap-2 text-muted-foreground mt-1 flex-wrap">
               <MapPin className="h-4 w-4" />
               <span>{machine.location?.name || machine.zone || "Sin ubicación"}</span>
               {machine.code && (
                 <>
                   <span>•</span>
-                  <span>Código: {machine.code}</span>
+                  <span className="font-mono">{machine.code}</span>
+                </>
+              )}
+              {machine.type && (
+                <>
+                  <span>•</span>
+                  <span>{machineTypes.find(mt => mt.value === machine.type)?.name ?? machine.type}</span>
                 </>
               )}
             </div>
