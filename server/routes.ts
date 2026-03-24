@@ -785,6 +785,21 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/machines/next-code", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+      const allMachines = await storage.getMachines(tenantId);
+      const nextNum = allMachines.length + 1;
+      const code = `MAQ-${String(nextNum).padStart(3, "0")}`;
+      res.json({ code });
+    } catch (error) {
+      res.status(500).json({ error: "Error al generar código" });
+    }
+  });
+
   app.get("/api/machines/:id", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const machine = await storage.getMachineWithDetails(req.params.id);

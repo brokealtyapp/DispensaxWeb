@@ -120,6 +120,7 @@ export function MachinesPage() {
   const [deletingLocationId, setDeletingLocationId] = useState<string | null>(null);
   const [editingMachine, setEditingMachine] = useState<MachineWithDetails | null>(null);
   const [deletingMachineId, setDeletingMachineId] = useState<string | null>(null);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { canCreate, canEdit, canDelete } = usePermissions();
@@ -352,7 +353,7 @@ export function MachinesPage() {
     }
   };
 
-  const handleOpenMachineDialog = (machine?: MachineWithDetails) => {
+  const handleOpenMachineDialog = async (machine?: MachineWithDetails) => {
     if (machine) {
       setEditingMachine(machine);
       form.reset({
@@ -373,6 +374,18 @@ export function MachinesPage() {
         locationId: "",
         notes: "",
       });
+      setIsGeneratingCode(true);
+      try {
+        const res = await fetch("/api/machines/next-code", { credentials: "include" });
+        if (res.ok) {
+          const { code } = await res.json() as { code: string };
+          form.setValue("code", code);
+        }
+      } catch {
+        // leave code empty if fetch fails
+      } finally {
+        setIsGeneratingCode(false);
+      }
     }
     setIsAddDialogOpen(true);
   };
@@ -460,10 +473,20 @@ export function MachinesPage() {
                   name="code"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Código (opcional)</FormLabel>
+                      <FormLabel>Código</FormLabel>
                       <FormControl>
-                        <Input placeholder="Ej: MAQ-001" {...field} data-testid="input-machine-code" />
+                        <Input
+                          placeholder={isGeneratingCode ? "Generando..." : "MAQ-001"}
+                          {...field}
+                          readOnly={!editingMachine}
+                          disabled={isGeneratingCode}
+                          className={!editingMachine ? "bg-muted cursor-default" : ""}
+                          data-testid="input-machine-code"
+                        />
                       </FormControl>
+                      {!editingMachine && (
+                        <p className="text-xs text-muted-foreground">Código generado automáticamente</p>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -839,7 +862,7 @@ export function MachinesPage() {
               data-testid={`card-machine-${machine.id}`}
             >
               <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-4 gap-2">
+                <div className="flex items-start justify-between mb-3 gap-2">
                   <div className="min-w-0 flex-1">
                     <h3 className="text-lg font-bold truncate">{machine.name}</h3>
                     <p className="text-sm text-white/70 truncate">
@@ -852,6 +875,18 @@ export function MachinesPage() {
                   >
                     {statusLabels[machine.status || "operando"]}
                   </Badge>
+                </div>
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  {machine.code && (
+                    <span className="text-xs font-mono font-semibold bg-white/25 text-white px-2 py-0.5 rounded">
+                      {machine.code}
+                    </span>
+                  )}
+                  {machine.type && (
+                    <span className="text-xs text-white/80">
+                      {machineTypes.find(mt => mt.value === machine.type)?.name ?? machine.type}
+                    </span>
+                  )}
                 </div>
 
                 <div className="mb-4">
@@ -936,6 +971,8 @@ export function MachinesPage() {
                 <thead>
                   <tr className="border-b">
                     <th className="text-left p-4 font-medium">Nombre</th>
+                    <th className="text-left p-4 font-medium">Código</th>
+                    <th className="text-left p-4 font-medium">Tipo</th>
                     <th className="text-left p-4 font-medium">Ubicación</th>
                     <th className="text-left p-4 font-medium">Zona</th>
                     <th className="text-left p-4 font-medium">Estado</th>
@@ -948,6 +985,12 @@ export function MachinesPage() {
                   {filteredMachines.map((machine) => (
                     <tr key={machine.id} className="border-b hover:bg-muted/50" data-testid={`row-machine-${machine.id}`}>
                       <td className="p-4 font-medium">{machine.name}</td>
+                      <td className="p-4 font-mono text-sm text-muted-foreground">{machine.code || "-"}</td>
+                      <td className="p-4 text-muted-foreground">
+                        {machine.type
+                          ? (machineTypes.find(mt => mt.value === machine.type)?.name ?? machine.type)
+                          : "-"}
+                      </td>
                       <td className="p-4 text-muted-foreground">{machine.locationName || "-"}</td>
                       <td className="p-4">{machine.zone || "-"}</td>
                       <td className="p-4">
