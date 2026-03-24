@@ -1471,11 +1471,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTodayRoute(userId: string): Promise<any> {
-    const today = new Date();
-    const startOfDay = new Date(today);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(today);
-    endOfDay.setHours(23, 59, 59, 999);
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const m = now.getUTCMonth();
+    const d = now.getUTCDate();
+    const startOfDay = new Date(Date.UTC(y, m, d, 0, 0, 0, 0));
+    const endOfDay = new Date(Date.UTC(y, m, d, 23, 59, 59, 999));
     
     const [route] = await db.select().from(routes)
       .where(and(

@@ -81,6 +81,22 @@ interface User {
   isActive: boolean;
 }
 
+function getApiErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return "";
+  const colonIdx = error.message.indexOf(": ");
+  if (colonIdx === -1) return error.message;
+  try {
+    const body = error.message.slice(colonIdx + 2);
+    const parsed = JSON.parse(body);
+    if (Array.isArray(parsed.error)) {
+      return parsed.error.map((e: any) => e.message).join(", ");
+    }
+    return typeof parsed.error === "string" ? parsed.error : error.message;
+  } catch {
+    return error.message;
+  }
+}
+
 const routeFormSchema = z.object({
   date: z.string().min(1, "La fecha es requerida"),
   supplierId: z.string().min(1, "Seleccione un abastecedor"),
@@ -279,8 +295,9 @@ export default function RoutesPage() {
       routeForm.reset();
       setPendingStops([]);
     },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo crear la ruta", variant: "destructive" });
+    onError: (error) => {
+      const detail = getApiErrorMessage(error);
+      toast({ title: "Error al crear ruta", description: detail || "No se pudo crear la ruta", variant: "destructive" });
     },
   });
 
@@ -297,8 +314,9 @@ export default function RoutesPage() {
       setIsEditRouteOpen(false);
       setSelectedRoute(null);
     },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo actualizar la ruta", variant: "destructive" });
+    onError: (error) => {
+      const detail = getApiErrorMessage(error);
+      toast({ title: "Error al actualizar ruta", description: detail || "No se pudo actualizar la ruta", variant: "destructive" });
     },
   });
 
@@ -312,8 +330,9 @@ export default function RoutesPage() {
       setIsDeleteRouteOpen(false);
       setRouteToDelete(null);
     },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo eliminar la ruta", variant: "destructive" });
+    onError: (error) => {
+      const detail = getApiErrorMessage(error);
+      toast({ title: "Error al eliminar ruta", description: detail || "No se pudo eliminar la ruta", variant: "destructive" });
     },
   });
 
@@ -331,8 +350,9 @@ export default function RoutesPage() {
       setIsAddStopOpen(false);
       stopForm.reset();
     },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo agregar la parada", variant: "destructive" });
+    onError: (error) => {
+      const detail = getApiErrorMessage(error);
+      toast({ title: "Error al agregar parada", description: detail || "No se pudo agregar la parada", variant: "destructive" });
     },
   });
 
@@ -347,8 +367,9 @@ export default function RoutesPage() {
       setIsDeleteStopOpen(false);
       setStopToDelete(null);
     },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo eliminar la parada", variant: "destructive" });
+    onError: (error) => {
+      const detail = getApiErrorMessage(error);
+      toast({ title: "Error al eliminar parada", description: detail || "No se pudo eliminar la parada", variant: "destructive" });
     },
   });
 
@@ -362,8 +383,9 @@ export default function RoutesPage() {
       setIsCancelRouteOpen(false);
       setSelectedRoute(null);
     },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo cancelar la ruta", variant: "destructive" });
+    onError: (error) => {
+      const detail = getApiErrorMessage(error);
+      toast({ title: "Error al cancelar ruta", description: detail || "No se pudo cancelar la ruta", variant: "destructive" });
     },
   });
 
@@ -377,8 +399,9 @@ export default function RoutesPage() {
       setIsCompleteRouteOpen(false);
       setSelectedRoute(null);
     },
-    onError: () => {
-      toast({ title: "Error", description: "No se pudo completar la ruta", variant: "destructive" });
+    onError: (error) => {
+      const detail = getApiErrorMessage(error);
+      toast({ title: "Error al completar ruta", description: detail || "No se pudo completar la ruta", variant: "destructive" });
     },
   });
 
@@ -890,7 +913,7 @@ export default function RoutesPage() {
                         .filter(m => !pendingStops.some(s => s.machineId === m.id))
                         .map((machine) => (
                           <SelectItem key={machine.id} value={machine.id}>
-                            {machine.code || machine.id} - {machine.name}
+                            {machine.name}{machine.code ? ` (${machine.code})` : ""}
                           </SelectItem>
                         ))}
                     </SelectContent>
@@ -1191,7 +1214,7 @@ export default function RoutesPage() {
                           .filter(m => !routeStops.some(s => s.machineId === m.id))
                           .map((machine) => (
                             <SelectItem key={machine.id} value={machine.id}>
-                              {machine.code || machine.id} - {machine.name}
+                              {machine.name}{machine.code ? ` (${machine.code})` : ""}
                             </SelectItem>
                           ))}
                       </SelectContent>

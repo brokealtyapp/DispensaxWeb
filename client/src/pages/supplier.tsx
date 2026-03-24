@@ -276,6 +276,7 @@ export function SupplierPage() {
   const { data: todayRoute, isLoading: isLoadingRoute, refetch: refetchRoute } = useQuery<Route>({
     queryKey: [`/api/supplier/today-route/${supplierId}`],
     enabled: !!supplierId,
+    staleTime: 0,
   });
 
   const { data: supplierStats } = useQuery({
