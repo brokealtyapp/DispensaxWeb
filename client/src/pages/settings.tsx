@@ -382,10 +382,20 @@ export function SettingsPage() {
   // =====================
   // Tab Tipos de Máquina
   // =====================
+  const slugify = (text: string) =>
+    text
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 60);
+
   const emptyMachineTypeForm = { name: "", value: "" };
   const [machineTypeDialogOpen, setMachineTypeDialogOpen] = useState(false);
   const [machineTypeEditing, setMachineTypeEditing] = useState<MachineTypeOption | null>(null);
   const [machineTypeForm, setMachineTypeForm] = useState(emptyMachineTypeForm);
+  const [machineTypeValueEdited, setMachineTypeValueEdited] = useState(false);
   const [deletingMachineTypeId, setDeletingMachineTypeId] = useState<string | null>(null);
 
   const { data: machineTypesList = [], isLoading: machineTypesLoading } = useQuery<MachineTypeOption[]>({
@@ -402,6 +412,7 @@ export function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/machine-types"] });
       setMachineTypeDialogOpen(false);
       setMachineTypeForm({ name: "", value: "" });
+      setMachineTypeValueEdited(false);
       toast({ title: "Tipo creado", description: "Se agregó el tipo de máquina correctamente" });
     },
     onError: (error: Error) => {
@@ -419,6 +430,7 @@ export function SettingsPage() {
       setMachineTypeDialogOpen(false);
       setMachineTypeEditing(null);
       setMachineTypeForm({ name: "", value: "" });
+      setMachineTypeValueEdited(false);
       toast({ title: "Tipo actualizado", description: "Los cambios se guardaron correctamente" });
     },
     onError: (error: Error) => {
@@ -474,12 +486,14 @@ export function SettingsPage() {
   const openCreateMachineType = () => {
     setMachineTypeEditing(null);
     setMachineTypeForm(emptyMachineTypeForm);
+    setMachineTypeValueEdited(false);
     setMachineTypeDialogOpen(true);
   };
 
   const openEditMachineType = (mt: MachineTypeOption) => {
     setMachineTypeEditing(mt);
     setMachineTypeForm({ name: mt.name, value: mt.value });
+    setMachineTypeValueEdited(false);
     setMachineTypeDialogOpen(true);
   };
 
@@ -1295,7 +1309,11 @@ export function SettingsPage() {
             {/* Dialog crear/editar tipo de máquina */}
             <Dialog open={machineTypeDialogOpen} onOpenChange={(open) => {
               setMachineTypeDialogOpen(open);
-              if (!open) { setMachineTypeEditing(null); setMachineTypeForm(emptyMachineTypeForm); }
+              if (!open) {
+                setMachineTypeEditing(null);
+                setMachineTypeForm(emptyMachineTypeForm);
+                setMachineTypeValueEdited(false);
+              }
             }}>
               <DialogContent className="max-w-md">
                 <DialogHeader>
@@ -1307,23 +1325,44 @@ export function SettingsPage() {
                     <Input
                       id="mt-name"
                       value={machineTypeForm.name}
-                      onChange={(e) => setMachineTypeForm({ ...machineTypeForm, name: e.target.value })}
+                      onChange={(e) => {
+                        const newName = e.target.value;
+                        setMachineTypeForm((prev) => ({
+                          name: newName,
+                          value: (!machineTypeEditing && !machineTypeValueEdited)
+                            ? slugify(newName)
+                            : prev.value,
+                        }));
+                      }}
                       placeholder="Ej: Bebidas Frías"
+                      autoFocus
                       data-testid="input-machine-type-name"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="mt-value">Identificador *</Label>
-                    <Input
-                      id="mt-value"
-                      value={machineTypeForm.value}
-                      onChange={(e) => setMachineTypeForm({ ...machineTypeForm, value: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })}
-                      placeholder="Ej: bebidas_frias"
-                      disabled={!!machineTypeEditing}
-                      data-testid="input-machine-type-value"
-                    />
-                    <p className="text-xs text-muted-foreground">Solo letras minúsculas, números y guión bajo. No se puede cambiar una vez creado.</p>
-                  </div>
+                  {!machineTypeEditing && (
+                    <div className="space-y-2">
+                      <Label htmlFor="mt-value">
+                        Identificador
+                        {!machineTypeValueEdited && (
+                          <span className="ml-2 text-xs text-muted-foreground font-normal">(generado automáticamente)</span>
+                        )}
+                      </Label>
+                      <Input
+                        id="mt-value"
+                        value={machineTypeForm.value}
+                        onChange={(e) => {
+                          const sanitized = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_");
+                          setMachineTypeValueEdited(true);
+                          setMachineTypeForm((prev) => ({ ...prev, value: sanitized }));
+                        }}
+                        placeholder="bebidas_frias"
+                        data-testid="input-machine-type-value"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Solo letras minúsculas, números y guión bajo. No se podrá cambiar una vez creado.
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setMachineTypeDialogOpen(false)}>Cancelar</Button>
