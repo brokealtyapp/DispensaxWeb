@@ -17,7 +17,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Progress } from "@/components/ui/progress";
@@ -434,18 +433,16 @@ export function MachinesPage() {
               Ubicaciones
             </Button>
           )}
+          {canCreate("machines") && (
+            <Button data-testid="button-add-machine" onClick={() => handleOpenMachineDialog()}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nueva Máquina
+            </Button>
+          )}
           <Dialog open={isAddDialogOpen} onOpenChange={(open) => { 
             setIsAddDialogOpen(open); 
             if (!open) setEditingMachine(null); 
           }}>
-            {canCreate("machines") && (
-              <DialogTrigger asChild>
-                <Button data-testid="button-add-machine" onClick={() => handleOpenMachineDialog()}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nueva Máquina
-                </Button>
-              </DialogTrigger>
-            )}
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{editingMachine ? "Editar Máquina" : "Agregar Nueva Máquina"}</DialogTitle>

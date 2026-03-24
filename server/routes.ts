@@ -791,8 +791,15 @@ export async function registerRoutes(
       if (!tenantId) {
         return res.status(403).json({ error: "Acceso denegado" });
       }
-      const allMachines = await storage.getMachines(tenantId);
-      const nextNum = allMachines.length + 1;
+      // Query the MAX numeric suffix from all existing MAQ-NNN codes (active + inactive)
+      const result = await db
+        .select({ maxNum: sql<number>`COALESCE(MAX(CAST(SUBSTRING(code FROM 5) AS INTEGER)), 0)` })
+        .from(machines)
+        .where(and(
+          eq(machines.tenantId, tenantId),
+          sql`code ~ '^MAQ-[0-9]+$'`
+        ));
+      const nextNum = (result[0]?.maxNum ?? 0) + 1;
       const code = `MAQ-${String(nextNum).padStart(3, "0")}`;
       res.json({ code });
     } catch (error) {
