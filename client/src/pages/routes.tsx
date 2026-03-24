@@ -89,7 +89,14 @@ function getApiErrorMessage(error: unknown): string {
     const body = error.message.slice(colonIdx + 2);
     const parsed = JSON.parse(body);
     if (Array.isArray(parsed.error)) {
-      return parsed.error.map((e: any) => e.message).join(", ");
+      return parsed.error
+        .map((e: unknown) =>
+          typeof e === "object" && e !== null && "message" in e
+            ? String((e as { message: unknown }).message)
+            : ""
+        )
+        .filter(Boolean)
+        .join(", ");
     }
     return typeof parsed.error === "string" ? parsed.error : error.message;
   } catch {
