@@ -52,7 +52,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Link, useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Machine, Location } from "@shared/schema";
+import type { Machine, Location, MachineTypeOption } from "@shared/schema";
 import { formatDate as formatDateUtil } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -143,6 +143,10 @@ export function MachinesPage() {
 
   const { data: zones = [] } = useQuery<string[]>({
     queryKey: ["/api/stats/zones"],
+  });
+
+  const { data: machineTypes = [] } = useQuery<MachineTypeOption[]>({
+    queryKey: ["/api/machine-types"],
   });
 
   const createMachineMutation = useMutation({
@@ -477,10 +481,18 @@ export function MachinesPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="bebidas_frias">Bebidas Frías</SelectItem>
-                          <SelectItem value="bebidas_calientes">Bebidas Calientes</SelectItem>
-                          <SelectItem value="snacks">Snacks</SelectItem>
-                          <SelectItem value="mixta">Mixta</SelectItem>
+                          {machineTypes.length > 0 ? (
+                            machineTypes.map((mt) => (
+                              <SelectItem key={mt.id} value={mt.value}>{mt.name}</SelectItem>
+                            ))
+                          ) : (
+                            <>
+                              <SelectItem value="bebidas_frias">Bebidas Frías</SelectItem>
+                              <SelectItem value="bebidas_calientes">Bebidas Calientes</SelectItem>
+                              <SelectItem value="snacks">Snacks</SelectItem>
+                              <SelectItem value="mixta">Mixta</SelectItem>
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                       <FormMessage />

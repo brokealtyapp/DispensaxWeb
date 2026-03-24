@@ -24,6 +24,7 @@ import {
 import { authorizeAction, checkPermission } from "./permissions";
 import { getSummaryCache, getDashboardCache, isCacheValid, isSummaryCacheValid, isDashboardCacheValid, refreshSummaryCacheIfStale, refreshDashboardCacheIfStale } from "./cache";
 import { 
+  insertMachineTypeOptionSchema,
   insertLocationSchema, 
   insertProductSchema, 
   insertMachineSchema,
@@ -71,6 +72,7 @@ import {
   machineViewerAssignments,
   users,
   tenants,
+  machineTypeOptions as machineTypeOptionsTable,
   tenantSettings,
   nayaxConfig as nayaxConfigTable,
   routes as routesTable,
@@ -8670,6 +8672,80 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting viewer sales summary:", error);
       res.status(500).json({ error: "Error al obtener resumen de ventas" });
+    }
+  });
+
+  // =====================
+  // TIPOS DE MÁQUINA
+  // =====================
+
+  app.get("/api/machine-types", authenticateJWT, requireTenant, authorizeAction("settings", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      await storage.seedDefaultMachineTypes(tenantId);
+      const types = await storage.getMachineTypeOptions(tenantId);
+      res.json(types);
+    } catch (error) {
+      console.error("Error getting machine types:", error);
+      res.status(500).json({ error: "Error al obtener tipos de máquina" });
+    }
+  });
+
+  app.post("/api/machine-types", authenticateJWT, requireTenant, authorizeAction("settings", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const data = insertMachineTypeOptionSchema.omit({ tenantId: true }).parse(req.body);
+      const created = await storage.createMachineTypeOption({ ...data, tenantId });
+      res.status(201).json(created);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error creating machine type:", error);
+      res.status(500).json({ error: "Error al crear tipo de máquina" });
+    }
+  });
+
+  app.patch("/api/machine-types/:id", authenticateJWT, requireTenant, authorizeAction("settings", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const { id } = req.params;
+      const existing = await db.select().from(machineTypeOptionsTable).where(eq(machineTypeOptionsTable.id, id)).limit(1);
+      if (!existing[0] || existing[0].tenantId !== tenantId) {
+        return res.status(404).json({ error: "Tipo de máquina no encontrado" });
+      }
+      const data = insertMachineTypeOptionSchema.omit({ tenantId: true }).partial().parse(req.body);
+      const updated = await storage.updateMachineTypeOption(id, data);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error updating machine type:", error);
+      res.status(500).json({ error: "Error al actualizar tipo de máquina" });
+    }
+  });
+
+  app.delete("/api/machine-types/:id", authenticateJWT, requireTenant, authorizeAction("settings", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const { id } = req.params;
+      const existing = await db.select().from(machineTypeOptionsTable).where(eq(machineTypeOptionsTable.id, id)).limit(1);
+      if (!existing[0] || existing[0].tenantId !== tenantId) {
+        return res.status(404).json({ error: "Tipo de máquina no encontrado" });
+      }
+      const machineCount = await db.select({ id: machines.id })
+        .from(machines)
+        .where(and(eq(machines.tenantId, tenantId), eq(machines.type, existing[0].value)))
+        .limit(1);
+      if (machineCount.length > 0) {
+        return res.status(409).json({ error: "No se puede eliminar: hay máquinas usando este tipo" });
+      }
+      await storage.deleteMachineTypeOption(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting machine type:", error);
+      res.status(500).json({ error: "Error al eliminar tipo de máquina" });
     }
   });
 

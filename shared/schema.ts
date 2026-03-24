@@ -340,6 +340,24 @@ export const machineTypes = pgEnum("machine_type", [
   "mixta"
 ]);
 
+export const machineTypeOptions = pgTable("machine_type_options", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  name: text("name").notNull(),
+  value: text("value").notNull(),
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMachineTypeOptionSchema = createInsertSchema(machineTypeOptions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertMachineTypeOption = z.infer<typeof insertMachineTypeOptionSchema>;
+export type MachineTypeOption = typeof machineTypeOptions.$inferSelect;
+
 export const machines = pgTable("machines", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),

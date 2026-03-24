@@ -47,6 +47,7 @@ import {
   type EstablishmentViewer, type InsertEstablishmentViewer,
   type MachineViewerAssignment, type InsertMachineViewerAssignment,
   type TenantInvite, type InsertTenantInvite,
+  type MachineTypeOption, type InsertMachineTypeOption,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
@@ -58,6 +59,7 @@ import {
   employeeAttendance, payrollRecords, vacationRequests, performanceReviews, employeeDocuments, employeeProfiles,
   vehicleInventory, inventoryTransfers, machineInventoryLots,
   establishmentViewers, machineViewerAssignments,
+  machineTypeOptions,
   tenants, subscriptionPlans, tenantSubscriptions, tenantSettings, tenantInvites, superAdminAuditLog,
   type Tenant, type InsertTenant,
   type SubscriptionPlan, type InsertSubscriptionPlan,
@@ -605,6 +607,14 @@ export interface IStorage {
   createTenantInvite(data: InsertTenantInvite): Promise<TenantInvite>;
   getTenantInviteByToken(token: string): Promise<TenantInvite | undefined>;
   markTenantInviteAccepted(id: string): Promise<TenantInvite | undefined>;
+
+  // ==================== TIPOS DE MÁQUINA ====================
+
+  getMachineTypeOptions(tenantId: string): Promise<MachineTypeOption[]>;
+  createMachineTypeOption(data: InsertMachineTypeOption): Promise<MachineTypeOption>;
+  updateMachineTypeOption(id: string, data: Partial<InsertMachineTypeOption>): Promise<MachineTypeOption | undefined>;
+  deleteMachineTypeOption(id: string): Promise<boolean>;
+  seedDefaultMachineTypes(tenantId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -6419,6 +6429,48 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tenantInvites.id, id))
       .returning();
     return updated;
+  }
+
+  // ==================== TIPOS DE MÁQUINA ====================
+
+  async getMachineTypeOptions(tenantId: string): Promise<MachineTypeOption[]> {
+    const results = await db.select().from(machineTypeOptions)
+      .where(and(eq(machineTypeOptions.tenantId, tenantId), eq(machineTypeOptions.isActive, true)))
+      .orderBy(asc(machineTypeOptions.sortOrder), asc(machineTypeOptions.name));
+    return results;
+  }
+
+  async createMachineTypeOption(data: InsertMachineTypeOption): Promise<MachineTypeOption> {
+    const [created] = await db.insert(machineTypeOptions).values(data).returning();
+    return created;
+  }
+
+  async updateMachineTypeOption(id: string, data: Partial<InsertMachineTypeOption>): Promise<MachineTypeOption | undefined> {
+    const [updated] = await db.update(machineTypeOptions)
+      .set(data)
+      .where(eq(machineTypeOptions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMachineTypeOption(id: string): Promise<boolean> {
+    await db.delete(machineTypeOptions).where(eq(machineTypeOptions.id, id));
+    return true;
+  }
+
+  async seedDefaultMachineTypes(tenantId: string): Promise<void> {
+    const existing = await db.select({ id: machineTypeOptions.id })
+      .from(machineTypeOptions)
+      .where(eq(machineTypeOptions.tenantId, tenantId))
+      .limit(1);
+    if (existing.length > 0) return;
+    const defaults = [
+      { name: "Bebidas Frías", value: "bebidas_frias", sortOrder: 0 },
+      { name: "Bebidas Calientes", value: "bebidas_calientes", sortOrder: 1 },
+      { name: "Snacks", value: "snacks", sortOrder: 2 },
+      { name: "Mixta", value: "mixta", sortOrder: 3 },
+    ];
+    await db.insert(machineTypeOptions).values(defaults.map(d => ({ tenantId, ...d, isActive: true })));
   }
 }
 

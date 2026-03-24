@@ -43,9 +43,10 @@ import {
   Plus,
   Pencil,
   Trash2,
+  Cpu,
   type LucideIcon,
 } from "lucide-react";
-import type { Location } from "@shared/schema";
+import type { Location, MachineTypeOption } from "@shared/schema";
 
 interface TabConfig {
   value: string;
@@ -60,6 +61,7 @@ const tabsConfig: TabConfig[] = [
   { value: "apariencia", label: "Apariencia", icon: Palette, allowedRoles: ["admin", "supervisor", "abastecedor", "contabilidad", "almacen", "rh"] },
   { value: "empresa", label: "Empresa", icon: Building, allowedRoles: ["admin"] },
   { value: "ubicaciones", label: "Ubicaciones", icon: MapPin, allowedRoles: ["admin"] },
+  { value: "tipos_maquina", label: "Tipos de Máquina", icon: Cpu, allowedRoles: ["admin"] },
   { value: "seguridad", label: "Seguridad", icon: Shield, allowedRoles: ["admin", "supervisor", "abastecedor", "contabilidad", "almacen", "rh"] },
 ];
 
@@ -370,6 +372,104 @@ export function SettingsPage() {
       updateLocationMutation.mutate({ id: locationEditing.id, data: locationForm });
     } else {
       createLocationMutation.mutate(locationForm);
+    }
+  };
+
+  // =====================
+  // Tab Tipos de Máquina
+  // =====================
+  const emptyMachineTypeForm = { name: "", value: "" };
+  const [machineTypeDialogOpen, setMachineTypeDialogOpen] = useState(false);
+  const [machineTypeEditing, setMachineTypeEditing] = useState<MachineTypeOption | null>(null);
+  const [machineTypeForm, setMachineTypeForm] = useState(emptyMachineTypeForm);
+  const [deletingMachineTypeId, setDeletingMachineTypeId] = useState<string | null>(null);
+
+  const { data: machineTypesList = [], isLoading: machineTypesLoading } = useQuery<MachineTypeOption[]>({
+    queryKey: ["/api/machine-types"],
+    enabled: isAdmin,
+  });
+
+  const createMachineTypeMutation = useMutation({
+    mutationFn: async (data: { name: string; value: string }) => {
+      const res = await apiRequest("POST", "/api/machine-types", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/machine-types"] });
+      setMachineTypeDialogOpen(false);
+      setMachineTypeForm(emptyMachineTypeForm);
+      toast({ title: "Tipo creado", description: "Se agregó el tipo de máquina correctamente" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "No se pudo crear el tipo", variant: "destructive" });
+    },
+  });
+
+  const updateMachineTypeMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: { name: string; value: string } }) => {
+      const res = await apiRequest("PATCH", `/api/machine-types/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/machine-types"] });
+      setMachineTypeDialogOpen(false);
+      setMachineTypeEditing(null);
+      setMachineTypeForm(emptyMachineTypeForm);
+      toast({ title: "Tipo actualizado", description: "Los cambios se guardaron correctamente" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "No se pudo actualizar el tipo", variant: "destructive" });
+    },
+  });
+
+  const deleteMachineTypeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/machine-types/${id}`);
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error || "Error al eliminar");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/machine-types"] });
+      setDeletingMachineTypeId(null);
+      toast({ title: "Tipo eliminado" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      setDeletingMachineTypeId(null);
+    },
+  });
+
+  const openCreateMachineType = () => {
+    setMachineTypeEditing(null);
+    setMachineTypeForm(emptyMachineTypeForm);
+    setMachineTypeDialogOpen(true);
+  };
+
+  const openEditMachineType = (mt: MachineTypeOption) => {
+    setMachineTypeEditing(mt);
+    setMachineTypeForm({ name: mt.name, value: mt.value });
+    setMachineTypeDialogOpen(true);
+  };
+
+  const handleSaveMachineType = () => {
+    if (!machineTypeForm.name.trim()) {
+      toast({ title: "Error", description: "El nombre es requerido", variant: "destructive" });
+      return;
+    }
+    if (!machineTypeForm.value.trim()) {
+      toast({ title: "Error", description: "El identificador es requerido", variant: "destructive" });
+      return;
+    }
+    if (!/^[a-z0-9_]+$/.test(machineTypeForm.value)) {
+      toast({ title: "Error", description: "El identificador solo puede contener letras minúsculas, números y guión bajo", variant: "destructive" });
+      return;
+    }
+    if (machineTypeEditing) {
+      updateMachineTypeMutation.mutate({ id: machineTypeEditing.id, data: machineTypeForm });
+    } else {
+      createMachineTypeMutation.mutate(machineTypeForm);
     }
   };
 
@@ -1034,6 +1134,135 @@ export function SettingsPage() {
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     ) : null}
                     {locationEditing ? "Guardar Cambios" : "Crear Ubicación"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+        )}
+
+        {/* ===== TAB TIPOS DE MÁQUINA ===== */}
+        {isTabAllowed("tipos_maquina") && (
+          <TabsContent value="tipos_maquina">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <CardTitle>Tipos de Máquina</CardTitle>
+                    <CardDescription>
+                      Gestiona los tipos de máquinas expendedoras disponibles
+                    </CardDescription>
+                  </div>
+                  <Button onClick={openCreateMachineType} className="gap-2" data-testid="button-add-machine-type">
+                    <Plus className="h-4 w-4" />
+                    Nuevo Tipo
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {machineTypesLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Cargando tipos...</span>
+                  </div>
+                ) : machineTypesList.length === 0 ? (
+                  <div className="flex flex-col items-center gap-3 py-12 text-center">
+                    <Cpu className="h-10 w-10 text-muted-foreground/50" />
+                    <p className="text-muted-foreground">No hay tipos de máquina registrados.</p>
+                    <Button variant="outline" onClick={openCreateMachineType} data-testid="button-add-machine-type-empty">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Agregar primer tipo
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {machineTypesList.map((mt) => (
+                      <div
+                        key={mt.id}
+                        className="flex flex-wrap items-center justify-between gap-3 py-4"
+                        data-testid={`row-machine-type-${mt.id}`}
+                      >
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <span className="font-medium" data-testid={`text-machine-type-name-${mt.id}`}>{mt.name}</span>
+                          <p className="text-xs text-muted-foreground font-mono">{mt.value}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => openEditMachineType(mt)}
+                            data-testid={`button-edit-machine-type-${mt.id}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => {
+                              setDeletingMachineTypeId(mt.id);
+                              deleteMachineTypeMutation.mutate(mt.id);
+                            }}
+                            disabled={deletingMachineTypeId === mt.id && deleteMachineTypeMutation.isPending}
+                            data-testid={`button-delete-machine-type-${mt.id}`}
+                          >
+                            {deletingMachineTypeId === mt.id && deleteMachineTypeMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Dialog crear/editar tipo de máquina */}
+            <Dialog open={machineTypeDialogOpen} onOpenChange={(open) => {
+              setMachineTypeDialogOpen(open);
+              if (!open) { setMachineTypeEditing(null); setMachineTypeForm(emptyMachineTypeForm); }
+            }}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>{machineTypeEditing ? "Editar Tipo de Máquina" : "Nuevo Tipo de Máquina"}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="mt-name">Nombre *</Label>
+                    <Input
+                      id="mt-name"
+                      value={machineTypeForm.name}
+                      onChange={(e) => setMachineTypeForm({ ...machineTypeForm, name: e.target.value })}
+                      placeholder="Ej: Bebidas Frías"
+                      data-testid="input-machine-type-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="mt-value">Identificador *</Label>
+                    <Input
+                      id="mt-value"
+                      value={machineTypeForm.value}
+                      onChange={(e) => setMachineTypeForm({ ...machineTypeForm, value: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })}
+                      placeholder="Ej: bebidas_frias"
+                      disabled={!!machineTypeEditing}
+                      data-testid="input-machine-type-value"
+                    />
+                    <p className="text-xs text-muted-foreground">Solo letras minúsculas, números y guión bajo. No se puede cambiar una vez creado.</p>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setMachineTypeDialogOpen(false)}>Cancelar</Button>
+                  <Button
+                    onClick={handleSaveMachineType}
+                    disabled={createMachineTypeMutation.isPending || updateMachineTypeMutation.isPending}
+                    data-testid="button-save-machine-type"
+                  >
+                    {(createMachineTypeMutation.isPending || updateMachineTypeMutation.isPending) ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : null}
+                    {machineTypeEditing ? "Guardar Cambios" : "Crear Tipo"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
