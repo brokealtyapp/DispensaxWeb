@@ -474,16 +474,14 @@ export function MachinesPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Tipo</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={machineTypesLoading}>
                         <FormControl>
                           <SelectTrigger data-testid="select-machine-type">
-                            <SelectValue placeholder="Selecciona un tipo" />
+                            <SelectValue placeholder={machineTypesLoading ? "Cargando tipos..." : "Selecciona un tipo"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {machineTypesLoading ? (
-                            <SelectItem value="_loading" disabled>Cargando...</SelectItem>
-                          ) : machineTypes.length > 0 ? (
+                          {machineTypes.length > 0 ? (
                             machineTypes.map((mt) => (
                               <SelectItem key={mt.id} value={mt.value}>{mt.name}</SelectItem>
                             ))

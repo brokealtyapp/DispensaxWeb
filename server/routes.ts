@@ -8724,7 +8724,7 @@ export async function registerRoutes(
       if (!existing[0] || existing[0].tenantId !== tenantId) {
         return res.status(404).json({ error: "Tipo de máquina no encontrado" });
       }
-      const data = insertMachineTypeOptionSchema.omit({ tenantId: true }).partial().parse(req.body);
+      const data = z.object({ name: z.string().min(1).max(100) }).parse(req.body);
       const updated = await storage.updateMachineTypeOption(id, data);
       res.json(updated);
     } catch (error) {
