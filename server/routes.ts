@@ -2086,17 +2086,19 @@ export async function registerRoutes(
   // Rutas
   app.get("/api/supplier/routes", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { date, status } = req.query;
+      const { date, status, page, pageSize } = req.query;
       // Abastecedor solo ve sus propias rutas
       const effectiveUserId = getEffectiveUserId(req, "userId");
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
-      const routes = await storage.getRoutes(
+      const result = await storage.getRoutes(
         effectiveUserId,
         date ? new Date(date as string) : undefined,
         status as string | undefined,
-        tenantId
+        tenantId,
+        page ? Number(page) : 1,
+        pageSize ? Number(pageSize) : 20
       );
-      res.json(routes);
+      res.json(result);
     } catch (error) {
       console.error("Error getting routes:", error);
       res.status(500).json({ error: "Error al obtener rutas" });
@@ -2158,12 +2160,34 @@ export async function registerRoutes(
       if (!route) {
         return res.status(404).json({ error: "Ruta no encontrada" });
       }
+      // Cascada: al cancelar ruta, cancelar también las paradas pendientes/en progreso
+      if (data.status === "cancelada") {
+        await storage.cancelRouteStops(req.params.id);
+      }
       res.json(route);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
       }
       res.status(500).json({ error: "Error al actualizar ruta" });
+    }
+  });
+
+  app.patch("/api/supplier/stops/:id", authenticateJWT, authorizeAction("stops", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!await verifyStopTenant(req.params.id, req, res)) return;
+      const { order, notes, status } = req.body;
+      const updates: Record<string, unknown> = {};
+      if (order !== undefined) updates.order = Number(order);
+      if (notes !== undefined) updates.notes = notes;
+      if (status !== undefined) updates.status = status;
+      const stop = await storage.updateRouteStop(req.params.id, updates);
+      if (!stop) {
+        return res.status(404).json({ error: "Parada no encontrada" });
+      }
+      res.json(stop);
+    } catch (error) {
+      res.status(500).json({ error: "Error al actualizar parada" });
     }
   });
 

@@ -157,10 +157,11 @@ export function TasksPage() {
     enabled: isNewTaskOpen || isEditTaskOpen,
   });
 
-  const { data: routes } = useQuery<any[]>({
+  const { data: routesData } = useQuery<{ data: any[], total: number }>({
     queryKey: ["/api/supplier/routes"],
     enabled: isNewTaskOpen || isEditTaskOpen,
   });
+  const routes = routesData?.data;
 
   const invalidateTaskQueries = () => {
     queryClient.invalidateQueries({ 

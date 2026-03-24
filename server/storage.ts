@@ -179,7 +179,8 @@ export interface IStorage {
   // ==================== MÓDULO ABASTECEDOR ====================
   
   // Rutas
-  getRoutes(userId?: string, date?: Date, status?: string, tenantId?: string): Promise<any[]>;
+  getRoutes(userId?: string, date?: Date, status?: string, tenantId?: string, page?: number, pageSize?: number): Promise<{ data: any[], total: number }>;
+  cancelRouteStops(routeId: string): Promise<void>;
   getRoute(id: string): Promise<any>;
   getTodayRoute(userId: string): Promise<any>;
   createRoute(route: InsertRoute): Promise<Route>;
@@ -1395,7 +1396,7 @@ export class DatabaseStorage implements IStorage {
   // ==================== MÓDULO ABASTECEDOR ====================
 
   // Rutas
-  async getRoutes(userId?: string, date?: Date, status?: string, tenantId?: string): Promise<any[]> {
+  async getRoutes(userId?: string, date?: Date, status?: string, tenantId?: string, page = 1, pageSize = 20): Promise<{ data: any[], total: number }> {
     let conditions: any[] = [];
     
     if (tenantId) conditions.push(eq(routes.tenantId, tenantId));
@@ -1410,11 +1411,17 @@ export class DatabaseStorage implements IStorage {
       conditions.push(lte(routes.date, endOfDay));
     }
     
-    const result = conditions.length > 0
-      ? await db.select().from(routes).where(and(...conditions)).orderBy(desc(routes.date)).limit(50)
-      : await db.select().from(routes).orderBy(desc(routes.date)).limit(50);
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const offset = (page - 1) * pageSize;
     
-    if (result.length === 0) return [];
+    const [countResult, result] = await Promise.all([
+      db.select({ count: sql<number>`count(*)` }).from(routes).where(whereClause),
+      db.select().from(routes).where(whereClause).orderBy(desc(routes.date)).limit(pageSize).offset(offset)
+    ]);
+    
+    const total = Number(countResult[0]?.count ?? 0);
+    
+    if (result.length === 0) return { data: [], total };
     
     // Precargar todos los datos necesarios en paralelo (evita N+1)
     const routeIds = result.map(r => r.id);
@@ -1423,11 +1430,14 @@ export class DatabaseStorage implements IStorage {
       ...result.filter(r => r.supervisorId).map(r => r.supervisorId!)
     ]));
     
+    const machineConditions = tenantId ? eq(machines.tenantId, tenantId) : undefined;
+    const locationConditions = tenantId ? eq(locations.tenantId, tenantId) : undefined;
+    
     const [allUsers, allStops, allMachines, allLocations] = await Promise.all([
       db.select().from(users).where(sql`${users.id} = ANY(ARRAY[${sql.join(userIds.map(id => sql`${id}`), sql`, `)}]::text[])`),
       db.select().from(routeStops).where(sql`${routeStops.routeId} = ANY(ARRAY[${sql.join(routeIds.map(id => sql`${id}`), sql`, `)}]::text[])`).orderBy(asc(routeStops.order)),
-      db.select().from(machines),
-      db.select().from(locations)
+      db.select().from(machines).where(machineConditions),
+      db.select().from(locations).where(locationConditions)
     ]);
     
     // Crear Maps para lookups O(1)
@@ -1451,12 +1461,23 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Construir resultado final
-    return result.map(route => ({
+    const data = result.map(route => ({
       ...route,
       supplier: userMap.get(route.supplierId),
       supervisor: route.supervisorId ? userMap.get(route.supervisorId) : undefined,
       stops: stopsByRoute.get(route.id) || []
     }));
+    
+    return { data, total };
+  }
+
+  async cancelRouteStops(routeId: string): Promise<void> {
+    await db.update(routeStops)
+      .set({ status: "cancelada" })
+      .where(and(
+        eq(routeStops.routeId, routeId),
+        sql`${routeStops.status} IN ('pendiente', 'en_progreso')`
+      ));
   }
 
   async getRoute(id: string): Promise<any> {
@@ -1510,10 +1531,11 @@ export class DatabaseStorage implements IStorage {
 
   async completeRoute(id: string): Promise<Route | undefined> {
     const [route] = await db.select().from(routes).where(eq(routes.id, id));
-    if (!route || !route.startTime) return undefined;
+    if (!route) return undefined;
     
+    const effectiveStartTime = route.startTime ? new Date(route.startTime) : new Date();
     const endTime = new Date();
-    const actualDuration = Math.round((endTime.getTime() - new Date(route.startTime).getTime()) / 60000);
+    const actualDuration = Math.round((endTime.getTime() - effectiveStartTime.getTime()) / 60000);
     
     const [updated] = await db.update(routes)
       .set({ status: "completada", endTime, actualDuration })

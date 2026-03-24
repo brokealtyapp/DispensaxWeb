@@ -8,9 +8,9 @@ import { useAuth } from "@/lib/auth-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatDateShort, formatDate, formatTime, getDateKeyInTimezone, getTodayInTimezone } from "@/lib/utils";
 import { 
-  Route, MapPin, Plus, Search, Filter, Edit2, Trash2, Eye, 
-  Calendar, Clock, CheckCircle2, XCircle, Play, Square, Truck,
-  Users, ChevronRight, AlertTriangle, Navigation
+  Route, MapPin, Plus, Search, Edit2, Trash2, Eye, 
+  Calendar, Clock, CheckCircle2, XCircle, Play, Truck,
+  ChevronUp, ChevronDown
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
@@ -158,6 +158,10 @@ export default function RoutesPage() {
   const [pendingStops, setPendingStops] = useState<{machineId: string, order: number, notes?: string}[]>([]);
   
   const [currentPage, setCurrentPage] = useState(1);
+  
+  const [selectedRouteIds, setSelectedRouteIds] = useState<Set<string>>(new Set());
+  const [isBulkCancelOpen, setIsBulkCancelOpen] = useState(false);
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
 
   const routeForm = useForm<RouteFormData>({
     resolver: zodResolver(routeFormSchema),
@@ -179,9 +183,13 @@ export default function RoutesPage() {
     },
   });
 
-  const { data: routes = [], isLoading: routesLoading } = useQuery<RouteData[]>({
-    queryKey: ["/api/supplier/routes"],
+  const { data: routesData, isLoading: routesLoading } = useQuery<{ data: RouteData[], total: number }>({
+    queryKey: ["/api/supplier/routes", { page: currentPage, pageSize: 100 }],
+    staleTime: 30000,
+    refetchInterval: 60000,
   });
+  const routes = routesData?.data ?? [];
+  const totalRoutes = routesData?.total ?? 0;
 
   const { data: routeStops = [], isLoading: stopsLoading } = useQuery<RouteStop[]>({
     queryKey: ["/api/supplier/routes", selectedRoute?.id, "stops"],
@@ -248,8 +256,6 @@ export default function RoutesPage() {
     return filteredRoutes.slice(start, start + ITEMS_PER_PAGE);
   }, [filteredRoutes, currentPage]);
 
-  const totalPages = Math.ceil(filteredRoutes.length / ITEMS_PER_PAGE);
-
   const stats = useMemo(() => {
     const today = getDateKeyInTimezone(getTodayInTimezone());
     const todayRoutes = routes.filter(r => {
@@ -258,7 +264,7 @@ export default function RoutesPage() {
     });
     
     return {
-      total: routes.length,
+      total: totalRoutes,
       today: todayRoutes.length,
       pending: routes.filter(r => r.status === "pendiente").length,
       active: routes.filter(r => r.status === "en_progreso").length,
@@ -267,7 +273,7 @@ export default function RoutesPage() {
         ? Math.round((todayRoutes.filter(r => r.status === "completada").length / todayRoutes.length) * 100)
         : 0,
     };
-  }, [routes]);
+  }, [routes, totalRoutes]);
 
   const createRouteMutation = useMutation({
     mutationFn: async (data: RouteFormData & { stops: typeof pendingStops }) => {
@@ -277,7 +283,6 @@ export default function RoutesPage() {
         supervisorId: data.supervisorId === "none" ? undefined : data.supervisorId || undefined,
         estimatedDuration: data.estimatedDuration,
         notes: data.notes,
-        totalStops: data.stops.length,
         status: "pendiente",
       };
       
@@ -412,6 +417,69 @@ export default function RoutesPage() {
     },
   });
 
+  const startRouteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("POST", `/api/supplier/routes/${id}/start`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      toast({ title: "Ruta iniciada", description: "La ruta ha sido puesta en progreso" });
+    },
+    onError: (error) => {
+      const detail = getApiErrorMessage(error);
+      toast({ title: "Error al iniciar ruta", description: detail || "No se pudo iniciar la ruta", variant: "destructive" });
+    },
+  });
+
+  const reorderStopMutation = useMutation({
+    mutationFn: async ({ stopId, newOrder }: { stopId: string; newOrder: number }) => {
+      return apiRequest("PATCH", `/api/supplier/stops/${stopId}`, { order: newOrder });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes", selectedRoute?.id, "stops"] });
+    },
+    onError: (error) => {
+      const detail = getApiErrorMessage(error);
+      toast({ title: "Error al reordenar parada", description: detail || "No se pudo reordenar", variant: "destructive" });
+    },
+  });
+
+  const bulkCancelMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) {
+        await apiRequest("PATCH", `/api/supplier/routes/${id}`, { status: "cancelada" });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      toast({ title: "Rutas canceladas", description: `${selectedRouteIds.size} ruta(s) cancelada(s)` });
+      setSelectedRouteIds(new Set());
+      setIsBulkCancelOpen(false);
+    },
+    onError: (error) => {
+      const detail = getApiErrorMessage(error);
+      toast({ title: "Error al cancelar rutas", description: detail || "No se pudieron cancelar algunas rutas", variant: "destructive" });
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) {
+        await apiRequest("DELETE", `/api/supplier/routes/${id}`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      toast({ title: "Rutas eliminadas", description: `${selectedRouteIds.size} ruta(s) eliminada(s)` });
+      setSelectedRouteIds(new Set());
+      setIsBulkDeleteOpen(false);
+    },
+    onError: (error) => {
+      const detail = getApiErrorMessage(error);
+      toast({ title: "Error al eliminar rutas", description: detail || "No se pudieron eliminar algunas rutas", variant: "destructive" });
+    },
+  });
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completada":
@@ -485,6 +553,42 @@ export default function RoutesPage() {
     const order = (routeStops?.length || 0) + 1;
     addStopMutation.mutate({ routeId: selectedRoute.id, data: { ...data, order } });
   };
+
+  const handleMoveStop = (stop: RouteStop, direction: "up" | "down") => {
+    const sorted = [...routeStops].sort((a, b) => a.order - b.order);
+    const idx = sorted.findIndex(s => s.id === stop.id);
+    if (direction === "up" && idx <= 0) return;
+    if (direction === "down" && idx >= sorted.length - 1) return;
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    const swapStop = sorted[swapIdx];
+    reorderStopMutation.mutate({ stopId: stop.id, newOrder: swapStop.order });
+    reorderStopMutation.mutate({ stopId: swapStop.id, newOrder: stop.order });
+  };
+
+  const toggleRouteSelection = (id: string) => {
+    setSelectedRouteIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = (checked: boolean) => {
+    if (checked) {
+      setSelectedRouteIds(new Set(paginatedRoutes.map(r => r.id)));
+    } else {
+      setSelectedRouteIds(new Set());
+    }
+  };
+
+  const bulkDeletableIds = Array.from(selectedRouteIds).filter(id =>
+    routes.find(r => r.id === id)?.status === "pendiente"
+  );
+  const bulkCancellableIds = Array.from(selectedRouteIds).filter(id => {
+    const s = routes.find(r => r.id === id)?.status;
+    return s === "pendiente" || s === "en_progreso";
+  });
 
   return (
     <div className="flex-1 space-y-4 p-4 md:p-6 pt-4" data-testid="routes-page">
@@ -641,9 +745,56 @@ export default function RoutesPage() {
                 </div>
               ) : (
                 <>
+                  {selectedRouteIds.size > 0 && (
+                    <div className="flex items-center gap-3 mb-3 p-3 rounded-md bg-muted border">
+                      <span className="text-sm font-medium">{selectedRouteIds.size} ruta(s) seleccionada(s)</span>
+                      <div className="flex gap-2 ml-auto">
+                        {bulkCancellableIds.length > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsBulkCancelOpen(true)}
+                            className="gap-1 text-orange-600"
+                            data-testid="button-bulk-cancel"
+                          >
+                            <XCircle className="h-4 w-4" />
+                            Cancelar ({bulkCancellableIds.length})
+                          </Button>
+                        )}
+                        {bulkDeletableIds.length > 0 && canDelete("routes") && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsBulkDeleteOpen(true)}
+                            className="gap-1 text-destructive"
+                            data-testid="button-bulk-delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Eliminar ({bulkDeletableIds.length})
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedRouteIds(new Set())}
+                          data-testid="button-clear-selection"
+                        >
+                          Limpiar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={paginatedRoutes.length > 0 && paginatedRoutes.every(r => selectedRouteIds.has(r.id))}
+                            onCheckedChange={(v) => toggleAllVisible(!!v)}
+                            aria-label="Seleccionar todas"
+                            data-testid="checkbox-select-all"
+                          />
+                        </TableHead>
                         <TableHead>Fecha</TableHead>
                         <TableHead>Abastecedor</TableHead>
                         <TableHead>Paradas</TableHead>
@@ -662,6 +813,14 @@ export default function RoutesPage() {
                         
                         return (
                           <TableRow key={route.id} data-testid={`row-route-${route.id}`}>
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedRouteIds.has(route.id)}
+                                onCheckedChange={() => toggleRouteSelection(route.id)}
+                                aria-label={`Seleccionar ruta ${route.id}`}
+                                data-testid={`checkbox-route-${route.id}`}
+                              />
+                            </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -709,14 +868,26 @@ export default function RoutesPage() {
                                 {route.status === "pendiente" && (
                                   <>
                                     {canEdit("routes") && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => handleEditRoute(route)}
-                                        data-testid={`button-edit-route-${route.id}`}
-                                      >
-                                        <Edit2 className="h-4 w-4" />
-                                      </Button>
+                                      <>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => startRouteMutation.mutate(route.id)}
+                                          disabled={startRouteMutation.isPending}
+                                          data-testid={`button-start-route-${route.id}`}
+                                          title="Iniciar ruta"
+                                        >
+                                          <Play className="h-4 w-4 text-blue-500" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => handleEditRoute(route)}
+                                          data-testid={`button-edit-route-${route.id}`}
+                                        >
+                                          <Edit2 className="h-4 w-4" />
+                                        </Button>
+                                      </>
                                     )}
                                     <Button
                                       variant="ghost"
@@ -790,6 +961,11 @@ export default function RoutesPage() {
                         onPageChange={setCurrentPage}
                       />
                     </div>
+                  )}
+                  {totalRoutes > 100 && (
+                    <p className="text-xs text-muted-foreground mt-2 text-center">
+                      Mostrando 100 de {totalRoutes} rutas. Use los filtros para refinar los resultados.
+                    </p>
                   )}
                 </>
               )}
@@ -1136,7 +1312,7 @@ export default function RoutesPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {routeStops.sort((a, b) => a.order - b.order).map((stop) => {
+                    {[...routeStops].sort((a, b) => a.order - b.order).map((stop, idx, sortedArr) => {
                       const machine = machines.find(m => m.id === stop.machineId);
                       return (
                         <div 
@@ -1149,6 +1325,32 @@ export default function RoutesPage() {
                           data-testid={`stop-${stop.id}`}
                         >
                           <div className="flex items-center gap-3">
+                            {selectedRoute.status === "pendiente" && (
+                              <div className="flex flex-col gap-0.5">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5"
+                                  disabled={idx === 0 || reorderStopMutation.isPending}
+                                  onClick={() => handleMoveStop(stop, "up")}
+                                  data-testid={`button-stop-up-${stop.id}`}
+                                  title="Mover arriba"
+                                >
+                                  <ChevronUp className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5"
+                                  disabled={idx === sortedArr.length - 1 || reorderStopMutation.isPending}
+                                  onClick={() => handleMoveStop(stop, "down")}
+                                  data-testid={`button-stop-down-${stop.id}`}
+                                  title="Mover abajo"
+                                >
+                                  <ChevronDown className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            )}
                             <span className={`flex items-center justify-center w-7 h-7 rounded-full text-sm font-medium ${
                               stop.status === "completada" ? "bg-green-500 text-white" :
                               stop.status === "en_progreso" ? "bg-blue-500 text-white" :
@@ -1335,6 +1537,48 @@ export default function RoutesPage() {
               data-testid="button-confirm-complete-route"
             >
               {completeRouteMutation.isPending ? "Completando..." : "Completar Ruta"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isBulkCancelOpen} onOpenChange={setIsBulkCancelOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cancelar {bulkCancellableIds.length} ruta(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Las rutas seleccionadas serán marcadas como canceladas y sus paradas pendientes también se cancelarán.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => bulkCancelMutation.mutate(bulkCancellableIds)}
+              className="bg-orange-500 text-white hover:bg-orange-600"
+              data-testid="button-confirm-bulk-cancel"
+            >
+              {bulkCancelMutation.isPending ? "Cancelando..." : "Cancelar Rutas"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar {bulkDeletableIds.length} ruta(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Solo se pueden eliminar rutas en estado pendiente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => bulkDeleteMutation.mutate(bulkDeletableIds)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-bulk-delete"
+            >
+              {bulkDeleteMutation.isPending ? "Eliminando..." : "Eliminar Rutas"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

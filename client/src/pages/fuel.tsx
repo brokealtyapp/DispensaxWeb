@@ -153,9 +153,10 @@ export function FuelPage() {
     queryKey: ["/api/fuel-stats"],
   });
 
-  const { data: routes = [] } = useQuery<any[]>({
+  const { data: routesData } = useQuery<{ data: any[], total: number }>({
     queryKey: ["/api/supplier/routes"],
   });
+  const routes = routesData?.data ?? [];
 
   const { data: users = [] } = useQuery<any[]>({
     queryKey: ["/api/users"],

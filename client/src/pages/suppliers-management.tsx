@@ -114,9 +114,10 @@ export function SuppliersManagementPage() {
     queryKey: ["/api/users", { role: "abastecedor" }],
   });
 
-  const { data: routes = [], isLoading: loadingRoutes } = useQuery<Route[]>({
+  const { data: routesDataRaw, isLoading: loadingRoutes } = useQuery<{ data: Route[], total: number }>({
     queryKey: ["/api/supplier/routes"],
   });
+  const routes = routesDataRaw?.data ?? [];
 
   const { data: routeStopsMap = {}, isLoading: loadingStops } = useQuery<Record<string, RouteStop[]>>({
     queryKey: ["/api/supplier/route-stops-batch", routes.map(r => r.id).join(",")],
