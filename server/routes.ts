@@ -2086,7 +2086,7 @@ export async function registerRoutes(
   // Rutas
   app.get("/api/supplier/routes", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { date, status, page, pageSize } = req.query;
+      const { date, status, page, pageSize, supplierId, search } = req.query;
       // Abastecedor solo ve sus propias rutas
       const effectiveUserId = getEffectiveUserId(req, "userId");
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
@@ -2096,12 +2096,26 @@ export async function registerRoutes(
         status as string | undefined,
         tenantId,
         page ? Number(page) : 1,
-        pageSize ? Number(pageSize) : 20
+        pageSize ? Number(pageSize) : 20,
+        supplierId as string | undefined,
+        search as string | undefined
       );
       res.json(result);
     } catch (error) {
       console.error("Error getting routes:", error);
       res.status(500).json({ error: "Error al obtener rutas" });
+    }
+  });
+
+  app.get("/api/supplier/routes/stats", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const effectiveUserId = getEffectiveUserId(req, "userId");
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const stats = await storage.getRouteStats(effectiveUserId, tenantId);
+      res.json(stats);
+    } catch (error) {
+      console.error("Error getting route stats:", error);
+      res.status(500).json({ error: "Error al obtener estadísticas de rutas" });
     }
   });
 

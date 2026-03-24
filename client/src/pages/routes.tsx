@@ -183,13 +183,58 @@ export default function RoutesPage() {
     },
   });
 
-  const { data: routesData, isLoading: routesLoading } = useQuery<{ data: RouteData[], total: number }>({
-    queryKey: ["/api/supplier/routes", { page: currentPage, pageSize: 100 }],
+  // Compute server-side filters from UI state
+  const serverFilters = useMemo(() => {
+    const filters: Record<string, string> = {};
+
+    // Status: tab takes priority, then statusFilter dropdown
+    if (activeTab === "pending") {
+      filters.status = "pendiente";
+    } else if (activeTab === "active") {
+      filters.status = "en_progreso";
+    } else if (activeTab === "completed") {
+      filters.status = "completada";
+    } else if (statusFilter !== "all") {
+      filters.status = statusFilter;
+    }
+
+    // Date: "today" tab overrides dateFilter
+    if (activeTab === "today") {
+      filters.date = getDateKeyInTimezone(getTodayInTimezone());
+    } else if (dateFilter) {
+      filters.date = dateFilter;
+    }
+
+    // Optional supplier filter (admin/supervisor only)
+    if (supplierFilter !== "all") filters.supplierId = supplierFilter;
+
+    // Search term
+    const trimmed = searchTerm.trim();
+    if (trimmed) filters.search = trimmed;
+
+    return filters;
+  }, [activeTab, statusFilter, dateFilter, supplierFilter, searchTerm]);
+
+  // Reset to page 1 whenever filters change
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedRouteIds(new Set());
+  }, [activeTab, statusFilter, dateFilter, supplierFilter, searchTerm]);
+
+  const { data: routesData, isLoading: routesLoading } = useQuery<{ data: RouteData[], total: number, page: number, pageSize: number }>({
+    queryKey: ["/api/supplier/routes", { ...serverFilters, page: currentPage, pageSize: ITEMS_PER_PAGE }],
     staleTime: 30000,
     refetchInterval: 60000,
   });
-  const routes = routesData?.data ?? [];
-  const totalRoutes = routesData?.total ?? 0;
+
+  const paginatedRoutes = routesData?.data ?? [];
+  const serverTotal = routesData?.total ?? 0;
+
+  const { data: routeStats } = useQuery<{ total: number, today: number, pending: number, active: number, completed: number }>({
+    queryKey: ["/api/supplier/routes", "stats"],
+    staleTime: 30000,
+    refetchInterval: 60000,
+  });
 
   const { data: routeStops = [], isLoading: stopsLoading } = useQuery<RouteStop[]>({
     queryKey: ["/api/supplier/routes", selectedRoute?.id, "stops"],
@@ -208,72 +253,14 @@ export default function RoutesPage() {
     queryKey: ["/api/machines"],
   });
 
-  const filteredRoutes = useMemo(() => {
-    let filtered = routes;
-    
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(r => 
-        r.supplierName?.toLowerCase().includes(term) ||
-        r.id.toLowerCase().includes(term)
-      );
-    }
-    
-    if (statusFilter !== "all") {
-      filtered = filtered.filter(r => r.status === statusFilter);
-    }
-    
-    if (dateFilter) {
-      filtered = filtered.filter(r => {
-        const routeDate = getDateKeyInTimezone(r.date);
-        return routeDate === dateFilter;
-      });
-    }
-    
-    if (supplierFilter !== "all") {
-      filtered = filtered.filter(r => r.supplierId === supplierFilter);
-    }
-    
-    if (activeTab === "today") {
-      const today = getDateKeyInTimezone(getTodayInTimezone());
-      filtered = filtered.filter(r => {
-        const routeDate = getDateKeyInTimezone(r.date);
-        return routeDate === today;
-      });
-    } else if (activeTab === "pending") {
-      filtered = filtered.filter(r => r.status === "pendiente");
-    } else if (activeTab === "active") {
-      filtered = filtered.filter(r => r.status === "en_progreso");
-    } else if (activeTab === "completed") {
-      filtered = filtered.filter(r => r.status === "completada");
-    }
-    
-    return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [routes, searchTerm, statusFilter, dateFilter, supplierFilter, activeTab]);
-
-  const paginatedRoutes = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredRoutes.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredRoutes, currentPage]);
-
-  const stats = useMemo(() => {
-    const today = getDateKeyInTimezone(getTodayInTimezone());
-    const todayRoutes = routes.filter(r => {
-      const routeDate = getDateKeyInTimezone(r.date);
-      return routeDate === today;
-    });
-    
-    return {
-      total: totalRoutes,
-      today: todayRoutes.length,
-      pending: routes.filter(r => r.status === "pendiente").length,
-      active: routes.filter(r => r.status === "en_progreso").length,
-      completed: routes.filter(r => r.status === "completada").length,
-      todayProgress: todayRoutes.length > 0 
-        ? Math.round((todayRoutes.filter(r => r.status === "completada").length / todayRoutes.length) * 100)
-        : 0,
-    };
-  }, [routes, totalRoutes]);
+  const stats = {
+    total: routeStats?.total ?? 0,
+    today: routeStats?.today ?? 0,
+    pending: routeStats?.pending ?? 0,
+    active: routeStats?.active ?? 0,
+    completed: routeStats?.completed ?? 0,
+    todayProgress: 0,
+  };
 
   const createRouteMutation = useMutation({
     mutationFn: async (data: RouteFormData & { stops: typeof pendingStops }) => {
@@ -583,10 +570,10 @@ export default function RoutesPage() {
   };
 
   const bulkDeletableIds = Array.from(selectedRouteIds).filter(id =>
-    routes.find(r => r.id === id)?.status === "pendiente"
+    paginatedRoutes.find(r => r.id === id)?.status === "pendiente"
   );
   const bulkCancellableIds = Array.from(selectedRouteIds).filter(id => {
-    const s = routes.find(r => r.id === id)?.status;
+    const s = paginatedRoutes.find(r => r.id === id)?.status;
     return s === "pendiente" || s === "en_progreso";
   });
 
@@ -713,7 +700,7 @@ export default function RoutesPage() {
         <TabsContent value={activeTab} className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>Rutas ({filteredRoutes.length})</CardTitle>
+              <CardTitle>Rutas ({serverTotal})</CardTitle>
               <CardDescription>
                 {activeTab === "today" && "Rutas programadas para hoy"}
                 {activeTab === "pending" && "Rutas pendientes de iniciar"}
@@ -952,20 +939,15 @@ export default function RoutesPage() {
                     </TableBody>
                   </Table>
                   
-                  {filteredRoutes.length > ITEMS_PER_PAGE && (
+                  {serverTotal > ITEMS_PER_PAGE && (
                     <div className="mt-4">
                       <DataPagination
                         currentPage={currentPage}
-                        totalItems={filteredRoutes.length}
+                        totalItems={serverTotal}
                         itemsPerPage={ITEMS_PER_PAGE}
                         onPageChange={setCurrentPage}
                       />
                     </div>
-                  )}
-                  {totalRoutes > 100 && (
-                    <p className="text-xs text-muted-foreground mt-2 text-center">
-                      Mostrando 100 de {totalRoutes} rutas. Use los filtros para refinar los resultados.
-                    </p>
                   )}
                 </>
               )}

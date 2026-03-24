@@ -179,7 +179,8 @@ export interface IStorage {
   // ==================== MÓDULO ABASTECEDOR ====================
   
   // Rutas
-  getRoutes(userId?: string, date?: Date, status?: string, tenantId?: string, page?: number, pageSize?: number): Promise<{ data: any[], total: number }>;
+  getRoutes(userId?: string, date?: Date, status?: string, tenantId?: string, page?: number, pageSize?: number, supplierIdFilter?: string, search?: string): Promise<{ data: any[], total: number, page: number, pageSize: number }>;
+  getRouteStats(userId?: string, tenantId?: string): Promise<{ total: number, today: number, pending: number, active: number, completed: number }>;
   cancelRouteStops(routeId: string): Promise<void>;
   getRoute(id: string): Promise<any>;
   getTodayRoute(userId: string): Promise<any>;
@@ -1396,12 +1397,13 @@ export class DatabaseStorage implements IStorage {
   // ==================== MÓDULO ABASTECEDOR ====================
 
   // Rutas
-  async getRoutes(userId?: string, date?: Date, status?: string, tenantId?: string, page = 1, pageSize = 20): Promise<{ data: any[], total: number }> {
+  async getRoutes(userId?: string, date?: Date, status?: string, tenantId?: string, page = 1, pageSize = 20, supplierIdFilter?: string, search?: string): Promise<{ data: any[], total: number, page: number, pageSize: number }> {
     let conditions: any[] = [];
     
     if (tenantId) conditions.push(eq(routes.tenantId, tenantId));
     if (userId) conditions.push(eq(routes.supplierId, userId));
     if (status) conditions.push(eq(routes.status, status));
+    if (supplierIdFilter) conditions.push(eq(routes.supplierId, supplierIdFilter));
     if (date) {
       const startOfDay = new Date(date);
       startOfDay.setHours(0, 0, 0, 0);
@@ -1409,6 +1411,15 @@ export class DatabaseStorage implements IStorage {
       endOfDay.setHours(23, 59, 59, 999);
       conditions.push(gte(routes.date, startOfDay));
       conditions.push(lte(routes.date, endOfDay));
+    }
+    if (search) {
+      const term = `%${search.toLowerCase()}%`;
+      conditions.push(
+        or(
+          sql`lower(${routes.id}) like ${term}`,
+          sql`${routes.supplierId} in (select id from users where lower(name) like ${term} or lower(username) like ${term})`
+        )!
+      );
     }
     
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -1421,7 +1432,7 @@ export class DatabaseStorage implements IStorage {
     
     const total = Number(countResult[0]?.count ?? 0);
     
-    if (result.length === 0) return { data: [], total };
+    if (result.length === 0) return { data: [], total, page, pageSize };
     
     // Precargar todos los datos necesarios en paralelo (evita N+1)
     const routeIds = result.map(r => r.id);
@@ -1468,7 +1479,37 @@ export class DatabaseStorage implements IStorage {
       stops: stopsByRoute.get(route.id) || []
     }));
     
-    return { data, total };
+    return { data, total, page, pageSize };
+  }
+
+  async getRouteStats(userId?: string, tenantId?: string): Promise<{ total: number, today: number, pending: number, active: number, completed: number }> {
+    const conditions: any[] = [];
+    if (tenantId) conditions.push(eq(routes.tenantId, tenantId));
+    if (userId) conditions.push(eq(routes.supplierId, userId));
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    const todayConditions = [...conditions, gte(routes.date, todayStart), lte(routes.date, todayEnd)];
+    const todayWhere = and(...todayConditions);
+
+    const [totalRes, todayRes, pendingRes, activeRes, completedRes] = await Promise.all([
+      db.select({ count: sql<number>`count(*)` }).from(routes).where(whereClause),
+      db.select({ count: sql<number>`count(*)` }).from(routes).where(todayWhere),
+      db.select({ count: sql<number>`count(*)` }).from(routes).where(and(...conditions, eq(routes.status, "pendiente"))),
+      db.select({ count: sql<number>`count(*)` }).from(routes).where(and(...conditions, eq(routes.status, "en_progreso"))),
+      db.select({ count: sql<number>`count(*)` }).from(routes).where(and(...conditions, eq(routes.status, "completada"))),
+    ]);
+
+    return {
+      total: Number(totalRes[0]?.count ?? 0),
+      today: Number(todayRes[0]?.count ?? 0),
+      pending: Number(pendingRes[0]?.count ?? 0),
+      active: Number(activeRes[0]?.count ?? 0),
+      completed: Number(completedRes[0]?.count ?? 0),
+    };
   }
 
   async cancelRouteStops(routeId: string): Promise<void> {
@@ -4017,7 +4058,8 @@ export class DatabaseStorage implements IStorage {
 
     const allMachines = await this.getMachines(tenantId);
     const allProducts = await this.getProducts(tenantId);
-    const allRoutes = await this.getRoutes(undefined, undefined, undefined, tenantId);
+    const allRoutesResult = await this.getRoutes(undefined, undefined, undefined, tenantId, 1, 99999);
+    const allRoutes = allRoutesResult.data;
     
     const allSales = await db.select().from(machineSales)
       .where(and(
