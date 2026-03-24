@@ -375,7 +375,7 @@ export function MachinesPage() {
       });
       setIsGeneratingCode(true);
       try {
-        const res = await fetch("/api/machines/next-code", { credentials: "include" });
+        const res = await fetch("/api/machines/next-code", { credentials: "include", cache: "no-store" });
         if (res.ok) {
           const { code } = await res.json() as { code: string };
           form.setValue("code", code);

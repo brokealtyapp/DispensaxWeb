@@ -801,6 +801,7 @@ export async function registerRoutes(
         ));
       const nextNum = (result[0]?.maxNum ?? 0) + 1;
       const code = `MAQ-${String(nextNum).padStart(3, "0")}`;
+      res.set("Cache-Control", "no-store");
       res.json({ code });
     } catch (error) {
       res.status(500).json({ error: "Error al generar código" });
