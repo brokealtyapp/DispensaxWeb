@@ -1638,7 +1638,10 @@ export const vehicles = pgTable("vehicles", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertVehicleSchema = createInsertSchema(vehicles).omit({
+export const insertVehicleSchema = createInsertSchema(vehicles, {
+  tankCapacity: z.coerce.string().optional().nullable(),
+  expectedMileage: z.coerce.string().optional().nullable(),
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,

@@ -2031,16 +2031,44 @@ export class DatabaseStorage implements IStorage {
 
   // Inventario del Abastecedor
   async getSupplierInventory(userId: string): Promise<any[]> {
-    const inventory = await db.select().from(supplierInventory)
+    // Query legacy supplier_inventory table
+    const legacyInventory = await db.select().from(supplierInventory)
       .where(eq(supplierInventory.userId, userId));
-    
-    const inventoryWithDetails = await Promise.all(inventory.map(async (item) => {
+
+    const legacyWithDetails = await Promise.all(legacyInventory.map(async (item) => {
       const product = await this.getProduct(item.productId);
       const lot = item.lotId ? await this.getProductLot(item.lotId) : undefined;
       return { ...item, product, lot };
     }));
-    
-    return inventoryWithDetails.filter(item => item.product);
+
+    const validLegacy = legacyWithDetails.filter(item => item.product);
+
+    // Also include vehicle inventory (modern dispatch system)
+    const vehicleItems = await this.getVehicleInventoryByUser(userId);
+
+    // Merge: combine quantities for same product across both sources
+    const mergedMap = new Map<string, any>();
+
+    for (const item of validLegacy) {
+      const key = item.productId;
+      if (mergedMap.has(key)) {
+        mergedMap.get(key).quantity += item.quantity;
+      } else {
+        mergedMap.set(key, { ...item });
+      }
+    }
+
+    for (const item of vehicleItems) {
+      if (!item.product) continue;
+      const key = item.productId;
+      if (mergedMap.has(key)) {
+        mergedMap.get(key).quantity += item.quantity;
+      } else {
+        mergedMap.set(key, { ...item });
+      }
+    }
+
+    return Array.from(mergedMap.values());
   }
 
   async updateSupplierInventoryItem(userId: string, productId: string, quantity: number, lotId?: string, tenantId?: string): Promise<SupplierInventory> {
