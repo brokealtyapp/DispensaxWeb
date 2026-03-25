@@ -3216,7 +3216,7 @@ export async function registerRoutes(
   // Inventario del Abastecedor
   app.get("/api/supplier/inventory/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "almacen"), authorizeOwnership("userId"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const inventory = await storage.getSupplierInventory(req.params.userId);
+      const inventory = await storage.getSupplierInventoryForDisplay(req.params.userId);
       res.json(inventory);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener inventario del abastecedor" });

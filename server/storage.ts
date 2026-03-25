@@ -222,6 +222,7 @@ export interface IStorage {
   
   // Inventario del Abastecedor
   getSupplierInventory(userId: string): Promise<any[]>;
+  getSupplierInventoryForDisplay(userId: string): Promise<any[]>;
   updateSupplierInventoryItem(userId: string, productId: string, quantity: number, lotId?: string): Promise<SupplierInventory>;
   loadProductsFromWarehouse(userId: string, productId: string, quantity: number): Promise<void>;
   unloadProductsToMachine(userId: string, machineId: string, productId: string, quantity: number): Promise<void>;
@@ -2029,27 +2030,31 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  // Inventario del Abastecedor
+  // Inventario del Abastecedor (solo tabla legacy — usado por flujos de escritura)
   async getSupplierInventory(userId: string): Promise<any[]> {
-    // Query legacy supplier_inventory table
-    const legacyInventory = await db.select().from(supplierInventory)
+    const inventory = await db.select().from(supplierInventory)
       .where(eq(supplierInventory.userId, userId));
 
-    const legacyWithDetails = await Promise.all(legacyInventory.map(async (item) => {
+    const inventoryWithDetails = await Promise.all(inventory.map(async (item) => {
       const product = await this.getProduct(item.productId);
       const lot = item.lotId ? await this.getProductLot(item.lotId) : undefined;
       return { ...item, product, lot };
     }));
 
-    const validLegacy = legacyWithDetails.filter(item => item.product);
+    return inventoryWithDetails.filter(item => item.product);
+  }
 
-    // Also include vehicle inventory (modern dispatch system)
-    const vehicleItems = await this.getVehicleInventoryByUser(userId);
+  // Inventario del Abastecedor para visualización — combina tabla legacy + vehicle_inventory
+  async getSupplierInventoryForDisplay(userId: string): Promise<any[]> {
+    const [legacyItems, vehicleItems] = await Promise.all([
+      this.getSupplierInventory(userId),
+      this.getVehicleInventoryByUser(userId),
+    ]);
 
     // Merge: combine quantities for same product across both sources
     const mergedMap = new Map<string, any>();
 
-    for (const item of validLegacy) {
+    for (const item of legacyItems) {
       const key = item.productId;
       if (mergedMap.has(key)) {
         mergedMap.get(key).quantity += item.quantity;
