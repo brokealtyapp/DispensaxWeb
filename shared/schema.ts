@@ -2589,6 +2589,13 @@ export const establishmentContractsRelations = relations(establishmentContracts,
 
 // ==================== MÓDULO ÓRDENES DE TRABAJO ====================
 
+export const workOrderTypeEnum = z.enum(["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"]);
+export const workOrderPriorityEnum = z.enum(["critico", "alto", "medio", "bajo"]);
+export const workOrderStatusEnum = z.enum(["pendiente", "asignada", "en_proceso", "en_ruta", "completada", "cerrada", "cancelada"]);
+export const ticketTypeEnum = z.enum(["falla_cliente", "alerta_sistema", "incidencia_interna", "solicitud_servicio"]);
+export const ticketStatusEnum = z.enum(["pendiente", "en_proceso", "en_ruta", "resuelto", "cerrado"]);
+export const slaStatusEnum = z.enum(["dentro_tiempo", "proximo_vencer", "vencido"]);
+
 export const slaConfig = pgTable("sla_config", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
@@ -2626,7 +2633,12 @@ export const workOrderTickets = pgTable("work_order_tickets", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertWorkOrderTicketSchema = createInsertSchema(workOrderTickets).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertWorkOrderTicketSchema = createInsertSchema(workOrderTickets).omit({ id: true, createdAt: true, updatedAt: true }).extend({
+  type: ticketTypeEnum.default("falla_cliente"),
+  priority: workOrderPriorityEnum.default("medio"),
+  status: ticketStatusEnum.default("pendiente"),
+  slaStatus: slaStatusEnum.optional().nullable(),
+});
 export type InsertWorkOrderTicket = z.infer<typeof insertWorkOrderTicketSchema>;
 export type WorkOrderTicket = typeof workOrderTickets.$inferSelect;
 
@@ -2651,7 +2663,12 @@ export const workOrders = pgTable("work_orders", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertWorkOrderSchema = createInsertSchema(workOrders).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertWorkOrderSchema = createInsertSchema(workOrders).omit({ id: true, createdAt: true, updatedAt: true }).extend({
+  type: workOrderTypeEnum.default("tecnico"),
+  priority: workOrderPriorityEnum.default("medio"),
+  status: workOrderStatusEnum.default("pendiente"),
+  slaStatus: slaStatusEnum.optional().nullable(),
+});
 export type InsertWorkOrder = z.infer<typeof insertWorkOrderSchema>;
 export type WorkOrder = typeof workOrders.$inferSelect;
 

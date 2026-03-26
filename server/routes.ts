@@ -105,6 +105,12 @@ import {
   insertWorkOrderTicketSchema,
   insertSlaConfigSchema,
   insertWorkOrderPhotoSchema,
+  workOrderTypeEnum,
+  workOrderPriorityEnum,
+  workOrderStatusEnum,
+  ticketTypeEnum,
+  ticketStatusEnum,
+  slaStatusEnum,
 } from "@shared/schema";
 import { z } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
@@ -9691,12 +9697,16 @@ export async function registerRoutes(
     try {
       const tenantId = req.user!.tenantId!;
       const { status, type, machineId, assignedUserId } = req.query;
-      const orders = await storage.getWorkOrders(tenantId, {
+      const filters: { status?: string; type?: string; machineId?: string; assignedUserId?: string } = {
         status: status as string | undefined,
         type: type as string | undefined,
         machineId: machineId as string | undefined,
         assignedUserId: assignedUserId as string | undefined,
-      });
+      };
+      if (req.user!.role === "abastecedor") {
+        filters.assignedUserId = req.user!.id;
+      }
+      const orders = await storage.getWorkOrders(tenantId, filters);
       res.json(orders);
     } catch (error) {
       console.error("Error fetching work orders:", error);
@@ -9709,6 +9719,9 @@ export async function registerRoutes(
       const tenantId = req.user!.tenantId!;
       const order = await storage.getWorkOrderById(req.params.id);
       if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.id) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
       const [checklist, photos, machine] = await Promise.all([
@@ -9736,6 +9749,13 @@ export async function registerRoutes(
       const machine = await storage.getMachine(req.body.machineId);
       if (!machine || machine.tenantId !== tenantId) {
         return res.status(400).json({ error: "Máquina no encontrada o no pertenece al tenant" });
+      }
+
+      if (req.body.assignedUserId) {
+        const assignee = await storage.getUser(req.body.assignedUserId);
+        if (!assignee || assignee.tenantId !== tenantId) {
+          return res.status(400).json({ error: "Usuario asignado no válido" });
+        }
       }
 
       const slaConf = await storage.getSlaConfig(tenantId);
@@ -9781,11 +9801,35 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
 
-      const allowedFields = ["status", "priority", "type", "assignedUserId", "description", "notes"];
-      const updateData: any = {};
-      for (const field of allowedFields) {
-        if (req.body[field] !== undefined) updateData[field] = req.body[field];
+      if (req.user!.role === "abastecedor") {
+        if (existing.assignedUserId !== req.user!.id) {
+          return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+        }
+        const abastecedorAllowed = ["status", "notes"];
+        const abastecedorData: any = {};
+        for (const f of abastecedorAllowed) {
+          if (req.body[f] !== undefined) abastecedorData[f] = req.body[f];
+        }
+        if (abastecedorData.status) {
+          const validStatuses = ["en_proceso", "en_ruta", "completada"];
+          if (!validStatuses.includes(abastecedorData.status)) {
+            return res.status(403).json({ error: "No autorizado para cambiar a este estado" });
+          }
+          if (abastecedorData.status === "completada") abastecedorData.completedAt = new Date();
+        }
+        const updated = await storage.updateWorkOrder(req.params.id, abastecedorData);
+        return res.json(updated);
       }
+
+      const woUpdateSchema = z.object({
+        status: workOrderStatusEnum.optional(),
+        priority: workOrderPriorityEnum.optional(),
+        type: workOrderTypeEnum.optional(),
+        assignedUserId: z.string().nullable().optional(),
+        description: z.string().nullable().optional(),
+        notes: z.string().nullable().optional(),
+      });
+      const updateData = woUpdateSchema.parse(req.body);
 
       if (updateData.assignedUserId) {
         const assignee = await storage.getUser(updateData.assignedUserId);
@@ -9794,15 +9838,16 @@ export async function registerRoutes(
         }
       }
 
-      if (updateData.status === "completada" && existing.status !== "completada") {
-        updateData.completedAt = new Date();
+      const finalData: any = { ...updateData };
+      if (finalData.status === "completada" && existing.status !== "completada") {
+        finalData.completedAt = new Date();
       }
-      if (updateData.status === "cerrada" && existing.status !== "cerrada") {
-        updateData.closedAt = new Date();
-        updateData.closedBy = req.user!.id;
+      if (finalData.status === "cerrada" && existing.status !== "cerrada") {
+        finalData.closedAt = new Date();
+        finalData.closedBy = req.user!.id;
       }
 
-      const updated = await storage.updateWorkOrder(req.params.id, updateData);
+      const updated = await storage.updateWorkOrder(req.params.id, finalData);
       res.json(updated);
     } catch (error) {
       console.error("Error updating work order:", error);
@@ -9862,6 +9907,9 @@ export async function registerRoutes(
       const tenantId = req.user!.tenantId!;
       const order = await storage.getWorkOrderById(req.params.id);
       if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.id) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
 
@@ -9971,6 +10019,13 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Máquina no encontrada o no pertenece al tenant" });
       }
 
+      if (req.body.assignedUserId) {
+        const assignee = await storage.getUser(req.body.assignedUserId);
+        if (!assignee || assignee.tenantId !== tenantId) {
+          return res.status(400).json({ error: "Usuario asignado no válido" });
+        }
+      }
+
       const slaConf = await storage.getSlaConfig(tenantId);
       const ticketNumber = await storage.generateTicketNumber(tenantId);
       const priority = req.body.priority || "medio";
@@ -10000,11 +10055,15 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Ticket no encontrado" });
       }
 
-      const allowedTicketFields = ["status", "priority", "type", "assignedUserId", "description", "resolution"];
-      const updateData: any = {};
-      for (const field of allowedTicketFields) {
-        if (req.body[field] !== undefined) updateData[field] = req.body[field];
-      }
+      const ticketUpdateSchema = z.object({
+        status: ticketStatusEnum.optional(),
+        priority: workOrderPriorityEnum.optional(),
+        type: ticketTypeEnum.optional(),
+        assignedUserId: z.string().nullable().optional(),
+        description: z.string().optional(),
+        resolution: z.string().nullable().optional(),
+      });
+      const updateData = ticketUpdateSchema.parse(req.body);
 
       if (updateData.assignedUserId) {
         const assignee = await storage.getUser(updateData.assignedUserId);
@@ -10013,14 +10072,15 @@ export async function registerRoutes(
         }
       }
 
-      if (updateData.status === "resuelto" && existing.status !== "resuelto") {
-        updateData.resolvedAt = new Date();
+      const finalData: any = { ...updateData };
+      if (finalData.status === "resuelto" && existing.status !== "resuelto") {
+        finalData.resolvedAt = new Date();
       }
-      if (updateData.status === "cerrado" && existing.status !== "cerrado") {
-        updateData.closedAt = new Date();
+      if (finalData.status === "cerrado" && existing.status !== "cerrado") {
+        finalData.closedAt = new Date();
       }
 
-      const updated = await storage.updateTicket(req.params.id, updateData);
+      const updated = await storage.updateTicket(req.params.id, finalData);
       res.json(updated);
     } catch (error) {
       console.error("Error updating ticket:", error);
@@ -10036,6 +10096,14 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Ticket no encontrado" });
       }
 
+      const assignedUserId = req.body.assignedUserId || ticket.assignedUserId || null;
+      if (assignedUserId) {
+        const assignee = await storage.getUser(assignedUserId);
+        if (!assignee || assignee.tenantId !== tenantId) {
+          return res.status(400).json({ error: "Usuario asignado no válido" });
+        }
+      }
+
       const slaConf = await storage.getSlaConfig(tenantId);
       const orderNumber = await storage.generateOrderNumber(tenantId);
       const priority = req.body.priority || ticket.priority;
@@ -10049,7 +10117,7 @@ export async function registerRoutes(
         type,
         priority,
         status: "pendiente",
-        assignedUserId: req.body.assignedUserId || ticket.assignedUserId || null,
+        assignedUserId,
         ticketId: ticket.id,
         description: req.body.description || ticket.description,
         slaDeadline,
@@ -10116,31 +10184,49 @@ export async function registerRoutes(
   app.post("/api/work-orders/update-sla", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
-      const orders = await storage.getWorkOrders(tenantId, {});
       const now = new Date();
       let updated = 0;
+      let total = 0;
 
+      const orders = await storage.getWorkOrders(tenantId, {});
       for (const order of orders) {
+        total++;
         if (order.status === "completada" || order.status === "cerrada" || order.status === "cancelada") continue;
         if (!order.slaDeadline) continue;
-
         const deadline = new Date(order.slaDeadline);
         let newStatus: string;
-
         if (now > deadline) {
           newStatus = "vencido";
         } else {
           const hoursLeft = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60);
           newStatus = hoursLeft <= 1 ? "proximo_vencer" : "dentro_tiempo";
         }
-
         if (newStatus !== order.slaStatus) {
           await storage.updateWorkOrder(order.id, { slaStatus: newStatus });
           updated++;
         }
       }
 
-      res.json({ updated, total: orders.length });
+      const tickets = await storage.getTickets(tenantId, {});
+      for (const ticket of tickets) {
+        total++;
+        if (ticket.status === "resuelto" || ticket.status === "cerrado") continue;
+        if (!ticket.slaDeadline) continue;
+        const deadline = new Date(ticket.slaDeadline);
+        let newStatus: string;
+        if (now > deadline) {
+          newStatus = "vencido";
+        } else {
+          const hoursLeft = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60);
+          newStatus = hoursLeft <= 1 ? "proximo_vencer" : "dentro_tiempo";
+        }
+        if (newStatus !== ticket.slaStatus) {
+          await storage.updateTicket(ticket.id, { slaStatus: newStatus });
+          updated++;
+        }
+      }
+
+      res.json({ updated, total });
     } catch (error) {
       console.error("Error updating SLA statuses:", error);
       res.status(500).json({ error: "Error al actualizar estados SLA" });
