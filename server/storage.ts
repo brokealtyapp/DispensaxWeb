@@ -52,6 +52,7 @@ import {
   type EstablishmentStage, type InsertEstablishmentStage,
   type EstablishmentFollowup, type InsertEstablishmentFollowup,
   type EstablishmentDocument, type InsertEstablishmentDocument,
+  type EstablishmentContract, type InsertEstablishmentContract,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
@@ -64,7 +65,7 @@ import {
   vehicleInventory, inventoryTransfers, machineInventoryLots,
   establishmentViewers, machineViewerAssignments,
   machineTypeOptions,
-  establishments, establishmentStages, establishmentFollowups, establishmentDocuments,
+  establishments, establishmentStages, establishmentFollowups, establishmentDocuments, establishmentContracts,
   tenants, subscriptionPlans, tenantSubscriptions, tenantSettings, tenantInvites, superAdminAuditLog,
   type Tenant, type InsertTenant,
   type SubscriptionPlan, type InsertSubscriptionPlan,
@@ -646,6 +647,15 @@ export interface IStorage {
   deleteEstablishmentDocument(id: string): Promise<boolean>;
 
   getEstablishmentStats(tenantId: string): Promise<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; converted: number }>;
+
+  getEstablishmentContracts(establishmentId: string): Promise<EstablishmentContract[]>;
+  getEstablishmentContract(id: string): Promise<EstablishmentContract | undefined>;
+  createEstablishmentContract(data: InsertEstablishmentContract): Promise<EstablishmentContract>;
+  updateEstablishmentContract(id: string, data: Partial<InsertEstablishmentContract>): Promise<EstablishmentContract | undefined>;
+  renewEstablishmentContract(id: string, newContract: InsertEstablishmentContract): Promise<EstablishmentContract>;
+
+  getActiveEstablishments(tenantId: string, filters?: { search?: string; contractStatus?: string }): Promise<any[]>;
+  getEstablishmentOperationalHistory(establishmentId: string, tenantId: string): Promise<{ machineVisits: any[]; serviceRecords: any[]; machineAlerts: any[] }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -6842,6 +6852,162 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { total: allEstablishments.length, byStage, byPriority, converted };
+  }
+
+  async getEstablishmentContracts(establishmentId: string): Promise<EstablishmentContract[]> {
+    return db.select().from(establishmentContracts)
+      .where(eq(establishmentContracts.establishmentId, establishmentId))
+      .orderBy(desc(establishmentContracts.createdAt));
+  }
+
+  async getEstablishmentContract(id: string): Promise<EstablishmentContract | undefined> {
+    const [contract] = await db.select().from(establishmentContracts)
+      .where(eq(establishmentContracts.id, id));
+    return contract;
+  }
+
+  async createEstablishmentContract(data: InsertEstablishmentContract): Promise<EstablishmentContract> {
+    const [created] = await db.insert(establishmentContracts).values(data).returning();
+    return created;
+  }
+
+  async updateEstablishmentContract(id: string, data: Partial<InsertEstablishmentContract>): Promise<EstablishmentContract | undefined> {
+    const [updated] = await db.update(establishmentContracts)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(establishmentContracts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async renewEstablishmentContract(id: string, newContract: InsertEstablishmentContract): Promise<EstablishmentContract> {
+    await db.update(establishmentContracts)
+      .set({ status: "renovado", updatedAt: new Date() })
+      .where(eq(establishmentContracts.id, id));
+
+    const [created] = await db.insert(establishmentContracts)
+      .values({ ...newContract, previousContractId: id })
+      .returning();
+    return created;
+  }
+
+  async getActiveEstablishments(tenantId: string, filters?: { search?: string; contractStatus?: string }): Promise<any[]> {
+    const conditions: SQL[] = [
+      eq(establishments.tenantId, tenantId),
+      eq(establishments.isActive, true),
+      or(
+        eq(establishments.status, "convertido"),
+        sql`${establishments.convertedToLocationId} IS NOT NULL`
+      )!,
+    ];
+
+    if (filters?.search) {
+      conditions.push(
+        or(
+          sql`${establishments.name} ILIKE ${'%' + filters.search + '%'}`,
+          sql`${establishments.contactName} ILIKE ${'%' + filters.search + '%'}`,
+          sql`${establishments.address} ILIKE ${'%' + filters.search + '%'}`
+        )!
+      );
+    }
+
+    const results = await db.select({
+      establishment: establishments,
+      stage: establishmentStages,
+      assignedUser: {
+        id: users.id,
+        fullName: users.fullName,
+      },
+    })
+    .from(establishments)
+    .leftJoin(establishmentStages, eq(establishments.stageId, establishmentStages.id))
+    .leftJoin(users, eq(establishments.assignedUserId, users.id))
+    .where(and(...conditions))
+    .orderBy(desc(establishments.convertedAt));
+
+    const enriched = await Promise.all(results.map(async (r) => {
+      const locationId = r.establishment.convertedToLocationId;
+      let machineCount = 0;
+      if (locationId) {
+        const [mc] = await db.select({ count: sql<number>`count(*)` })
+          .from(machines)
+          .where(and(eq(machines.locationId, locationId), eq(machines.tenantId, tenantId)));
+        machineCount = Number(mc.count);
+      }
+
+      const contracts = await db.select().from(establishmentContracts)
+        .where(eq(establishmentContracts.establishmentId, r.establishment.id))
+        .orderBy(desc(establishmentContracts.createdAt))
+        .limit(1);
+
+      const activeContract = contracts[0] || null;
+
+      if (filters?.contractStatus && activeContract?.status !== filters.contractStatus) {
+        return null;
+      }
+      if (filters?.contractStatus && !activeContract) {
+        return null;
+      }
+
+      return {
+        ...r.establishment,
+        stage: r.stage,
+        assignedUser: r.assignedUser,
+        machineCount,
+        activeContract,
+      };
+    }));
+
+    return enriched.filter(Boolean);
+  }
+
+  async getEstablishmentOperationalHistory(establishmentId: string, tenantId: string): Promise<{ machineVisits: any[]; serviceRecords: any[]; machineAlerts: any[] }> {
+    const est = await this.getEstablishment(establishmentId);
+    if (!est || !est.convertedToLocationId) {
+      return { machineVisits: [], serviceRecords: [], machineAlerts: [] };
+    }
+
+    const locationMachines = await db.select({ id: machines.id, name: machines.name })
+      .from(machines)
+      .where(and(eq(machines.locationId, est.convertedToLocationId), eq(machines.tenantId, tenantId)));
+
+    if (locationMachines.length === 0) {
+      return { machineVisits: [], serviceRecords: [], machineAlerts: [] };
+    }
+
+    const machineIds = locationMachines.map(m => m.id);
+    const machineMap = new Map(locationMachines.map(m => [m.id, m.name]));
+
+    const visits = await db.select({
+      visit: machineVisits,
+      user: { id: users.id, fullName: users.fullName },
+    })
+    .from(machineVisits)
+    .leftJoin(users, eq(machineVisits.userId, users.id))
+    .where(inArray(machineVisits.machineId, machineIds))
+    .orderBy(desc(machineVisits.startTime))
+    .limit(50);
+
+    const services = await db.select({
+      record: serviceRecords,
+      user: { id: users.id, fullName: users.fullName },
+    })
+    .from(serviceRecords)
+    .leftJoin(users, eq(serviceRecords.userId, users.id))
+    .where(inArray(serviceRecords.machineId, machineIds))
+    .orderBy(desc(serviceRecords.startTime))
+    .limit(50);
+
+    const alerts = await db.select()
+    .from(machineAlerts)
+    .where(inArray(machineAlerts.machineId, machineIds))
+    .orderBy(desc(machineAlerts.createdAt))
+    .limit(50);
+
+    return {
+      machineVisits: visits.map(v => ({ ...v.visit, machineName: machineMap.get(v.visit.machineId) || "", user: v.user })),
+      serviceRecords: services.map(s => ({ ...s.record, machineName: machineMap.get(s.record.machineId) || "", user: s.user })),
+      machineAlerts: alerts.map(a => ({ ...a, machineName: machineMap.get(a.machineId) || "" })),
+    };
   }
 }
 

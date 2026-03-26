@@ -2485,6 +2485,33 @@ export const insertEstablishmentDocumentSchema = createInsertSchema(establishmen
 export type InsertEstablishmentDocument = z.infer<typeof insertEstablishmentDocumentSchema>;
 export type EstablishmentDocument = typeof establishmentDocuments.$inferSelect;
 
+export const establishmentContracts = pgTable("establishment_contracts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  establishmentId: varchar("establishment_id").references(() => establishments.id).notNull(),
+  contractDate: timestamp("contract_date").defaultNow(),
+  agreementType: varchar("agreement_type", { length: 50 }).default("comision"),
+  commissionTerms: text("commission_terms"),
+  conditions: text("conditions"),
+  status: varchar("status", { length: 30 }).default("activo"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  renewalDate: timestamp("renewal_date"),
+  notes: text("notes"),
+  previousContractId: varchar("previous_contract_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEstablishmentContractSchema = createInsertSchema(establishmentContracts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertEstablishmentContract = z.infer<typeof insertEstablishmentContractSchema>;
+export type EstablishmentContract = typeof establishmentContracts.$inferSelect;
+
 export const establishmentStagesRelations = relations(establishmentStages, ({ one, many }) => ({
   tenant: one(tenants, {
     fields: [establishmentStages.tenantId],
@@ -2512,6 +2539,7 @@ export const establishmentsRelations = relations(establishments, ({ one, many })
   }),
   followups: many(establishmentFollowups),
   documents: many(establishmentDocuments),
+  contracts: many(establishmentContracts),
 }));
 
 export const establishmentFollowupsRelations = relations(establishmentFollowups, ({ one }) => ({
@@ -2541,5 +2569,16 @@ export const establishmentDocumentsRelations = relations(establishmentDocuments,
   uploadedBy: one(users, {
     fields: [establishmentDocuments.uploadedByUserId],
     references: [users.id],
+  }),
+}));
+
+export const establishmentContractsRelations = relations(establishmentContracts, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [establishmentContracts.tenantId],
+    references: [tenants.id],
+  }),
+  establishment: one(establishments, {
+    fields: [establishmentContracts.establishmentId],
+    references: [establishments.id],
   }),
 }));

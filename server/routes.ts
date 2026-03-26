@@ -95,9 +95,11 @@ import {
   insertEstablishmentStageSchema,
   insertEstablishmentFollowupSchema,
   insertEstablishmentDocumentSchema,
+  insertEstablishmentContractSchema,
   establishments as establishmentsTable,
   establishmentStages as establishmentStagesTable,
   establishmentDocuments as establishmentDocsTable,
+  establishmentContracts as establishmentContractsTable,
 } from "@shared/schema";
 import { z } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
@@ -8999,6 +9001,19 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/establishments/active", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const search = req.query.search as string | undefined;
+      const contractStatus = req.query.contractStatus as string | undefined;
+      const results = await storage.getActiveEstablishments(tenantId, { search, contractStatus });
+      res.json(results);
+    } catch (error) {
+      console.error("Error getting active establishments:", error);
+      res.status(500).json({ error: "Error al obtener establecimientos activos" });
+    }
+  });
+
   app.get("/api/establishments/:id", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
@@ -9348,6 +9363,176 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting document:", error);
       res.status(500).json({ error: "Error al eliminar documento" });
+    }
+  });
+
+  // ==================== ESTABLISHMENT CONTRACTS ====================
+
+  app.get("/api/establishments/:id/contracts", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const contracts = await storage.getEstablishmentContracts(req.params.id);
+      res.json(contracts);
+    } catch (error) {
+      console.error("Error getting contracts:", error);
+      res.status(500).json({ error: "Error al obtener contratos" });
+    }
+  });
+
+  const contractSchema = z.object({
+    agreementType: z.string().default("comision"),
+    commissionTerms: z.string().optional(),
+    conditions: z.string().optional(),
+    status: z.enum(["activo", "vencido", "renovado", "cancelado"]).default("activo"),
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
+    renewalDate: z.string().optional(),
+    notes: z.string().optional(),
+  });
+
+  app.post("/api/establishments/:id/contracts", authenticateJWT, requireTenant, authorizeAction("establishments", "create"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const parsed = contractSchema.parse(req.body);
+      const contractData: any = {
+        tenantId,
+        establishmentId: req.params.id,
+        agreementType: parsed.agreementType,
+        commissionTerms: parsed.commissionTerms,
+        conditions: parsed.conditions,
+        status: parsed.status,
+        notes: parsed.notes,
+      };
+      if (parsed.startDate) contractData.startDate = new Date(parsed.startDate);
+      if (parsed.endDate) contractData.endDate = new Date(parsed.endDate);
+      if (parsed.renewalDate) contractData.renewalDate = new Date(parsed.renewalDate);
+
+      const created = await storage.createEstablishmentContract(contractData);
+      res.status(201).json(created);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error creating contract:", error);
+      res.status(500).json({ error: "Error al crear contrato" });
+    }
+  });
+
+  app.patch("/api/establishments/:id/contracts/:contractId", authenticateJWT, requireTenant, authorizeAction("establishments", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const contract = await storage.getEstablishmentContract(req.params.contractId);
+      if (!contract || contract.tenantId !== tenantId || contract.establishmentId !== req.params.id) {
+        return res.status(404).json({ error: "Contrato no encontrado" });
+      }
+      const parsed = contractSchema.partial().parse(req.body);
+      const updateData: any = { ...parsed };
+      if (parsed.startDate && parsed.startDate !== "") {
+        updateData.startDate = new Date(parsed.startDate);
+      } else if (parsed.startDate === "") {
+        updateData.startDate = null;
+      }
+      if (parsed.endDate && parsed.endDate !== "") {
+        updateData.endDate = new Date(parsed.endDate);
+      } else if (parsed.endDate === "") {
+        updateData.endDate = null;
+      }
+      if (parsed.renewalDate && parsed.renewalDate !== "") {
+        updateData.renewalDate = new Date(parsed.renewalDate);
+      } else if (parsed.renewalDate === "") {
+        updateData.renewalDate = null;
+      }
+
+      const updated = await storage.updateEstablishmentContract(req.params.contractId, updateData);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error updating contract:", error);
+      res.status(500).json({ error: "Error al actualizar contrato" });
+    }
+  });
+
+  app.post("/api/establishments/:id/contracts/:contractId/renew", authenticateJWT, requireTenant, authorizeAction("establishments", "create"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const contract = await storage.getEstablishmentContract(req.params.contractId);
+      if (!contract || contract.tenantId !== tenantId || contract.establishmentId !== req.params.id) {
+        return res.status(404).json({ error: "Contrato no encontrado" });
+      }
+      const parsed = contractSchema.parse(req.body);
+      const newContractData: any = {
+        tenantId,
+        establishmentId: req.params.id,
+        agreementType: parsed.agreementType,
+        commissionTerms: parsed.commissionTerms,
+        conditions: parsed.conditions,
+        status: "activo",
+        notes: parsed.notes,
+      };
+      if (parsed.startDate) newContractData.startDate = new Date(parsed.startDate);
+      if (parsed.endDate) newContractData.endDate = new Date(parsed.endDate);
+      if (parsed.renewalDate) newContractData.renewalDate = new Date(parsed.renewalDate);
+
+      const renewed = await storage.renewEstablishmentContract(req.params.contractId, newContractData);
+      res.status(201).json(renewed);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error renewing contract:", error);
+      res.status(500).json({ error: "Error al renovar contrato" });
+    }
+  });
+
+  app.get("/api/establishments/:id/operational-history", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const history = await storage.getEstablishmentOperationalHistory(req.params.id, tenantId);
+      res.json(history);
+    } catch (error) {
+      console.error("Error getting operational history:", error);
+      res.status(500).json({ error: "Error al obtener historial operativo" });
+    }
+  });
+
+  app.get("/api/establishments/:id/machines", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      if (!existing.convertedToLocationId) {
+        return res.json([]);
+      }
+      const allMachines = await storage.getMachines(tenantId, {});
+      const locationMachines = allMachines.filter(m => m.locationId === existing.convertedToLocationId);
+      res.json(locationMachines);
+    } catch (error) {
+      console.error("Error getting establishment machines:", error);
+      res.status(500).json({ error: "Error al obtener máquinas del establecimiento" });
     }
   });
 

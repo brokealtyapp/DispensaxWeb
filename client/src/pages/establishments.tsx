@@ -36,6 +36,11 @@ import {
   CheckCircle2,
   X,
   Calendar,
+  Wrench,
+  AlertTriangle,
+  RefreshCw,
+  Eye,
+  ClipboardList,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -638,6 +643,655 @@ function EstablishmentDetail({
   );
 }
 
+interface EstablishmentContract {
+  id: string;
+  establishmentId: string;
+  agreementType: string | null;
+  commissionTerms: string | null;
+  conditions: string | null;
+  status: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  renewalDate: string | null;
+  notes: string | null;
+  previousContractId: string | null;
+  createdAt: string | null;
+}
+
+interface ActiveEstablishment extends EstablishmentWithRelations {
+  machineCount: number;
+  activeContract: EstablishmentContract | null;
+}
+
+const contractFormSchema = z.object({
+  agreementType: z.string().default("comision"),
+  commissionTerms: z.string().optional(),
+  conditions: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  renewalDate: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+type ContractFormValues = z.infer<typeof contractFormSchema>;
+
+function ContractStatusBadge({ status }: { status: string }) {
+  const config: Record<string, { label: string; className: string }> = {
+    activo: { label: "Activo", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+    vencido: { label: "Vencido", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+    renovado: { label: "Renovado", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+    cancelado: { label: "Cancelado", className: "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400" },
+  };
+  const c = config[status] || config.activo;
+  return <Badge variant="secondary" className={c.className}>{c.label}</Badge>;
+}
+
+function ActiveEstablishmentDetail({
+  establishment,
+  onClose,
+  canEdit,
+  canCreate,
+}: {
+  establishment: ActiveEstablishment;
+  onClose: () => void;
+  canEdit: boolean;
+  canCreate: boolean;
+}) {
+  const { toast } = useToast();
+  const [showContractForm, setShowContractForm] = useState(false);
+  const [renewingContract, setRenewingContract] = useState<EstablishmentContract | null>(null);
+
+  const { data: machinesData = [] } = useQuery<any[]>({
+    queryKey: ["/api/establishments", establishment.id, "machines"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/establishments/${establishment.id}/machines`);
+      return res.json();
+    },
+  });
+
+  const { data: contracts = [], isLoading: loadingContracts } = useQuery<EstablishmentContract[]>({
+    queryKey: ["/api/establishments", establishment.id, "contracts"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/establishments/${establishment.id}/contracts`);
+      return res.json();
+    },
+  });
+
+  const { data: history, isLoading: loadingHistory } = useQuery<{
+    machineVisits: any[];
+    serviceRecords: any[];
+    machineAlerts: any[];
+  }>({
+    queryKey: ["/api/establishments", establishment.id, "operational-history"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/establishments/${establishment.id}/operational-history`);
+      return res.json();
+    },
+  });
+
+  const contractForm = useForm<ContractFormValues>({
+    resolver: zodResolver(contractFormSchema),
+    defaultValues: {
+      agreementType: "comision",
+      commissionTerms: "",
+      conditions: "",
+      startDate: "",
+      endDate: "",
+      renewalDate: "",
+      notes: "",
+    },
+  });
+
+  const createContractMutation = useMutation({
+    mutationFn: async (data: ContractFormValues) => {
+      return apiRequest("POST", `/api/establishments/${establishment.id}/contracts`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
+      contractForm.reset();
+      setShowContractForm(false);
+      toast({ title: "Contrato creado" });
+    },
+    onError: () => toast({ title: "Error al crear contrato", variant: "destructive" }),
+  });
+
+  const renewContractMutation = useMutation({
+    mutationFn: async ({ contractId, data }: { contractId: string; data: ContractFormValues }) => {
+      return apiRequest("POST", `/api/establishments/${establishment.id}/contracts/${contractId}/renew`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
+      contractForm.reset();
+      setRenewingContract(null);
+      toast({ title: "Contrato renovado" });
+    },
+    onError: () => toast({ title: "Error al renovar contrato", variant: "destructive" }),
+  });
+
+  const updateContractStatusMutation = useMutation({
+    mutationFn: async ({ contractId, status }: { contractId: string; status: string }) => {
+      return apiRequest("PATCH", `/api/establishments/${establishment.id}/contracts/${contractId}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
+      toast({ title: "Estado del contrato actualizado" });
+    },
+    onError: () => toast({ title: "Error al actualizar contrato", variant: "destructive" }),
+  });
+
+  const ContractFormFields = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <FormField control={contractForm.control} name="agreementType" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Tipo de Acuerdo</FormLabel>
+          <Select onValueChange={field.onChange} defaultValue={field.value}>
+            <FormControl><SelectTrigger data-testid="select-agreement-type"><SelectValue /></SelectTrigger></FormControl>
+            <SelectContent>
+              <SelectItem value="comision">Comisión</SelectItem>
+              <SelectItem value="renta_fija">Renta Fija</SelectItem>
+              <SelectItem value="comodato">Comodato</SelectItem>
+              <SelectItem value="mixto">Mixto</SelectItem>
+            </SelectContent>
+          </Select>
+        </FormItem>
+      )} />
+      <FormField control={contractForm.control} name="startDate" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Fecha Inicio</FormLabel>
+          <FormControl><Input type="date" {...field} data-testid="input-contract-start" /></FormControl>
+        </FormItem>
+      )} />
+      <FormField control={contractForm.control} name="endDate" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Fecha Fin</FormLabel>
+          <FormControl><Input type="date" {...field} data-testid="input-contract-end" /></FormControl>
+        </FormItem>
+      )} />
+      <FormField control={contractForm.control} name="renewalDate" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Fecha de Renovación</FormLabel>
+          <FormControl><Input type="date" {...field} data-testid="input-contract-renewal" /></FormControl>
+        </FormItem>
+      )} />
+      <FormField control={contractForm.control} name="commissionTerms" render={({ field }) => (
+        <FormItem className="md:col-span-2">
+          <FormLabel>Términos de Comisión</FormLabel>
+          <FormControl><Textarea {...field} placeholder="Ej: 5% sobre ventas brutas mensuales..." data-testid="input-commission-terms" /></FormControl>
+        </FormItem>
+      )} />
+      <FormField control={contractForm.control} name="conditions" render={({ field }) => (
+        <FormItem className="md:col-span-2">
+          <FormLabel>Condiciones</FormLabel>
+          <FormControl><Textarea {...field} placeholder="Condiciones especiales del contrato..." data-testid="input-conditions" /></FormControl>
+        </FormItem>
+      )} />
+      <FormField control={contractForm.control} name="notes" render={({ field }) => (
+        <FormItem className="md:col-span-2">
+          <FormLabel>Notas</FormLabel>
+          <FormControl><Textarea {...field} data-testid="input-contract-notes" /></FormControl>
+        </FormItem>
+      )} />
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-xl font-bold">{establishment.name}</h2>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <Badge className="bg-green-600 text-white">Activo</Badge>
+            {establishment.businessType && (
+              <Badge variant="outline" className="text-xs">{establishment.businessType}</Badge>
+            )}
+          </div>
+        </div>
+        <Button variant="ghost" size="icon" onClick={onClose} data-testid="button-close-active-detail">
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-4 pb-3 text-center">
+            <p className="text-2xl font-bold" data-testid="text-machine-count">{machinesData.length}</p>
+            <p className="text-xs text-muted-foreground">Máquinas Instaladas</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 text-center">
+            <p className="text-2xl font-bold" data-testid="text-contract-count">{contracts.length}</p>
+            <p className="text-xs text-muted-foreground">Contratos</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 text-center">
+            <p className="text-2xl font-bold" data-testid="text-visits-count">
+              {(history?.machineVisits?.length || 0) + (history?.serviceRecords?.length || 0)}
+            </p>
+            <p className="text-xs text-muted-foreground">Visitas / Servicios</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">Información de Contacto</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {establishment.contactName && (
+              <div className="flex items-center gap-2"><User className="h-4 w-4 text-muted-foreground" />{establishment.contactName}</div>
+            )}
+            {establishment.contactPhone && (
+              <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" />{establishment.contactPhone}</div>
+            )}
+            {establishment.contactEmail && (
+              <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" />{establishment.contactEmail}</div>
+            )}
+            {establishment.address && (
+              <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" />{establishment.address}{establishment.city ? `, ${establishment.city}` : ""}</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">Datos Comerciales</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              Comisión: {establishment.commissionPercent || "5.00"}%
+            </div>
+            {establishment.convertedAt && (
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                Convertido: {format(new Date(establishment.convertedAt), "dd MMM yyyy", { locale: es })}
+              </div>
+            )}
+            {establishment.assignedUser && (
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-muted-foreground" />
+                Responsable: {establishment.assignedUser.fullName}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Tabs defaultValue="machines">
+        <TabsList>
+          <TabsTrigger value="machines" data-testid="tab-active-machines">
+            <Building2 className="h-4 w-4 mr-1" /> Máquinas ({machinesData.length})
+          </TabsTrigger>
+          <TabsTrigger value="contracts" data-testid="tab-active-contracts">
+            <ClipboardList className="h-4 w-4 mr-1" /> Contratos ({contracts.length})
+          </TabsTrigger>
+          <TabsTrigger value="history" data-testid="tab-active-history">
+            <Clock className="h-4 w-4 mr-1" /> Historial
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="machines" className="space-y-3">
+          {machinesData.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No hay máquinas instaladas en este establecimiento</p>
+          ) : (
+            <div className="space-y-2">
+              {machinesData.map((machine: any) => (
+                <Card key={machine.id}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-medium truncate" data-testid={`text-machine-name-${machine.id}`}>{machine.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {machine.serialNumber || "Sin serial"} - {machine.machineType || "Sin tipo"}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className={
+                        machine.status === "active" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
+                        machine.status === "maintenance" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
+                        "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400"
+                      }>
+                        {machine.status === "active" ? "Activa" : machine.status === "maintenance" ? "Mantenimiento" : machine.status || "N/A"}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="contracts" className="space-y-3">
+          {canCreate && (
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => { contractForm.reset(); setShowContractForm(true); }} data-testid="button-add-contract">
+                <Plus className="h-4 w-4 mr-1" /> Nuevo Contrato
+              </Button>
+            </div>
+          )}
+
+          {(showContractForm || renewingContract) && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">
+                  {renewingContract ? "Renovar Contrato" : "Nuevo Contrato"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Form {...contractForm}>
+                  <form onSubmit={contractForm.handleSubmit((data) => {
+                    if (renewingContract) {
+                      renewContractMutation.mutate({ contractId: renewingContract.id, data });
+                    } else {
+                      createContractMutation.mutate(data);
+                    }
+                  })} className="space-y-4">
+                    <ContractFormFields />
+                    <div className="flex gap-2">
+                      <Button type="submit" size="sm" disabled={createContractMutation.isPending || renewContractMutation.isPending} data-testid="button-save-contract">
+                        {renewingContract ? "Renovar" : "Crear Contrato"}
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => { setShowContractForm(false); setRenewingContract(null); }}>
+                        Cancelar
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              </CardContent>
+            </Card>
+          )}
+
+          {loadingContracts && <p className="text-sm text-muted-foreground">Cargando...</p>}
+          {contracts.map((contract) => (
+            <Card key={contract.id}>
+              <CardContent className="p-4 space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium text-sm">
+                      {contract.agreementType === "comision" ? "Comisión" :
+                       contract.agreementType === "renta_fija" ? "Renta Fija" :
+                       contract.agreementType === "comodato" ? "Comodato" :
+                       contract.agreementType === "mixto" ? "Mixto" : contract.agreementType}
+                    </span>
+                    <ContractStatusBadge status={contract.status || "activo"} />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {canEdit && contract.status === "activo" && (
+                      <>
+                        <Button variant="ghost" size="sm" onClick={() => {
+                          contractForm.reset({
+                            agreementType: contract.agreementType || "comision",
+                            commissionTerms: contract.commissionTerms || "",
+                            conditions: contract.conditions || "",
+                            startDate: "",
+                            endDate: "",
+                            renewalDate: "",
+                            notes: "",
+                          });
+                          setRenewingContract(contract);
+                          setShowContractForm(false);
+                        }} data-testid={`button-renew-${contract.id}`}>
+                          <RefreshCw className="h-4 w-4 mr-1" /> Renovar
+                        </Button>
+                        <Select
+                          value={contract.status || "activo"}
+                          onValueChange={(val) => updateContractStatusMutation.mutate({ contractId: contract.id, status: val })}
+                        >
+                          <SelectTrigger className="w-[120px]" data-testid={`select-contract-status-${contract.id}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="activo">Activo</SelectItem>
+                            <SelectItem value="vencido">Vencido</SelectItem>
+                            <SelectItem value="cancelado">Cancelado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-muted-foreground">
+                  {contract.startDate && (
+                    <span>Inicio: {format(new Date(contract.startDate), "dd MMM yyyy", { locale: es })}</span>
+                  )}
+                  {contract.endDate && (
+                    <span>Fin: {format(new Date(contract.endDate), "dd MMM yyyy", { locale: es })}</span>
+                  )}
+                  {contract.renewalDate && (
+                    <span>Renovación: {format(new Date(contract.renewalDate), "dd MMM yyyy", { locale: es })}</span>
+                  )}
+                </div>
+                {contract.commissionTerms && (
+                  <p className="text-sm">{contract.commissionTerms}</p>
+                )}
+                {contract.conditions && (
+                  <p className="text-xs text-muted-foreground">{contract.conditions}</p>
+                )}
+                {contract.notes && (
+                  <p className="text-xs text-muted-foreground italic">{contract.notes}</p>
+                )}
+                {contract.createdAt && (
+                  <p className="text-xs text-muted-foreground">
+                    Creado: {format(new Date(contract.createdAt), "dd MMM yyyy", { locale: es })}
+                    {contract.previousContractId && " (Renovación)"}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+          {!loadingContracts && contracts.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">Sin contratos registrados</p>
+          )}
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-4">
+          {loadingHistory && <p className="text-sm text-muted-foreground">Cargando historial...</p>}
+
+          {history && (
+            <>
+              {history.serviceRecords.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                    <Wrench className="h-4 w-4" /> Registros de Servicio ({history.serviceRecords.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {history.serviceRecords.slice(0, 10).map((sr: any) => (
+                      <div key={sr.id} className="flex items-center justify-between gap-2 p-3 rounded-md border text-sm">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{sr.machineName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {sr.user?.fullName} - {sr.serviceType || "Servicio"}
+                          </p>
+                        </div>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {sr.startTime ? format(new Date(sr.startTime), "dd MMM yyyy HH:mm", { locale: es }) : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {history.machineVisits.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                    <Eye className="h-4 w-4" /> Visitas ({history.machineVisits.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {history.machineVisits.slice(0, 10).map((v: any) => (
+                      <div key={v.id} className="flex items-center justify-between gap-2 p-3 rounded-md border text-sm">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{v.machineName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {v.user?.fullName} - {v.visitType || "Visita"}
+                          </p>
+                        </div>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {v.startTime ? format(new Date(v.startTime), "dd MMM yyyy HH:mm", { locale: es }) : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {history.machineAlerts.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4" /> Alertas ({history.machineAlerts.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {history.machineAlerts.slice(0, 10).map((a: any) => (
+                      <div key={a.id} className="flex items-center justify-between gap-2 p-3 rounded-md border text-sm">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{a.machineName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {a.alertType || "Alerta"} - {a.severity || "N/A"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge variant="secondary" className={a.resolved ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}>
+                            {a.resolved ? "Resuelta" : "Pendiente"}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {a.createdAt ? format(new Date(a.createdAt), "dd MMM", { locale: es }) : ""}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {history.serviceRecords.length === 0 && history.machineVisits.length === 0 && history.machineAlerts.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Sin historial operativo registrado</p>
+              )}
+            </>
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; canCreate: boolean }) {
+  const [searchActive, setSearchActive] = useState("");
+  const [contractStatusFilter, setContractStatusFilter] = useState<string>("");
+  const [selectedActive, setSelectedActive] = useState<ActiveEstablishment | null>(null);
+
+  const { data: activeEstablishments = [], isLoading } = useQuery<ActiveEstablishment[]>({
+    queryKey: ["/api/establishments/active", { search: searchActive, contractStatus: contractStatusFilter }],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (searchActive) params.set("search", searchActive);
+      if (contractStatusFilter && contractStatusFilter !== "__all__") params.set("contractStatus", contractStatusFilter);
+      const res = await apiRequest("GET", `/api/establishments/active?${params.toString()}`);
+      return res.json();
+    },
+  });
+
+  if (selectedActive) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <ActiveEstablishmentDetail
+          establishment={selectedActive}
+          onClose={() => setSelectedActive(null)}
+          canEdit={canEdit}
+          canCreate={canCreate}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar establecimiento activo..."
+            className="pl-9"
+            value={searchActive}
+            onChange={(e) => setSearchActive(e.target.value)}
+            data-testid="input-search-active"
+          />
+        </div>
+        <Select value={contractStatusFilter} onValueChange={setContractStatusFilter}>
+          <SelectTrigger className="w-[180px]" data-testid="select-contract-filter">
+            <SelectValue placeholder="Estado contrato" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Todos</SelectItem>
+            <SelectItem value="activo">Con contrato activo</SelectItem>
+            <SelectItem value="vencido">Contrato vencido</SelectItem>
+            <SelectItem value="cancelado">Contrato cancelado</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {isLoading && <p className="text-sm text-muted-foreground">Cargando...</p>}
+
+      <div className="space-y-2">
+        {activeEstablishments.map((est) => (
+          <Card
+            key={est.id}
+            className="cursor-pointer hover-elevate"
+            onClick={() => setSelectedActive(est)}
+            data-testid={`card-active-establishment-${est.id}`}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Building2 className="h-5 w-5 text-green-600 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{est.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {[est.contactName, est.address, est.city].filter(Boolean).join(" - ")}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                    {est.machineCount} máquina{est.machineCount !== 1 ? "s" : ""}
+                  </Badge>
+                  {est.activeContract ? (
+                    <ContractStatusBadge status={est.activeContract.status || "activo"} />
+                  ) : (
+                    <Badge variant="secondary" className="bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400">Sin contrato</Badge>
+                  )}
+                  {est.convertedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      Desde: {format(new Date(est.convertedAt), "dd MMM yyyy", { locale: es })}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {!isLoading && activeEstablishments.length === 0 && (
+        <div className="text-center py-12">
+          <CheckCircle2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-muted-foreground">No hay establecimientos activos</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Convierte prospectos desde el Pipeline para verlos aquí.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function EstablishmentsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -1187,14 +1841,7 @@ export function EstablishmentsPage() {
         </TabsContent>
 
         <TabsContent value="activos">
-          <div className="text-center py-12">
-            <CheckCircle2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Establecimientos Activos</h3>
-            <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Esta sección mostrará los establecimientos que han sido convertidos a ubicaciones activas con contratos y máquinas instaladas.
-            </p>
-            <p className="text-xs text-muted-foreground mt-2">Próximamente en una actualización futura.</p>
-          </div>
+          <ActiveEstablishmentsTab canEdit={canEdit} canCreate={canCreate} />
         </TabsContent>
       </Tabs>
 
