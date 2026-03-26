@@ -96,6 +96,7 @@ import {
   insertEstablishmentFollowupSchema,
   insertEstablishmentDocumentSchema,
   insertEstablishmentContractSchema,
+  InsertEstablishmentContract,
   establishments as establishmentsTable,
   establishmentStages as establishmentStagesTable,
   establishmentDocuments as establishmentDocsTable,
@@ -9385,6 +9386,7 @@ export async function registerRoutes(
 
   const contractSchema = z.object({
     agreementType: z.string().default("comision"),
+    contractDate: z.string().optional(),
     commissionTerms: z.string().optional(),
     conditions: z.string().optional(),
     status: z.enum(["activo", "vencido", "renovado", "cancelado"]).default("activo"),
@@ -9402,7 +9404,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Establecimiento no encontrado" });
       }
       const parsed = contractSchema.parse(req.body);
-      const contractData: any = {
+      const contractData: InsertEstablishmentContract = {
         tenantId,
         establishmentId: req.params.id,
         agreementType: parsed.agreementType,
@@ -9410,10 +9412,11 @@ export async function registerRoutes(
         conditions: parsed.conditions,
         status: parsed.status,
         notes: parsed.notes,
+        contractDate: parsed.contractDate ? new Date(parsed.contractDate) : new Date(),
+        startDate: parsed.startDate ? new Date(parsed.startDate) : null,
+        endDate: parsed.endDate ? new Date(parsed.endDate) : null,
+        renewalDate: parsed.renewalDate ? new Date(parsed.renewalDate) : null,
       };
-      if (parsed.startDate) contractData.startDate = new Date(parsed.startDate);
-      if (parsed.endDate) contractData.endDate = new Date(parsed.endDate);
-      if (parsed.renewalDate) contractData.renewalDate = new Date(parsed.renewalDate);
 
       const created = await storage.createEstablishmentContract(contractData);
       res.status(201).json(created);
@@ -9438,21 +9441,21 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Contrato no encontrado" });
       }
       const parsed = contractSchema.partial().parse(req.body);
-      const updateData: any = { ...parsed };
+      const updateData: Partial<InsertEstablishmentContract> = { ...parsed };
       if (parsed.startDate && parsed.startDate !== "") {
         updateData.startDate = new Date(parsed.startDate);
-      } else if (parsed.startDate === "") {
-        updateData.startDate = null;
+      } else if (parsed.startDate === "" || parsed.startDate === undefined) {
+        delete updateData.startDate;
       }
       if (parsed.endDate && parsed.endDate !== "") {
         updateData.endDate = new Date(parsed.endDate);
-      } else if (parsed.endDate === "") {
-        updateData.endDate = null;
+      } else if (parsed.endDate === "" || parsed.endDate === undefined) {
+        delete updateData.endDate;
       }
       if (parsed.renewalDate && parsed.renewalDate !== "") {
         updateData.renewalDate = new Date(parsed.renewalDate);
-      } else if (parsed.renewalDate === "") {
-        updateData.renewalDate = null;
+      } else if (parsed.renewalDate === "" || parsed.renewalDate === undefined) {
+        delete updateData.renewalDate;
       }
 
       const updated = await storage.updateEstablishmentContract(req.params.contractId, updateData);
@@ -9478,7 +9481,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Contrato no encontrado" });
       }
       const parsed = contractSchema.parse(req.body);
-      const newContractData: any = {
+      const newContractData: InsertEstablishmentContract = {
         tenantId,
         establishmentId: req.params.id,
         agreementType: parsed.agreementType,
@@ -9486,10 +9489,11 @@ export async function registerRoutes(
         conditions: parsed.conditions,
         status: "activo",
         notes: parsed.notes,
+        contractDate: parsed.contractDate ? new Date(parsed.contractDate) : new Date(),
+        startDate: parsed.startDate ? new Date(parsed.startDate) : null,
+        endDate: parsed.endDate ? new Date(parsed.endDate) : null,
+        renewalDate: parsed.renewalDate ? new Date(parsed.renewalDate) : null,
       };
-      if (parsed.startDate) newContractData.startDate = new Date(parsed.startDate);
-      if (parsed.endDate) newContractData.endDate = new Date(parsed.endDate);
-      if (parsed.renewalDate) newContractData.renewalDate = new Date(parsed.renewalDate);
 
       const renewed = await storage.renewEstablishmentContract(req.params.contractId, newContractData);
       res.status(201).json(renewed);
@@ -9499,6 +9503,25 @@ export async function registerRoutes(
       }
       console.error("Error renewing contract:", error);
       res.status(500).json({ error: "Error al renovar contrato" });
+    }
+  });
+
+  app.delete("/api/establishments/:id/contracts/:contractId", authenticateJWT, requireTenant, authorizeAction("establishments", "delete"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const contract = await storage.getEstablishmentContract(req.params.contractId);
+      if (!contract || contract.tenantId !== tenantId || contract.establishmentId !== req.params.id) {
+        return res.status(404).json({ error: "Contrato no encontrado" });
+      }
+      await storage.deleteEstablishmentContract(req.params.contractId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting contract:", error);
+      res.status(500).json({ error: "Error al eliminar contrato" });
     }
   });
 

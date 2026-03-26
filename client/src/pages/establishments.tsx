@@ -665,6 +665,7 @@ interface ActiveEstablishment extends EstablishmentWithRelations {
 
 const contractFormSchema = z.object({
   agreementType: z.string().default("comision"),
+  contractDate: z.string().optional(),
   commissionTerms: z.string().optional(),
   conditions: z.string().optional(),
   startDate: z.string().optional(),
@@ -675,14 +676,26 @@ const contractFormSchema = z.object({
 
 type ContractFormValues = z.infer<typeof contractFormSchema>;
 
-function ContractStatusBadge({ status }: { status: string }) {
+function ContractStatusBadge({ status, endDate }: { status: string; endDate?: string | Date | null }) {
+  let effectiveStatus = status;
+  if (status === "activo" && endDate) {
+    const end = new Date(endDate);
+    const now = new Date();
+    const daysUntilExpiry = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysUntilExpiry <= 30 && daysUntilExpiry > 0) {
+      effectiveStatus = "por_vencer";
+    } else if (daysUntilExpiry <= 0) {
+      effectiveStatus = "vencido";
+    }
+  }
   const config: Record<string, { label: string; className: string }> = {
     activo: { label: "Activo", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+    por_vencer: { label: "Por Vencer", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
     vencido: { label: "Vencido", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
     renovado: { label: "Renovado", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
     cancelado: { label: "Cancelado", className: "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400" },
   };
-  const c = config[status] || config.activo;
+  const c = config[effectiveStatus] || config.activo;
   return <Badge variant="secondary" className={c.className}>{c.label}</Badge>;
 }
 
@@ -721,6 +734,7 @@ function ActiveEstablishmentDetail({
     machineVisits: any[];
     serviceRecords: any[];
     machineAlerts: any[];
+    totalSales: number;
   }>({
     queryKey: ["/api/establishments", establishment.id, "operational-history"],
     queryFn: async () => {
@@ -733,6 +747,7 @@ function ActiveEstablishmentDetail({
     resolver: zodResolver(contractFormSchema),
     defaultValues: {
       agreementType: "comision",
+      contractDate: new Date().toISOString().split("T")[0],
       commissionTerms: "",
       conditions: "",
       startDate: "",
@@ -770,6 +785,18 @@ function ActiveEstablishmentDetail({
     onError: () => toast({ title: "Error al renovar contrato", variant: "destructive" }),
   });
 
+  const deleteContractMutation = useMutation({
+    mutationFn: async (contractId: string) => {
+      return apiRequest("DELETE", `/api/establishments/${establishment.id}/contracts/${contractId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
+      toast({ title: "Contrato eliminado" });
+    },
+    onError: () => toast({ title: "Error al eliminar contrato", variant: "destructive" }),
+  });
+
   const updateContractStatusMutation = useMutation({
     mutationFn: async ({ contractId, status }: { contractId: string; status: string }) => {
       return apiRequest("PATCH", `/api/establishments/${establishment.id}/contracts/${contractId}`, { status });
@@ -796,6 +823,12 @@ function ActiveEstablishmentDetail({
               <SelectItem value="mixto">Mixto</SelectItem>
             </SelectContent>
           </Select>
+        </FormItem>
+      )} />
+      <FormField control={contractForm.control} name="contractDate" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Fecha de Contrato</FormLabel>
+          <FormControl><Input type="date" {...field} data-testid="input-contract-date" /></FormControl>
         </FormItem>
       )} />
       <FormField control={contractForm.control} name="startDate" render={({ field }) => (
@@ -1021,7 +1054,7 @@ function ActiveEstablishmentDetail({
                        contract.agreementType === "comodato" ? "Comodato" :
                        contract.agreementType === "mixto" ? "Mixto" : contract.agreementType}
                     </span>
-                    <ContractStatusBadge status={contract.status || "activo"} />
+                    <ContractStatusBadge status={contract.status || "activo"} endDate={contract.endDate} />
                   </div>
                   <div className="flex items-center gap-1">
                     {canEdit && contract.status === "activo" && (
@@ -1029,6 +1062,7 @@ function ActiveEstablishmentDetail({
                         <Button variant="ghost" size="sm" onClick={() => {
                           contractForm.reset({
                             agreementType: contract.agreementType || "comision",
+                            contractDate: new Date().toISOString().split("T")[0],
                             commissionTerms: contract.commissionTerms || "",
                             conditions: contract.conditions || "",
                             startDate: "",
@@ -1055,6 +1089,15 @@ function ActiveEstablishmentDetail({
                           </SelectContent>
                         </Select>
                       </>
+                    )}
+                    {canEdit && (
+                      <Button variant="ghost" size="icon" className="text-destructive" onClick={() => {
+                        if (confirm("¿Eliminar este contrato?")) {
+                          deleteContractMutation.mutate(contract.id);
+                        }
+                      }} data-testid={`button-delete-contract-${contract.id}`}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -1097,6 +1140,20 @@ function ActiveEstablishmentDetail({
 
           {history && (
             <>
+              {history.totalSales > 0 && (
+                <Card>
+                  <CardContent className="p-4 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-green-600" />
+                      <span className="font-medium text-sm">Ventas Totales</span>
+                    </div>
+                    <span className="font-bold text-lg" data-testid="text-total-sales">
+                      RD$ {history.totalSales.toLocaleString("es-DO", { minimumFractionDigits: 2 })}
+                    </span>
+                  </CardContent>
+                </Card>
+              )}
+
               {history.serviceRecords.length > 0 && (
                 <div>
                   <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">

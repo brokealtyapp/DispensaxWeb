@@ -107,6 +107,65 @@ function getTodayInTimezone(): Date {
   return new Date(year, month - 1, day, 12, 0, 0, 0);
 }
 
+interface MachineVisitRecord {
+  id: string;
+  machineId: string;
+  machineName: string;
+  userId: string | null;
+  startTime: Date | null;
+  endTime: Date | null;
+  notes: string | null;
+  user: { id: string; fullName: string } | null;
+}
+
+interface ServiceRecordEntry {
+  id: string;
+  machineId: string;
+  machineName: string;
+  userId: string | null;
+  serviceType: string | null;
+  description: string | null;
+  startTime: Date | null;
+  endTime: Date | null;
+  user: { id: string; fullName: string } | null;
+}
+
+interface MachineAlertEntry {
+  id: string;
+  machineId: string;
+  machineName: string;
+  alertType: string;
+  severity: string | null;
+  message: string | null;
+  createdAt: Date | null;
+}
+
+export interface OperationalHistoryResult {
+  machineVisits: MachineVisitRecord[];
+  serviceRecords: ServiceRecordEntry[];
+  machineAlerts: MachineAlertEntry[];
+  totalSales: number;
+}
+
+export interface ActiveEstablishmentResult {
+  id: string;
+  name: string;
+  tenantId: string;
+  address: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  businessType: string | null;
+  status: string | null;
+  isActive: boolean | null;
+  convertedToLocationId: string | null;
+  convertedAt: Date | null;
+  stage: { id: string; name: string } | null;
+  assignedUser: { id: string; fullName: string } | null;
+  machineCount: number;
+  activeContract: EstablishmentContract | null;
+}
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -652,10 +711,11 @@ export interface IStorage {
   getEstablishmentContract(id: string): Promise<EstablishmentContract | undefined>;
   createEstablishmentContract(data: InsertEstablishmentContract): Promise<EstablishmentContract>;
   updateEstablishmentContract(id: string, data: Partial<InsertEstablishmentContract>): Promise<EstablishmentContract | undefined>;
+  deleteEstablishmentContract(id: string): Promise<boolean>;
   renewEstablishmentContract(id: string, newContract: InsertEstablishmentContract): Promise<EstablishmentContract>;
 
-  getActiveEstablishments(tenantId: string, filters?: { search?: string; contractStatus?: string }): Promise<any[]>;
-  getEstablishmentOperationalHistory(establishmentId: string, tenantId: string): Promise<{ machineVisits: any[]; serviceRecords: any[]; machineAlerts: any[] }>;
+  getActiveEstablishments(tenantId: string, filters?: { search?: string; contractStatus?: string }): Promise<ActiveEstablishmentResult[]>;
+  getEstablishmentOperationalHistory(establishmentId: string, tenantId: string): Promise<OperationalHistoryResult>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -6879,6 +6939,13 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async deleteEstablishmentContract(id: string): Promise<boolean> {
+    const result = await db.delete(establishmentContracts)
+      .where(eq(establishmentContracts.id, id))
+      .returning();
+    return result.length > 0;
+  }
+
   async renewEstablishmentContract(id: string, newContract: InsertEstablishmentContract): Promise<EstablishmentContract> {
     await db.update(establishmentContracts)
       .set({ status: "renovado", updatedAt: new Date() })
@@ -6890,7 +6957,7 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async getActiveEstablishments(tenantId: string, filters?: { search?: string; contractStatus?: string }): Promise<any[]> {
+  async getActiveEstablishments(tenantId: string, filters?: { search?: string; contractStatus?: string }): Promise<ActiveEstablishmentResult[]> {
     const conditions: SQL[] = [
       eq(establishments.tenantId, tenantId),
       eq(establishments.isActive, true),
@@ -6954,16 +7021,16 @@ export class DatabaseStorage implements IStorage {
         assignedUser: r.assignedUser,
         machineCount,
         activeContract,
-      };
+      } as ActiveEstablishmentResult;
     }));
 
-    return enriched.filter(Boolean);
+    return enriched.filter((e): e is ActiveEstablishmentResult => e !== null);
   }
 
-  async getEstablishmentOperationalHistory(establishmentId: string, tenantId: string): Promise<{ machineVisits: any[]; serviceRecords: any[]; machineAlerts: any[] }> {
+  async getEstablishmentOperationalHistory(establishmentId: string, tenantId: string): Promise<OperationalHistoryResult> {
     const est = await this.getEstablishment(establishmentId);
     if (!est || !est.convertedToLocationId) {
-      return { machineVisits: [], serviceRecords: [], machineAlerts: [] };
+      return { machineVisits: [], serviceRecords: [], machineAlerts: [], totalSales: 0 };
     }
 
     const locationMachines = await db.select({ id: machines.id, name: machines.name })
@@ -6971,42 +7038,51 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(machines.locationId, est.convertedToLocationId), eq(machines.tenantId, tenantId)));
 
     if (locationMachines.length === 0) {
-      return { machineVisits: [], serviceRecords: [], machineAlerts: [] };
+      return { machineVisits: [], serviceRecords: [], machineAlerts: [], totalSales: 0 };
     }
 
     const machineIds = locationMachines.map(m => m.id);
     const machineMap = new Map(locationMachines.map(m => [m.id, m.name]));
 
-    const visits = await db.select({
-      visit: machineVisits,
-      user: { id: users.id, fullName: users.fullName },
-    })
-    .from(machineVisits)
-    .leftJoin(users, eq(machineVisits.userId, users.id))
-    .where(inArray(machineVisits.machineId, machineIds))
-    .orderBy(desc(machineVisits.startTime))
-    .limit(50);
+    const [visits, services, alertsList, salesAgg] = await Promise.all([
+      db.select({
+        visit: machineVisits,
+        user: { id: users.id, fullName: users.fullName },
+      })
+      .from(machineVisits)
+      .leftJoin(users, eq(machineVisits.userId, users.id))
+      .where(inArray(machineVisits.machineId, machineIds))
+      .orderBy(desc(machineVisits.startTime))
+      .limit(50),
 
-    const services = await db.select({
-      record: serviceRecords,
-      user: { id: users.id, fullName: users.fullName },
-    })
-    .from(serviceRecords)
-    .leftJoin(users, eq(serviceRecords.userId, users.id))
-    .where(inArray(serviceRecords.machineId, machineIds))
-    .orderBy(desc(serviceRecords.startTime))
-    .limit(50);
+      db.select({
+        record: serviceRecords,
+        user: { id: users.id, fullName: users.fullName },
+      })
+      .from(serviceRecords)
+      .leftJoin(users, eq(serviceRecords.userId, users.id))
+      .where(inArray(serviceRecords.machineId, machineIds))
+      .orderBy(desc(serviceRecords.startTime))
+      .limit(50),
 
-    const alerts = await db.select()
-    .from(machineAlerts)
-    .where(inArray(machineAlerts.machineId, machineIds))
-    .orderBy(desc(machineAlerts.createdAt))
-    .limit(50);
+      db.select()
+      .from(machineAlerts)
+      .where(inArray(machineAlerts.machineId, machineIds))
+      .orderBy(desc(machineAlerts.createdAt))
+      .limit(50),
+
+      db.select({ total: sql<string>`COALESCE(SUM(${machineSales.totalAmount}), 0)` })
+      .from(machineSales)
+      .where(inArray(machineSales.machineId, machineIds)),
+    ]);
+
+    const totalSales = parseFloat(salesAgg[0]?.total || "0");
 
     return {
       machineVisits: visits.map(v => ({ ...v.visit, machineName: machineMap.get(v.visit.machineId) || "", user: v.user })),
       serviceRecords: services.map(s => ({ ...s.record, machineName: machineMap.get(s.record.machineId) || "", user: s.user })),
-      machineAlerts: alerts.map(a => ({ ...a, machineName: machineMap.get(a.machineId) || "" })),
+      machineAlerts: alertsList.map(a => ({ ...a, machineName: machineMap.get(a.machineId) || "" })),
+      totalSales,
     };
   }
 }
