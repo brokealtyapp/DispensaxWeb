@@ -41,7 +41,10 @@ import {
   RefreshCw,
   Eye,
   ClipboardList,
+  Pencil,
+  ExternalLink,
 } from "lucide-react";
+import { Link } from "wouter";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -668,6 +671,7 @@ const contractFormSchema = z.object({
   contractDate: z.string().optional(),
   commissionTerms: z.string().optional(),
   conditions: z.string().optional(),
+  status: z.string().default("activo"),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   renewalDate: z.string().optional(),
@@ -712,6 +716,7 @@ function ActiveEstablishmentDetail({
 }) {
   const { toast } = useToast();
   const [showContractForm, setShowContractForm] = useState(false);
+  const [editingContract, setEditingContract] = useState<EstablishmentContract | null>(null);
   const [renewingContract, setRenewingContract] = useState<EstablishmentContract | null>(null);
 
   const { data: machinesData = [] } = useQuery<any[]>({
@@ -750,6 +755,7 @@ function ActiveEstablishmentDetail({
       contractDate: new Date().toISOString().split("T")[0],
       commissionTerms: "",
       conditions: "",
+      status: "activo",
       startDate: "",
       endDate: "",
       renewalDate: "",
@@ -783,6 +789,21 @@ function ActiveEstablishmentDetail({
       toast({ title: "Contrato renovado" });
     },
     onError: () => toast({ title: "Error al renovar contrato", variant: "destructive" }),
+  });
+
+  const editContractMutation = useMutation({
+    mutationFn: async ({ contractId, data }: { contractId: string; data: ContractFormValues }) => {
+      return apiRequest("PATCH", `/api/establishments/${establishment.id}/contracts/${contractId}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
+      contractForm.reset();
+      setEditingContract(null);
+      setShowContractForm(false);
+      toast({ title: "Contrato actualizado" });
+    },
+    onError: () => toast({ title: "Error al actualizar contrato", variant: "destructive" }),
   });
 
   const deleteContractMutation = useMutation({
@@ -829,6 +850,20 @@ function ActiveEstablishmentDetail({
         <FormItem>
           <FormLabel>Fecha de Contrato</FormLabel>
           <FormControl><Input type="date" {...field} data-testid="input-contract-date" /></FormControl>
+        </FormItem>
+      )} />
+      <FormField control={contractForm.control} name="status" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Estado</FormLabel>
+          <Select onValueChange={field.onChange} defaultValue={field.value}>
+            <FormControl><SelectTrigger data-testid="select-contract-status"><SelectValue /></SelectTrigger></FormControl>
+            <SelectContent>
+              <SelectItem value="activo">Activo</SelectItem>
+              <SelectItem value="vencido">Vencido</SelectItem>
+              <SelectItem value="renovado">Renovado</SelectItem>
+              <SelectItem value="cancelado">Cancelado</SelectItem>
+            </SelectContent>
+          </Select>
         </FormItem>
       )} />
       <FormField control={contractForm.control} name="startDate" render={({ field }) => (
@@ -986,13 +1021,20 @@ function ActiveEstablishmentDetail({
                           </p>
                         </div>
                       </div>
-                      <Badge variant="secondary" className={
-                        machine.status === "active" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                        machine.status === "maintenance" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
-                        "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400"
-                      }>
-                        {machine.status === "active" ? "Activa" : machine.status === "maintenance" ? "Mantenimiento" : machine.status || "N/A"}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className={
+                          machine.status === "active" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
+                          machine.status === "maintenance" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
+                          "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400"
+                        }>
+                          {machine.status === "active" ? "Activa" : machine.status === "maintenance" ? "Mantenimiento" : machine.status || "N/A"}
+                        </Badge>
+                        <Link href={`/maquinas/${machine.id}`}>
+                          <Button variant="ghost" size="icon" data-testid={`button-view-machine-${machine.id}`}>
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -1010,17 +1052,19 @@ function ActiveEstablishmentDetail({
             </div>
           )}
 
-          {(showContractForm || renewingContract) && (
+          {(showContractForm || renewingContract || editingContract) && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium">
-                  {renewingContract ? "Renovar Contrato" : "Nuevo Contrato"}
+                  {editingContract ? "Editar Contrato" : renewingContract ? "Renovar Contrato" : "Nuevo Contrato"}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <Form {...contractForm}>
                   <form onSubmit={contractForm.handleSubmit((data) => {
-                    if (renewingContract) {
+                    if (editingContract) {
+                      editContractMutation.mutate({ contractId: editingContract.id, data });
+                    } else if (renewingContract) {
                       renewContractMutation.mutate({ contractId: renewingContract.id, data });
                     } else {
                       createContractMutation.mutate(data);
@@ -1028,10 +1072,10 @@ function ActiveEstablishmentDetail({
                   })} className="space-y-4">
                     <ContractFormFields />
                     <div className="flex gap-2">
-                      <Button type="submit" size="sm" disabled={createContractMutation.isPending || renewContractMutation.isPending} data-testid="button-save-contract">
-                        {renewingContract ? "Renovar" : "Crear Contrato"}
+                      <Button type="submit" size="sm" disabled={createContractMutation.isPending || renewContractMutation.isPending || editContractMutation.isPending} data-testid="button-save-contract">
+                        {editingContract ? "Guardar Cambios" : renewingContract ? "Renovar" : "Crear Contrato"}
                       </Button>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => { setShowContractForm(false); setRenewingContract(null); }}>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => { setShowContractForm(false); setRenewingContract(null); setEditingContract(null); }}>
                         Cancelar
                       </Button>
                     </div>
@@ -1057,38 +1101,45 @@ function ActiveEstablishmentDetail({
                     <ContractStatusBadge status={contract.status || "activo"} endDate={contract.endDate} />
                   </div>
                   <div className="flex items-center gap-1">
+                    {canEdit && (
+                      <Button variant="ghost" size="icon" onClick={() => {
+                        contractForm.reset({
+                          agreementType: contract.agreementType || "comision",
+                          contractDate: contract.contractDate ? new Date(contract.contractDate).toISOString().split("T")[0] : "",
+                          commissionTerms: contract.commissionTerms || "",
+                          conditions: contract.conditions || "",
+                          status: contract.status || "activo",
+                          startDate: contract.startDate ? new Date(contract.startDate).toISOString().split("T")[0] : "",
+                          endDate: contract.endDate ? new Date(contract.endDate).toISOString().split("T")[0] : "",
+                          renewalDate: contract.renewalDate ? new Date(contract.renewalDate).toISOString().split("T")[0] : "",
+                          notes: contract.notes || "",
+                        });
+                        setEditingContract(contract);
+                        setRenewingContract(null);
+                        setShowContractForm(false);
+                      }} data-testid={`button-edit-contract-${contract.id}`}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
                     {canEdit && contract.status === "activo" && (
-                      <>
-                        <Button variant="ghost" size="sm" onClick={() => {
-                          contractForm.reset({
-                            agreementType: contract.agreementType || "comision",
-                            contractDate: new Date().toISOString().split("T")[0],
-                            commissionTerms: contract.commissionTerms || "",
-                            conditions: contract.conditions || "",
-                            startDate: "",
-                            endDate: "",
-                            renewalDate: "",
-                            notes: "",
-                          });
-                          setRenewingContract(contract);
-                          setShowContractForm(false);
-                        }} data-testid={`button-renew-${contract.id}`}>
-                          <RefreshCw className="h-4 w-4 mr-1" /> Renovar
-                        </Button>
-                        <Select
-                          value={contract.status || "activo"}
-                          onValueChange={(val) => updateContractStatusMutation.mutate({ contractId: contract.id, status: val })}
-                        >
-                          <SelectTrigger className="w-[120px]" data-testid={`select-contract-status-${contract.id}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="activo">Activo</SelectItem>
-                            <SelectItem value="vencido">Vencido</SelectItem>
-                            <SelectItem value="cancelado">Cancelado</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </>
+                      <Button variant="ghost" size="sm" onClick={() => {
+                        contractForm.reset({
+                          agreementType: contract.agreementType || "comision",
+                          contractDate: new Date().toISOString().split("T")[0],
+                          commissionTerms: contract.commissionTerms || "",
+                          conditions: contract.conditions || "",
+                          status: "activo",
+                          startDate: "",
+                          endDate: "",
+                          renewalDate: "",
+                          notes: "",
+                        });
+                        setRenewingContract(contract);
+                        setEditingContract(null);
+                        setShowContractForm(false);
+                      }} data-testid={`button-renew-${contract.id}`}>
+                        <RefreshCw className="h-4 w-4 mr-1" /> Renovar
+                      </Button>
                     )}
                     {canEdit && (
                       <Button variant="ghost" size="icon" className="text-destructive" onClick={() => {
