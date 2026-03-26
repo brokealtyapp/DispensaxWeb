@@ -2459,9 +2459,13 @@ export const establishmentDocuments = pgTable("establishment_documents", {
   tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   establishmentId: varchar("establishment_id").references(() => establishments.id).notNull(),
   fileName: text("file_name").notNull(),
+  originalName: text("original_name"),
   fileKey: text("file_key").notNull(),
   fileSize: integer("file_size"),
   mimeType: varchar("mime_type", { length: 100 }),
+  documentType: varchar("document_type", { length: 50 }).default("otro"),
+  status: varchar("status", { length: 30 }).default("recibido"),
+  notes: text("notes"),
   uploadedByUserId: varchar("uploaded_by_user_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 });

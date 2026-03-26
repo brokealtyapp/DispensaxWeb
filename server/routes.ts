@@ -8899,6 +8899,71 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/establishment-stages", authenticateJWT, requireTenant, authorizeAction("establishments", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const data = insertEstablishmentStageSchema.parse({ ...req.body, tenantId });
+      const created = await storage.createEstablishmentStage(data);
+      res.status(201).json(created);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error creating stage:", error);
+      res.status(500).json({ error: "Error al crear etapa" });
+    }
+  });
+
+  app.patch("/api/establishment-stages/:id", authenticateJWT, requireTenant, authorizeAction("establishments", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const stages = await storage.getEstablishmentStages(tenantId);
+      const stage = stages.find(s => s.id === req.params.id);
+      if (!stage) {
+        return res.status(404).json({ error: "Etapa no encontrada" });
+      }
+      const allowedFields = z.object({
+        name: z.string().min(1).optional(),
+        color: z.string().optional(),
+        sortOrder: z.coerce.number().optional(),
+        isActive: z.boolean().optional(),
+      });
+      const data = allowedFields.parse(req.body);
+      const [updated] = await db.update(establishmentStagesTable)
+        .set(data)
+        .where(eq(establishmentStagesTable.id, req.params.id))
+        .returning();
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error updating stage:", error);
+      res.status(500).json({ error: "Error al actualizar etapa" });
+    }
+  });
+
+  app.delete("/api/establishment-stages/:id", authenticateJWT, requireTenant, authorizeAction("establishments", "delete"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const stages = await storage.getEstablishmentStages(tenantId);
+      const stage = stages.find(s => s.id === req.params.id);
+      if (!stage) {
+        return res.status(404).json({ error: "Etapa no encontrada" });
+      }
+      if (stage.isDefault) {
+        return res.status(400).json({ error: "No se puede eliminar la etapa predeterminada" });
+      }
+      await db.update(establishmentStagesTable)
+        .set({ isActive: false })
+        .where(eq(establishmentStagesTable.id, req.params.id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting stage:", error);
+      res.status(500).json({ error: "Error al eliminar etapa" });
+    }
+  });
+
   app.get("/api/establishments", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
@@ -9139,6 +9204,7 @@ export async function registerRoutes(
         tenantId,
         establishmentId: req.params.id,
         fileName: file.originalname,
+        originalName: file.originalname,
         fileKey,
         fileSize: file.size,
         mimeType: file.mimetype,
@@ -9149,6 +9215,38 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error uploading document:", error);
       res.status(500).json({ error: "Error al subir documento" });
+    }
+  });
+
+  app.patch("/api/establishments/:id/documents/:docId", authenticateJWT, requireTenant, authorizeAction("establishments", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const docs = await storage.getEstablishmentDocuments(req.params.id);
+      const doc = docs.find((d: any) => d.id === req.params.docId);
+      if (!doc) {
+        return res.status(404).json({ error: "Documento no encontrado" });
+      }
+      const docUpdateSchema = z.object({
+        status: z.enum(["enviado", "recibido", "firmado", "rechazado"]).optional(),
+        documentType: z.string().optional(),
+        notes: z.string().optional(),
+      });
+      const data = docUpdateSchema.parse(req.body);
+      const [updated] = await db.update(establishmentDocsTable)
+        .set(data)
+        .where(eq(establishmentDocsTable.id, req.params.docId))
+        .returning();
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error updating document:", error);
+      res.status(500).json({ error: "Error al actualizar documento" });
     }
   });
 

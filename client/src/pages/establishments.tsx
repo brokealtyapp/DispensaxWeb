@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -94,11 +95,17 @@ function EstablishmentDetail({
   stages,
   onClose,
   onStageChange,
+  canEdit,
+  canCreate,
+  canApprove,
 }: {
   establishment: any;
   stages: any[];
   onClose: () => void;
   onStageChange: () => void;
+  canEdit: boolean;
+  canCreate: boolean;
+  canApprove: boolean;
 }) {
   const { toast } = useToast();
   const [showFollowupForm, setShowFollowupForm] = useState(false);
@@ -229,7 +236,7 @@ function EstablishmentDetail({
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {nextStage && !isConverted && (
+          {canEdit && nextStage && !isConverted && (
             <Button
               size="sm"
               onClick={() => stageMoveMutation.mutate(nextStage.id)}
@@ -240,7 +247,7 @@ function EstablishmentDetail({
               Avanzar a {nextStage.name}
             </Button>
           )}
-          {!isConverted && establishment.stage?.name === "Aprobado para Instalación" && (
+          {canApprove && !isConverted && establishment.stage?.name === "Aprobado para Instalación" && (
             <Button
               size="sm"
               variant="default"
@@ -274,8 +281,8 @@ function EstablishmentDetail({
                     : "bg-muted/50 text-muted-foreground/60"
                 }`}
                 style={isCurrent ? { backgroundColor: s.color } : undefined}
-                onClick={() => !isConverted && stageMoveMutation.mutate(s.id)}
-                disabled={isConverted || stageMoveMutation.isPending}
+                onClick={() => canEdit && !isConverted && stageMoveMutation.mutate(s.id)}
+                disabled={!canEdit || isConverted || stageMoveMutation.isPending}
                 data-testid={`button-stage-${s.name.toLowerCase().replace(/\s+/g, "-")}`}
               >
                 {s.name}
@@ -353,11 +360,13 @@ function EstablishmentDetail({
         </TabsList>
 
         <TabsContent value="followups" className="space-y-3">
-          <div className="flex justify-end">
-            <Button size="sm" onClick={() => setShowFollowupForm(!showFollowupForm)} data-testid="button-add-followup">
-              <Plus className="h-4 w-4 mr-1" /> Agregar Seguimiento
-            </Button>
-          </div>
+          {canCreate && (
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => setShowFollowupForm(!showFollowupForm)} data-testid="button-add-followup">
+                <Plus className="h-4 w-4 mr-1" /> Agregar Seguimiento
+              </Button>
+            </div>
+          )}
 
           {showFollowupForm && (
             <Card>
@@ -430,14 +439,16 @@ function EstablishmentDetail({
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-3">
-          <div className="flex justify-end">
-            <label>
-              <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploadingFile} data-testid="input-file-upload" />
-              <Button size="sm" asChild className="cursor-pointer" disabled={uploadingFile}>
-                <span><Upload className="h-4 w-4 mr-1" /> {uploadingFile ? "Subiendo..." : "Subir Documento"}</span>
-              </Button>
-            </label>
-          </div>
+          {canCreate && (
+            <div className="flex justify-end">
+              <label>
+                <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploadingFile} data-testid="input-file-upload" />
+                <Button size="sm" asChild className="cursor-pointer" disabled={uploadingFile}>
+                  <span><Upload className="h-4 w-4 mr-1" /> {uploadingFile ? "Subiendo..." : "Subir Documento"}</span>
+                </Button>
+              </label>
+            </div>
+          )}
 
           {loadingDocs && <p className="text-sm text-muted-foreground">Cargando...</p>}
           {documents.map((doc: any) => (
@@ -474,6 +485,12 @@ function EstablishmentDetail({
 export function EstablishmentsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { can } = usePermissions();
+  const canCreate = can("establishments", "create");
+  const canEdit = can("establishments", "edit");
+  const canDelete = can("establishments", "delete");
+  const canApprove = can("establishments", "approve");
+  const [mainTab, setMainTab] = useState("en-proceso");
   const [search, setSearch] = useState("");
   const [filterStage, setFilterStage] = useState<string>("");
   const [filterPriority, setFilterPriority] = useState<string>("");
@@ -713,6 +730,9 @@ export function EstablishmentsPage() {
           establishment={selectedEstablishment}
           stages={stages}
           onClose={() => setSelectedEstablishment(null)}
+          canEdit={canEdit}
+          canCreate={canCreate}
+          canApprove={canApprove}
           onStageChange={() => {
             queryClient.invalidateQueries({ queryKey: ["/api/establishments"] }).then(() => {
               const updated = establishments.find((e: any) => e.id === selectedEstablishment.id);
@@ -737,9 +757,11 @@ export function EstablishmentsPage() {
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Establecimientos</h1>
           <p className="text-sm text-muted-foreground">Pipeline CRM de prospectos y establecimientos en proceso</p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-establishment">
-          <Plus className="h-4 w-4 mr-1" /> Nuevo Establecimiento
-        </Button>
+        {canCreate && (
+          <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-establishment">
+            <Plus className="h-4 w-4 mr-1" /> Nuevo Establecimiento
+          </Button>
+        )}
       </div>
 
       {stats && (
@@ -806,120 +828,146 @@ export function EstablishmentsPage() {
         </Select>
       </div>
 
-      <Tabs defaultValue="pipeline">
+      <Tabs value={mainTab} onValueChange={setMainTab}>
         <TabsList>
-          <TabsTrigger value="pipeline" data-testid="tab-pipeline">Vista Pipeline</TabsTrigger>
-          <TabsTrigger value="list" data-testid="tab-list">Vista Lista</TabsTrigger>
+          <TabsTrigger value="en-proceso" data-testid="tab-en-proceso">En Proceso</TabsTrigger>
+          <TabsTrigger value="activos" data-testid="tab-activos">Activos</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="pipeline">
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            {groupedByStage.map(({ stage, items }) => (
-              <div key={stage.id} className="min-w-[280px] max-w-[320px] flex-shrink-0">
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color }} />
-                    <h3 className="text-sm font-semibold">{stage.name}</h3>
+        <TabsContent value="en-proceso">
+          <Tabs defaultValue="pipeline">
+            <TabsList className="mb-4">
+              <TabsTrigger value="pipeline" data-testid="tab-pipeline">Vista Pipeline</TabsTrigger>
+              <TabsTrigger value="list" data-testid="tab-list">Vista Lista</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="pipeline">
+              <div className="flex gap-4 overflow-x-auto pb-4">
+                {groupedByStage.map(({ stage, items }) => (
+                  <div key={stage.id} className="min-w-[280px] max-w-[320px] flex-shrink-0">
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color }} />
+                        <h3 className="text-sm font-semibold">{stage.name}</h3>
+                      </div>
+                      <Badge variant="secondary" className="text-xs">{items.length}</Badge>
+                    </div>
+                    <div className="space-y-2">
+                      {items.map((est: any) => (
+                        <Card
+                          key={est.id}
+                          className="cursor-pointer hover-elevate"
+                          onClick={() => setSelectedEstablishment(est)}
+                          data-testid={`card-establishment-${est.id}`}
+                        >
+                          <CardContent className="p-3 space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-medium text-sm leading-tight">{est.name}</p>
+                              <PriorityBadge priority={est.priority || "media"} />
+                            </div>
+                            {est.contactName && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <User className="h-3 w-3" /> {est.contactName}
+                              </p>
+                            )}
+                            {est.address && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <MapPin className="h-3 w-3" /> {est.address}
+                              </p>
+                            )}
+                            {est.assignedUser && (
+                              <p className="text-xs text-muted-foreground">
+                                Asignado: {est.assignedUser.fullName}
+                              </p>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))}
+                      {items.length === 0 && (
+                        <p className="text-xs text-muted-foreground text-center py-4">Sin establecimientos</p>
+                      )}
+                    </div>
                   </div>
-                  <Badge variant="secondary" className="text-xs">{items.length}</Badge>
-                </div>
-                <div className="space-y-2">
-                  {items.map((est: any) => (
-                    <Card
-                      key={est.id}
-                      className="cursor-pointer hover-elevate"
-                      onClick={() => setSelectedEstablishment(est)}
-                      data-testid={`card-establishment-${est.id}`}
-                    >
-                      <CardContent className="p-3 space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="font-medium text-sm leading-tight">{est.name}</p>
-                          <PriorityBadge priority={est.priority || "media"} />
-                        </div>
-                        {est.contactName && (
-                          <p className="text-xs text-muted-foreground flex items-center gap-1">
-                            <User className="h-3 w-3" /> {est.contactName}
-                          </p>
-                        )}
-                        {est.address && (
-                          <p className="text-xs text-muted-foreground flex items-center gap-1">
-                            <MapPin className="h-3 w-3" /> {est.address}
-                          </p>
-                        )}
-                        {est.assignedUser && (
-                          <p className="text-xs text-muted-foreground">
-                            Asignado: {est.assignedUser.fullName}
-                          </p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                  {items.length === 0 && (
-                    <p className="text-xs text-muted-foreground text-center py-4">Sin establecimientos</p>
-                  )}
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </TabsContent>
+
+            <TabsContent value="list">
+              {isLoading && <p className="text-sm text-muted-foreground">Cargando...</p>}
+              <div className="space-y-2">
+                {establishments.map((est: any) => (
+                  <Card
+                    key={est.id}
+                    className="cursor-pointer hover-elevate"
+                    onClick={() => setSelectedEstablishment(est)}
+                    data-testid={`card-list-establishment-${est.id}`}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between gap-4 flex-wrap">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{est.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {[est.contactName, est.address, est.city].filter(Boolean).join(" - ")}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <StageBadge stage={est.stage} />
+                          <PriorityBadge priority={est.priority || "media"} />
+                          {est.convertedToLocationId && <Badge className="bg-green-600 text-white text-xs">Convertido</Badge>}
+                          {canEdit && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => { e.stopPropagation(); openEditDialog(est); }}
+                              data-testid={`button-edit-${est.id}`}
+                            >
+                              Editar
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive"
+                              onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(est.id); }}
+                              disabled={deleteMutation.isPending}
+                              data-testid={`button-delete-${est.id}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+                {!isLoading && establishments.length === 0 && (
+                  <div className="text-center py-12">
+                    <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No hay establecimientos</p>
+                    {canCreate && (
+                      <Button className="mt-4" onClick={() => setShowCreateDialog(true)} data-testid="button-create-empty">
+                        <Plus className="h-4 w-4 mr-1" /> Crear Primer Establecimiento
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
-        <TabsContent value="list">
-          {isLoading && <p className="text-sm text-muted-foreground">Cargando...</p>}
-          <div className="space-y-2">
-            {establishments.map((est: any) => (
-              <Card
-                key={est.id}
-                className="cursor-pointer hover-elevate"
-                onClick={() => setSelectedEstablishment(est)}
-                data-testid={`card-list-establishment-${est.id}`}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{est.name}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {[est.contactName, est.address, est.city].filter(Boolean).join(" - ")}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <StageBadge stage={est.stage} />
-                      <PriorityBadge priority={est.priority || "media"} />
-                      {est.convertedToLocationId && <Badge className="bg-green-600 text-white text-xs">Convertido</Badge>}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => { e.stopPropagation(); openEditDialog(est); }}
-                        data-testid={`button-edit-${est.id}`}
-                      >
-                        Editar
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive"
-                        onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(est.id); }}
-                        disabled={deleteMutation.isPending}
-                        data-testid={`button-delete-${est.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-            {!isLoading && establishments.length === 0 && (
-              <div className="text-center py-12">
-                <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">No hay establecimientos</p>
-                <Button className="mt-4" onClick={() => setShowCreateDialog(true)} data-testid="button-create-empty">
-                  <Plus className="h-4 w-4 mr-1" /> Crear Primer Establecimiento
-                </Button>
-              </div>
-            )}
+        <TabsContent value="activos">
+          <div className="text-center py-12">
+            <CheckCircle2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Establecimientos Activos</h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              Esta sección mostrará los establecimientos que han sido convertidos a ubicaciones activas con contratos y máquinas instaladas.
+            </p>
+            <p className="text-xs text-muted-foreground mt-2">Próximamente en una actualización futura.</p>
           </div>
         </TabsContent>
       </Tabs>
