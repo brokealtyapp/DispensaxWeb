@@ -1995,49 +1995,65 @@ export function EstablishmentsPage() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader className="flex-shrink-0">
-            <DialogTitle>Nuevo Establecimiento</DialogTitle>
-            <DialogDescription>Registra un nuevo prospecto en el pipeline de establecimientos.</DialogDescription>
-          </DialogHeader>
-          <Form {...createForm}>
-            <form onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))} className="flex flex-col min-h-0 flex-1">
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                <EstablishmentFormFields form={createForm} />
+      {showCreateDialog && (
+        <div className="fixed inset-0 z-50" data-testid="modal-create-establishment">
+          <div className="fixed inset-0 bg-black/80" onClick={() => setShowCreateDialog(false)} />
+          <div className="fixed inset-0 flex items-center justify-center p-4 pointer-events-none">
+            <div className="bg-background rounded-lg shadow-lg border max-w-2xl w-full max-h-[85vh] flex flex-col pointer-events-auto p-6 relative">
+              <button type="button" onClick={() => setShowCreateDialog(false)} className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100 focus:outline-none">
+                <X className="h-4 w-4" />
+              </button>
+              <div className="flex flex-col space-y-1.5 text-left flex-shrink-0 mb-4">
+                <h2 className="text-lg font-semibold leading-none tracking-tight">Nuevo Establecimiento</h2>
+                <p className="text-sm text-muted-foreground">Registra un nuevo prospecto en el pipeline de establecimientos.</p>
               </div>
-              <DialogFooter className="mt-4 flex-shrink-0">
-                <Button type="button" variant="ghost" onClick={() => setShowCreateDialog(false)}>Cancelar</Button>
-                <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-create">
-                  {createMutation.isPending ? "Creando..." : "Crear Establecimiento"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+              <Form {...createForm}>
+                <form onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))} className="flex flex-col min-h-0 flex-1">
+                  <div className="flex-1 min-h-0 overflow-y-auto">
+                    <EstablishmentFormFields form={createForm} />
+                  </div>
+                  <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-4 flex-shrink-0">
+                    <Button type="button" variant="ghost" onClick={() => setShowCreateDialog(false)}>Cancelar</Button>
+                    <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-create">
+                      {createMutation.isPending ? "Creando..." : "Crear Establecimiento"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <Dialog open={!!editingEstablishment} onOpenChange={(open) => !open && setEditingEstablishment(null)}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader className="flex-shrink-0">
-            <DialogTitle>Editar Establecimiento</DialogTitle>
-            <DialogDescription>Modifica los datos del establecimiento seleccionado.</DialogDescription>
-          </DialogHeader>
-          <Form {...editForm}>
-            <form onSubmit={editForm.handleSubmit((data) => updateMutation.mutate({ id: editingEstablishment?.id, data }))} className="flex flex-col min-h-0 flex-1">
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                <EstablishmentFormFields form={editForm} isEdit />
+      {!!editingEstablishment && (
+        <div className="fixed inset-0 z-50" data-testid="modal-edit-establishment">
+          <div className="fixed inset-0 bg-black/80" onClick={() => setEditingEstablishment(null)} />
+          <div className="fixed inset-0 flex items-center justify-center p-4 pointer-events-none">
+            <div className="bg-background rounded-lg shadow-lg border max-w-2xl w-full max-h-[85vh] flex flex-col pointer-events-auto p-6 relative">
+              <button type="button" onClick={() => setEditingEstablishment(null)} className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100 focus:outline-none">
+                <X className="h-4 w-4" />
+              </button>
+              <div className="flex flex-col space-y-1.5 text-left flex-shrink-0 mb-4">
+                <h2 className="text-lg font-semibold leading-none tracking-tight">Editar Establecimiento</h2>
+                <p className="text-sm text-muted-foreground">Modifica los datos del establecimiento seleccionado.</p>
               </div>
-              <DialogFooter className="mt-4 flex-shrink-0">
-                <Button type="button" variant="ghost" onClick={() => setEditingEstablishment(null)}>Cancelar</Button>
-                <Button type="submit" disabled={updateMutation.isPending} data-testid="button-submit-edit">
-                  {updateMutation.isPending ? "Guardando..." : "Guardar Cambios"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+              <Form {...editForm}>
+                <form onSubmit={editForm.handleSubmit((data) => updateMutation.mutate({ id: editingEstablishment?.id, data }))} className="flex flex-col min-h-0 flex-1">
+                  <div className="flex-1 min-h-0 overflow-y-auto">
+                    <EstablishmentFormFields form={editForm} isEdit />
+                  </div>
+                  <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-4 flex-shrink-0">
+                    <Button type="button" variant="ghost" onClick={() => setEditingEstablishment(null)}>Cancelar</Button>
+                    <Button type="submit" disabled={updateMutation.isPending} data-testid="button-submit-edit">
+                      {updateMutation.isPending ? "Guardando..." : "Guardar Cambios"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
