@@ -35,6 +35,7 @@ import {
   Clock,
   CheckCircle2,
   X,
+  Calendar,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -54,6 +55,8 @@ const establishmentFormSchema = z.object({
   estimatedMachines: z.coerce.number().min(1).default(1),
   monthlyEstimatedSales: z.string().optional(),
   commissionPercent: z.string().optional(),
+  nextAction: z.string().optional(),
+  nextActionDate: z.string().optional(),
   notes: z.string().optional(),
   stageId: z.string().optional(),
   assignedUserId: z.string().optional(),
@@ -76,6 +79,8 @@ interface EstablishmentStageInfo {
   color: string | null;
   sortOrder: number | null;
   isDefault: boolean | null;
+  isConversionReady: boolean | null;
+  isFinalStage: boolean | null;
   isActive: boolean | null;
 }
 
@@ -96,6 +101,8 @@ interface EstablishmentWithRelations {
   estimatedMachines: number | null;
   monthlyEstimatedSales: string | null;
   commissionPercent: string | null;
+  nextAction: string | null;
+  nextActionDate: string | null;
   notes: string | null;
   stageId: string | null;
   assignedUserId: string | null;
@@ -186,6 +193,7 @@ function EstablishmentDetail({
   const { toast } = useToast();
   const [showFollowupForm, setShowFollowupForm] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [selectedDocType, setSelectedDocType] = useState("contrato");
 
   const { data: followups = [], isLoading: loadingFollowups } = useQuery<EstablishmentFollowup[]>({
     queryKey: ["/api/establishments", establishment.id, "followups"],
@@ -274,6 +282,7 @@ function EstablishmentDetail({
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("documentType", selectedDocType);
       const res = await fetch(`/api/establishments/${establishment.id}/documents`, {
         method: "POST",
         headers: {
@@ -334,7 +343,7 @@ function EstablishmentDetail({
               Avanzar a {nextStage.name}
             </Button>
           )}
-          {canApprove && !isConverted && establishment.stage?.name === "Aprobado para Instalación" && (
+          {canApprove && !isConverted && establishment.stage?.isConversionReady && (
             <Button
               size="sm"
               variant="default"
@@ -423,6 +432,17 @@ function EstablishmentDetail({
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
               Comisión: {establishment.commissionPercent || "5.00"}%
             </div>
+            {establishment.nextAction && (
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                Próxima acción: {establishment.nextAction}
+                {establishment.nextActionDate && (
+                  <span className="text-muted-foreground">
+                    ({new Date(establishment.nextActionDate).toLocaleDateString("es-DO")})
+                  </span>
+                )}
+              </div>
+            )}
             {establishment.assignedUser && (
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-muted-foreground" />
@@ -538,7 +558,20 @@ function EstablishmentDetail({
 
         <TabsContent value="documents" className="space-y-3">
           {canCreate && (
-            <div className="flex justify-end">
+            <div className="flex items-center justify-end gap-2 flex-wrap">
+              <Select value={selectedDocType} onValueChange={setSelectedDocType}>
+                <SelectTrigger className="w-[180px]" data-testid="select-doc-type">
+                  <SelectValue placeholder="Tipo de documento" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="contrato">Contrato</SelectItem>
+                  <SelectItem value="acuerdo">Acuerdo</SelectItem>
+                  <SelectItem value="permiso">Permiso</SelectItem>
+                  <SelectItem value="identificacion">Identificación</SelectItem>
+                  <SelectItem value="factura">Factura</SelectItem>
+                  <SelectItem value="otro">Otro</SelectItem>
+                </SelectContent>
+              </Select>
               <label>
                 <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploadingFile} data-testid="input-file-upload" />
                 <Button size="sm" asChild className="cursor-pointer" disabled={uploadingFile}>
@@ -556,6 +589,9 @@ function EstablishmentDetail({
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{doc.fileName}</p>
                   <div className="flex items-center gap-2 flex-wrap">
+                    {doc.documentType && (
+                      <Badge variant="outline" className="text-xs">{doc.documentType}</Badge>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       {doc.uploadedBy?.fullName} - {doc.createdAt ? format(new Date(doc.createdAt), "dd MMM yyyy", { locale: es }) : ""}
                       {doc.fileSize ? ` - ${(doc.fileSize / 1024).toFixed(0)} KB` : ""}
@@ -654,7 +690,8 @@ export function EstablishmentsPage() {
     defaultValues: {
       name: "", contactName: "", contactPhone: "", contactEmail: "", address: "",
       city: "", zone: "", gpsCoordinates: "", priority: "media", estimatedMachines: 1,
-      monthlyEstimatedSales: "", commissionPercent: "5.00", notes: "", stageId: "", assignedUserId: "",
+      monthlyEstimatedSales: "", commissionPercent: "5.00", nextAction: "", nextActionDate: "",
+      notes: "", stageId: "", assignedUserId: "",
     },
   });
 
@@ -726,6 +763,8 @@ export function EstablishmentsPage() {
       estimatedMachines: est.estimatedMachines || 1,
       monthlyEstimatedSales: est.monthlyEstimatedSales || "",
       commissionPercent: est.commissionPercent || "5.00",
+      nextAction: est.nextAction || "",
+      nextActionDate: est.nextActionDate ? est.nextActionDate.split("T")[0] : "",
       notes: est.notes || "",
       stageId: est.stageId || "",
       assignedUserId: est.assignedUserId || "",
@@ -827,6 +866,28 @@ export function EstablishmentsPage() {
         <FormItem>
           <FormLabel>Comisión (%)</FormLabel>
           <FormControl><Input type="number" step="0.01" {...field} data-testid="input-commission" /></FormControl>
+        </FormItem>
+      )} />
+      <FormField control={form.control} name="nextAction" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Próxima acción</FormLabel>
+          <Select onValueChange={field.onChange} defaultValue={field.value || ""}>
+            <FormControl><SelectTrigger data-testid="select-next-action"><SelectValue placeholder="Seleccionar próxima acción" /></SelectTrigger></FormControl>
+            <SelectContent>
+              <SelectItem value="llamar">Llamar</SelectItem>
+              <SelectItem value="visitar">Visitar</SelectItem>
+              <SelectItem value="enviar_propuesta">Enviar propuesta</SelectItem>
+              <SelectItem value="seguimiento">Seguimiento</SelectItem>
+              <SelectItem value="negociar">Negociar</SelectItem>
+              <SelectItem value="cerrar">Cerrar</SelectItem>
+            </SelectContent>
+          </Select>
+        </FormItem>
+      )} />
+      <FormField control={form.control} name="nextActionDate" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Fecha próxima gestión</FormLabel>
+          <FormControl><Input type="date" {...field} data-testid="input-next-action-date" /></FormControl>
         </FormItem>
       )} />
       {isEdit && (
@@ -1030,6 +1091,12 @@ export function EstablishmentsPage() {
                                 <MapPin className="h-3 w-3" /> {est.address}
                               </p>
                             )}
+                            {est.nextAction && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Calendar className="h-3 w-3" /> {est.nextAction}
+                                {est.nextActionDate && ` (${new Date(est.nextActionDate).toLocaleDateString("es-DO")})`}
+                              </p>
+                            )}
                             {est.assignedUser && (
                               <p className="text-xs text-muted-foreground">
                                 Asignado: {est.assignedUser.fullName}
@@ -1066,6 +1133,12 @@ export function EstablishmentsPage() {
                             <p className="text-xs text-muted-foreground truncate">
                               {[est.contactName, est.address, est.city].filter(Boolean).join(" - ")}
                             </p>
+                            {est.nextAction && (
+                              <p className="text-xs text-muted-foreground truncate">
+                                Próxima: {est.nextAction}
+                                {est.nextActionDate && ` (${new Date(est.nextActionDate).toLocaleDateString("es-DO")})`}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">

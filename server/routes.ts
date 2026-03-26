@@ -9022,7 +9022,11 @@ export async function registerRoutes(
       const tenantId = req.user!.tenantId!;
       await storage.seedDefaultEstablishmentStages(tenantId);
 
-      const data = insertEstablishmentSchema.parse({ ...req.body, tenantId });
+      const body = { ...req.body, tenantId };
+      if (body.nextActionDate && typeof body.nextActionDate === "string") {
+        body.nextActionDate = new Date(body.nextActionDate);
+      }
+      const data = insertEstablishmentSchema.parse(body);
 
       if (data.stageId) {
         const stages = await storage.getEstablishmentStages(tenantId);
@@ -9068,6 +9072,8 @@ export async function registerRoutes(
     estimatedMachines: z.coerce.number().min(1).optional(),
     monthlyEstimatedSales: z.string().optional(),
     commissionPercent: z.string().optional(),
+    nextAction: z.string().optional().nullable(),
+    nextActionDate: z.string().optional().nullable(),
     notes: z.string().optional(),
     stageId: z.string().optional(),
     assignedUserId: z.string().optional(),
@@ -9095,7 +9101,14 @@ export async function registerRoutes(
         }
       }
 
-      const updated = await storage.updateEstablishment(req.params.id, data);
+      const updatePayload: Record<string, unknown> = { ...data };
+      if (data.nextActionDate) {
+        updatePayload.nextActionDate = new Date(data.nextActionDate);
+      } else if (data.nextActionDate === null) {
+        updatePayload.nextActionDate = null;
+      }
+
+      const updated = await storage.updateEstablishment(req.params.id, updatePayload);
       res.json(updated);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -9139,8 +9152,8 @@ export async function registerRoutes(
       }
       const stages = await storage.getEstablishmentStages(tenantId);
       const currentStage = stages.find(s => s.id === existing.stageId);
-      if (!currentStage || currentStage.name !== "Aprobado para Instalación") {
-        return res.status(400).json({ error: "Solo se pueden convertir establecimientos en etapa 'Aprobado para Instalación'" });
+      if (!currentStage || !currentStage.isConversionReady) {
+        return res.status(400).json({ error: "El establecimiento no está en una etapa habilitada para conversión" });
       }
       const result = await storage.convertEstablishmentToLocation(req.params.id, tenantId);
       res.json(result);
@@ -9244,6 +9257,7 @@ export async function registerRoutes(
 
       await objClient.uploadFromBytes(fileKey, file.buffer);
 
+      const documentType = req.body?.documentType || "otro";
       const doc = await storage.createEstablishmentDocument({
         tenantId,
         establishmentId: req.params.id,
@@ -9252,6 +9266,7 @@ export async function registerRoutes(
         fileKey,
         fileSize: file.size,
         mimeType: file.mimetype,
+        documentType,
         uploadedByUserId: req.user!.userId,
       });
 

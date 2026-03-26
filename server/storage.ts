@@ -6622,11 +6622,11 @@ export class DatabaseStorage implements IStorage {
     const existing = await db.select().from(establishmentStages).where(eq(establishmentStages.tenantId, tenantId));
     if (existing.length > 0) return;
     const defaults = [
-      { name: "Prospecto", color: "#6B7280", sortOrder: 0, isDefault: true },
-      { name: "En Evaluación", color: "#3B82F6", sortOrder: 1, isDefault: false },
-      { name: "En Negociación", color: "#F59E0B", sortOrder: 2, isDefault: false },
-      { name: "Aprobado para Instalación", color: "#10B981", sortOrder: 3, isDefault: false },
-      { name: "Convertido a Activo", color: "#8B5CF6", sortOrder: 4, isDefault: false },
+      { name: "Prospecto", color: "#6B7280", sortOrder: 0, isDefault: true, isConversionReady: false, isFinalStage: false },
+      { name: "En Evaluación", color: "#3B82F6", sortOrder: 1, isDefault: false, isConversionReady: false, isFinalStage: false },
+      { name: "En Negociación", color: "#F59E0B", sortOrder: 2, isDefault: false, isConversionReady: false, isFinalStage: false },
+      { name: "Aprobado para Instalación", color: "#10B981", sortOrder: 3, isDefault: false, isConversionReady: true, isFinalStage: false },
+      { name: "Convertido a Activo", color: "#8B5CF6", sortOrder: 4, isDefault: false, isConversionReady: false, isFinalStage: true },
     ];
     await db.insert(establishmentStages).values(defaults.map(d => ({ tenantId, ...d, isActive: true })));
   }
@@ -6750,7 +6750,7 @@ export class DatabaseStorage implements IStorage {
     }).returning();
 
     const finalStage = await db.select().from(establishmentStages)
-      .where(and(eq(establishmentStages.tenantId, tenantId), eq(establishmentStages.name, "Convertido a Activo")));
+      .where(and(eq(establishmentStages.tenantId, tenantId), eq(establishmentStages.isFinalStage, true)));
 
     const [updatedEst] = await db.update(establishments)
       .set({

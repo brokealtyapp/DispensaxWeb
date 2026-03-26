@@ -2387,6 +2387,8 @@ export const establishmentStages = pgTable("establishment_stages", {
   color: varchar("color", { length: 7 }).default("#6B7280"),
   sortOrder: integer("sort_order").default(0),
   isDefault: boolean("is_default").default(false),
+  isConversionReady: boolean("is_conversion_ready").default(false),
+  isFinalStage: boolean("is_final_stage").default(false),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -2418,6 +2420,8 @@ export const establishments = pgTable("establishments", {
   estimatedMachines: integer("estimated_machines").default(1),
   monthlyEstimatedSales: decimal("monthly_estimated_sales", { precision: 12, scale: 2 }),
   commissionPercent: decimal("commission_percent", { precision: 5, scale: 2 }).default("5.00"),
+  nextAction: text("next_action"),
+  nextActionDate: timestamp("next_action_date"),
   notes: text("notes"),
   convertedToLocationId: varchar("converted_to_location_id").references(() => locations.id),
   convertedAt: timestamp("converted_at"),
