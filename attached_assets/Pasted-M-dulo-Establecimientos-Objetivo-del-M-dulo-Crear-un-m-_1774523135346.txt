@@ -1,0 +1,229 @@
+Módulo: Establecimientos
+Objetivo del Módulo
+Crear un módulo principal llamado Establecimientos para gestionar todos los lugares donde
+Dispensax:
+●
+Está evaluando instalar máquinas
+●
+Tiene procesos en negociación
+●
+Ya tiene máquinas instaladas y operativas
+Este módulo permitirá organizar el ciclo completo del establecimiento desde prospecto hasta
+establecimiento activo.
+Estructura del Módulo
+El módulo Establecimientos tendrá dos sub-módulos:
+1.
+2.
+Establecimientos en Proceso
+Establecimientos Activos
+1-Sub-Módulo: Establecimientos en Proceso
+Objetivo
+Gestionar los establecimientos que están en evaluación, negociación o preparación para instalación.
+Este sub-módulo funcionará como un CRM de seguimiento comercial y operativo.
+Qué debe permitir
+●
+●
+●
+●
+●
+●
+●
+●
+Registrar nuevos establecimientos en proceso
+Ver etapa del establecimiento
+Dar seguimiento
+Registrar observaciones
+Asignar responsable
+Registrar próxima acción
+Controlar documentos enviados
+Convertir a establecimiento activo
+Etapas del Proceso
+●
+Prospecto
+●
+En Evaluación
+●
+En Negociación
+●
+Aprobado para Instalación
+●
+Convertido a Activo
+(Nota: Las etapas deben ser configurables y editables)
+Información del Establecimiento en Proceso
+●
+●
+●
+●
+●
+●
+●
+●
+●
+●
+●
+●
+●
+Nombre del establecimiento
+Contacto principal
+Teléfono
+Correo
+Dirección
+Ciudad / Sector
+Tipo de negocio
+Cantidad e máquinas
+Responsable asignado
+Etapa actual
+Próxima acción
+Observaciones
+Historial de seguimiento
+Seguimiento
+Cada establecimiento debe tener historial:
+●
+●
+●
+●
+●
+Fecha
+Usuario responsable
+Comentario
+Próxima acción
+Fecha próxima gestión
+Conversión a Establecimiento Activo
+Cuando el establecimiento sea aprobado:
+●
+●
+●
+Se convierte a Establecimiento Activo
+Se mantiene la información registrada
+Se evita duplicar datos
+Sub-Módulo: Establecimientos Activos
+Objetivo
+Gestionar los establecimientos donde ya existen máquinas instaladas y operativas.
+Este módulo permitirá ver toda la información relacionada a cada establecimiento activo.
+Información del Establecimiento Activo
+Cada establecimiento activo debe tener:
+●
+●
+●
+●
+Nombre del establecimiento
+Contacto principal
+Teléfono
+Correo
+●
+●
+●
+●
+●
+●
+Dirección
+Ciudad / Sector
+Tipo de negocio
+Responsable asignado
+Fecha de instalación
+Estado del establecimiento
+Información de Máquinas Instaladas
+Dentro del establecimiento activo se debe poder ver:
+●
+Código de máquina
+●
+Tipo de máquina
+●
+Cantidad de máquinas
+●
+Ubicación dentro del establecimiento
+●
+Estado de la máquina
+Ejemplo:
+Establecimiento: Supermercado XYZ
+Máquinas instaladas:
+●
+MAQ-001 — Snack — Entrada
+●
+MAQ-002 — Bebidas — Área comedor
+●
+MAQ-003 — Café — Recepción
+Contrato del Establecimiento
+Cada establecimiento activo debe tener:
+●
+Contrato asociado
+●
+Fecha de contrato
+●
+Tipo de acuerdo
+●
+Comisión o condiciones
+●
+Estado del contrato
+También debe permitir:
+●
+Ver contrato
+●
+Registrar observaciones
+●
+Ver fecha de vencimiento
+●
+Control de renovaciones
+Relación con Otros Módulos
+El módulo Establecimientos Activos debe estar relacionado con:
+●
+●
+●
+●
+●
+Máquinas
+Contratos
+Órdenes de trabajo
+Abastecimientos
+Técnicos
+●
+●
+Alertas
+Historial operativo
+Historial del Establecimiento
+Cada establecimiento activo debe tener historial de:
+●
+●
+●
+●
+●
+●
+Instalaciones
+Retiros
+Órdenes de trabajo
+Abastecimientos
+Mantenimientos
+Incidencias
+Flujo del Módulo
+Establecimiento en Proceso
+↓
+Seguimiento
+↓
+Aprobación
+↓
+Conversión a Establecimiento Activo
+↓
+Instalación de máquinas
+↓
+Gestión operativa
+Objetivo Final del Módulo
+Este módulo permitirá:
+●
+●
+●
+●
+●
+●
+Controlar establecimientos en negociación
+Organizar establecimientos activos
+Ver máquinas por establecimiento
+Gestionar contratos
+Controlar operaciones
+Mejorar organización del sistema Dispensax
+Estructura Final
+Módulo Establecimientos
+●
+Establecimientos en Proceso
+●
+Establecimientos Activos
+Este módulo será uno de los módulos principales del sistema Dispensax.
