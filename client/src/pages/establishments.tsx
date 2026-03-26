@@ -1405,178 +1405,10 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
   );
 }
 
-function SimpleModal({ open, onClose, title, description, children }: { open: boolean; onClose: () => void; title: string; description: string; children: React.ReactNode }) {
-  const handleEscape = useCallback((e: KeyboardEvent) => {
-    if (e.key === "Escape") onClose();
-  }, [onClose]);
+type AdminUserInfo = { id: string; fullName: string | null; isActive: boolean; role: string };
 
-  useEffect(() => {
-    if (!open) return;
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [open, handleEscape]);
-
-  if (!open) return null;
-  const titleId = `modal-title-${title.replace(/\s+/g, "-").toLowerCase()}`;
-  const descId = `modal-desc-${title.replace(/\s+/g, "-").toLowerCase()}`;
+function EstablishmentFormFields({ form, isEdit = false, stages, adminUsers }: { form: UseFormReturn<EstablishmentFormValues>; isEdit?: boolean; stages: EstablishmentStageInfo[]; adminUsers: AdminUserInfo[] }) {
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId}>
-      <div className="fixed inset-0 bg-black/80 animate-in fade-in-0" onClick={onClose} />
-      <div className="fixed inset-0 flex items-center justify-center p-4 pointer-events-none">
-        <div className="bg-background rounded-lg shadow-lg border max-w-2xl w-full max-h-[85vh] flex flex-col pointer-events-auto p-6 relative animate-in fade-in-0 zoom-in-95">
-          <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100 focus:outline-none" aria-label="Cerrar">
-            <X className="h-4 w-4" />
-          </button>
-          <div className="flex flex-col space-y-1.5 text-left flex-shrink-0 mb-4">
-            <h2 id={titleId} className="text-lg font-semibold leading-none tracking-tight">{title}</h2>
-            <p id={descId} className="text-sm text-muted-foreground">{description}</p>
-          </div>
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function EstablishmentsPage() {
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const { can } = usePermissions();
-  const canCreate = can("establishments", "create");
-  const canEdit = can("establishments", "edit");
-  const canDelete = can("establishments", "delete");
-  const canApprove = can("establishments", "approve");
-  const [mainTab, setMainTab] = useState("en-proceso");
-  const [search, setSearch] = useState("");
-  const [filterStage, setFilterStage] = useState<string>("");
-  const [filterPriority, setFilterPriority] = useState<string>("");
-  const [filterAssigned, setFilterAssigned] = useState<string>("");
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [selectedEstablishment, setSelectedEstablishment] = useState<EstablishmentWithRelations | null>(null);
-  const [editingEstablishment, setEditingEstablishment] = useState<EstablishmentWithRelations | null>(null);
-
-  const { data: stages = [] } = useQuery<EstablishmentStageInfo[]>({
-    queryKey: ["/api/establishment-stages"],
-  });
-
-  const { data: establishmentsResponse, isLoading } = useQuery<{ data: EstablishmentWithRelations[]; total: number; page: number; pageSize: number }>({
-    queryKey: ["/api/establishments", { stageId: filterStage, priority: filterPriority, search, assignedUserId: filterAssigned }],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (filterStage && filterStage !== "__all__") params.set("stageId", filterStage);
-      if (filterPriority && filterPriority !== "__all__") params.set("priority", filterPriority);
-      if (filterAssigned && filterAssigned !== "__all__") params.set("assignedUserId", filterAssigned);
-      if (search) params.set("search", search);
-      const res = await apiRequest("GET", `/api/establishments?${params.toString()}`);
-      return res.json();
-    },
-  });
-  const establishments = establishmentsResponse?.data || [];
-
-  const { data: stats } = useQuery<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; converted: number }>({
-    queryKey: ["/api/establishments/stats"],
-  });
-
-  const { data: adminUsers = [] } = useQuery<Array<{ id: string; fullName: string | null; isActive: boolean; role: string }>>({
-    queryKey: ["/api/employees"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/employees");
-      return res.json();
-    },
-  });
-
-  const createForm = useForm<EstablishmentFormValues>({
-    resolver: zodResolver(establishmentFormSchema),
-    defaultValues: {
-      name: "", contactName: "", contactPhone: "", contactEmail: "", address: "",
-      city: "", zone: "", gpsCoordinates: "", priority: "media", estimatedMachines: 1,
-      monthlyEstimatedSales: "", commissionPercent: "5.00", nextAction: "", nextActionDate: "",
-      notes: "", stageId: "", assignedUserId: "",
-    },
-  });
-
-  const editForm = useForm<EstablishmentFormValues>({
-    resolver: zodResolver(establishmentFormSchema),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: EstablishmentFormValues) => {
-      const payload: Record<string, string | number | null | undefined> = { ...data };
-      if (!payload.contactEmail) delete payload.contactEmail;
-      if (!payload.stageId) delete payload.stageId;
-      if (!payload.assignedUserId) payload.assignedUserId = null;
-      if (!payload.monthlyEstimatedSales) delete payload.monthlyEstimatedSales;
-      if (!payload.nextActionDate) payload.nextActionDate = null;
-      if (!payload.nextAction) payload.nextAction = null;
-      return apiRequest("POST", "/api/establishments", payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/establishments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/establishments/stats"] });
-      setShowCreateDialog(false);
-      createForm.reset();
-      toast({ title: "Establecimiento creado" });
-    },
-    onError: () => toast({ title: "Error al crear establecimiento", variant: "destructive" }),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: EstablishmentFormValues }) => {
-      const payload: Record<string, string | number | null | undefined> = { ...data };
-      if (!payload.contactEmail) delete payload.contactEmail;
-      if (!payload.assignedUserId) payload.assignedUserId = null;
-      if (!payload.nextActionDate) payload.nextActionDate = null;
-      if (!payload.nextAction) payload.nextAction = null;
-      return apiRequest("PATCH", `/api/establishments/${id}`, payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/establishments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/establishments/stats"] });
-      setEditingEstablishment(null);
-      toast({ title: "Establecimiento actualizado" });
-    },
-    onError: () => toast({ title: "Error al actualizar", variant: "destructive" }),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/establishments/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/establishments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/establishments/stats"] });
-      setSelectedEstablishment(null);
-      toast({ title: "Establecimiento eliminado" });
-    },
-    onError: () => toast({ title: "Error al eliminar", variant: "destructive" }),
-  });
-
-  const openEditDialog = (est: EstablishmentWithRelations) => {
-    editForm.reset({
-      name: est.name,
-      businessType: est.businessType || "otro",
-      status: est.status || "activo",
-      contactName: est.contactName || "",
-      contactPhone: est.contactPhone || "",
-      contactEmail: est.contactEmail || "",
-      address: est.address || "",
-      city: est.city || "",
-      zone: est.zone || "",
-      gpsCoordinates: est.gpsCoordinates || "",
-      priority: est.priority || "media",
-      estimatedMachines: est.estimatedMachines || 1,
-      monthlyEstimatedSales: est.monthlyEstimatedSales || "",
-      commissionPercent: est.commissionPercent || "5.00",
-      nextAction: est.nextAction || "",
-      nextActionDate: est.nextActionDate ? est.nextActionDate.split("T")[0] : "",
-      notes: est.notes || "",
-      stageId: est.stageId || "",
-      assignedUserId: est.assignedUserId || "",
-    });
-    setEditingEstablishment(est);
-  };
-
-  const EstablishmentFormFields = ({ form, isEdit = false }: { form: UseFormReturn<EstablishmentFormValues>; isEdit?: boolean }) => (
     <div className="space-y-5 pr-1">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FormField control={form.control} name="name" render={({ field }) => (
@@ -1761,6 +1593,178 @@ export function EstablishmentsPage() {
       </div>
     </div>
   );
+}
+
+function SimpleModal({ open, onClose, title, description, children }: { open: boolean; onClose: () => void; title: string; description: string; children: React.ReactNode }) {
+  const handleEscape = useCallback((e: KeyboardEvent) => {
+    if (e.key === "Escape") onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [open, handleEscape]);
+
+  if (!open) return null;
+  const titleId = `modal-title-${title.replace(/\s+/g, "-").toLowerCase()}`;
+  const descId = `modal-desc-${title.replace(/\s+/g, "-").toLowerCase()}`;
+  return (
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId}>
+      <div className="fixed inset-0 bg-black/80 animate-in fade-in-0" onClick={onClose} />
+      <div className="fixed inset-0 flex items-center justify-center p-4 pointer-events-none">
+        <div className="bg-background rounded-lg shadow-lg border max-w-2xl w-full max-h-[85vh] flex flex-col pointer-events-auto p-6 relative animate-in fade-in-0 zoom-in-95">
+          <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100 focus:outline-none" aria-label="Cerrar">
+            <X className="h-4 w-4" />
+          </button>
+          <div className="flex flex-col space-y-1.5 text-left flex-shrink-0 mb-4">
+            <h2 id={titleId} className="text-lg font-semibold leading-none tracking-tight">{title}</h2>
+            <p id={descId} className="text-sm text-muted-foreground">{description}</p>
+          </div>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function EstablishmentsPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const { can } = usePermissions();
+  const canCreate = can("establishments", "create");
+  const canEdit = can("establishments", "edit");
+  const canDelete = can("establishments", "delete");
+  const canApprove = can("establishments", "approve");
+  const [mainTab, setMainTab] = useState("en-proceso");
+  const [search, setSearch] = useState("");
+  const [filterStage, setFilterStage] = useState<string>("");
+  const [filterPriority, setFilterPriority] = useState<string>("");
+  const [filterAssigned, setFilterAssigned] = useState<string>("");
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [selectedEstablishment, setSelectedEstablishment] = useState<EstablishmentWithRelations | null>(null);
+  const [editingEstablishment, setEditingEstablishment] = useState<EstablishmentWithRelations | null>(null);
+
+  const { data: stages = [] } = useQuery<EstablishmentStageInfo[]>({
+    queryKey: ["/api/establishment-stages"],
+  });
+
+  const { data: establishmentsResponse, isLoading } = useQuery<{ data: EstablishmentWithRelations[]; total: number; page: number; pageSize: number }>({
+    queryKey: ["/api/establishments", { stageId: filterStage, priority: filterPriority, search, assignedUserId: filterAssigned }],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (filterStage && filterStage !== "__all__") params.set("stageId", filterStage);
+      if (filterPriority && filterPriority !== "__all__") params.set("priority", filterPriority);
+      if (filterAssigned && filterAssigned !== "__all__") params.set("assignedUserId", filterAssigned);
+      if (search) params.set("search", search);
+      const res = await apiRequest("GET", `/api/establishments?${params.toString()}`);
+      return res.json();
+    },
+  });
+  const establishments = establishmentsResponse?.data || [];
+
+  const { data: stats } = useQuery<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; converted: number }>({
+    queryKey: ["/api/establishments/stats"],
+  });
+
+  const { data: adminUsers = [] } = useQuery<Array<{ id: string; fullName: string | null; isActive: boolean; role: string }>>({
+    queryKey: ["/api/employees"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/employees");
+      return res.json();
+    },
+  });
+
+  const createForm = useForm<EstablishmentFormValues>({
+    resolver: zodResolver(establishmentFormSchema),
+    defaultValues: {
+      name: "", contactName: "", contactPhone: "", contactEmail: "", address: "",
+      city: "", zone: "", gpsCoordinates: "", priority: "media", estimatedMachines: 1,
+      monthlyEstimatedSales: "", commissionPercent: "5.00", nextAction: "", nextActionDate: "",
+      notes: "", stageId: "", assignedUserId: "",
+    },
+  });
+
+  const editForm = useForm<EstablishmentFormValues>({
+    resolver: zodResolver(establishmentFormSchema),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: EstablishmentFormValues) => {
+      const payload: Record<string, string | number | null | undefined> = { ...data };
+      if (!payload.contactEmail) delete payload.contactEmail;
+      if (!payload.stageId) delete payload.stageId;
+      if (!payload.assignedUserId) payload.assignedUserId = null;
+      if (!payload.monthlyEstimatedSales) delete payload.monthlyEstimatedSales;
+      if (!payload.nextActionDate) payload.nextActionDate = null;
+      if (!payload.nextAction) payload.nextAction = null;
+      return apiRequest("POST", "/api/establishments", payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/stats"] });
+      setShowCreateDialog(false);
+      createForm.reset();
+      toast({ title: "Establecimiento creado" });
+    },
+    onError: () => toast({ title: "Error al crear establecimiento", variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: EstablishmentFormValues }) => {
+      const payload: Record<string, string | number | null | undefined> = { ...data };
+      if (!payload.contactEmail) delete payload.contactEmail;
+      if (!payload.assignedUserId) payload.assignedUserId = null;
+      if (!payload.nextActionDate) payload.nextActionDate = null;
+      if (!payload.nextAction) payload.nextAction = null;
+      return apiRequest("PATCH", `/api/establishments/${id}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/stats"] });
+      setEditingEstablishment(null);
+      toast({ title: "Establecimiento actualizado" });
+    },
+    onError: () => toast({ title: "Error al actualizar", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/establishments/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/stats"] });
+      setSelectedEstablishment(null);
+      toast({ title: "Establecimiento eliminado" });
+    },
+    onError: () => toast({ title: "Error al eliminar", variant: "destructive" }),
+  });
+
+  const openEditDialog = (est: EstablishmentWithRelations) => {
+    editForm.reset({
+      name: est.name,
+      businessType: est.businessType || "otro",
+      status: est.status || "activo",
+      contactName: est.contactName || "",
+      contactPhone: est.contactPhone || "",
+      contactEmail: est.contactEmail || "",
+      address: est.address || "",
+      city: est.city || "",
+      zone: est.zone || "",
+      gpsCoordinates: est.gpsCoordinates || "",
+      priority: est.priority || "media",
+      estimatedMachines: est.estimatedMachines || 1,
+      monthlyEstimatedSales: est.monthlyEstimatedSales || "",
+      commissionPercent: est.commissionPercent || "5.00",
+      nextAction: est.nextAction || "",
+      nextActionDate: est.nextActionDate ? est.nextActionDate.split("T")[0] : "",
+      notes: est.notes || "",
+      stageId: est.stageId || "",
+      assignedUserId: est.assignedUserId || "",
+    });
+    setEditingEstablishment(est);
+  };
 
   if (selectedEstablishment) {
     return (
@@ -2031,7 +2035,7 @@ export function EstablishmentsPage() {
         <Form {...createForm}>
           <form onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))} className="flex flex-col min-h-0 flex-1" data-testid="modal-create-establishment">
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <EstablishmentFormFields form={createForm} />
+              <EstablishmentFormFields form={createForm} stages={stages} adminUsers={adminUsers} />
             </div>
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-4 flex-shrink-0">
               <Button type="button" variant="ghost" onClick={() => setShowCreateDialog(false)}>Cancelar</Button>
@@ -2047,7 +2051,7 @@ export function EstablishmentsPage() {
         <Form {...editForm}>
           <form onSubmit={editForm.handleSubmit((data) => updateMutation.mutate({ id: editingEstablishment?.id, data }))} className="flex flex-col min-h-0 flex-1" data-testid="modal-edit-establishment">
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <EstablishmentFormFields form={editForm} isEdit />
+              <EstablishmentFormFields form={editForm} isEdit stages={stages} adminUsers={adminUsers} />
             </div>
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-4 flex-shrink-0">
               <Button type="button" variant="ghost" onClick={() => setEditingEstablishment(null)}>Cancelar</Button>
