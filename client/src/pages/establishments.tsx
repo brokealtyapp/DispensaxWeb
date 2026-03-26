@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1475,7 +1475,7 @@ export function EstablishmentsPage() {
       if (!payload.assignedUserId || payload.assignedUserId === "__none__") delete payload.assignedUserId;
       if (!payload.monthlyEstimatedSales) delete payload.monthlyEstimatedSales;
       if (!payload.nextActionDate) payload.nextActionDate = null;
-      if (!payload.nextAction) payload.nextAction = null;
+      if (!payload.nextAction || payload.nextAction === "__none__") payload.nextAction = null;
       return apiRequest("POST", "/api/establishments", payload);
     },
     onSuccess: () => {
@@ -1494,7 +1494,7 @@ export function EstablishmentsPage() {
       if (!payload.contactEmail) delete payload.contactEmail;
       if (!payload.assignedUserId || payload.assignedUserId === "__none__") delete payload.assignedUserId;
       if (!payload.nextActionDate) payload.nextActionDate = null;
-      if (!payload.nextAction) payload.nextAction = null;
+      if (!payload.nextAction || payload.nextAction === "__none__") payload.nextAction = null;
       return apiRequest("PATCH", `/api/establishments/${id}`, payload);
     },
     onSuccess: () => {
@@ -1545,156 +1545,189 @@ export function EstablishmentsPage() {
   };
 
   const EstablishmentFormFields = ({ form, isEdit = false }: { form: UseFormReturn<EstablishmentFormValues>; isEdit?: boolean }) => (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-1">
-      <FormField control={form.control} name="name" render={({ field }) => (
-        <FormItem className="md:col-span-2">
-          <FormLabel>Nombre del Establecimiento *</FormLabel>
-          <FormControl><Input {...field} data-testid="input-establishment-name" /></FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="businessType" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Tipo de Negocio</FormLabel>
-          <Select onValueChange={field.onChange} defaultValue={field.value || "otro"}>
-            <FormControl><SelectTrigger data-testid="select-business-type"><SelectValue /></SelectTrigger></FormControl>
-            <SelectContent>
-              <SelectItem value="restaurante">Restaurante</SelectItem>
-              <SelectItem value="hotel">Hotel</SelectItem>
-              <SelectItem value="oficina">Oficina</SelectItem>
-              <SelectItem value="universidad">Universidad</SelectItem>
-              <SelectItem value="hospital">Hospital</SelectItem>
-              <SelectItem value="gimnasio">Gimnasio</SelectItem>
-              <SelectItem value="centro_comercial">Centro Comercial</SelectItem>
-              <SelectItem value="gasolinera">Gasolinera</SelectItem>
-              <SelectItem value="otro">Otro</SelectItem>
-            </SelectContent>
-          </Select>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="contactName" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Persona de Contacto</FormLabel>
-          <FormControl><Input {...field} data-testid="input-contact-name" /></FormControl>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="contactPhone" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Teléfono</FormLabel>
-          <FormControl><Input {...field} data-testid="input-contact-phone" /></FormControl>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="contactEmail" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Email</FormLabel>
-          <FormControl><Input type="email" {...field} data-testid="input-contact-email" /></FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="address" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Dirección</FormLabel>
-          <FormControl><Input {...field} data-testid="input-address" /></FormControl>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="city" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Ciudad</FormLabel>
-          <FormControl><Input {...field} data-testid="input-city" /></FormControl>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="zone" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Zona</FormLabel>
-          <FormControl><Input {...field} data-testid="input-zone" /></FormControl>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="priority" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Prioridad</FormLabel>
-          <Select onValueChange={field.onChange} defaultValue={field.value}>
-            <FormControl><SelectTrigger data-testid="select-priority"><SelectValue /></SelectTrigger></FormControl>
-            <SelectContent>
-              <SelectItem value="alta">Alta</SelectItem>
-              <SelectItem value="media">Media</SelectItem>
-              <SelectItem value="baja">Baja</SelectItem>
-            </SelectContent>
-          </Select>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="estimatedMachines" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Máquinas Estimadas</FormLabel>
-          <FormControl><Input type="number" min={1} {...field} data-testid="input-estimated-machines" /></FormControl>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="monthlyEstimatedSales" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Ventas Mensuales Est. (RD$)</FormLabel>
-          <FormControl><Input type="number" step="0.01" {...field} data-testid="input-monthly-sales" /></FormControl>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="commissionPercent" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Comisión (%)</FormLabel>
-          <FormControl><Input type="number" step="0.01" {...field} data-testid="input-commission" /></FormControl>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="nextAction" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Próxima acción</FormLabel>
-          <Select onValueChange={field.onChange} defaultValue={field.value || ""}>
-            <FormControl><SelectTrigger data-testid="select-next-action"><SelectValue placeholder="Seleccionar próxima acción" /></SelectTrigger></FormControl>
-            <SelectContent>
-              <SelectItem value="llamar">Llamar</SelectItem>
-              <SelectItem value="visitar">Visitar</SelectItem>
-              <SelectItem value="enviar_propuesta">Enviar propuesta</SelectItem>
-              <SelectItem value="seguimiento">Seguimiento</SelectItem>
-              <SelectItem value="negociar">Negociar</SelectItem>
-              <SelectItem value="cerrar">Cerrar</SelectItem>
-            </SelectContent>
-          </Select>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="nextActionDate" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Fecha próxima gestión</FormLabel>
-          <FormControl><Input type="date" {...field} data-testid="input-next-action-date" /></FormControl>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="stageId" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Etapa</FormLabel>
-          <Select onValueChange={field.onChange} defaultValue={field.value}>
-            <FormControl><SelectTrigger data-testid="select-stage"><SelectValue placeholder="Seleccionar etapa" /></SelectTrigger></FormControl>
-            <SelectContent>
-              {stages.map((s: EstablishmentStageInfo) => (
-                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="assignedUserId" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Asignar a</FormLabel>
-          <Select onValueChange={field.onChange} defaultValue={field.value}>
-            <FormControl><SelectTrigger data-testid="select-assigned-user"><SelectValue placeholder="Sin asignar" /></SelectTrigger></FormControl>
-            <SelectContent>
-              <SelectItem value="__none__">Sin asignar</SelectItem>
-              {adminUsers.filter((u) => u.isActive && (u.role === "admin" || u.role === "supervisor")).map((u) => (
-                <SelectItem key={u.id} value={u.id}>{u.fullName}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </FormItem>
-      )} />
-      <FormField control={form.control} name="notes" render={({ field }) => (
-        <FormItem className="md:col-span-2">
-          <FormLabel>Notas</FormLabel>
-          <FormControl><Textarea {...field} data-testid="input-notes" /></FormControl>
-        </FormItem>
-      )} />
+    <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <FormField control={form.control} name="name" render={({ field }) => (
+          <FormItem className="md:col-span-2">
+            <FormLabel>Nombre del Establecimiento *</FormLabel>
+            <FormControl><Input {...field} data-testid="input-establishment-name" /></FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="businessType" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Tipo de Negocio</FormLabel>
+            <Select onValueChange={field.onChange} defaultValue={field.value || "otro"}>
+              <FormControl><SelectTrigger data-testid="select-business-type"><SelectValue /></SelectTrigger></FormControl>
+              <SelectContent>
+                <SelectItem value="colmado">Colmado</SelectItem>
+                <SelectItem value="supermercado">Supermercado</SelectItem>
+                <SelectItem value="restaurante">Restaurante</SelectItem>
+                <SelectItem value="hotel">Hotel</SelectItem>
+                <SelectItem value="oficina">Oficina</SelectItem>
+                <SelectItem value="universidad">Universidad</SelectItem>
+                <SelectItem value="hospital">Hospital</SelectItem>
+                <SelectItem value="farmacia">Farmacia</SelectItem>
+                <SelectItem value="gimnasio">Gimnasio</SelectItem>
+                <SelectItem value="plaza_comercial">Plaza Comercial</SelectItem>
+                <SelectItem value="estacion_servicio">Estación de Servicio</SelectItem>
+                <SelectItem value="tienda">Tienda</SelectItem>
+                <SelectItem value="bar">Bar / Club</SelectItem>
+                <SelectItem value="fabrica">Fábrica</SelectItem>
+                <SelectItem value="otro">Otro</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="priority" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Prioridad</FormLabel>
+            <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <FormControl><SelectTrigger data-testid="select-priority"><SelectValue /></SelectTrigger></FormControl>
+              <SelectContent>
+                <SelectItem value="alta">Alta</SelectItem>
+                <SelectItem value="media">Media</SelectItem>
+                <SelectItem value="baja">Baja</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormItem>
+        )} />
+      </div>
+
+      <div>
+        <p className="text-sm font-medium text-muted-foreground mb-3">Contacto</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField control={form.control} name="contactName" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Persona de Contacto</FormLabel>
+              <FormControl><Input {...field} data-testid="input-contact-name" /></FormControl>
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="contactPhone" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Teléfono</FormLabel>
+              <FormControl><Input {...field} data-testid="input-contact-phone" /></FormControl>
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="contactEmail" render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>Email</FormLabel>
+              <FormControl><Input type="email" {...field} data-testid="input-contact-email" /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium text-muted-foreground mb-3">Ubicación</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField control={form.control} name="address" render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>Dirección</FormLabel>
+              <FormControl><Input {...field} data-testid="input-address" /></FormControl>
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="city" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Ciudad</FormLabel>
+              <FormControl><Input {...field} data-testid="input-city" /></FormControl>
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="zone" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Zona</FormLabel>
+              <FormControl><Input {...field} data-testid="input-zone" /></FormControl>
+            </FormItem>
+          )} />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium text-muted-foreground mb-3">Datos Comerciales</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <FormField control={form.control} name="estimatedMachines" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Máquinas Estimadas</FormLabel>
+              <FormControl><Input type="number" min={1} {...field} data-testid="input-estimated-machines" /></FormControl>
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="monthlyEstimatedSales" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Ventas Mensuales (RD$)</FormLabel>
+              <FormControl><Input type="number" step="0.01" {...field} data-testid="input-monthly-sales" /></FormControl>
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="commissionPercent" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Comisión (%)</FormLabel>
+              <FormControl><Input type="number" step="0.01" {...field} data-testid="input-commission" /></FormControl>
+            </FormItem>
+          )} />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium text-muted-foreground mb-3">Seguimiento</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField control={form.control} name="nextAction" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Próxima acción</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value || ""}>
+                <FormControl><SelectTrigger data-testid="select-next-action"><SelectValue placeholder="Sin acción" /></SelectTrigger></FormControl>
+                <SelectContent>
+                  <SelectItem value="__none__">Sin acción</SelectItem>
+                  <SelectItem value="llamar">Llamar</SelectItem>
+                  <SelectItem value="visitar">Visitar</SelectItem>
+                  <SelectItem value="enviar_propuesta">Enviar propuesta</SelectItem>
+                  <SelectItem value="seguimiento">Seguimiento</SelectItem>
+                  <SelectItem value="negociar">Negociar</SelectItem>
+                  <SelectItem value="cerrar">Cerrar</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="nextActionDate" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Fecha próxima gestión</FormLabel>
+              <FormControl><Input type="date" {...field} data-testid="input-next-action-date" /></FormControl>
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="stageId" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Etapa</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl><SelectTrigger data-testid="select-stage"><SelectValue placeholder="Seleccionar etapa" /></SelectTrigger></FormControl>
+                <SelectContent>
+                  {stages.map((s: EstablishmentStageInfo) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="assignedUserId" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Asignar a</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl><SelectTrigger data-testid="select-assigned-user"><SelectValue placeholder="Sin asignar" /></SelectTrigger></FormControl>
+                <SelectContent>
+                  <SelectItem value="__none__">Sin asignar</SelectItem>
+                  {adminUsers.filter((u) => u.isActive && (u.role === "admin" || u.role === "supervisor")).map((u) => (
+                    <SelectItem key={u.id} value={u.id}>{u.fullName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="notes" render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>Notas</FormLabel>
+              <FormControl><Textarea {...field} data-testid="input-notes" /></FormControl>
+            </FormItem>
+          )} />
+        </div>
+      </div>
     </div>
   );
 
@@ -1967,6 +2000,7 @@ export function EstablishmentsPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Nuevo Establecimiento</DialogTitle>
+            <DialogDescription>Registra un nuevo prospecto en el pipeline de establecimientos.</DialogDescription>
           </DialogHeader>
           <Form {...createForm}>
             <form onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))}>
@@ -1986,6 +2020,7 @@ export function EstablishmentsPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Editar Establecimiento</DialogTitle>
+            <DialogDescription>Modifica los datos del establecimiento seleccionado.</DialogDescription>
           </DialogHeader>
           <Form {...editForm}>
             <form onSubmit={editForm.handleSubmit((data) => updateMutation.mutate({ id: editingEstablishment?.id, data }))}>
