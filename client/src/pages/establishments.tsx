@@ -649,6 +649,8 @@ function EstablishmentDetail({
 interface EstablishmentContract {
   id: string;
   establishmentId: string;
+  tenantId: string;
+  contractDate: string | null;
   agreementType: string | null;
   commissionTerms: string | null;
   conditions: string | null;
@@ -659,6 +661,7 @@ interface EstablishmentContract {
   notes: string | null;
   previousContractId: string | null;
   createdAt: string | null;
+  updatedAt: string | null;
 }
 
 interface ActiveEstablishment extends EstablishmentWithRelations {
