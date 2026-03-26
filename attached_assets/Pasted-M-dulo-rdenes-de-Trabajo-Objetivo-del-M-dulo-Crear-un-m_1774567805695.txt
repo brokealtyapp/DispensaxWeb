@@ -1,0 +1,291 @@
+Módulo: Órdenes de Trabajo
+Objetivo del Módulo
+Crear un módulo de Órdenes de Trabajo para gestionar todas las actividades relacionadas con las
+máquinas de Dispensax, incluyendo:
+●
+Gestión de Tickets
+●
+SLA (tiempos de respuesta)
+●
+Checklist por tipo de trabajo
+●
+Asignación de personal (abastecedores / técnicos)
+●
+Seguimiento y control operativo
+Este módulo será el centro operativo para la gestión de fallas, abastecimiento y mantenimiento de
+máquinas.
+Concepto Principal
+Las Órdenes de Trabajo siempre deben estar vinculadas a una máquina.
+No se puede crear una orden sin seleccionar primero una máquina.
+Cada Orden de Trabajo se generará cuando:
+●
+Un cliente reporte un problema
+●
+El sistema genere una alerta
+●
+Se programe un abastecimiento
+●
+Se programe mantenimiento preventivo
+●
+Se requiera instalación
+●
+Se requiera retiro de máquina
+Tipos de Órdenes de Trabajo
+El módulo debe incluir los siguientes tipos:
+1.
+Abastecimiento
+2.
+Técnico (Correctivo)
+3.
+Mantenimiento Preventivo
+4.
+Instalación de Máquina
+5.
+Retiro de Máquina
+Cada tipo de orden debe tener su Checklist específico.
+Tickets
+El sistema debe permitir crear tickets cuando:
+●
+Cliente reporta problema
+●
+Sistema detecta alerta
+●
+Personal interno reporta incidencia
+Características del Ticket:
+●
+Ticket vinculado a una máquina
+●
+Tipo de incidencia
+●
+Prioridad
+●
+Estado
+●
+SLA asignado
+●
+Responsable asignado
+Estados del Ticket:
+●
+●
+●
+●
+●
+Pendiente
+En proceso
+En ruta
+Resuelto
+Cerrado
+SLA (Tiempo de Respuesta)
+Cada orden debe tener SLA:
+Campos SLA:
+●
+Fecha creación
+●
+Hora creación
+●
+Tiempo SLA asignado
+●
+Fecha límite
+●
+Estado SLA
+Estado SLA:
+●
+●
+Dentro del tiempo
+Próximo a vencer
+SLA vencido
+●
+Ejemplo:
+Crítico → 2 horas
+Alto → 4 horas
+Medio → 24 horas
+Bajo → 72 horas
+El SLA debe calcularse automáticamente.
+Checklist por Tipo de Orden
+Cada tipo de orden debe tener su checklist obligatorio.
+Checklist Abastecimiento
+Ejemplo:
+●
+●
+●
+●
+Revisar productos agotados
+Revisar productos vencidos
+Reponer productos
+Revisar sistema de pago
+●
+●
+●
+●
+Limpieza general
+Confirmar inventario
+Tomar foto máquina
+Observaciones
+Checklist Técnico
+Ejemplo:
+●
+Revisar sistema de pago
+●
+Revisar dispensadores
+●
+Probar dispensado
+●
+Revisar sensores
+●
+Revisar conexión
+●
+Limpieza interna
+●
+Prueba final
+●
+Observaciones
+Checklist Mantenimiento Preventivo
+Ejemplo:
+●
+Limpieza interna
+●
+Limpieza externa
+●
+Revisar componentes
+●
+Revisar sistema de pago
+●
+Revisar bandejas
+●
+Probar dispensado
+●
+Observaciones
+Checklist Instalación
+Ejemplo:
+●
+Ubicación confirmada
+●
+Máquina instalada
+●
+Conexión eléctrica
+●
+Configuración sistema
+●
+Prueba funcionamiento
+●
+Foto instalación
+●
+Observaciones
+Checklist Retiro de Máquina
+Ejemplo:
+●
+Máquina retirada
+●
+Inventario retirado
+●
+Limpieza ubicación
+●
+Foto retiro
+●
+●
+Foto retiro
+Observaciones
+Asignación de Personal
+Las órdenes deben poder asignarse a:
+●
+Abastecedores
+●
+Técnicos
+●
+Supervisores
+Debe relacionarse con:
+●
+●
+●
+Módulo Abastecedores
+Módulo Técnicos
+Módulo Usuarios
+Flujo de Trabajo
+Creación Ticket / Orden
+↓
+Asignación Responsable
+↓
+Asignación SLA
+↓
+Ejecución Orden
+↓
+Completar Checklist
+↓
+Cierre Orden
+↓
+Registro Histórico
+Información de la Orden
+Cada Orden debe tener:
+●
+●
+●
+●
+●
+●
+●
+●
+●
+●
+Número de Orden
+Máquina
+Ubicación
+Tipo de Orden
+Prioridad
+SLA
+Responsable
+Estado
+Fecha creación
+Fecha cierre
+●
+●
+●
+●
+Fecha cierre
+Observaciones
+Checklist
+Fotos
+Relación con Otros Módulos
+Este módulo debe estar relacionado con:
+●
+●
+●
+●
+●
+●
+●
+Máquinas
+Ubicaciones
+Abastecedores
+Técnicos
+Alertas
+Clientes
+Inventario (para abastecimiento)
+Historial
+Cada máquina debe tener historial de:
+●
+Tickets
+●
+Órdenes de trabajo
+●
+Abastecimientos
+●
+Mantenimientos
+●
+Instalaciones
+●
+Retiros
+Objetivo Final
+Este módulo permitirá:
+●
+Control de fallas
+●
+Control de abastecimiento
+●
+Control de mantenimiento
+●
+Control de técnicos
+●
+Medición SLA
+●
+Mejora operativa
+Este módulo será uno de los principales módulos operativos del sistema Dispensax.
