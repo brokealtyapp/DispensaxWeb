@@ -1545,7 +1545,7 @@ export function EstablishmentsPage() {
   };
 
   const EstablishmentFormFields = ({ form, isEdit = false }: { form: UseFormReturn<EstablishmentFormValues>; isEdit?: boolean }) => (
-    <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+    <div className="space-y-5 pr-1">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FormField control={form.control} name="name" render={({ field }) => (
           <FormItem className="md:col-span-2">
@@ -2000,15 +2000,17 @@ export function EstablishmentsPage() {
       </Tabs>
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Nuevo Establecimiento</DialogTitle>
             <DialogDescription>Registra un nuevo prospecto en el pipeline de establecimientos.</DialogDescription>
           </DialogHeader>
           <Form {...createForm}>
-            <form onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))}>
-              <EstablishmentFormFields form={createForm} />
-              <DialogFooter className="mt-4">
+            <form onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))} className="flex flex-col min-h-0 flex-1">
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <EstablishmentFormFields form={createForm} />
+              </div>
+              <DialogFooter className="mt-4 flex-shrink-0">
                 <Button type="button" variant="ghost" onClick={() => setShowCreateDialog(false)}>Cancelar</Button>
                 <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-create">
                   {createMutation.isPending ? "Creando..." : "Crear Establecimiento"}
@@ -2020,15 +2022,17 @@ export function EstablishmentsPage() {
       </Dialog>
 
       <Dialog open={!!editingEstablishment} onOpenChange={(open) => !open && setEditingEstablishment(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Editar Establecimiento</DialogTitle>
             <DialogDescription>Modifica los datos del establecimiento seleccionado.</DialogDescription>
           </DialogHeader>
           <Form {...editForm}>
-            <form onSubmit={editForm.handleSubmit((data) => updateMutation.mutate({ id: editingEstablishment?.id, data }))}>
-              <EstablishmentFormFields form={editForm} isEdit />
-              <DialogFooter className="mt-4">
+            <form onSubmit={editForm.handleSubmit((data) => updateMutation.mutate({ id: editingEstablishment?.id, data }))} className="flex flex-col min-h-0 flex-1">
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <EstablishmentFormFields form={editForm} isEdit />
+              </div>
+              <DialogFooter className="mt-4 flex-shrink-0">
                 <Button type="button" variant="ghost" onClick={() => setEditingEstablishment(null)}>Cancelar</Button>
                 <Button type="submit" disabled={updateMutation.isPending} data-testid="button-submit-edit">
                   {updateMutation.isPending ? "Guardando..." : "Guardar Cambios"}
