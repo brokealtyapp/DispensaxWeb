@@ -37,7 +37,8 @@ export type Resource =
   | "employee_documents"
   | "employee_profiles"
   | "machine_sales"
-  | "establishment_viewers";
+  | "establishment_viewers"
+  | "establishments";
 
 /**
  * Matriz de permisos: define qué acciones puede realizar cada rol en cada recurso
@@ -75,6 +76,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     employee_profiles: { view: true, create: true, edit: true, delete: true },
     machine_sales: { view: true, export: true },
     establishment_viewers: { view: true, create: true, edit: true, delete: true },
+    establishments: { view: true, create: true, edit: true, delete: true, approve: true },
   },
   
   supervisor: {
@@ -108,6 +110,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     employee_profiles: { view: true, create: false, edit: true, delete: false },
     machine_sales: { view: true, export: false },
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
+    establishments: { view: true, create: false, edit: false, delete: false },
   },
   
   abastecedor: {
@@ -141,6 +144,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     employee_profiles: { view: false, create: false, edit: false, delete: false },
     machine_sales: { view: false, export: false },
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
+    establishments: { view: false, create: false, edit: false, delete: false },
   },
   
   almacen: {
@@ -174,6 +178,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     employee_profiles: { view: false, create: false, edit: false, delete: false },
     machine_sales: { view: false, export: false },
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
+    establishments: { view: false, create: false, edit: false, delete: false },
   },
   
   contabilidad: {
@@ -207,6 +212,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     employee_profiles: { view: false, create: false, edit: false, delete: false },
     machine_sales: { view: true, export: true },
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
+    establishments: { view: false, create: false, edit: false, delete: false },
   },
   
   rh: {
@@ -240,6 +246,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     employee_profiles: { view: true, create: true, edit: true, delete: true },
     machine_sales: { view: false, export: false },
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
+    establishments: { view: false, create: false, edit: false, delete: false },
   },
   
   visor_establecimiento: {
@@ -273,6 +280,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     employee_profiles: { view: false, create: false, edit: false, delete: false },
     machine_sales: { view: true, export: true },
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
+    establishments: { view: false, create: false, edit: false, delete: false },
   },
 };
 

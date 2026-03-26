@@ -90,7 +90,14 @@ import {
   shrinkageRecords,
   tasks as tasksTable,
   machineAlerts,
-  products
+  products,
+  insertEstablishmentSchema,
+  insertEstablishmentStageSchema,
+  insertEstablishmentFollowupSchema,
+  insertEstablishmentDocumentSchema,
+  establishments as establishmentsTable,
+  establishmentStages as establishmentStagesTable,
+  establishmentDocuments as establishmentDocsTable,
 } from "@shared/schema";
 import { z } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
@@ -8873,6 +8880,336 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting machine type:", error);
       res.status(500).json({ error: "Error al eliminar tipo de máquina" });
+    }
+  });
+
+  // =====================
+  // ESTABLECIMIENTOS (CRM Pipeline) ROUTES
+  // =====================
+
+  app.get("/api/establishment-stages", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      await storage.seedDefaultEstablishmentStages(tenantId);
+      const stages = await storage.getEstablishmentStages(tenantId);
+      res.json(stages);
+    } catch (error) {
+      console.error("Error getting establishment stages:", error);
+      res.status(500).json({ error: "Error al obtener etapas" });
+    }
+  });
+
+  app.get("/api/establishments", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const { stageId, priority, assignedUserId, search } = req.query;
+      const results = await storage.getEstablishments({
+        tenantId,
+        stageId: stageId as string | undefined,
+        priority: priority as string | undefined,
+        assignedUserId: assignedUserId as string | undefined,
+        search: search as string | undefined,
+      });
+      res.json(results);
+    } catch (error) {
+      console.error("Error getting establishments:", error);
+      res.status(500).json({ error: "Error al obtener establecimientos" });
+    }
+  });
+
+  app.get("/api/establishments/stats", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const stats = await storage.getEstablishmentStats(tenantId);
+      res.json(stats);
+    } catch (error) {
+      console.error("Error getting establishment stats:", error);
+      res.status(500).json({ error: "Error al obtener estadísticas" });
+    }
+  });
+
+  app.get("/api/establishments/:id", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const est = await storage.getEstablishment(req.params.id);
+      if (!est || est.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      res.json(est);
+    } catch (error) {
+      console.error("Error getting establishment:", error);
+      res.status(500).json({ error: "Error al obtener establecimiento" });
+    }
+  });
+
+  app.post("/api/establishments", authenticateJWT, requireTenant, authorizeAction("establishments", "create"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      await storage.seedDefaultEstablishmentStages(tenantId);
+
+      const data = insertEstablishmentSchema.parse({ ...req.body, tenantId });
+
+      if (!data.stageId) {
+        const stages = await storage.getEstablishmentStages(tenantId);
+        const defaultStage = stages.find(s => s.isDefault) || stages[0];
+        if (defaultStage) data.stageId = defaultStage.id;
+      }
+
+      const created = await storage.createEstablishment(data);
+      res.status(201).json(created);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error creating establishment:", error);
+      res.status(500).json({ error: "Error al crear establecimiento" });
+    }
+  });
+
+  const establishmentPatchSchema = z.object({
+    name: z.string().min(1).optional(),
+    contactName: z.string().optional(),
+    contactPhone: z.string().optional(),
+    contactEmail: z.string().email().or(z.literal("")).optional(),
+    address: z.string().optional(),
+    city: z.string().optional(),
+    zone: z.string().optional(),
+    gpsCoordinates: z.string().optional(),
+    priority: z.enum(["alta", "media", "baja"]).optional(),
+    estimatedMachines: z.coerce.number().min(1).optional(),
+    monthlyEstimatedSales: z.string().optional(),
+    commissionPercent: z.string().optional(),
+    notes: z.string().optional(),
+    stageId: z.string().optional(),
+    assignedUserId: z.string().optional(),
+  });
+
+  app.patch("/api/establishments/:id", authenticateJWT, requireTenant, authorizeAction("establishments", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const data = establishmentPatchSchema.parse(req.body);
+      const updated = await storage.updateEstablishment(req.params.id, data);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error updating establishment:", error);
+      res.status(500).json({ error: "Error al actualizar establecimiento" });
+    }
+  });
+
+  app.patch("/api/establishments/:id/stage", authenticateJWT, requireTenant, authorizeAction("establishments", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const { stageId } = req.body;
+      if (!stageId) return res.status(400).json({ error: "stageId requerido" });
+      const tenantStages = await storage.getEstablishmentStages(tenantId);
+      if (!tenantStages.find(s => s.id === stageId)) {
+        return res.status(400).json({ error: "Etapa no válida" });
+      }
+      const updated = await storage.moveEstablishmentStage(req.params.id, stageId);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error moving establishment stage:", error);
+      res.status(500).json({ error: "Error al cambiar etapa" });
+    }
+  });
+
+  app.post("/api/establishments/:id/convert", authenticateJWT, requireTenant, authorizeAction("establishments", "approve"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      if (existing.convertedToLocationId) {
+        return res.status(400).json({ error: "Este establecimiento ya fue convertido" });
+      }
+      const result = await storage.convertEstablishmentToLocation(req.params.id, tenantId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error converting establishment:", error);
+      res.status(500).json({ error: error.message || "Error al convertir establecimiento" });
+    }
+  });
+
+  app.delete("/api/establishments/:id", authenticateJWT, requireTenant, authorizeAction("establishments", "delete"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      await storage.deleteEstablishment(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting establishment:", error);
+      res.status(500).json({ error: "Error al eliminar establecimiento" });
+    }
+  });
+
+  // Followups
+  app.get("/api/establishments/:id/followups", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const followups = await storage.getEstablishmentFollowups(req.params.id);
+      res.json(followups);
+    } catch (error) {
+      console.error("Error getting followups:", error);
+      res.status(500).json({ error: "Error al obtener seguimientos" });
+    }
+  });
+
+  app.post("/api/establishments/:id/followups", authenticateJWT, requireTenant, authorizeAction("establishments", "create"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const data = insertEstablishmentFollowupSchema.parse({
+        ...req.body,
+        tenantId,
+        establishmentId: req.params.id,
+        userId: req.user!.userId,
+      });
+      const created = await storage.createEstablishmentFollowup(data);
+      res.json(created);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error creating followup:", error);
+      res.status(500).json({ error: "Error al crear seguimiento" });
+    }
+  });
+
+  // Documents (with Object Storage)
+  app.get("/api/establishments/:id/documents", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const docs = await storage.getEstablishmentDocuments(req.params.id);
+      res.json(docs);
+    } catch (error) {
+      console.error("Error getting documents:", error);
+      res.status(500).json({ error: "Error al obtener documentos" });
+    }
+  });
+
+  const multer = (await import("multer")).default;
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+  app.post("/api/establishments/:id/documents", authenticateJWT, requireTenant, authorizeAction("establishments", "create"), upload.single("file"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+
+      const file = (req as any).file;
+      if (!file) {
+        return res.status(400).json({ error: "Archivo requerido" });
+      }
+
+      const { Client } = await import("@replit/object-storage");
+      const objClient = new Client();
+      const fileKey = `.private/${tenantId}/establishments/${req.params.id}/${Date.now()}_${file.originalname}`;
+
+      await objClient.uploadFromBytes(fileKey, file.buffer);
+
+      const doc = await storage.createEstablishmentDocument({
+        tenantId,
+        establishmentId: req.params.id,
+        fileName: file.originalname,
+        fileKey,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        uploadedByUserId: req.user!.userId,
+      });
+
+      res.status(201).json(doc);
+    } catch (error) {
+      console.error("Error uploading document:", error);
+      res.status(500).json({ error: "Error al subir documento" });
+    }
+  });
+
+  app.delete("/api/establishments/:id/documents/:docId", authenticateJWT, requireTenant, authorizeAction("establishments", "delete"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+
+      const docs = await storage.getEstablishmentDocuments(req.params.id);
+      const doc = docs.find((d: any) => d.id === req.params.docId);
+      if (!doc) {
+        return res.status(404).json({ error: "Documento no encontrado" });
+      }
+
+      try {
+        const { Client } = await import("@replit/object-storage");
+        const objClient = new Client();
+        await objClient.delete(doc.fileKey);
+      } catch (e) {
+        console.warn("Could not delete file from storage:", e);
+      }
+
+      await storage.deleteEstablishmentDocument(req.params.docId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      res.status(500).json({ error: "Error al eliminar documento" });
+    }
+  });
+
+  app.get("/api/establishments/:id/documents/:docId/download", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+
+      const docs = await storage.getEstablishmentDocuments(req.params.id);
+      const doc = docs.find((d: any) => d.id === req.params.docId);
+      if (!doc) {
+        return res.status(404).json({ error: "Documento no encontrado" });
+      }
+
+      const { Client } = await import("@replit/object-storage");
+      const objClient = new Client();
+      const result = await objClient.downloadAsBytes(doc.fileKey);
+      
+      if (!result.ok) {
+        return res.status(404).json({ error: "Archivo no encontrado en almacenamiento" });
+      }
+
+      res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
+      res.setHeader("Content-Disposition", `attachment; filename="${doc.fileName}"`);
+      res.send(Buffer.from(result.value));
+    } catch (error) {
+      console.error("Error downloading document:", error);
+      res.status(500).json({ error: "Error al descargar documento" });
     }
   });
 

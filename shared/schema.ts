@@ -2377,3 +2377,99 @@ export const machineViewerAssignmentsRelations = relations(machineViewerAssignme
     references: [machines.id],
   }),
 }));
+
+// ==================== MÓDULO ESTABLECIMIENTOS (CRM Pipeline) ====================
+
+export const establishmentStages = pgTable("establishment_stages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  name: text("name").notNull(),
+  color: varchar("color", { length: 7 }).default("#6B7280"),
+  sortOrder: integer("sort_order").default(0),
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEstablishmentStageSchema = createInsertSchema(establishmentStages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEstablishmentStage = z.infer<typeof insertEstablishmentStageSchema>;
+export type EstablishmentStage = typeof establishmentStages.$inferSelect;
+
+export const establishments = pgTable("establishments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  name: text("name").notNull(),
+  contactName: text("contact_name"),
+  contactPhone: text("contact_phone"),
+  contactEmail: text("contact_email"),
+  address: text("address"),
+  city: text("city"),
+  zone: text("zone"),
+  gpsCoordinates: text("gps_coordinates"),
+  stageId: varchar("stage_id").references(() => establishmentStages.id),
+  priority: varchar("priority", { length: 20 }).default("media"),
+  assignedUserId: varchar("assigned_user_id").references(() => users.id),
+  estimatedMachines: integer("estimated_machines").default(1),
+  monthlyEstimatedSales: decimal("monthly_estimated_sales", { precision: 12, scale: 2 }),
+  commissionPercent: decimal("commission_percent", { precision: 5, scale: 2 }).default("5.00"),
+  notes: text("notes"),
+  convertedToLocationId: varchar("converted_to_location_id").references(() => locations.id),
+  convertedAt: timestamp("converted_at"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEstablishmentSchema = createInsertSchema(establishments).omit({
+  id: true,
+  convertedToLocationId: true,
+  convertedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertEstablishment = z.infer<typeof insertEstablishmentSchema>;
+export type Establishment = typeof establishments.$inferSelect;
+
+export const establishmentFollowups = pgTable("establishment_followups", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  establishmentId: varchar("establishment_id").references(() => establishments.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  type: varchar("type", { length: 30 }).default("nota"),
+  content: text("content").notNull(),
+  nextFollowupDate: timestamp("next_followup_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEstablishmentFollowupSchema = createInsertSchema(establishmentFollowups).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEstablishmentFollowup = z.infer<typeof insertEstablishmentFollowupSchema>;
+export type EstablishmentFollowup = typeof establishmentFollowups.$inferSelect;
+
+export const establishmentDocuments = pgTable("establishment_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  establishmentId: varchar("establishment_id").references(() => establishments.id).notNull(),
+  fileName: text("file_name").notNull(),
+  fileKey: text("file_key").notNull(),
+  fileSize: integer("file_size"),
+  mimeType: varchar("mime_type", { length: 100 }),
+  uploadedByUserId: varchar("uploaded_by_user_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEstablishmentDocumentSchema = createInsertSchema(establishmentDocuments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEstablishmentDocument = z.infer<typeof insertEstablishmentDocumentSchema>;
+export type EstablishmentDocument = typeof establishmentDocuments.$inferSelect;

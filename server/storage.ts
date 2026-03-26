@@ -48,6 +48,10 @@ import {
   type MachineViewerAssignment, type InsertMachineViewerAssignment,
   type TenantInvite, type InsertTenantInvite,
   type MachineTypeOption, type InsertMachineTypeOption,
+  type Establishment, type InsertEstablishment,
+  type EstablishmentStage, type InsertEstablishmentStage,
+  type EstablishmentFollowup, type InsertEstablishmentFollowup,
+  type EstablishmentDocument, type InsertEstablishmentDocument,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
@@ -60,6 +64,7 @@ import {
   vehicleInventory, inventoryTransfers, machineInventoryLots,
   establishmentViewers, machineViewerAssignments,
   machineTypeOptions,
+  establishments, establishmentStages, establishmentFollowups, establishmentDocuments,
   tenants, subscriptionPlans, tenantSubscriptions, tenantSettings, tenantInvites, superAdminAuditLog,
   type Tenant, type InsertTenant,
   type SubscriptionPlan, type InsertSubscriptionPlan,
@@ -618,6 +623,29 @@ export interface IStorage {
   updateMachineTypeOption(id: string, data: Partial<InsertMachineTypeOption>): Promise<MachineTypeOption | undefined>;
   deleteMachineTypeOption(id: string): Promise<boolean>;
   seedDefaultMachineTypes(tenantId: string): Promise<void>;
+
+  // ==================== MÓDULO ESTABLECIMIENTOS (CRM Pipeline) ====================
+
+  getEstablishmentStages(tenantId: string): Promise<EstablishmentStage[]>;
+  createEstablishmentStage(stage: InsertEstablishmentStage): Promise<EstablishmentStage>;
+  seedDefaultEstablishmentStages(tenantId: string): Promise<void>;
+
+  getEstablishments(filters: { tenantId: string; stageId?: string; priority?: string; assignedUserId?: string; search?: string }): Promise<any[]>;
+  getEstablishment(id: string): Promise<any>;
+  createEstablishment(data: InsertEstablishment): Promise<Establishment>;
+  updateEstablishment(id: string, data: Partial<InsertEstablishment>): Promise<Establishment | undefined>;
+  deleteEstablishment(id: string): Promise<boolean>;
+  moveEstablishmentStage(id: string, stageId: string): Promise<Establishment | undefined>;
+  convertEstablishmentToLocation(id: string, tenantId: string): Promise<{ establishment: Establishment; location: Location }>;
+
+  getEstablishmentFollowups(establishmentId: string): Promise<any[]>;
+  createEstablishmentFollowup(data: InsertEstablishmentFollowup): Promise<EstablishmentFollowup>;
+
+  getEstablishmentDocuments(establishmentId: string): Promise<any[]>;
+  createEstablishmentDocument(data: InsertEstablishmentDocument): Promise<EstablishmentDocument>;
+  deleteEstablishmentDocument(id: string): Promise<boolean>;
+
+  getEstablishmentStats(tenantId: string): Promise<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; converted: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -6575,6 +6603,227 @@ export class DatabaseStorage implements IStorage {
       { name: "Mixta", value: "mixta", sortOrder: 3 },
     ];
     await db.insert(machineTypeOptions).values(defaults.map(d => ({ tenantId, ...d, isActive: true })));
+  }
+
+  // ==================== MÓDULO ESTABLECIMIENTOS (CRM Pipeline) ====================
+
+  async getEstablishmentStages(tenantId: string): Promise<EstablishmentStage[]> {
+    return db.select().from(establishmentStages)
+      .where(and(eq(establishmentStages.tenantId, tenantId), eq(establishmentStages.isActive, true)))
+      .orderBy(asc(establishmentStages.sortOrder));
+  }
+
+  async createEstablishmentStage(stage: InsertEstablishmentStage): Promise<EstablishmentStage> {
+    const [created] = await db.insert(establishmentStages).values(stage).returning();
+    return created;
+  }
+
+  async seedDefaultEstablishmentStages(tenantId: string): Promise<void> {
+    const existing = await db.select().from(establishmentStages).where(eq(establishmentStages.tenantId, tenantId));
+    if (existing.length > 0) return;
+    const defaults = [
+      { name: "Prospecto", color: "#6B7280", sortOrder: 0, isDefault: true },
+      { name: "En Evaluación", color: "#3B82F6", sortOrder: 1, isDefault: false },
+      { name: "En Negociación", color: "#F59E0B", sortOrder: 2, isDefault: false },
+      { name: "Aprobado para Instalación", color: "#10B981", sortOrder: 3, isDefault: false },
+      { name: "Convertido a Activo", color: "#8B5CF6", sortOrder: 4, isDefault: false },
+    ];
+    await db.insert(establishmentStages).values(defaults.map(d => ({ tenantId, ...d, isActive: true })));
+  }
+
+  async getEstablishments(filters: { tenantId: string; stageId?: string; priority?: string; assignedUserId?: string; search?: string }): Promise<any[]> {
+    const conditions: SQL[] = [eq(establishments.tenantId, filters.tenantId), eq(establishments.isActive, true)];
+    if (filters.stageId) conditions.push(eq(establishments.stageId, filters.stageId));
+    if (filters.priority) conditions.push(eq(establishments.priority, filters.priority));
+    if (filters.assignedUserId) conditions.push(eq(establishments.assignedUserId, filters.assignedUserId));
+    if (filters.search) {
+      conditions.push(
+        or(
+          sql`${establishments.name} ILIKE ${'%' + filters.search + '%'}`,
+          sql`${establishments.contactName} ILIKE ${'%' + filters.search + '%'}`,
+          sql`${establishments.address} ILIKE ${'%' + filters.search + '%'}`
+        )!
+      );
+    }
+
+    const results = await db.select({
+      establishment: establishments,
+      stage: establishmentStages,
+      assignedUser: {
+        id: users.id,
+        fullName: users.fullName,
+      },
+    })
+    .from(establishments)
+    .leftJoin(establishmentStages, eq(establishments.stageId, establishmentStages.id))
+    .leftJoin(users, eq(establishments.assignedUserId, users.id))
+    .where(and(...conditions))
+    .orderBy(desc(establishments.createdAt));
+
+    return results.map(r => ({
+      ...r.establishment,
+      stage: r.stage,
+      assignedUser: r.assignedUser,
+    }));
+  }
+
+  async getEstablishment(id: string): Promise<any> {
+    const [result] = await db.select({
+      establishment: establishments,
+      stage: establishmentStages,
+      assignedUser: {
+        id: users.id,
+        fullName: users.fullName,
+      },
+    })
+    .from(establishments)
+    .leftJoin(establishmentStages, eq(establishments.stageId, establishmentStages.id))
+    .leftJoin(users, eq(establishments.assignedUserId, users.id))
+    .where(eq(establishments.id, id));
+
+    if (!result) return undefined;
+    return {
+      ...result.establishment,
+      stage: result.stage,
+      assignedUser: result.assignedUser,
+    };
+  }
+
+  async createEstablishment(data: InsertEstablishment): Promise<Establishment> {
+    const [created] = await db.insert(establishments).values(data).returning();
+    return created;
+  }
+
+  async updateEstablishment(id: string, data: Partial<InsertEstablishment>): Promise<Establishment | undefined> {
+    const [updated] = await db.update(establishments)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(establishments.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteEstablishment(id: string): Promise<boolean> {
+    const [deleted] = await db.update(establishments)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(establishments.id, id))
+      .returning();
+    return !!deleted;
+  }
+
+  async moveEstablishmentStage(id: string, stageId: string): Promise<Establishment | undefined> {
+    const [updated] = await db.update(establishments)
+      .set({ stageId, updatedAt: new Date() })
+      .where(eq(establishments.id, id))
+      .returning();
+    return updated;
+  }
+
+  async convertEstablishmentToLocation(id: string, tenantId: string): Promise<{ establishment: Establishment; location: Location }> {
+    const est = await this.getEstablishment(id);
+    if (!est) throw new Error("Establecimiento no encontrado");
+    if (est.convertedToLocationId) throw new Error("Este establecimiento ya fue convertido");
+
+    const [newLocation] = await db.insert(locations).values({
+      tenantId,
+      name: est.name,
+      address: est.address || "",
+      contactName: est.contactName,
+      contactPhone: est.contactPhone,
+      isActive: true,
+    }).returning();
+
+    const [updatedEst] = await db.update(establishments)
+      .set({ convertedToLocationId: newLocation.id, convertedAt: new Date(), updatedAt: new Date() })
+      .where(eq(establishments.id, id))
+      .returning();
+
+    const finalStage = await db.select().from(establishmentStages)
+      .where(and(eq(establishmentStages.tenantId, tenantId), eq(establishmentStages.name, "Convertido a Activo")));
+    if (finalStage.length > 0) {
+      await db.update(establishments)
+        .set({ stageId: finalStage[0].id })
+        .where(eq(establishments.id, id));
+    }
+
+    return { establishment: updatedEst, location: newLocation };
+  }
+
+  async getEstablishmentFollowups(establishmentId: string): Promise<any[]> {
+    const results = await db.select({
+      followup: establishmentFollowups,
+      user: {
+        id: users.id,
+        fullName: users.fullName,
+      },
+    })
+    .from(establishmentFollowups)
+    .leftJoin(users, eq(establishmentFollowups.userId, users.id))
+    .where(eq(establishmentFollowups.establishmentId, establishmentId))
+    .orderBy(desc(establishmentFollowups.createdAt));
+
+    return results.map(r => ({
+      ...r.followup,
+      user: r.user,
+    }));
+  }
+
+  async createEstablishmentFollowup(data: InsertEstablishmentFollowup): Promise<EstablishmentFollowup> {
+    const [created] = await db.insert(establishmentFollowups).values(data).returning();
+    return created;
+  }
+
+  async getEstablishmentDocuments(establishmentId: string): Promise<any[]> {
+    const results = await db.select({
+      document: establishmentDocuments,
+      uploadedBy: {
+        id: users.id,
+        fullName: users.fullName,
+      },
+    })
+    .from(establishmentDocuments)
+    .leftJoin(users, eq(establishmentDocuments.uploadedByUserId, users.id))
+    .where(eq(establishmentDocuments.establishmentId, establishmentId))
+    .orderBy(desc(establishmentDocuments.createdAt));
+
+    return results.map(r => ({
+      ...r.document,
+      uploadedBy: r.uploadedBy,
+    }));
+  }
+
+  async createEstablishmentDocument(data: InsertEstablishmentDocument): Promise<EstablishmentDocument> {
+    const [created] = await db.insert(establishmentDocuments).values(data).returning();
+    return created;
+  }
+
+  async deleteEstablishmentDocument(id: string): Promise<boolean> {
+    const [deleted] = await db.delete(establishmentDocuments).where(eq(establishmentDocuments.id, id)).returning();
+    return !!deleted;
+  }
+
+  async getEstablishmentStats(tenantId: string): Promise<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; converted: number }> {
+    const allEstablishments = await db.select({
+      id: establishments.id,
+      stageId: establishments.stageId,
+      priority: establishments.priority,
+      convertedToLocationId: establishments.convertedToLocationId,
+    })
+    .from(establishments)
+    .where(and(eq(establishments.tenantId, tenantId), eq(establishments.isActive, true)));
+
+    const byStage: Record<string, number> = {};
+    const byPriority: Record<string, number> = {};
+    let converted = 0;
+
+    for (const est of allEstablishments) {
+      const stageKey = est.stageId || "sin_etapa";
+      byStage[stageKey] = (byStage[stageKey] || 0) + 1;
+      const prioKey = est.priority || "media";
+      byPriority[prioKey] = (byPriority[prioKey] || 0) + 1;
+      if (est.convertedToLocationId) converted++;
+    }
+
+    return { total: allEstablishments.length, byStage, byPriority, converted };
   }
 }
 

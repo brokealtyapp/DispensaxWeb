@@ -50,6 +50,7 @@ import { TenantSignupPage } from "@/pages/tenant-signup";
 import { EstablishmentViewersPage } from "@/pages/establishment-viewers";
 import { NayaxPage } from "@/pages/nayax";
 import { ViewerDashboardPage } from "@/pages/viewer-dashboard";
+import { EstablishmentsPage } from "@/pages/establishments";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
@@ -326,6 +327,7 @@ function TenantLayout() {
               <Route path="/abastecedores">{() => <ProtectedRoute path="/abastecedores" component={SuppliersManagementPage} />}</Route>
               <Route path="/configuracion">{() => <ProtectedRoute path="/configuracion" component={SettingsPage} />}</Route>
               <Route path="/visores">{() => <ProtectedRoute path="/visores" component={EstablishmentViewersPage} />}</Route>
+              <Route path="/establecimientos">{() => <ProtectedRoute path="/establecimientos" component={EstablishmentsPage} />}</Route>
               <Route path="/mi-panel">{() => <ProtectedRoute path="/mi-panel" component={ViewerDashboardPage} />}</Route>
               <Route component={NotFound} />
             </Switch>
