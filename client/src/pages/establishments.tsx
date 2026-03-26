@@ -1572,8 +1572,11 @@ export function EstablishmentsPage() {
                 <SelectItem value="plaza_comercial">Plaza Comercial</SelectItem>
                 <SelectItem value="estacion_servicio">Estación de Servicio</SelectItem>
                 <SelectItem value="tienda">Tienda</SelectItem>
-                <SelectItem value="bar">Bar / Club</SelectItem>
+                <SelectItem value="bar">Bar</SelectItem>
+                <SelectItem value="club">Club</SelectItem>
                 <SelectItem value="fabrica">Fábrica</SelectItem>
+                <SelectItem value="gasolinera">Gasolinera</SelectItem>
+                <SelectItem value="centro_comercial">Centro Comercial</SelectItem>
                 <SelectItem value="otro">Otro</SelectItem>
               </SelectContent>
             </Select>
