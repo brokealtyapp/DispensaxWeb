@@ -1405,6 +1405,39 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
   );
 }
 
+function SimpleModal({ open, onClose, title, description, children }: { open: boolean; onClose: () => void; title: string; description: string; children: React.ReactNode }) {
+  const handleEscape = useCallback((e: KeyboardEvent) => {
+    if (e.key === "Escape") onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [open, handleEscape]);
+
+  if (!open) return null;
+  const titleId = `modal-title-${title.replace(/\s+/g, "-").toLowerCase()}`;
+  const descId = `modal-desc-${title.replace(/\s+/g, "-").toLowerCase()}`;
+  return (
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId}>
+      <div className="fixed inset-0 bg-black/80 animate-in fade-in-0" onClick={onClose} />
+      <div className="fixed inset-0 flex items-center justify-center p-4 pointer-events-none">
+        <div className="bg-background rounded-lg shadow-lg border max-w-2xl w-full max-h-[85vh] flex flex-col pointer-events-auto p-6 relative animate-in fade-in-0 zoom-in-95">
+          <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100 focus:outline-none" aria-label="Cerrar">
+            <X className="h-4 w-4" />
+          </button>
+          <div className="flex flex-col space-y-1.5 text-left flex-shrink-0 mb-4">
+            <h2 id={titleId} className="text-lg font-semibold leading-none tracking-tight">{title}</h2>
+            <p id={descId} className="text-sm text-muted-foreground">{description}</p>
+          </div>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function EstablishmentsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -1541,39 +1574,6 @@ export function EstablishmentsPage() {
       assignedUserId: est.assignedUserId || "",
     });
     setEditingEstablishment(est);
-  };
-
-  const SimpleModal = ({ open, onClose, title, description, children }: { open: boolean; onClose: () => void; title: string; description: string; children: React.ReactNode }) => {
-    const handleEscape = useCallback((e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    }, [onClose]);
-
-    useEffect(() => {
-      if (!open) return;
-      document.addEventListener("keydown", handleEscape);
-      return () => document.removeEventListener("keydown", handleEscape);
-    }, [open, handleEscape]);
-
-    if (!open) return null;
-    const titleId = `modal-title-${title.replace(/\s+/g, "-").toLowerCase()}`;
-    const descId = `modal-desc-${title.replace(/\s+/g, "-").toLowerCase()}`;
-    return (
-      <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId}>
-        <div className="fixed inset-0 bg-black/80 animate-in fade-in-0" onClick={onClose} />
-        <div className="fixed inset-0 flex items-center justify-center p-4 pointer-events-none">
-          <div className="bg-background rounded-lg shadow-lg border max-w-2xl w-full max-h-[85vh] flex flex-col pointer-events-auto p-6 relative animate-in fade-in-0 zoom-in-95">
-            <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100 focus:outline-none" aria-label="Cerrar">
-              <X className="h-4 w-4" />
-            </button>
-            <div className="flex flex-col space-y-1.5 text-left flex-shrink-0 mb-4">
-              <h2 id={titleId} className="text-lg font-semibold leading-none tracking-tight">{title}</h2>
-              <p id={descId} className="text-sm text-muted-foreground">{description}</p>
-            </div>
-            {children}
-          </div>
-        </div>
-      </div>
-    );
   };
 
   const EstablishmentFormFields = ({ form, isEdit = false }: { form: UseFormReturn<EstablishmentFormValues>; isEdit?: boolean }) => (
