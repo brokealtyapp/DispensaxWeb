@@ -7017,31 +7017,18 @@ export class DatabaseStorage implements IStorage {
 
     const latestContractMap = new Map<string, typeof establishmentContracts.$inferSelect>();
     if (establishmentIds.length > 0) {
-      const latestContracts = await db.execute(sql`
-        SELECT DISTINCT ON (establishment_id) *
-        FROM establishment_contracts
-        WHERE establishment_id IN (${sql.join(establishmentIds.map(id => sql`${id}`), sql`, `)})
-        ORDER BY establishment_id, created_at DESC
-      `);
+      const allContracts = await db.select()
+        .from(establishmentContracts)
+        .where(and(
+          sql`${establishmentContracts.establishmentId} IN (${sql.join(establishmentIds.map(id => sql`${id}`), sql`, `)})`,
+          eq(establishmentContracts.tenantId, tenantId)
+        ))
+        .orderBy(desc(establishmentContracts.createdAt));
 
-      for (const row of latestContracts.rows) {
-        const contract = {
-          id: row.id as string,
-          establishmentId: row.establishment_id as string,
-          tenantId: row.tenant_id as string,
-          agreementType: row.agreement_type as string,
-          commissionPercent: row.commission_percent as string | null,
-          fixedRentAmount: row.fixed_rent_amount as string | null,
-          contractDate: row.contract_date as Date | null,
-          startDate: row.start_date as Date | null,
-          endDate: row.end_date as Date | null,
-          status: row.status as string,
-          terms: row.terms as string | null,
-          previousContractId: row.previous_contract_id as string | null,
-          createdAt: row.created_at as Date | null,
-          updatedAt: row.updated_at as Date | null,
-        };
-        latestContractMap.set(contract.establishmentId, contract as typeof establishmentContracts.$inferSelect);
+      for (const contract of allContracts) {
+        if (!latestContractMap.has(contract.establishmentId)) {
+          latestContractMap.set(contract.establishmentId, contract);
+        }
       }
     }
 

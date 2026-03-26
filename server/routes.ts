@@ -106,6 +106,19 @@ import { z } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
 
 // =====================
+// DATABASE ERROR HELPERS
+// =====================
+interface PostgresError {
+  code: string;
+  detail?: string;
+  constraint?: string;
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as PostgresError).code === "23505";
+}
+
+// =====================
 // RATE LIMITING (In-memory, can upgrade to Redis for production)
 // =====================
 interface RateLimitEntry {
@@ -8916,7 +8929,7 @@ export async function registerRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors[0].message });
       }
-      if ((error as any)?.code === "23505") {
+      if (isUniqueViolation(error)) {
         return res.status(409).json({ error: "Ya existe una etapa activa con ese nombre para este tenant" });
       }
       console.error("Error creating stage:", error);
@@ -8948,7 +8961,7 @@ export async function registerRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors[0].message });
       }
-      if ((error as any)?.code === "23505") {
+      if (isUniqueViolation(error)) {
         return res.status(409).json({ error: "Ya existe una etapa activa con ese nombre para este tenant" });
       }
       console.error("Error updating stage:", error);
