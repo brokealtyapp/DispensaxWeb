@@ -1472,10 +1472,10 @@ export function EstablishmentsPage() {
       const payload: Record<string, string | number | null | undefined> = { ...data };
       if (!payload.contactEmail) delete payload.contactEmail;
       if (!payload.stageId) delete payload.stageId;
-      if (!payload.assignedUserId || payload.assignedUserId === "__none__") delete payload.assignedUserId;
+      if (!payload.assignedUserId) delete payload.assignedUserId;
       if (!payload.monthlyEstimatedSales) delete payload.monthlyEstimatedSales;
       if (!payload.nextActionDate) payload.nextActionDate = null;
-      if (!payload.nextAction || payload.nextAction === "__none__") payload.nextAction = null;
+      if (!payload.nextAction) payload.nextAction = null;
       return apiRequest("POST", "/api/establishments", payload);
     },
     onSuccess: () => {
@@ -1492,9 +1492,9 @@ export function EstablishmentsPage() {
     mutationFn: async ({ id, data }: { id: string; data: EstablishmentFormValues }) => {
       const payload: Record<string, string | number | null | undefined> = { ...data };
       if (!payload.contactEmail) delete payload.contactEmail;
-      if (!payload.assignedUserId || payload.assignedUserId === "__none__") delete payload.assignedUserId;
+      if (!payload.assignedUserId) delete payload.assignedUserId;
       if (!payload.nextActionDate) payload.nextActionDate = null;
-      if (!payload.nextAction || payload.nextAction === "__none__") payload.nextAction = null;
+      if (!payload.nextAction) payload.nextAction = null;
       return apiRequest("PATCH", `/api/establishments/${id}`, payload);
     },
     onSuccess: () => {
@@ -1557,42 +1557,40 @@ export function EstablishmentsPage() {
         <FormField control={form.control} name="businessType" render={({ field }) => (
           <FormItem>
             <FormLabel>Tipo de Negocio</FormLabel>
-            <Select onValueChange={field.onChange} defaultValue={field.value || "otro"}>
-              <FormControl><SelectTrigger data-testid="select-business-type"><SelectValue /></SelectTrigger></FormControl>
-              <SelectContent>
-                <SelectItem value="colmado">Colmado</SelectItem>
-                <SelectItem value="supermercado">Supermercado</SelectItem>
-                <SelectItem value="restaurante">Restaurante</SelectItem>
-                <SelectItem value="hotel">Hotel</SelectItem>
-                <SelectItem value="oficina">Oficina</SelectItem>
-                <SelectItem value="universidad">Universidad</SelectItem>
-                <SelectItem value="hospital">Hospital</SelectItem>
-                <SelectItem value="farmacia">Farmacia</SelectItem>
-                <SelectItem value="gimnasio">Gimnasio</SelectItem>
-                <SelectItem value="plaza_comercial">Plaza Comercial</SelectItem>
-                <SelectItem value="estacion_servicio">Estación de Servicio</SelectItem>
-                <SelectItem value="tienda">Tienda</SelectItem>
-                <SelectItem value="bar">Bar</SelectItem>
-                <SelectItem value="club">Club</SelectItem>
-                <SelectItem value="fabrica">Fábrica</SelectItem>
-                <SelectItem value="gasolinera">Gasolinera</SelectItem>
-                <SelectItem value="centro_comercial">Centro Comercial</SelectItem>
-                <SelectItem value="otro">Otro</SelectItem>
-              </SelectContent>
-            </Select>
+            <FormControl>
+              <select {...field} value={field.value || "otro"} data-testid="select-business-type" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                <option value="colmado">Colmado</option>
+                <option value="supermercado">Supermercado</option>
+                <option value="restaurante">Restaurante</option>
+                <option value="hotel">Hotel</option>
+                <option value="oficina">Oficina</option>
+                <option value="universidad">Universidad</option>
+                <option value="hospital">Hospital</option>
+                <option value="farmacia">Farmacia</option>
+                <option value="gimnasio">Gimnasio</option>
+                <option value="plaza_comercial">Plaza Comercial</option>
+                <option value="estacion_servicio">Estación de Servicio</option>
+                <option value="tienda">Tienda</option>
+                <option value="bar">Bar</option>
+                <option value="club">Club</option>
+                <option value="fabrica">Fábrica</option>
+                <option value="gasolinera">Gasolinera</option>
+                <option value="centro_comercial">Centro Comercial</option>
+                <option value="otro">Otro</option>
+              </select>
+            </FormControl>
           </FormItem>
         )} />
         <FormField control={form.control} name="priority" render={({ field }) => (
           <FormItem>
             <FormLabel>Prioridad</FormLabel>
-            <Select onValueChange={field.onChange} defaultValue={field.value}>
-              <FormControl><SelectTrigger data-testid="select-priority"><SelectValue /></SelectTrigger></FormControl>
-              <SelectContent>
-                <SelectItem value="alta">Alta</SelectItem>
-                <SelectItem value="media">Media</SelectItem>
-                <SelectItem value="baja">Baja</SelectItem>
-              </SelectContent>
-            </Select>
+            <FormControl>
+              <select {...field} value={field.value || "media"} data-testid="select-priority" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                <option value="alta">Alta</option>
+                <option value="media">Media</option>
+                <option value="baja">Baja</option>
+              </select>
+            </FormControl>
           </FormItem>
         )} />
       </div>
@@ -1676,18 +1674,17 @@ export function EstablishmentsPage() {
           <FormField control={form.control} name="nextAction" render={({ field }) => (
             <FormItem>
               <FormLabel>Próxima acción</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value || ""}>
-                <FormControl><SelectTrigger data-testid="select-next-action"><SelectValue placeholder="Sin acción" /></SelectTrigger></FormControl>
-                <SelectContent>
-                  <SelectItem value="__none__">Sin acción</SelectItem>
-                  <SelectItem value="llamar">Llamar</SelectItem>
-                  <SelectItem value="visitar">Visitar</SelectItem>
-                  <SelectItem value="enviar_propuesta">Enviar propuesta</SelectItem>
-                  <SelectItem value="seguimiento">Seguimiento</SelectItem>
-                  <SelectItem value="negociar">Negociar</SelectItem>
-                  <SelectItem value="cerrar">Cerrar</SelectItem>
-                </SelectContent>
-              </Select>
+              <FormControl>
+                <select {...field} value={field.value || ""} data-testid="select-next-action" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                  <option value="">Sin acción</option>
+                  <option value="llamar">Llamar</option>
+                  <option value="visitar">Visitar</option>
+                  <option value="enviar_propuesta">Enviar propuesta</option>
+                  <option value="seguimiento">Seguimiento</option>
+                  <option value="negociar">Negociar</option>
+                  <option value="cerrar">Cerrar</option>
+                </select>
+              </FormControl>
             </FormItem>
           )} />
           <FormField control={form.control} name="nextActionDate" render={({ field }) => (
@@ -1699,28 +1696,27 @@ export function EstablishmentsPage() {
           <FormField control={form.control} name="stageId" render={({ field }) => (
             <FormItem>
               <FormLabel>Etapa</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <FormControl><SelectTrigger data-testid="select-stage"><SelectValue placeholder="Seleccionar etapa" /></SelectTrigger></FormControl>
-                <SelectContent>
+              <FormControl>
+                <select {...field} value={field.value || ""} data-testid="select-stage" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                  <option value="">Seleccionar etapa</option>
                   {stages.map((s: EstablishmentStageInfo) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
-                </SelectContent>
-              </Select>
+                </select>
+              </FormControl>
             </FormItem>
           )} />
           <FormField control={form.control} name="assignedUserId" render={({ field }) => (
             <FormItem>
               <FormLabel>Asignar a</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <FormControl><SelectTrigger data-testid="select-assigned-user"><SelectValue placeholder="Sin asignar" /></SelectTrigger></FormControl>
-                <SelectContent>
-                  <SelectItem value="__none__">Sin asignar</SelectItem>
+              <FormControl>
+                <select {...field} value={field.value || ""} data-testid="select-assigned-user" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                  <option value="">Sin asignar</option>
                   {adminUsers.filter((u) => u.isActive && (u.role === "admin" || u.role === "supervisor")).map((u) => (
-                    <SelectItem key={u.id} value={u.id}>{u.fullName}</SelectItem>
+                    <option key={u.id} value={u.id}>{u.fullName}</option>
                   ))}
-                </SelectContent>
-              </Select>
+                </select>
+              </FormControl>
             </FormItem>
           )} />
           <FormField control={form.control} name="notes" render={({ field }) => (
