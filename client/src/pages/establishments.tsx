@@ -890,21 +890,19 @@ export function EstablishmentsPage() {
           <FormControl><Input type="date" {...field} data-testid="input-next-action-date" /></FormControl>
         </FormItem>
       )} />
-      {isEdit && (
-        <FormField control={form.control} name="stageId" render={({ field }) => (
-          <FormItem>
-            <FormLabel>Etapa</FormLabel>
-            <Select onValueChange={field.onChange} defaultValue={field.value}>
-              <FormControl><SelectTrigger data-testid="select-stage"><SelectValue placeholder="Seleccionar etapa" /></SelectTrigger></FormControl>
-              <SelectContent>
-                {stages.map((s: EstablishmentStageInfo) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormItem>
-        )} />
-      )}
+      <FormField control={form.control} name="stageId" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Etapa</FormLabel>
+          <Select onValueChange={field.onChange} defaultValue={field.value}>
+            <FormControl><SelectTrigger data-testid="select-stage"><SelectValue placeholder="Seleccionar etapa" /></SelectTrigger></FormControl>
+            <SelectContent>
+              {stages.map((s: EstablishmentStageInfo) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormItem>
+      )} />
       <FormField control={form.control} name="assignedUserId" render={({ field }) => (
         <FormItem>
           <FormLabel>Asignar a</FormLabel>

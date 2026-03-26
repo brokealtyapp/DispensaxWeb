@@ -9025,6 +9025,11 @@ export async function registerRoutes(
       const body = { ...req.body, tenantId };
       if (body.nextActionDate && typeof body.nextActionDate === "string") {
         body.nextActionDate = new Date(body.nextActionDate);
+      } else if (!body.nextActionDate || body.nextActionDate === "") {
+        delete body.nextActionDate;
+      }
+      if (!body.nextAction || body.nextAction === "") {
+        delete body.nextAction;
       }
       const data = insertEstablishmentSchema.parse(body);
 
@@ -9102,10 +9107,13 @@ export async function registerRoutes(
       }
 
       const updatePayload: Record<string, unknown> = { ...data };
-      if (data.nextActionDate) {
+      if (data.nextActionDate && data.nextActionDate !== "") {
         updatePayload.nextActionDate = new Date(data.nextActionDate);
-      } else if (data.nextActionDate === null) {
+      } else if (data.nextActionDate === null || data.nextActionDate === "") {
         updatePayload.nextActionDate = null;
+      }
+      if (data.nextAction === "") {
+        updatePayload.nextAction = null;
       }
 
       const updated = await storage.updateEstablishment(req.params.id, updatePayload);
@@ -9202,12 +9210,16 @@ export async function registerRoutes(
       if (!existing || existing.tenantId !== tenantId) {
         return res.status(404).json({ error: "Establecimiento no encontrado" });
       }
-      const data = insertEstablishmentFollowupSchema.parse({
-        ...req.body,
-        tenantId,
-        establishmentId: req.params.id,
-        userId: req.user!.userId,
-      });
+      const followupBody = { ...req.body, tenantId, establishmentId: req.params.id, userId: req.user!.userId };
+      if (followupBody.nextFollowupDate && typeof followupBody.nextFollowupDate === "string") {
+        followupBody.nextFollowupDate = new Date(followupBody.nextFollowupDate);
+      } else if (!followupBody.nextFollowupDate || followupBody.nextFollowupDate === "") {
+        delete followupBody.nextFollowupDate;
+      }
+      if (!followupBody.nextAction || followupBody.nextAction === "") {
+        delete followupBody.nextAction;
+      }
+      const data = insertEstablishmentFollowupSchema.parse(followupBody);
       const created = await storage.createEstablishmentFollowup(data);
       res.json(created);
     } catch (error) {
