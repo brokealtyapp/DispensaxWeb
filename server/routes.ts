@@ -571,6 +571,8 @@ export async function registerRoutes(
         isSuperAdmin: false,
       });
 
+      await storage.seedDefaultEstablishmentStages(tenant.id);
+
       // Log the signup
       await storage.createAuditLog({
         userId: adminUser.id,
@@ -7676,6 +7678,8 @@ export async function registerRoutes(
         });
       }
       
+      await storage.seedDefaultEstablishmentStages(tenant.id);
+
       // Log the action
       await storage.createAuditLog({
         userId: req.user!.userId,

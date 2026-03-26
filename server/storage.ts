@@ -630,18 +630,18 @@ export interface IStorage {
   createEstablishmentStage(stage: InsertEstablishmentStage): Promise<EstablishmentStage>;
   seedDefaultEstablishmentStages(tenantId: string): Promise<void>;
 
-  getEstablishments(filters: { tenantId: string; stageId?: string; priority?: string; assignedUserId?: string; search?: string }): Promise<any[]>;
-  getEstablishment(id: string): Promise<any>;
+  getEstablishments(filters: { tenantId: string; stageId?: string; priority?: string; assignedUserId?: string; search?: string; page?: number; pageSize?: number }): Promise<{ data: Array<Establishment & { stage: EstablishmentStage | null; assignedUser: { id: string; fullName: string | null } | null }>; total: number; page: number; pageSize: number }>;
+  getEstablishment(id: string): Promise<(Establishment & { stage: EstablishmentStage | null; assignedUser: { id: string; fullName: string | null } | null }) | undefined>;
   createEstablishment(data: InsertEstablishment): Promise<Establishment>;
   updateEstablishment(id: string, data: Partial<InsertEstablishment>): Promise<Establishment | undefined>;
   deleteEstablishment(id: string): Promise<boolean>;
   moveEstablishmentStage(id: string, stageId: string): Promise<Establishment | undefined>;
   convertEstablishmentToLocation(id: string, tenantId: string): Promise<{ establishment: Establishment; location: Location }>;
 
-  getEstablishmentFollowups(establishmentId: string): Promise<any[]>;
+  getEstablishmentFollowups(establishmentId: string): Promise<Array<EstablishmentFollowup & { user: { id: string; fullName: string | null } | null }>>;
   createEstablishmentFollowup(data: InsertEstablishmentFollowup): Promise<EstablishmentFollowup>;
 
-  getEstablishmentDocuments(establishmentId: string): Promise<any[]>;
+  getEstablishmentDocuments(establishmentId: string): Promise<Array<EstablishmentDocument & { uploadedBy: { id: string; fullName: string | null } | null }>>;
   createEstablishmentDocument(data: InsertEstablishmentDocument): Promise<EstablishmentDocument>;
   deleteEstablishmentDocument(id: string): Promise<boolean>;
 

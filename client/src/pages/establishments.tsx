@@ -41,6 +41,8 @@ import { es } from "date-fns/locale";
 
 const establishmentFormSchema = z.object({
   name: z.string().min(1, "Nombre requerido"),
+  businessType: z.string().default("otro"),
+  status: z.string().default("activo"),
   contactName: z.string().optional(),
   contactPhone: z.string().optional(),
   contactEmail: z.string().email("Email inválido").or(z.literal("")).optional(),
@@ -62,6 +64,7 @@ type EstablishmentFormValues = z.infer<typeof establishmentFormSchema>;
 const followupFormSchema = z.object({
   type: z.string().default("nota"),
   content: z.string().min(1, "Contenido requerido"),
+  nextAction: z.string().optional(),
   nextFollowupDate: z.string().optional(),
 });
 
@@ -80,6 +83,8 @@ interface EstablishmentWithRelations {
   id: string;
   tenantId: string;
   name: string;
+  businessType: string | null;
+  status: string | null;
   contactName: string | null;
   contactPhone: string | null;
   contactEmail: string | null;
@@ -120,6 +125,7 @@ interface EstablishmentFollowup {
   id: string;
   type: string | null;
   content: string;
+  nextAction: string | null;
   nextFollowupDate: string | null;
   createdAt: string | null;
   user?: { fullName: string | null };
@@ -150,12 +156,13 @@ function StageBadge({ stage }: { stage: EstablishmentStageInfo | null }) {
 
 function DocumentStatusBadge({ status }: { status: string }) {
   const config: Record<string, { label: string; className: string }> = {
+    pendiente: { label: "Pendiente", className: "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400" },
     enviado: { label: "Enviado", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
     recibido: { label: "Recibido", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
     firmado: { label: "Firmado", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
     rechazado: { label: "Rechazado", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
   };
-  const c = config[status] || config.recibido;
+  const c = config[status] || config.pendiente;
   return <Badge variant="secondary" className={`text-xs ${c.className}`}>{c.label}</Badge>;
 }
 
@@ -475,9 +482,15 @@ function EstablishmentDetail({
                         <FormMessage />
                       </FormItem>
                     )} />
+                    <FormField control={followupForm.control} name="nextAction" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Próxima Acción</FormLabel>
+                        <FormControl><Input {...field} placeholder="Ej: Enviar propuesta, llamar para confirmar..." data-testid="input-followup-next-action" /></FormControl>
+                      </FormItem>
+                    )} />
                     <FormField control={followupForm.control} name="nextFollowupDate" render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Próximo seguimiento</FormLabel>
+                        <FormLabel>Fecha Próxima Gestión</FormLabel>
                         <FormControl><Input type="date" {...field} data-testid="input-followup-date" /></FormControl>
                       </FormItem>
                     )} />
@@ -505,9 +518,14 @@ function EstablishmentDetail({
                   </span>
                 </div>
                 <p className="mt-2 text-sm">{f.content}</p>
+                {f.nextAction && (
+                  <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                    <ArrowRight className="h-3 w-3" /> Próxima acción: {f.nextAction}
+                  </div>
+                )}
                 {f.nextFollowupDate && (
-                  <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="h-3 w-3" /> Próx: {format(new Date(f.nextFollowupDate), "dd MMM yyyy", { locale: es })}
+                  <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" /> Fecha próxima gestión: {format(new Date(f.nextFollowupDate), "dd MMM yyyy", { locale: es })}
                   </div>
                 )}
               </CardContent>
@@ -542,20 +560,21 @@ function EstablishmentDetail({
                       {doc.uploadedBy?.fullName} - {doc.createdAt ? format(new Date(doc.createdAt), "dd MMM yyyy", { locale: es }) : ""}
                       {doc.fileSize ? ` - ${(doc.fileSize / 1024).toFixed(0)} KB` : ""}
                     </p>
-                    <DocumentStatusBadge status={doc.status || "recibido"} />
+                    <DocumentStatusBadge status={doc.status || "pendiente"} />
                   </div>
                 </div>
               </div>
               <div className="flex gap-1 shrink-0 items-center">
                 {canEdit && (
                   <Select
-                    value={doc.status || "recibido"}
+                    value={doc.status || "pendiente"}
                     onValueChange={(val) => updateDocStatusMutation.mutate({ docId: doc.id, status: val })}
                   >
                     <SelectTrigger className="w-[110px] h-7 text-xs" data-testid={`select-doc-status-${doc.id}`}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="pendiente">Pendiente</SelectItem>
                       <SelectItem value="enviado">Enviado</SelectItem>
                       <SelectItem value="recibido">Recibido</SelectItem>
                       <SelectItem value="firmado">Firmado</SelectItem>
@@ -694,6 +713,8 @@ export function EstablishmentsPage() {
   const openEditDialog = (est: EstablishmentWithRelations) => {
     editForm.reset({
       name: est.name,
+      businessType: est.businessType || "otro",
+      status: est.status || "activo",
       contactName: est.contactName || "",
       contactPhone: est.contactPhone || "",
       contactEmail: est.contactEmail || "",
@@ -719,6 +740,25 @@ export function EstablishmentsPage() {
           <FormLabel>Nombre del Establecimiento *</FormLabel>
           <FormControl><Input {...field} data-testid="input-establishment-name" /></FormControl>
           <FormMessage />
+        </FormItem>
+      )} />
+      <FormField control={form.control} name="businessType" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Tipo de Negocio</FormLabel>
+          <Select onValueChange={field.onChange} defaultValue={field.value || "otro"}>
+            <FormControl><SelectTrigger data-testid="select-business-type"><SelectValue /></SelectTrigger></FormControl>
+            <SelectContent>
+              <SelectItem value="restaurante">Restaurante</SelectItem>
+              <SelectItem value="hotel">Hotel</SelectItem>
+              <SelectItem value="oficina">Oficina</SelectItem>
+              <SelectItem value="universidad">Universidad</SelectItem>
+              <SelectItem value="hospital">Hospital</SelectItem>
+              <SelectItem value="gimnasio">Gimnasio</SelectItem>
+              <SelectItem value="centro_comercial">Centro Comercial</SelectItem>
+              <SelectItem value="gasolinera">Gasolinera</SelectItem>
+              <SelectItem value="otro">Otro</SelectItem>
+            </SelectContent>
+          </Select>
         </FormItem>
       )} />
       <FormField control={form.control} name="contactName" render={({ field }) => (
