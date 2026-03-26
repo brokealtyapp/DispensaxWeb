@@ -6749,18 +6749,19 @@ export class DatabaseStorage implements IStorage {
       notes: est.notes,
     }).returning();
 
-    const [updatedEst] = await db.update(establishments)
-      .set({ convertedToLocationId: newLocation.id, convertedAt: new Date(), updatedAt: new Date() })
-      .where(eq(establishments.id, id))
-      .returning();
-
     const finalStage = await db.select().from(establishmentStages)
       .where(and(eq(establishmentStages.tenantId, tenantId), eq(establishmentStages.name, "Convertido a Activo")));
-    if (finalStage.length > 0) {
-      await db.update(establishments)
-        .set({ stageId: finalStage[0].id })
-        .where(eq(establishments.id, id));
-    }
+
+    const [updatedEst] = await db.update(establishments)
+      .set({
+        convertedToLocationId: newLocation.id,
+        convertedAt: new Date(),
+        status: "convertido",
+        ...(finalStage.length > 0 ? { stageId: finalStage[0].id } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(establishments.id, id))
+      .returning();
 
     return { establishment: updatedEst, location: newLocation };
   }

@@ -110,7 +110,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     employee_profiles: { view: true, create: false, edit: true, delete: false },
     machine_sales: { view: true, export: false },
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
-    establishments: { view: true, create: false, edit: false, delete: false },
+    establishments: { view: true, create: true, edit: true, delete: false },
   },
   
   abastecedor: {

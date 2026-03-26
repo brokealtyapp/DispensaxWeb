@@ -91,6 +91,7 @@ function getResourceText(resource: Resource): string {
     employee_profiles: "perfiles de empleados",
     machine_sales: "ventas de máquinas",
     establishment_viewers: "visores de establecimiento",
+    establishments: "establecimientos",
   };
   return texts[resource] || resource;
 }
