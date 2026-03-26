@@ -8967,13 +8967,15 @@ export async function registerRoutes(
   app.get("/api/establishments", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
-      const { stageId, priority, assignedUserId, search } = req.query;
+      const { stageId, priority, assignedUserId, search, page, pageSize } = req.query;
       const results = await storage.getEstablishments({
         tenantId,
         stageId: stageId as string | undefined,
         priority: priority as string | undefined,
         assignedUserId: assignedUserId as string | undefined,
         search: search as string | undefined,
+        page: page ? parseInt(page as string) : undefined,
+        pageSize: pageSize ? parseInt(pageSize as string) : undefined,
       });
       res.json(results);
     } catch (error) {
@@ -9099,11 +9101,17 @@ export async function registerRoutes(
       if (existing.convertedToLocationId) {
         return res.status(400).json({ error: "Este establecimiento ya fue convertido" });
       }
+      const stages = await storage.getEstablishmentStages(tenantId);
+      const currentStage = stages.find(s => s.id === existing.stageId);
+      if (!currentStage || currentStage.name !== "Aprobado para Instalación") {
+        return res.status(400).json({ error: "Solo se pueden convertir establecimientos en etapa 'Aprobado para Instalación'" });
+      }
       const result = await storage.convertEstablishmentToLocation(req.params.id, tenantId);
       res.json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error converting establishment:", error);
-      res.status(500).json({ error: error.message || "Error al convertir establecimiento" });
+      const msg = error instanceof Error ? error.message : "Error al convertir establecimiento";
+      res.status(500).json({ error: msg });
     }
   });
 
@@ -9189,7 +9197,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Establecimiento no encontrado" });
       }
 
-      const file = (req as any).file;
+      const file = (req as Express.Request & { file?: Express.Multer.File }).file;
       if (!file) {
         return res.status(400).json({ error: "Archivo requerido" });
       }
@@ -9226,7 +9234,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Establecimiento no encontrado" });
       }
       const docs = await storage.getEstablishmentDocuments(req.params.id);
-      const doc = docs.find((d: any) => d.id === req.params.docId);
+      const doc = docs.find((d) => d.id === req.params.docId);
       if (!doc) {
         return res.status(404).json({ error: "Documento no encontrado" });
       }
@@ -9259,7 +9267,7 @@ export async function registerRoutes(
       }
 
       const docs = await storage.getEstablishmentDocuments(req.params.id);
-      const doc = docs.find((d: any) => d.id === req.params.docId);
+      const doc = docs.find((d) => d.id === req.params.docId);
       if (!doc) {
         return res.status(404).json({ error: "Documento no encontrado" });
       }
@@ -9289,7 +9297,7 @@ export async function registerRoutes(
       }
 
       const docs = await storage.getEstablishmentDocuments(req.params.id);
-      const doc = docs.find((d: any) => d.id === req.params.docId);
+      const doc = docs.find((d) => d.id === req.params.docId);
       if (!doc) {
         return res.status(404).json({ error: "Documento no encontrado" });
       }

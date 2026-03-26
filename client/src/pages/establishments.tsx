@@ -4,7 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
-import { useForm } from "react-hook-form";
+import { useForm, UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,6 +67,64 @@ const followupFormSchema = z.object({
 
 type FollowupFormValues = z.infer<typeof followupFormSchema>;
 
+interface EstablishmentStageInfo {
+  id: string;
+  name: string;
+  color: string | null;
+  sortOrder: number | null;
+  isDefault: boolean | null;
+  isActive: boolean | null;
+}
+
+interface EstablishmentWithRelations {
+  id: string;
+  tenantId: string;
+  name: string;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  address: string | null;
+  city: string | null;
+  zone: string | null;
+  gpsCoordinates: string | null;
+  priority: string | null;
+  estimatedMachines: number | null;
+  monthlyEstimatedSales: string | null;
+  commissionPercent: string | null;
+  notes: string | null;
+  stageId: string | null;
+  assignedUserId: string | null;
+  convertedToLocationId: string | null;
+  convertedAt: string | null;
+  isActive: boolean | null;
+  createdAt: string | null;
+  stage: EstablishmentStageInfo | null;
+  assignedUser: { id: string; fullName: string | null } | null;
+}
+
+interface EstablishmentDocument {
+  id: string;
+  fileName: string;
+  originalName: string | null;
+  fileKey: string;
+  fileSize: number | null;
+  mimeType: string | null;
+  documentType: string | null;
+  status: string | null;
+  notes: string | null;
+  createdAt: string | null;
+  uploadedBy?: { fullName: string | null };
+}
+
+interface EstablishmentFollowup {
+  id: string;
+  type: string | null;
+  content: string;
+  nextFollowupDate: string | null;
+  createdAt: string | null;
+  user?: { fullName: string | null };
+}
+
 function PriorityBadge({ priority }: { priority: string }) {
   const config: Record<string, { label: string; className: string }> = {
     alta: { label: "Alta", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
@@ -77,7 +135,7 @@ function PriorityBadge({ priority }: { priority: string }) {
   return <Badge variant="secondary" className={c.className}>{c.label}</Badge>;
 }
 
-function StageBadge({ stage }: { stage: any }) {
+function StageBadge({ stage }: { stage: EstablishmentStageInfo | null }) {
   if (!stage) return null;
   return (
     <Badge
@@ -90,6 +148,17 @@ function StageBadge({ stage }: { stage: any }) {
   );
 }
 
+function DocumentStatusBadge({ status }: { status: string }) {
+  const config: Record<string, { label: string; className: string }> = {
+    enviado: { label: "Enviado", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+    recibido: { label: "Recibido", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
+    firmado: { label: "Firmado", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+    rechazado: { label: "Rechazado", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+  };
+  const c = config[status] || config.recibido;
+  return <Badge variant="secondary" className={`text-xs ${c.className}`}>{c.label}</Badge>;
+}
+
 function EstablishmentDetail({
   establishment,
   stages,
@@ -99,8 +168,8 @@ function EstablishmentDetail({
   canCreate,
   canApprove,
 }: {
-  establishment: any;
-  stages: any[];
+  establishment: EstablishmentWithRelations;
+  stages: EstablishmentStageInfo[];
   onClose: () => void;
   onStageChange: () => void;
   canEdit: boolean;
@@ -111,7 +180,7 @@ function EstablishmentDetail({
   const [showFollowupForm, setShowFollowupForm] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
 
-  const { data: followups = [], isLoading: loadingFollowups } = useQuery<any[]>({
+  const { data: followups = [], isLoading: loadingFollowups } = useQuery<EstablishmentFollowup[]>({
     queryKey: ["/api/establishments", establishment.id, "followups"],
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/establishments/${establishment.id}/followups`);
@@ -119,7 +188,7 @@ function EstablishmentDetail({
     },
   });
 
-  const { data: documents = [], isLoading: loadingDocs } = useQuery<any[]>({
+  const { data: documents = [], isLoading: loadingDocs } = useQuery<EstablishmentDocument[]>({
     queryKey: ["/api/establishments", establishment.id, "documents"],
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/establishments/${establishment.id}/documents`);
@@ -169,6 +238,17 @@ function EstablishmentDetail({
     onError: () => toast({ title: "Error al convertir", variant: "destructive" }),
   });
 
+  const updateDocStatusMutation = useMutation({
+    mutationFn: async ({ docId, status }: { docId: string; status: string }) => {
+      return apiRequest("PATCH", `/api/establishments/${establishment.id}/documents/${docId}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "documents"] });
+      toast({ title: "Estado del documento actualizado" });
+    },
+    onError: () => toast({ title: "Error al actualizar estado", variant: "destructive" }),
+  });
+
   const deleteDocMutation = useMutation({
     mutationFn: async (docId: string) => {
       return apiRequest("DELETE", `/api/establishments/${establishment.id}/documents/${docId}`);
@@ -205,7 +285,7 @@ function EstablishmentDetail({
     }
   };
 
-  const handleDownload = async (doc: any) => {
+  const handleDownload = async (doc: EstablishmentDocument) => {
     try {
       const res = await apiRequest("GET", `/api/establishments/${establishment.id}/documents/${doc.id}/download`);
       const blob = await res.blob();
@@ -412,7 +492,7 @@ function EstablishmentDetail({
           )}
 
           {loadingFollowups && <p className="text-sm text-muted-foreground">Cargando...</p>}
-          {followups.map((f: any) => (
+          {followups.map((f: EstablishmentFollowup) => (
             <Card key={f.id}>
               <CardContent className="pt-4 pb-3">
                 <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -451,25 +531,46 @@ function EstablishmentDetail({
           )}
 
           {loadingDocs && <p className="text-sm text-muted-foreground">Cargando...</p>}
-          {documents.map((doc: any) => (
+          {documents.map((doc: EstablishmentDocument) => (
             <div key={doc.id} className="flex items-center justify-between gap-2 p-3 rounded-md border">
               <div className="flex items-center gap-2 min-w-0">
                 <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{doc.fileName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {doc.uploadedBy?.fullName} - {doc.createdAt ? format(new Date(doc.createdAt), "dd MMM yyyy", { locale: es }) : ""}
-                    {doc.fileSize ? ` - ${(doc.fileSize / 1024).toFixed(0)} KB` : ""}
-                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-xs text-muted-foreground">
+                      {doc.uploadedBy?.fullName} - {doc.createdAt ? format(new Date(doc.createdAt), "dd MMM yyyy", { locale: es }) : ""}
+                      {doc.fileSize ? ` - ${(doc.fileSize / 1024).toFixed(0)} KB` : ""}
+                    </p>
+                    <DocumentStatusBadge status={doc.status || "recibido"} />
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-1 shrink-0">
+              <div className="flex gap-1 shrink-0 items-center">
+                {canEdit && (
+                  <Select
+                    value={doc.status || "recibido"}
+                    onValueChange={(val) => updateDocStatusMutation.mutate({ docId: doc.id, status: val })}
+                  >
+                    <SelectTrigger className="w-[110px] h-7 text-xs" data-testid={`select-doc-status-${doc.id}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="enviado">Enviado</SelectItem>
+                      <SelectItem value="recibido">Recibido</SelectItem>
+                      <SelectItem value="firmado">Firmado</SelectItem>
+                      <SelectItem value="rechazado">Rechazado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
                 <Button variant="ghost" size="icon" onClick={() => handleDownload(doc)} data-testid={`button-download-doc-${doc.id}`}>
                   <Download className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => deleteDocMutation.mutate(doc.id)} disabled={deleteDocMutation.isPending} data-testid={`button-delete-doc-${doc.id}`}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {canEdit && (
+                  <Button variant="ghost" size="icon" onClick={() => deleteDocMutation.mutate(doc.id)} disabled={deleteDocMutation.isPending} data-testid={`button-delete-doc-${doc.id}`}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           ))}
@@ -494,31 +595,34 @@ export function EstablishmentsPage() {
   const [search, setSearch] = useState("");
   const [filterStage, setFilterStage] = useState<string>("");
   const [filterPriority, setFilterPriority] = useState<string>("");
+  const [filterAssigned, setFilterAssigned] = useState<string>("");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [selectedEstablishment, setSelectedEstablishment] = useState<any>(null);
-  const [editingEstablishment, setEditingEstablishment] = useState<any>(null);
+  const [selectedEstablishment, setSelectedEstablishment] = useState<EstablishmentWithRelations | null>(null);
+  const [editingEstablishment, setEditingEstablishment] = useState<EstablishmentWithRelations | null>(null);
 
-  const { data: stages = [] } = useQuery<any[]>({
+  const { data: stages = [] } = useQuery<EstablishmentStageInfo[]>({
     queryKey: ["/api/establishment-stages"],
   });
 
-  const { data: establishments = [], isLoading } = useQuery<any[]>({
-    queryKey: ["/api/establishments", { stageId: filterStage, priority: filterPriority, search }],
+  const { data: establishmentsResponse, isLoading } = useQuery<{ data: EstablishmentWithRelations[]; total: number; page: number; pageSize: number }>({
+    queryKey: ["/api/establishments", { stageId: filterStage, priority: filterPriority, search, assignedUserId: filterAssigned }],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filterStage && filterStage !== "__all__") params.set("stageId", filterStage);
       if (filterPriority && filterPriority !== "__all__") params.set("priority", filterPriority);
+      if (filterAssigned && filterAssigned !== "__all__") params.set("assignedUserId", filterAssigned);
       if (search) params.set("search", search);
       const res = await apiRequest("GET", `/api/establishments?${params.toString()}`);
       return res.json();
     },
   });
+  const establishments = establishmentsResponse?.data || [];
 
-  const { data: stats } = useQuery<any>({
+  const { data: stats } = useQuery<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; converted: number }>({
     queryKey: ["/api/establishments/stats"],
   });
 
-  const { data: adminUsers = [] } = useQuery<any[]>({
+  const { data: adminUsers = [] } = useQuery<Array<{ id: string; fullName: string | null; isActive: boolean; role: string }>>({
     queryKey: ["/api/employees"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/employees");
@@ -541,7 +645,7 @@ export function EstablishmentsPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: EstablishmentFormValues) => {
-      const payload: any = { ...data };
+      const payload: Record<string, string | number | undefined> = { ...data };
       if (!payload.contactEmail) delete payload.contactEmail;
       if (!payload.stageId) delete payload.stageId;
       if (!payload.assignedUserId || payload.assignedUserId === "__none__") delete payload.assignedUserId;
@@ -560,7 +664,7 @@ export function EstablishmentsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: EstablishmentFormValues }) => {
-      const payload: any = { ...data };
+      const payload: Record<string, string | number | undefined> = { ...data };
       if (!payload.contactEmail) delete payload.contactEmail;
       if (!payload.assignedUserId || payload.assignedUserId === "__none__") delete payload.assignedUserId;
       return apiRequest("PATCH", `/api/establishments/${id}`, payload);
@@ -587,7 +691,7 @@ export function EstablishmentsPage() {
     onError: () => toast({ title: "Error al eliminar", variant: "destructive" }),
   });
 
-  const openEditDialog = (est: any) => {
+  const openEditDialog = (est: EstablishmentWithRelations) => {
     editForm.reset({
       name: est.name,
       contactName: est.contactName || "",
@@ -608,7 +712,7 @@ export function EstablishmentsPage() {
     setEditingEstablishment(est);
   };
 
-  const EstablishmentFormFields = ({ form, isEdit = false }: { form: any; isEdit?: boolean }) => (
+  const EstablishmentFormFields = ({ form, isEdit = false }: { form: UseFormReturn<EstablishmentFormValues>; isEdit?: boolean }) => (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-1">
       <FormField control={form.control} name="name" render={({ field }) => (
         <FormItem className="md:col-span-2">
@@ -692,7 +796,7 @@ export function EstablishmentsPage() {
             <Select onValueChange={field.onChange} defaultValue={field.value}>
               <FormControl><SelectTrigger data-testid="select-stage"><SelectValue placeholder="Seleccionar etapa" /></SelectTrigger></FormControl>
               <SelectContent>
-                {stages.map((s: any) => (
+                {stages.map((s: EstablishmentStageInfo) => (
                   <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -707,7 +811,7 @@ export function EstablishmentsPage() {
             <FormControl><SelectTrigger data-testid="select-assigned-user"><SelectValue placeholder="Sin asignar" /></SelectTrigger></FormControl>
             <SelectContent>
               <SelectItem value="__none__">Sin asignar</SelectItem>
-              {adminUsers.filter((u: any) => u.isActive && (u.role === "admin" || u.role === "supervisor")).map((u: any) => (
+              {adminUsers.filter((u) => u.isActive && (u.role === "admin" || u.role === "supervisor")).map((u) => (
                 <SelectItem key={u.id} value={u.id}>{u.fullName}</SelectItem>
               ))}
             </SelectContent>
@@ -735,7 +839,7 @@ export function EstablishmentsPage() {
           canApprove={canApprove}
           onStageChange={() => {
             queryClient.invalidateQueries({ queryKey: ["/api/establishments"] }).then(() => {
-              const updated = establishments.find((e: any) => e.id === selectedEstablishment.id);
+              const updated = establishments.find((e) => e.id === selectedEstablishment.id);
               if (updated) setSelectedEstablishment(updated);
               else setSelectedEstablishment(null);
             });
@@ -745,9 +849,9 @@ export function EstablishmentsPage() {
     );
   }
 
-  const groupedByStage = stages.map((stage: any) => ({
+  const groupedByStage = stages.map((stage) => ({
     stage,
-    items: establishments.filter((e: any) => e.stageId === stage.id),
+    items: establishments.filter((e) => e.stageId === stage.id),
   }));
 
   return (
@@ -810,7 +914,7 @@ export function EstablishmentsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">Todas las etapas</SelectItem>
-            {stages.map((s: any) => (
+            {stages.map((s: EstablishmentStageInfo) => (
               <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
             ))}
           </SelectContent>
@@ -824,6 +928,17 @@ export function EstablishmentsPage() {
             <SelectItem value="alta">Alta</SelectItem>
             <SelectItem value="media">Media</SelectItem>
             <SelectItem value="baja">Baja</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterAssigned} onValueChange={setFilterAssigned}>
+          <SelectTrigger className="w-[180px]" data-testid="select-filter-assigned">
+            <SelectValue placeholder="Responsable" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Todos</SelectItem>
+            {adminUsers.filter((u) => u.isActive && (u.role === "admin" || u.role === "supervisor")).map((u) => (
+              <SelectItem key={u.id} value={u.id}>{u.fullName || u.id}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -853,7 +968,7 @@ export function EstablishmentsPage() {
                       <Badge variant="secondary" className="text-xs">{items.length}</Badge>
                     </div>
                     <div className="space-y-2">
-                      {items.map((est: any) => (
+                      {items.map((est: EstablishmentWithRelations) => (
                         <Card
                           key={est.id}
                           className="cursor-pointer hover-elevate"
@@ -895,7 +1010,7 @@ export function EstablishmentsPage() {
             <TabsContent value="list">
               {isLoading && <p className="text-sm text-muted-foreground">Cargando...</p>}
               <div className="space-y-2">
-                {establishments.map((est: any) => (
+                {establishments.map((est: EstablishmentWithRelations) => (
                   <Card
                     key={est.id}
                     className="cursor-pointer hover-elevate"

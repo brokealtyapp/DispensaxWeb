@@ -6631,7 +6631,7 @@ export class DatabaseStorage implements IStorage {
     await db.insert(establishmentStages).values(defaults.map(d => ({ tenantId, ...d, isActive: true })));
   }
 
-  async getEstablishments(filters: { tenantId: string; stageId?: string; priority?: string; assignedUserId?: string; search?: string }): Promise<any[]> {
+  async getEstablishments(filters: { tenantId: string; stageId?: string; priority?: string; assignedUserId?: string; search?: string; page?: number; pageSize?: number }): Promise<{ data: Array<Establishment & { stage: EstablishmentStage | null; assignedUser: { id: string; fullName: string | null } | null }>; total: number; page: number; pageSize: number }> {
     const conditions: SQL[] = [eq(establishments.tenantId, filters.tenantId), eq(establishments.isActive, true)];
     if (filters.stageId) conditions.push(eq(establishments.stageId, filters.stageId));
     if (filters.priority) conditions.push(eq(establishments.priority, filters.priority));
@@ -6646,6 +6646,14 @@ export class DatabaseStorage implements IStorage {
       );
     }
 
+    const pg = filters.page || 1;
+    const ps = filters.pageSize || 50;
+    const offset = (pg - 1) * ps;
+
+    const [countResult] = await db.select({ count: sql<number>`count(*)` })
+      .from(establishments)
+      .where(and(...conditions));
+
     const results = await db.select({
       establishment: establishments,
       stage: establishmentStages,
@@ -6658,16 +6666,23 @@ export class DatabaseStorage implements IStorage {
     .leftJoin(establishmentStages, eq(establishments.stageId, establishmentStages.id))
     .leftJoin(users, eq(establishments.assignedUserId, users.id))
     .where(and(...conditions))
-    .orderBy(desc(establishments.createdAt));
+    .orderBy(desc(establishments.createdAt))
+    .limit(ps)
+    .offset(offset);
 
-    return results.map(r => ({
-      ...r.establishment,
-      stage: r.stage,
-      assignedUser: r.assignedUser,
-    }));
+    return {
+      data: results.map(r => ({
+        ...r.establishment,
+        stage: r.stage,
+        assignedUser: r.assignedUser,
+      })),
+      total: Number(countResult.count),
+      page: pg,
+      pageSize: ps,
+    };
   }
 
-  async getEstablishment(id: string): Promise<any> {
+  async getEstablishment(id: string): Promise<(Establishment & { stage: EstablishmentStage | null; assignedUser: { id: string; fullName: string | null } | null }) | undefined> {
     const [result] = await db.select({
       establishment: establishments,
       stage: establishmentStages,
@@ -6748,7 +6763,7 @@ export class DatabaseStorage implements IStorage {
     return { establishment: updatedEst, location: newLocation };
   }
 
-  async getEstablishmentFollowups(establishmentId: string): Promise<any[]> {
+  async getEstablishmentFollowups(establishmentId: string): Promise<Array<EstablishmentFollowup & { user: { id: string; fullName: string | null } | null }>> {
     const results = await db.select({
       followup: establishmentFollowups,
       user: {
@@ -6772,7 +6787,7 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async getEstablishmentDocuments(establishmentId: string): Promise<any[]> {
+  async getEstablishmentDocuments(establishmentId: string): Promise<Array<EstablishmentDocument & { uploadedBy: { id: string; fullName: string | null } | null }>> {
     const results = await db.select({
       document: establishmentDocuments,
       uploadedBy: {
