@@ -9006,7 +9006,11 @@ export async function registerRoutes(
       if (!est || est.tenantId !== tenantId) {
         return res.status(404).json({ error: "Establecimiento no encontrado" });
       }
-      res.json(est);
+      const [followups, documents] = await Promise.all([
+        storage.getEstablishmentFollowups(req.params.id),
+        storage.getEstablishmentDocuments(req.params.id),
+      ]);
+      res.json({ ...est, followups, documents });
     } catch (error) {
       console.error("Error getting establishment:", error);
       res.status(500).json({ error: "Error al obtener establecimiento" });
@@ -9020,10 +9024,22 @@ export async function registerRoutes(
 
       const data = insertEstablishmentSchema.parse({ ...req.body, tenantId });
 
-      if (!data.stageId) {
+      if (data.stageId) {
+        const stages = await storage.getEstablishmentStages(tenantId);
+        if (!stages.find(s => s.id === data.stageId)) {
+          return res.status(400).json({ error: "Etapa no válida para este tenant" });
+        }
+      } else {
         const stages = await storage.getEstablishmentStages(tenantId);
         const defaultStage = stages.find(s => s.isDefault) || stages[0];
         if (defaultStage) data.stageId = defaultStage.id;
+      }
+
+      if (data.assignedUserId) {
+        const assignedUser = await storage.getUser(data.assignedUserId);
+        if (!assignedUser || assignedUser.tenantId !== tenantId) {
+          return res.status(400).json({ error: "Usuario asignado no válido para este tenant" });
+        }
       }
 
       const created = await storage.createEstablishment(data);
@@ -9039,6 +9055,8 @@ export async function registerRoutes(
 
   const establishmentPatchSchema = z.object({
     name: z.string().min(1).optional(),
+    businessType: z.string().optional(),
+    status: z.string().optional(),
     contactName: z.string().optional(),
     contactPhone: z.string().optional(),
     contactEmail: z.string().email().or(z.literal("")).optional(),
@@ -9063,6 +9081,20 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Establecimiento no encontrado" });
       }
       const data = establishmentPatchSchema.parse(req.body);
+
+      if (data.stageId) {
+        const stages = await storage.getEstablishmentStages(tenantId);
+        if (!stages.find(s => s.id === data.stageId)) {
+          return res.status(400).json({ error: "Etapa no válida para este tenant" });
+        }
+      }
+      if (data.assignedUserId) {
+        const assignedUser = await storage.getUser(data.assignedUserId);
+        if (!assignedUser || assignedUser.tenantId !== tenantId) {
+          return res.status(400).json({ error: "Usuario asignado no válido para este tenant" });
+        }
+      }
+
       const updated = await storage.updateEstablishment(req.params.id, data);
       res.json(updated);
     } catch (error) {
