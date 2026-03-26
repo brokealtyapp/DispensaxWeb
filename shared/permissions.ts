@@ -152,7 +152,7 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
     establishments: { view: false, create: false, edit: false, delete: false },
     work_orders: { view: true, create: false, edit: true, delete: false },
-    work_order_tickets: { view: true, create: true, edit: false, delete: false },
+    work_order_tickets: { view: true, create: false, edit: false, delete: false },
   },
   
   almacen: {

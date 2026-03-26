@@ -9805,19 +9805,14 @@ export async function registerRoutes(
         if (existing.assignedUserId !== req.user!.id) {
           return res.status(404).json({ error: "Orden de trabajo no encontrada" });
         }
-        const abastecedorAllowed = ["status", "notes"];
-        const abastecedorData: any = {};
-        for (const f of abastecedorAllowed) {
-          if (req.body[f] !== undefined) abastecedorData[f] = req.body[f];
-        }
-        if (abastecedorData.status) {
-          const validStatuses = ["en_proceso", "en_ruta", "completada"];
-          if (!validStatuses.includes(abastecedorData.status)) {
-            return res.status(403).json({ error: "No autorizado para cambiar a este estado" });
-          }
-          if (abastecedorData.status === "completada") abastecedorData.completedAt = new Date();
-        }
-        const updated = await storage.updateWorkOrder(req.params.id, abastecedorData);
+        const abastecedorSchema = z.object({
+          status: z.enum(["en_proceso", "en_ruta", "completada"]).optional(),
+          notes: z.string().nullable().optional(),
+        });
+        const abastecedorData = abastecedorSchema.parse(req.body);
+        const abastecedorUpdate: Partial<{ status: string; notes: string | null; completedAt: Date }> = { ...abastecedorData };
+        if (abastecedorUpdate.status === "completada") abastecedorUpdate.completedAt = new Date();
+        const updated = await storage.updateWorkOrder(req.params.id, abastecedorUpdate);
         return res.json(updated);
       }
 
@@ -9838,7 +9833,7 @@ export async function registerRoutes(
         }
       }
 
-      const finalData: any = { ...updateData };
+      const finalData: Record<string, unknown> = { ...updateData };
       if (finalData.status === "completada" && existing.status !== "completada") {
         finalData.completedAt = new Date();
       }
@@ -9847,7 +9842,7 @@ export async function registerRoutes(
         finalData.closedBy = req.user!.id;
       }
 
-      const updated = await storage.updateWorkOrder(req.params.id, finalData);
+      const updated = await storage.updateWorkOrder(req.params.id, finalData as Partial<typeof existing>);
       res.json(updated);
     } catch (error) {
       console.error("Error updating work order:", error);
@@ -9877,7 +9872,10 @@ export async function registerRoutes(
       if (!machine || machine.tenantId !== tenantId) {
         return res.status(404).json({ error: "Máquina no encontrada" });
       }
-      const orders = await storage.getWorkOrdersByMachine(req.params.id, tenantId);
+      let orders = await storage.getWorkOrdersByMachine(req.params.id, tenantId);
+      if (req.user!.role === "abastecedor") {
+        orders = orders.filter(o => o.assignedUserId === req.user!.id);
+      }
       res.json(orders);
     } catch (error) {
       console.error("Error fetching machine work orders:", error);
@@ -9892,6 +9890,9 @@ export async function registerRoutes(
       const tenantId = req.user!.tenantId!;
       const order = await storage.getWorkOrderById(req.params.id);
       if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.id) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
       const items = await storage.getChecklistItems(order.id);
@@ -9913,17 +9914,22 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
 
-      const updateData: any = {};
-      if (typeof req.body.isCompleted === "boolean") {
-        updateData.isCompleted = req.body.isCompleted;
-        updateData.completedAt = req.body.isCompleted ? new Date() : null;
-        updateData.completedBy = req.body.isCompleted ? req.user!.id : null;
+      const checklistUpdateSchema = z.object({
+        isCompleted: z.boolean().optional(),
+        notes: z.string().nullable().optional(),
+      });
+      const parsedChecklist = checklistUpdateSchema.parse(req.body);
+      const checklistUpdate: Partial<{ isCompleted: boolean; completedAt: Date | null; completedBy: string | null; notes: string | null }> = {};
+      if (parsedChecklist.isCompleted !== undefined) {
+        checklistUpdate.isCompleted = parsedChecklist.isCompleted;
+        checklistUpdate.completedAt = parsedChecklist.isCompleted ? new Date() : null;
+        checklistUpdate.completedBy = parsedChecklist.isCompleted ? req.user!.id : null;
       }
-      if (req.body.notes !== undefined) {
-        updateData.notes = req.body.notes;
+      if (parsedChecklist.notes !== undefined) {
+        checklistUpdate.notes = parsedChecklist.notes;
       }
 
-      const updated = await storage.updateChecklistItem(req.params.itemId, updateData, order.id);
+      const updated = await storage.updateChecklistItem(req.params.itemId, checklistUpdate, order.id);
       if (!updated) {
         return res.status(404).json({ error: "Item del checklist no encontrado" });
       }
@@ -9943,6 +9949,9 @@ export async function registerRoutes(
       if (!order || order.tenantId !== tenantId) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.id) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
       const photos = await storage.getWorkOrderPhotos(order.id);
       res.json(photos);
     } catch (error) {
@@ -9956,6 +9965,9 @@ export async function registerRoutes(
       const tenantId = req.user!.tenantId!;
       const order = await storage.getWorkOrderById(req.params.id);
       if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.id) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
 
@@ -10072,15 +10084,15 @@ export async function registerRoutes(
         }
       }
 
-      const finalData: any = { ...updateData };
-      if (finalData.status === "resuelto" && existing.status !== "resuelto") {
-        finalData.resolvedAt = new Date();
+      const finalTicketData: Record<string, unknown> = { ...updateData };
+      if (finalTicketData.status === "resuelto" && existing.status !== "resuelto") {
+        finalTicketData.resolvedAt = new Date();
       }
-      if (finalData.status === "cerrado" && existing.status !== "cerrado") {
-        finalData.closedAt = new Date();
+      if (finalTicketData.status === "cerrado" && existing.status !== "cerrado") {
+        finalTicketData.closedAt = new Date();
       }
 
-      const updated = await storage.updateTicket(req.params.id, finalData);
+      const updated = await storage.updateTicket(req.params.id, finalTicketData as Partial<typeof existing>);
       res.json(updated);
     } catch (error) {
       console.error("Error updating ticket:", error);
