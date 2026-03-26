@@ -2480,3 +2480,62 @@ export const insertEstablishmentDocumentSchema = createInsertSchema(establishmen
 
 export type InsertEstablishmentDocument = z.infer<typeof insertEstablishmentDocumentSchema>;
 export type EstablishmentDocument = typeof establishmentDocuments.$inferSelect;
+
+export const establishmentStagesRelations = relations(establishmentStages, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [establishmentStages.tenantId],
+    references: [tenants.id],
+  }),
+  establishments: many(establishments),
+}));
+
+export const establishmentsRelations = relations(establishments, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [establishments.tenantId],
+    references: [tenants.id],
+  }),
+  stage: one(establishmentStages, {
+    fields: [establishments.stageId],
+    references: [establishmentStages.id],
+  }),
+  assignedUser: one(users, {
+    fields: [establishments.assignedUserId],
+    references: [users.id],
+  }),
+  convertedLocation: one(locations, {
+    fields: [establishments.convertedToLocationId],
+    references: [locations.id],
+  }),
+  followups: many(establishmentFollowups),
+  documents: many(establishmentDocuments),
+}));
+
+export const establishmentFollowupsRelations = relations(establishmentFollowups, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [establishmentFollowups.tenantId],
+    references: [tenants.id],
+  }),
+  establishment: one(establishments, {
+    fields: [establishmentFollowups.establishmentId],
+    references: [establishments.id],
+  }),
+  user: one(users, {
+    fields: [establishmentFollowups.userId],
+    references: [users.id],
+  }),
+}));
+
+export const establishmentDocumentsRelations = relations(establishmentDocuments, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [establishmentDocuments.tenantId],
+    references: [tenants.id],
+  }),
+  establishment: one(establishments, {
+    fields: [establishmentDocuments.establishmentId],
+    references: [establishments.id],
+  }),
+  uploadedBy: one(users, {
+    fields: [establishmentDocuments.uploadedByUserId],
+    references: [users.id],
+  }),
+}));

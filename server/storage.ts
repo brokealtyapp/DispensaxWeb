@@ -6742,9 +6742,11 @@ export class DatabaseStorage implements IStorage {
       tenantId,
       name: est.name,
       address: est.address || "",
+      city: est.city,
+      zone: est.zone,
       contactName: est.contactName,
       contactPhone: est.contactPhone,
-      isActive: true,
+      notes: est.notes,
     }).returning();
 
     const [updatedEst] = await db.update(establishments)

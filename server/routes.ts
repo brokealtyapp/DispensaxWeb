@@ -9243,7 +9243,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Documento no encontrado" });
       }
       const docUpdateSchema = z.object({
-        status: z.enum(["enviado", "recibido", "firmado", "rechazado"]).optional(),
+        status: z.enum(["pendiente", "enviado", "recibido", "firmado", "rechazado"]).optional(),
         documentType: z.string().optional(),
         notes: z.string().optional(),
       });
