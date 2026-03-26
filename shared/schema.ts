@@ -2391,7 +2391,11 @@ export const establishmentStages = pgTable("establishment_stages", {
   isFinalStage: boolean("is_final_stage").default(false),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("uq_establishment_stages_tenant_name_active")
+    .on(table.tenantId, table.name)
+    .where(sql`is_active = true`),
+]);
 
 export const insertEstablishmentStageSchema = createInsertSchema(establishmentStages).omit({
   id: true,

@@ -226,7 +226,10 @@ function EstablishmentDetail({
 
   const createFollowupMutation = useMutation({
     mutationFn: async (data: FollowupFormValues) => {
-      return apiRequest("POST", `/api/establishments/${establishment.id}/followups`, data);
+      const payload: Record<string, string | null | undefined> = { ...data };
+      if (!payload.nextFollowupDate) payload.nextFollowupDate = null;
+      if (!payload.nextAction) payload.nextAction = null;
+      return apiRequest("POST", `/api/establishments/${establishment.id}/followups`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "followups"] });
@@ -1466,11 +1469,13 @@ export function EstablishmentsPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: EstablishmentFormValues) => {
-      const payload: Record<string, string | number | undefined> = { ...data };
+      const payload: Record<string, string | number | null | undefined> = { ...data };
       if (!payload.contactEmail) delete payload.contactEmail;
       if (!payload.stageId) delete payload.stageId;
       if (!payload.assignedUserId || payload.assignedUserId === "__none__") delete payload.assignedUserId;
       if (!payload.monthlyEstimatedSales) delete payload.monthlyEstimatedSales;
+      if (!payload.nextActionDate) payload.nextActionDate = null;
+      if (!payload.nextAction) payload.nextAction = null;
       return apiRequest("POST", "/api/establishments", payload);
     },
     onSuccess: () => {
@@ -1485,9 +1490,11 @@ export function EstablishmentsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: EstablishmentFormValues }) => {
-      const payload: Record<string, string | number | undefined> = { ...data };
+      const payload: Record<string, string | number | null | undefined> = { ...data };
       if (!payload.contactEmail) delete payload.contactEmail;
       if (!payload.assignedUserId || payload.assignedUserId === "__none__") delete payload.assignedUserId;
+      if (!payload.nextActionDate) payload.nextActionDate = null;
+      if (!payload.nextAction) payload.nextAction = null;
       return apiRequest("PATCH", `/api/establishments/${id}`, payload);
     },
     onSuccess: () => {

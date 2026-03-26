@@ -8916,6 +8916,9 @@ export async function registerRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors[0].message });
       }
+      if ((error as any)?.code === "23505") {
+        return res.status(409).json({ error: "Ya existe una etapa activa con ese nombre para este tenant" });
+      }
       console.error("Error creating stage:", error);
       res.status(500).json({ error: "Error al crear etapa" });
     }
@@ -8944,6 +8947,9 @@ export async function registerRoutes(
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors[0].message });
+      }
+      if ((error as any)?.code === "23505") {
+        return res.status(409).json({ error: "Ya existe una etapa activa con ese nombre para este tenant" });
       }
       console.error("Error updating stage:", error);
       res.status(500).json({ error: "Error al actualizar etapa" });
@@ -9041,12 +9047,10 @@ export async function registerRoutes(
       const body = { ...req.body, tenantId };
       if (body.nextActionDate && typeof body.nextActionDate === "string") {
         body.nextActionDate = new Date(body.nextActionDate);
-      } else if (!body.nextActionDate || body.nextActionDate === "") {
-        delete body.nextActionDate;
+      } else {
+        body.nextActionDate = null;
       }
-      if (!body.nextAction || body.nextAction === "") {
-        delete body.nextAction;
-      }
+      if (!body.nextAction) body.nextAction = null;
       const data = insertEstablishmentSchema.parse(body);
 
       if (data.stageId) {
@@ -9229,12 +9233,10 @@ export async function registerRoutes(
       const followupBody = { ...req.body, tenantId, establishmentId: req.params.id, userId: req.user!.userId };
       if (followupBody.nextFollowupDate && typeof followupBody.nextFollowupDate === "string") {
         followupBody.nextFollowupDate = new Date(followupBody.nextFollowupDate);
-      } else if (!followupBody.nextFollowupDate || followupBody.nextFollowupDate === "") {
-        delete followupBody.nextFollowupDate;
+      } else {
+        followupBody.nextFollowupDate = null;
       }
-      if (!followupBody.nextAction || followupBody.nextAction === "") {
-        delete followupBody.nextAction;
-      }
+      if (!followupBody.nextAction) followupBody.nextAction = null;
       const data = insertEstablishmentFollowupSchema.parse(followupBody);
       const created = await storage.createEstablishmentFollowup(data);
       res.json(created);

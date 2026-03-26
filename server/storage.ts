@@ -6991,40 +6991,80 @@ export class DatabaseStorage implements IStorage {
     .where(and(...conditions))
     .orderBy(desc(establishments.convertedAt));
 
-    const enriched = await Promise.all(results.map(async (r) => {
+    const locationIds = results
+      .map(r => r.establishment.convertedToLocationId)
+      .filter((id): id is string => id !== null);
+
+    const establishmentIds = results.map(r => r.establishment.id);
+
+    const machineCountMap = new Map<string, number>();
+    if (locationIds.length > 0) {
+      const machineCounts = await db.select({
+        locationId: machines.locationId,
+        count: sql<number>`count(*)`,
+      })
+      .from(machines)
+      .where(and(
+        sql`${machines.locationId} IN (${sql.join(locationIds.map(id => sql`${id}`), sql`, `)})`,
+        eq(machines.tenantId, tenantId)
+      ))
+      .groupBy(machines.locationId);
+
+      for (const mc of machineCounts) {
+        if (mc.locationId) machineCountMap.set(mc.locationId, Number(mc.count));
+      }
+    }
+
+    const latestContractMap = new Map<string, typeof establishmentContracts.$inferSelect>();
+    if (establishmentIds.length > 0) {
+      const latestContracts = await db.execute(sql`
+        SELECT DISTINCT ON (establishment_id) *
+        FROM establishment_contracts
+        WHERE establishment_id IN (${sql.join(establishmentIds.map(id => sql`${id}`), sql`, `)})
+        ORDER BY establishment_id, created_at DESC
+      `);
+
+      for (const row of latestContracts.rows) {
+        const contract = {
+          id: row.id as string,
+          establishmentId: row.establishment_id as string,
+          tenantId: row.tenant_id as string,
+          agreementType: row.agreement_type as string,
+          commissionPercent: row.commission_percent as string | null,
+          fixedRentAmount: row.fixed_rent_amount as string | null,
+          contractDate: row.contract_date as Date | null,
+          startDate: row.start_date as Date | null,
+          endDate: row.end_date as Date | null,
+          status: row.status as string,
+          terms: row.terms as string | null,
+          previousContractId: row.previous_contract_id as string | null,
+          createdAt: row.created_at as Date | null,
+          updatedAt: row.updated_at as Date | null,
+        };
+        latestContractMap.set(contract.establishmentId, contract as typeof establishmentContracts.$inferSelect);
+      }
+    }
+
+    const enriched: ActiveEstablishmentResult[] = [];
+    for (const r of results) {
       const locationId = r.establishment.convertedToLocationId;
-      let machineCount = 0;
-      if (locationId) {
-        const [mc] = await db.select({ count: sql<number>`count(*)` })
-          .from(machines)
-          .where(and(eq(machines.locationId, locationId), eq(machines.tenantId, tenantId)));
-        machineCount = Number(mc.count);
+      const machineCount = locationId ? (machineCountMap.get(locationId) || 0) : 0;
+      const activeContract = latestContractMap.get(r.establishment.id) || null;
+
+      if (filters?.contractStatus) {
+        if (!activeContract || activeContract.status !== filters.contractStatus) continue;
       }
 
-      const contracts = await db.select().from(establishmentContracts)
-        .where(eq(establishmentContracts.establishmentId, r.establishment.id))
-        .orderBy(desc(establishmentContracts.createdAt))
-        .limit(1);
-
-      const activeContract = contracts[0] || null;
-
-      if (filters?.contractStatus && activeContract?.status !== filters.contractStatus) {
-        return null;
-      }
-      if (filters?.contractStatus && !activeContract) {
-        return null;
-      }
-
-      return {
+      enriched.push({
         ...r.establishment,
         stage: r.stage,
         assignedUser: r.assignedUser,
         machineCount,
         activeContract,
-      } as ActiveEstablishmentResult;
-    }));
+      } as ActiveEstablishmentResult);
+    }
 
-    return enriched.filter((e): e is ActiveEstablishmentResult => e !== null);
+    return enriched;
   }
 
   async getEstablishmentOperationalHistory(establishmentId: string, tenantId: string): Promise<OperationalHistoryResult> {
