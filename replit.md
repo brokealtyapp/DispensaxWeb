@@ -34,7 +34,7 @@ The platform implements a 4-tier user hierarchy:
 The application follows a client-server architecture. The frontend is built with React, TypeScript, and Vite, utilizing Tailwind CSS and shadcn/ui for styling, Recharts for data visualization, React Hook Form with Zod for forms, TanStack Query for state management, and Wouter for routing. The backend is an Express.js and Node.js API, interacting with a PostgreSQL database.
 
 **Key Architectural Decisions & Features:**
-- **Modular Design:** The application is divided into distinct modules like Dashboard, Machines, Warehouse, Accounting, HR, Fuel, Purchases, Petty Cash, Money & Products, and Settings.
+- **Modular Design:** The application is divided into distinct modules like Dashboard, Machines, Warehouse, Accounting, HR, Fuel, Purchases, Petty Cash, Money & Products, Work Orders, and Settings.
 - **Responsive UI/UX:** Designed with a modern dashboard aesthetic, featuring responsive layouts and reusable components. Supports light/dark themes.
 - **Data Visualization:** Extensive use of Recharts for presenting financial, operational, and inventory data.
 - **Robust Form Handling:** All forms are managed using React Hook Form and validated with Zod for consistency and reliability.
@@ -97,6 +97,17 @@ The application follows a client-server architecture. The frontend is built with
 - **Frontend:** `/nayax` page with tabs for machine overview, linking, and cashless sales viewing
 - **Auth:** Admin-only access, token stored per tenant in `nayax_config` table
 - **Nayax Lynx API Base URL:** `https://lynx.nayax.com/operational/api/v1/`
+
+## Work Orders Module
+- **Schema Tables:** `work_orders`, `work_order_tickets`, `work_order_checklist_items`, `work_order_photos`, `sla_config` — all with tenantId NOT NULL for strict tenant isolation
+- **Auto-numbering:** Sequential per-tenant: OT-XXXX (orders), TK-XXXX (tickets)
+- **SLA:** Auto-calculated deadline by priority (Crítico: 2h, Alto: 4h, Medio: 24h, Bajo: 72h), configurable per tenant via sla_config
+- **Default Checklists:** Auto-generated per work order type (abastecimiento: 8 items, técnico: 8, mantenimiento_preventivo: 7, instalación: 7, retiro: 5)
+- **Work Order Types:** abastecimiento, tecnico, mantenimiento_preventivo, instalacion, retiro
+- **Ticket Types:** falla_cliente, alerta_sistema, incidencia_interna, solicitud_servicio
+- **API Endpoints:** Work Orders CRUD (`/api/work-orders`), Tickets CRUD (`/api/tickets`), Checklist (`/api/work-orders/:id/checklist`), Photos (`/api/work-orders/:id/photos`), SLA Config (`/api/sla-config`), Stats (`/api/work-orders/stats`), Machine History (`/api/machines/:id/work-orders`), Create Order from Ticket (`/api/tickets/:id/create-order`), SLA Update (`/api/work-orders/update-sla`)
+- **RBAC:** admin: full CRUD + approve; supervisor: view/create/edit; abastecedor: view + edit (assigned orders); others: view only or no access
+- **Security:** Whitelisted update fields, tenant-scoped FK validation on assignedUserId, checklist items scoped by workOrderId
 
 ## Documentation
 

@@ -101,6 +101,10 @@ import {
   establishmentStages as establishmentStagesTable,
   establishmentDocuments as establishmentDocsTable,
   establishmentContracts as establishmentContractsTable,
+  insertWorkOrderSchema,
+  insertWorkOrderTicketSchema,
+  insertSlaConfigSchema,
+  insertWorkOrderPhotoSchema,
 } from "@shared/schema";
 import { z } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
@@ -9602,6 +9606,544 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error downloading document:", error);
       res.status(500).json({ error: "Error al descargar documento" });
+    }
+  });
+
+  // ==================== WORK ORDERS MODULE ====================
+
+  function getDefaultChecklist(type: string): string[] {
+    const checklists: Record<string, string[]> = {
+      abastecimiento: [
+        "Verificar niveles de inventario actuales",
+        "Retirar productos vencidos o dañados",
+        "Cargar productos según planograma",
+        "Verificar fechas de vencimiento",
+        "Limpiar bandejas y dispensadores",
+        "Verificar precios configurados",
+        "Registrar conteo de monedas/billetes",
+        "Tomar foto de la máquina abastecida",
+      ],
+      tecnico: [
+        "Diagnosticar falla reportada",
+        "Verificar conexión eléctrica",
+        "Revisar sistema de refrigeración",
+        "Probar mecanismo de dispensado",
+        "Verificar aceptador de monedas/billetes",
+        "Verificar sistema de pago cashless",
+        "Limpiar componentes internos",
+        "Realizar prueba de funcionamiento completa",
+      ],
+      mantenimiento_preventivo: [
+        "Limpieza general exterior e interior",
+        "Verificar y limpiar condensador",
+        "Revisar sellos y empaques",
+        "Lubricar mecanismos móviles",
+        "Verificar temperatura de refrigeración",
+        "Inspeccionar cableado eléctrico",
+        "Actualizar software/firmware si aplica",
+      ],
+      instalacion: [
+        "Verificar punto de instalación (electricidad, espacio)",
+        "Posicionar y nivelar máquina",
+        "Conectar a fuente de energía",
+        "Configurar parámetros iniciales",
+        "Cargar inventario inicial",
+        "Realizar pruebas de dispensado",
+        "Capacitar al personal del establecimiento",
+      ],
+      retiro: [
+        "Retirar todo el inventario restante",
+        "Recolectar efectivo pendiente",
+        "Desconectar de fuente de energía",
+        "Documentar estado de la máquina",
+        "Coordinar transporte de retiro",
+      ],
+    };
+    return checklists[type] || [];
+  }
+
+  function calculateSlaDeadline(priority: string, config?: { criticalHours: number | null; highHours: number | null; mediumHours: number | null; lowHours: number | null }): Date {
+    const hours: Record<string, number> = {
+      critico: config?.criticalHours ?? 2,
+      alto: config?.highHours ?? 4,
+      medio: config?.mediumHours ?? 24,
+      bajo: config?.lowHours ?? 72,
+    };
+    const deadline = new Date();
+    deadline.setHours(deadline.getHours() + (hours[priority] || 24));
+    return deadline;
+  }
+
+  // --- Work Orders ---
+
+  app.get("/api/work-orders/stats", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const stats = await storage.getWorkOrderStats(tenantId);
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching work order stats:", error);
+      res.status(500).json({ error: "Error al obtener estadísticas" });
+    }
+  });
+
+  app.get("/api/work-orders", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const { status, type, machineId, assignedUserId } = req.query;
+      const orders = await storage.getWorkOrders(tenantId, {
+        status: status as string | undefined,
+        type: type as string | undefined,
+        machineId: machineId as string | undefined,
+        assignedUserId: assignedUserId as string | undefined,
+      });
+      res.json(orders);
+    } catch (error) {
+      console.error("Error fetching work orders:", error);
+      res.status(500).json({ error: "Error al obtener órdenes de trabajo" });
+    }
+  });
+
+  app.get("/api/work-orders/:id", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const order = await storage.getWorkOrderById(req.params.id);
+      if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+      const [checklist, photos, machine] = await Promise.all([
+        storage.getChecklistItems(order.id),
+        storage.getWorkOrderPhotos(order.id),
+        storage.getMachine(order.machineId),
+      ]);
+      const assignedUser = order.assignedUserId ? await storage.getUser(order.assignedUserId) : null;
+      res.json({
+        ...order,
+        checklist,
+        photos,
+        machine: machine ? { id: machine.id, name: machine.name, code: machine.code, location: machine.location } : null,
+        assignedUser: assignedUser ? { id: assignedUser.id, fullName: assignedUser.fullName } : null,
+      });
+    } catch (error) {
+      console.error("Error fetching work order:", error);
+      res.status(500).json({ error: "Error al obtener orden de trabajo" });
+    }
+  });
+
+  app.post("/api/work-orders", authenticateJWT, authorizeAction("work_orders", "create"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const machine = await storage.getMachine(req.body.machineId);
+      if (!machine || machine.tenantId !== tenantId) {
+        return res.status(400).json({ error: "Máquina no encontrada o no pertenece al tenant" });
+      }
+
+      const slaConf = await storage.getSlaConfig(tenantId);
+      const orderNumber = await storage.generateOrderNumber(tenantId);
+      const priority = req.body.priority || "medio";
+      const slaDeadline = calculateSlaDeadline(priority, slaConf || undefined);
+
+      const parsed = insertWorkOrderSchema.parse({
+        ...req.body,
+        tenantId,
+        orderNumber,
+        slaDeadline,
+        slaStatus: "dentro_tiempo",
+      });
+
+      const order = await storage.createWorkOrder(parsed);
+
+      const defaultItems = getDefaultChecklist(order.type);
+      if (defaultItems.length > 0) {
+        await storage.createChecklistItems(
+          defaultItems.map((label, idx) => ({
+            workOrderId: order.id,
+            tenantId,
+            label,
+            sortOrder: idx,
+            isCompleted: false,
+          }))
+        );
+      }
+
+      res.status(201).json(order);
+    } catch (error) {
+      console.error("Error creating work order:", error);
+      res.status(500).json({ error: "Error al crear orden de trabajo" });
+    }
+  });
+
+  app.patch("/api/work-orders/:id", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getWorkOrderById(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+
+      const allowedFields = ["status", "priority", "type", "assignedUserId", "description", "notes"];
+      const updateData: any = {};
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) updateData[field] = req.body[field];
+      }
+
+      if (updateData.assignedUserId) {
+        const assignee = await storage.getUser(updateData.assignedUserId);
+        if (!assignee || assignee.tenantId !== tenantId) {
+          return res.status(400).json({ error: "Usuario asignado no válido" });
+        }
+      }
+
+      if (updateData.status === "completada" && existing.status !== "completada") {
+        updateData.completedAt = new Date();
+      }
+      if (updateData.status === "cerrada" && existing.status !== "cerrada") {
+        updateData.closedAt = new Date();
+        updateData.closedBy = req.user!.id;
+      }
+
+      const updated = await storage.updateWorkOrder(req.params.id, updateData);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating work order:", error);
+      res.status(500).json({ error: "Error al actualizar orden de trabajo" });
+    }
+  });
+
+  app.delete("/api/work-orders/:id", authenticateJWT, authorizeAction("work_orders", "delete"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getWorkOrderById(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+      await storage.deleteWorkOrder(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting work order:", error);
+      res.status(500).json({ error: "Error al eliminar orden de trabajo" });
+    }
+  });
+
+  app.get("/api/machines/:id/work-orders", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const machine = await storage.getMachine(req.params.id);
+      if (!machine || machine.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Máquina no encontrada" });
+      }
+      const orders = await storage.getWorkOrdersByMachine(req.params.id, tenantId);
+      res.json(orders);
+    } catch (error) {
+      console.error("Error fetching machine work orders:", error);
+      res.status(500).json({ error: "Error al obtener órdenes de la máquina" });
+    }
+  });
+
+  // --- Checklist ---
+
+  app.get("/api/work-orders/:id/checklist", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const order = await storage.getWorkOrderById(req.params.id);
+      if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+      const items = await storage.getChecklistItems(order.id);
+      res.json(items);
+    } catch (error) {
+      console.error("Error fetching checklist:", error);
+      res.status(500).json({ error: "Error al obtener checklist" });
+    }
+  });
+
+  app.patch("/api/work-orders/:id/checklist/:itemId", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const order = await storage.getWorkOrderById(req.params.id);
+      if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+
+      const updateData: any = {};
+      if (typeof req.body.isCompleted === "boolean") {
+        updateData.isCompleted = req.body.isCompleted;
+        updateData.completedAt = req.body.isCompleted ? new Date() : null;
+        updateData.completedBy = req.body.isCompleted ? req.user!.id : null;
+      }
+      if (req.body.notes !== undefined) {
+        updateData.notes = req.body.notes;
+      }
+
+      const updated = await storage.updateChecklistItem(req.params.itemId, updateData, order.id);
+      if (!updated) {
+        return res.status(404).json({ error: "Item del checklist no encontrado" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating checklist item:", error);
+      res.status(500).json({ error: "Error al actualizar item del checklist" });
+    }
+  });
+
+  // --- Photos ---
+
+  app.get("/api/work-orders/:id/photos", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const order = await storage.getWorkOrderById(req.params.id);
+      if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+      const photos = await storage.getWorkOrderPhotos(order.id);
+      res.json(photos);
+    } catch (error) {
+      console.error("Error fetching photos:", error);
+      res.status(500).json({ error: "Error al obtener fotos" });
+    }
+  });
+
+  app.post("/api/work-orders/:id/photos", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const order = await storage.getWorkOrderById(req.params.id);
+      if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+
+      const parsed = insertWorkOrderPhotoSchema.parse({
+        ...req.body,
+        workOrderId: order.id,
+        tenantId,
+      });
+
+      const photo = await storage.createWorkOrderPhoto(parsed);
+      res.status(201).json(photo);
+    } catch (error) {
+      console.error("Error creating photo:", error);
+      res.status(500).json({ error: "Error al guardar foto" });
+    }
+  });
+
+  // --- Tickets ---
+
+  app.get("/api/tickets", authenticateJWT, authorizeAction("work_order_tickets", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const { status, type, machineId } = req.query;
+      const tickets = await storage.getTickets(tenantId, {
+        status: status as string | undefined,
+        type: type as string | undefined,
+        machineId: machineId as string | undefined,
+      });
+      res.json(tickets);
+    } catch (error) {
+      console.error("Error fetching tickets:", error);
+      res.status(500).json({ error: "Error al obtener tickets" });
+    }
+  });
+
+  app.get("/api/tickets/:id", authenticateJWT, authorizeAction("work_order_tickets", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const ticket = await storage.getTicketById(req.params.id);
+      if (!ticket || ticket.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Ticket no encontrado" });
+      }
+      const machine = await storage.getMachine(ticket.machineId);
+      const assignedUser = ticket.assignedUserId ? await storage.getUser(ticket.assignedUserId) : null;
+      res.json({
+        ...ticket,
+        machine: machine ? { id: machine.id, name: machine.name, code: machine.code, location: machine.location } : null,
+        assignedUser: assignedUser ? { id: assignedUser.id, fullName: assignedUser.fullName } : null,
+      });
+    } catch (error) {
+      console.error("Error fetching ticket:", error);
+      res.status(500).json({ error: "Error al obtener ticket" });
+    }
+  });
+
+  app.post("/api/tickets", authenticateJWT, authorizeAction("work_order_tickets", "create"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const machine = await storage.getMachine(req.body.machineId);
+      if (!machine || machine.tenantId !== tenantId) {
+        return res.status(400).json({ error: "Máquina no encontrada o no pertenece al tenant" });
+      }
+
+      const slaConf = await storage.getSlaConfig(tenantId);
+      const ticketNumber = await storage.generateTicketNumber(tenantId);
+      const priority = req.body.priority || "medio";
+      const slaDeadline = calculateSlaDeadline(priority, slaConf || undefined);
+
+      const parsed = insertWorkOrderTicketSchema.parse({
+        ...req.body,
+        tenantId,
+        ticketNumber,
+        slaDeadline,
+        slaStatus: "dentro_tiempo",
+      });
+
+      const ticket = await storage.createTicket(parsed);
+      res.status(201).json(ticket);
+    } catch (error) {
+      console.error("Error creating ticket:", error);
+      res.status(500).json({ error: "Error al crear ticket" });
+    }
+  });
+
+  app.patch("/api/tickets/:id", authenticateJWT, authorizeAction("work_order_tickets", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getTicketById(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Ticket no encontrado" });
+      }
+
+      const allowedTicketFields = ["status", "priority", "type", "assignedUserId", "description", "resolution"];
+      const updateData: any = {};
+      for (const field of allowedTicketFields) {
+        if (req.body[field] !== undefined) updateData[field] = req.body[field];
+      }
+
+      if (updateData.assignedUserId) {
+        const assignee = await storage.getUser(updateData.assignedUserId);
+        if (!assignee || assignee.tenantId !== tenantId) {
+          return res.status(400).json({ error: "Usuario asignado no válido" });
+        }
+      }
+
+      if (updateData.status === "resuelto" && existing.status !== "resuelto") {
+        updateData.resolvedAt = new Date();
+      }
+      if (updateData.status === "cerrado" && existing.status !== "cerrado") {
+        updateData.closedAt = new Date();
+      }
+
+      const updated = await storage.updateTicket(req.params.id, updateData);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating ticket:", error);
+      res.status(500).json({ error: "Error al actualizar ticket" });
+    }
+  });
+
+  app.post("/api/tickets/:id/create-order", authenticateJWT, authorizeAction("work_orders", "create"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const ticket = await storage.getTicketById(req.params.id);
+      if (!ticket || ticket.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Ticket no encontrado" });
+      }
+
+      const slaConf = await storage.getSlaConfig(tenantId);
+      const orderNumber = await storage.generateOrderNumber(tenantId);
+      const priority = req.body.priority || ticket.priority;
+      const slaDeadline = calculateSlaDeadline(priority, slaConf || undefined);
+      const type = req.body.type || "tecnico";
+
+      const order = await storage.createWorkOrder({
+        tenantId,
+        orderNumber,
+        machineId: ticket.machineId,
+        type,
+        priority,
+        status: "pendiente",
+        assignedUserId: req.body.assignedUserId || ticket.assignedUserId || null,
+        ticketId: ticket.id,
+        description: req.body.description || ticket.description,
+        slaDeadline,
+        slaStatus: "dentro_tiempo",
+      });
+
+      const defaultItems = getDefaultChecklist(type);
+      if (defaultItems.length > 0) {
+        await storage.createChecklistItems(
+          defaultItems.map((label, idx) => ({
+            workOrderId: order.id,
+            tenantId,
+            label,
+            sortOrder: idx,
+            isCompleted: false,
+          }))
+        );
+      }
+
+      await storage.updateTicket(ticket.id, { status: "en_proceso" });
+
+      res.status(201).json(order);
+    } catch (error) {
+      console.error("Error creating order from ticket:", error);
+      res.status(500).json({ error: "Error al crear orden desde ticket" });
+    }
+  });
+
+  // --- SLA Config ---
+
+  app.get("/api/sla-config", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const config = await storage.getSlaConfig(tenantId);
+      res.json(config || { criticalHours: 2, highHours: 4, mediumHours: 24, lowHours: 72 });
+    } catch (error) {
+      console.error("Error fetching SLA config:", error);
+      res.status(500).json({ error: "Error al obtener configuración SLA" });
+    }
+  });
+
+  app.post("/api/sla-config", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Solo administradores pueden modificar la configuración SLA" });
+      }
+
+      const parsed = insertSlaConfigSchema.parse({
+        ...req.body,
+        tenantId,
+      });
+
+      const config = await storage.upsertSlaConfig(parsed);
+      res.json(config);
+    } catch (error) {
+      console.error("Error saving SLA config:", error);
+      res.status(500).json({ error: "Error al guardar configuración SLA" });
+    }
+  });
+
+  // --- SLA Status Update Endpoint ---
+
+  app.post("/api/work-orders/update-sla", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const orders = await storage.getWorkOrders(tenantId, {});
+      const now = new Date();
+      let updated = 0;
+
+      for (const order of orders) {
+        if (order.status === "completada" || order.status === "cerrada" || order.status === "cancelada") continue;
+        if (!order.slaDeadline) continue;
+
+        const deadline = new Date(order.slaDeadline);
+        let newStatus: string;
+
+        if (now > deadline) {
+          newStatus = "vencido";
+        } else {
+          const hoursLeft = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60);
+          newStatus = hoursLeft <= 1 ? "proximo_vencer" : "dentro_tiempo";
+        }
+
+        if (newStatus !== order.slaStatus) {
+          await storage.updateWorkOrder(order.id, { slaStatus: newStatus });
+          updated++;
+        }
+      }
+
+      res.json({ updated, total: orders.length });
+    } catch (error) {
+      console.error("Error updating SLA statuses:", error);
+      res.status(500).json({ error: "Error al actualizar estados SLA" });
     }
   });
 

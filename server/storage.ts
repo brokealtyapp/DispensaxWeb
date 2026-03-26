@@ -53,6 +53,11 @@ import {
   type EstablishmentFollowup, type InsertEstablishmentFollowup,
   type EstablishmentDocument, type InsertEstablishmentDocument,
   type EstablishmentContract, type InsertEstablishmentContract,
+  type WorkOrder, type InsertWorkOrder,
+  type WorkOrderTicket, type InsertWorkOrderTicket,
+  type WorkOrderChecklistItem, type InsertWorkOrderChecklistItem,
+  type WorkOrderPhoto, type InsertWorkOrderPhoto,
+  type SlaConfig, type InsertSlaConfig,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
@@ -66,6 +71,7 @@ import {
   establishmentViewers, machineViewerAssignments,
   machineTypeOptions,
   establishments, establishmentStages, establishmentFollowups, establishmentDocuments, establishmentContracts,
+  workOrders, workOrderTickets, workOrderChecklistItems, workOrderPhotos, slaConfig,
   tenants, subscriptionPlans, tenantSubscriptions, tenantSettings, tenantInvites, superAdminAuditLog,
   type Tenant, type InsertTenant,
   type SubscriptionPlan, type InsertSubscriptionPlan,
@@ -716,6 +722,31 @@ export interface IStorage {
 
   getActiveEstablishments(tenantId: string, filters?: { search?: string; contractStatus?: string }): Promise<ActiveEstablishmentResult[]>;
   getEstablishmentOperationalHistory(establishmentId: string, tenantId: string): Promise<OperationalHistoryResult>;
+
+  getWorkOrders(tenantId: string, filters?: { status?: string; type?: string; machineId?: string; assignedUserId?: string }): Promise<WorkOrder[]>;
+  getWorkOrderById(id: string): Promise<WorkOrder | undefined>;
+  createWorkOrder(data: InsertWorkOrder): Promise<WorkOrder>;
+  updateWorkOrder(id: string, data: Partial<InsertWorkOrder>): Promise<WorkOrder | undefined>;
+  deleteWorkOrder(id: string): Promise<boolean>;
+  getWorkOrdersByMachine(machineId: string, tenantId: string): Promise<WorkOrder[]>;
+  getWorkOrderStats(tenantId: string): Promise<{ byStatus: Record<string, number>; byType: Record<string, number>; slaBreached: number; total: number }>;
+  generateOrderNumber(tenantId: string): Promise<string>;
+
+  getTickets(tenantId: string, filters?: { status?: string; type?: string; machineId?: string }): Promise<WorkOrderTicket[]>;
+  getTicketById(id: string): Promise<WorkOrderTicket | undefined>;
+  createTicket(data: InsertWorkOrderTicket): Promise<WorkOrderTicket>;
+  updateTicket(id: string, data: Partial<InsertWorkOrderTicket>): Promise<WorkOrderTicket | undefined>;
+  generateTicketNumber(tenantId: string): Promise<string>;
+
+  getChecklistItems(workOrderId: string): Promise<WorkOrderChecklistItem[]>;
+  createChecklistItems(items: InsertWorkOrderChecklistItem[]): Promise<WorkOrderChecklistItem[]>;
+  updateChecklistItem(id: string, data: Partial<InsertWorkOrderChecklistItem>, workOrderId?: string): Promise<WorkOrderChecklistItem | undefined>;
+
+  getWorkOrderPhotos(workOrderId: string): Promise<WorkOrderPhoto[]>;
+  createWorkOrderPhoto(data: InsertWorkOrderPhoto): Promise<WorkOrderPhoto>;
+
+  getSlaConfig(tenantId: string): Promise<SlaConfig | undefined>;
+  upsertSlaConfig(data: InsertSlaConfig): Promise<SlaConfig>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -7111,6 +7142,139 @@ export class DatabaseStorage implements IStorage {
       machineAlerts: alertsList.map(a => ({ ...a, machineName: machineMap.get(a.machineId) || "" })),
       totalSales,
     };
+  }
+
+  // ==================== WORK ORDERS ====================
+
+  async getWorkOrders(tenantId: string, filters?: { status?: string; type?: string; machineId?: string; assignedUserId?: string }): Promise<WorkOrder[]> {
+    const conditions: SQL[] = [eq(workOrders.tenantId, tenantId)];
+    if (filters?.status) conditions.push(eq(workOrders.status, filters.status));
+    if (filters?.type) conditions.push(eq(workOrders.type, filters.type));
+    if (filters?.machineId) conditions.push(eq(workOrders.machineId, filters.machineId));
+    if (filters?.assignedUserId) conditions.push(eq(workOrders.assignedUserId, filters.assignedUserId));
+    return db.select().from(workOrders).where(and(...conditions)).orderBy(desc(workOrders.createdAt));
+  }
+
+  async getWorkOrderById(id: string): Promise<WorkOrder | undefined> {
+    const [wo] = await db.select().from(workOrders).where(eq(workOrders.id, id));
+    return wo;
+  }
+
+  async createWorkOrder(data: InsertWorkOrder): Promise<WorkOrder> {
+    const [wo] = await db.insert(workOrders).values(data).returning();
+    return wo;
+  }
+
+  async updateWorkOrder(id: string, data: Partial<InsertWorkOrder>): Promise<WorkOrder | undefined> {
+    const [wo] = await db.update(workOrders).set({ ...data, updatedAt: new Date() }).where(eq(workOrders.id, id)).returning();
+    return wo;
+  }
+
+  async deleteWorkOrder(id: string): Promise<boolean> {
+    await db.delete(workOrderChecklistItems).where(eq(workOrderChecklistItems.workOrderId, id));
+    await db.delete(workOrderPhotos).where(eq(workOrderPhotos.workOrderId, id));
+    const result = await db.delete(workOrders).where(eq(workOrders.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getWorkOrdersByMachine(machineId: string, tenantId: string): Promise<WorkOrder[]> {
+    return db.select().from(workOrders).where(and(eq(workOrders.machineId, machineId), eq(workOrders.tenantId, tenantId))).orderBy(desc(workOrders.createdAt));
+  }
+
+  async getWorkOrderStats(tenantId: string): Promise<{ byStatus: Record<string, number>; byType: Record<string, number>; slaBreached: number; total: number }> {
+    const allOrders = await db.select().from(workOrders).where(eq(workOrders.tenantId, tenantId));
+    const byStatus: Record<string, number> = {};
+    const byType: Record<string, number> = {};
+    let slaBreached = 0;
+    for (const o of allOrders) {
+      byStatus[o.status] = (byStatus[o.status] || 0) + 1;
+      byType[o.type] = (byType[o.type] || 0) + 1;
+      if (o.slaStatus === 'vencido') slaBreached++;
+    }
+    return { byStatus, byType, slaBreached, total: allOrders.length };
+  }
+
+  async generateOrderNumber(tenantId: string): Promise<string> {
+    const [result] = await db.select({ cnt: count() }).from(workOrders).where(eq(workOrders.tenantId, tenantId));
+    const num = (result?.cnt || 0) + 1;
+    return `OT-${String(num).padStart(4, '0')}`;
+  }
+
+  // ==================== TICKETS ====================
+
+  async getTickets(tenantId: string, filters?: { status?: string; type?: string; machineId?: string }): Promise<WorkOrderTicket[]> {
+    const conditions: SQL[] = [eq(workOrderTickets.tenantId, tenantId)];
+    if (filters?.status) conditions.push(eq(workOrderTickets.status, filters.status));
+    if (filters?.type) conditions.push(eq(workOrderTickets.type, filters.type));
+    if (filters?.machineId) conditions.push(eq(workOrderTickets.machineId, filters.machineId));
+    return db.select().from(workOrderTickets).where(and(...conditions)).orderBy(desc(workOrderTickets.createdAt));
+  }
+
+  async getTicketById(id: string): Promise<WorkOrderTicket | undefined> {
+    const [t] = await db.select().from(workOrderTickets).where(eq(workOrderTickets.id, id));
+    return t;
+  }
+
+  async createTicket(data: InsertWorkOrderTicket): Promise<WorkOrderTicket> {
+    const [t] = await db.insert(workOrderTickets).values(data).returning();
+    return t;
+  }
+
+  async updateTicket(id: string, data: Partial<InsertWorkOrderTicket>): Promise<WorkOrderTicket | undefined> {
+    const [t] = await db.update(workOrderTickets).set({ ...data, updatedAt: new Date() }).where(eq(workOrderTickets.id, id)).returning();
+    return t;
+  }
+
+  async generateTicketNumber(tenantId: string): Promise<string> {
+    const [result] = await db.select({ cnt: count() }).from(workOrderTickets).where(eq(workOrderTickets.tenantId, tenantId));
+    const num = (result?.cnt || 0) + 1;
+    return `TK-${String(num).padStart(4, '0')}`;
+  }
+
+  // ==================== CHECKLIST ====================
+
+  async getChecklistItems(workOrderId: string): Promise<WorkOrderChecklistItem[]> {
+    return db.select().from(workOrderChecklistItems).where(eq(workOrderChecklistItems.workOrderId, workOrderId)).orderBy(asc(workOrderChecklistItems.sortOrder));
+  }
+
+  async createChecklistItems(items: InsertWorkOrderChecklistItem[]): Promise<WorkOrderChecklistItem[]> {
+    if (items.length === 0) return [];
+    return db.insert(workOrderChecklistItems).values(items).returning();
+  }
+
+  async updateChecklistItem(id: string, data: Partial<InsertWorkOrderChecklistItem>, workOrderId?: string): Promise<WorkOrderChecklistItem | undefined> {
+    const conditions = [eq(workOrderChecklistItems.id, id)];
+    if (workOrderId) conditions.push(eq(workOrderChecklistItems.workOrderId, workOrderId));
+    const [item] = await db.update(workOrderChecklistItems).set(data).where(and(...conditions)).returning();
+    return item;
+  }
+
+  // ==================== PHOTOS ====================
+
+  async getWorkOrderPhotos(workOrderId: string): Promise<WorkOrderPhoto[]> {
+    return db.select().from(workOrderPhotos).where(eq(workOrderPhotos.workOrderId, workOrderId)).orderBy(desc(workOrderPhotos.createdAt));
+  }
+
+  async createWorkOrderPhoto(data: InsertWorkOrderPhoto): Promise<WorkOrderPhoto> {
+    const [photo] = await db.insert(workOrderPhotos).values(data).returning();
+    return photo;
+  }
+
+  // ==================== SLA CONFIG ====================
+
+  async getSlaConfig(tenantId: string): Promise<SlaConfig | undefined> {
+    const [config] = await db.select().from(slaConfig).where(eq(slaConfig.tenantId, tenantId));
+    return config;
+  }
+
+  async upsertSlaConfig(data: InsertSlaConfig): Promise<SlaConfig> {
+    const existing = data.tenantId ? await this.getSlaConfig(data.tenantId) : undefined;
+    if (existing) {
+      const [updated] = await db.update(slaConfig).set({ ...data, updatedAt: new Date() }).where(eq(slaConfig.id, existing.id)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(slaConfig).values(data).returning();
+    return created;
   }
 }
 

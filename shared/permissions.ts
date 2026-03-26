@@ -38,7 +38,9 @@ export type Resource =
   | "employee_profiles"
   | "machine_sales"
   | "establishment_viewers"
-  | "establishments";
+  | "establishments"
+  | "work_orders"
+  | "work_order_tickets";
 
 /**
  * Matriz de permisos: define qué acciones puede realizar cada rol en cada recurso
@@ -77,6 +79,8 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     machine_sales: { view: true, export: true },
     establishment_viewers: { view: true, create: true, edit: true, delete: true },
     establishments: { view: true, create: true, edit: true, delete: true, approve: true },
+    work_orders: { view: true, create: true, edit: true, delete: true, approve: true },
+    work_order_tickets: { view: true, create: true, edit: true, delete: true, approve: true },
   },
   
   supervisor: {
@@ -111,6 +115,8 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     machine_sales: { view: true, export: false },
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
     establishments: { view: true, create: true, edit: true, delete: false },
+    work_orders: { view: true, create: true, edit: true, delete: false },
+    work_order_tickets: { view: true, create: true, edit: true, delete: false },
   },
   
   abastecedor: {
@@ -145,6 +151,8 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     machine_sales: { view: false, export: false },
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
     establishments: { view: false, create: false, edit: false, delete: false },
+    work_orders: { view: true, create: false, edit: true, delete: false },
+    work_order_tickets: { view: true, create: true, edit: false, delete: false },
   },
   
   almacen: {
@@ -179,6 +187,8 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     machine_sales: { view: false, export: false },
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
     establishments: { view: false, create: false, edit: false, delete: false },
+    work_orders: { view: false, create: false, edit: false, delete: false },
+    work_order_tickets: { view: false, create: false, edit: false, delete: false },
   },
   
   contabilidad: {
@@ -213,6 +223,8 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     machine_sales: { view: true, export: true },
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
     establishments: { view: false, create: false, edit: false, delete: false },
+    work_orders: { view: true, create: false, edit: false, delete: false },
+    work_order_tickets: { view: true, create: false, edit: false, delete: false },
   },
   
   rh: {
@@ -247,6 +259,8 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     machine_sales: { view: false, export: false },
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
     establishments: { view: false, create: false, edit: false, delete: false },
+    work_orders: { view: false, create: false, edit: false, delete: false },
+    work_order_tickets: { view: false, create: false, edit: false, delete: false },
   },
   
   visor_establecimiento: {
@@ -281,6 +295,8 @@ const permissionMatrix: Record<UserRole, Record<Resource, Partial<Record<Action,
     machine_sales: { view: true, export: true },
     establishment_viewers: { view: false, create: false, edit: false, delete: false },
     establishments: { view: false, create: false, edit: false, delete: false },
+    work_orders: { view: false, create: false, edit: false, delete: false },
+    work_order_tickets: { view: false, create: false, edit: false, delete: false },
   },
 };
 

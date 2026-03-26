@@ -2586,3 +2586,132 @@ export const establishmentContractsRelations = relations(establishmentContracts,
     references: [establishments.id],
   }),
 }));
+
+// ==================== MÓDULO ÓRDENES DE TRABAJO ====================
+
+export const slaConfig = pgTable("sla_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  criticalHours: integer("critical_hours").default(2),
+  highHours: integer("high_hours").default(4),
+  mediumHours: integer("medium_hours").default(24),
+  lowHours: integer("low_hours").default(72),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("sla_config_tenant_idx").on(table.tenantId),
+]);
+
+export const insertSlaConfigSchema = createInsertSchema(slaConfig).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertSlaConfig = z.infer<typeof insertSlaConfigSchema>;
+export type SlaConfig = typeof slaConfig.$inferSelect;
+
+export const workOrderTickets = pgTable("work_order_tickets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  ticketNumber: varchar("ticket_number").notNull(),
+  machineId: varchar("machine_id").references(() => machines.id).notNull(),
+  type: varchar("type").notNull().default("falla_cliente"),
+  priority: varchar("priority").notNull().default("medio"),
+  status: varchar("status").notNull().default("pendiente"),
+  reportedBy: varchar("reported_by"),
+  assignedUserId: varchar("assigned_user_id").references(() => users.id),
+  description: text("description").notNull(),
+  resolution: text("resolution"),
+  slaDeadline: timestamp("sla_deadline"),
+  slaStatus: varchar("sla_status").default("dentro_tiempo"),
+  resolvedAt: timestamp("resolved_at"),
+  closedAt: timestamp("closed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertWorkOrderTicketSchema = createInsertSchema(workOrderTickets).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertWorkOrderTicket = z.infer<typeof insertWorkOrderTicketSchema>;
+export type WorkOrderTicket = typeof workOrderTickets.$inferSelect;
+
+export const workOrders = pgTable("work_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  orderNumber: varchar("order_number").notNull(),
+  machineId: varchar("machine_id").references(() => machines.id).notNull(),
+  type: varchar("type").notNull().default("tecnico"),
+  priority: varchar("priority").notNull().default("medio"),
+  status: varchar("status").notNull().default("pendiente"),
+  assignedUserId: varchar("assigned_user_id").references(() => users.id),
+  ticketId: varchar("ticket_id").references(() => workOrderTickets.id),
+  description: text("description"),
+  slaDeadline: timestamp("sla_deadline"),
+  slaStatus: varchar("sla_status").default("dentro_tiempo"),
+  completedAt: timestamp("completed_at"),
+  closedAt: timestamp("closed_at"),
+  closedBy: varchar("closed_by").references(() => users.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertWorkOrderSchema = createInsertSchema(workOrders).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertWorkOrder = z.infer<typeof insertWorkOrderSchema>;
+export type WorkOrder = typeof workOrders.$inferSelect;
+
+export const workOrderChecklistItems = pgTable("work_order_checklist_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  workOrderId: varchar("work_order_id").references(() => workOrders.id).notNull(),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  label: varchar("label").notNull(),
+  isCompleted: boolean("is_completed").default(false),
+  completedAt: timestamp("completed_at"),
+  completedBy: varchar("completed_by").references(() => users.id),
+  sortOrder: integer("sort_order").default(0),
+  notes: text("notes"),
+});
+
+export const insertWorkOrderChecklistItemSchema = createInsertSchema(workOrderChecklistItems).omit({ id: true });
+export type InsertWorkOrderChecklistItem = z.infer<typeof insertWorkOrderChecklistItemSchema>;
+export type WorkOrderChecklistItem = typeof workOrderChecklistItems.$inferSelect;
+
+export const workOrderPhotos = pgTable("work_order_photos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  workOrderId: varchar("work_order_id").references(() => workOrders.id).notNull(),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  url: varchar("url").notNull(),
+  caption: varchar("caption"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertWorkOrderPhotoSchema = createInsertSchema(workOrderPhotos).omit({ id: true, createdAt: true });
+export type InsertWorkOrderPhoto = z.infer<typeof insertWorkOrderPhotoSchema>;
+export type WorkOrderPhoto = typeof workOrderPhotos.$inferSelect;
+
+export const workOrdersRelations = relations(workOrders, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [workOrders.tenantId], references: [tenants.id] }),
+  machine: one(machines, { fields: [workOrders.machineId], references: [machines.id] }),
+  assignedUser: one(users, { fields: [workOrders.assignedUserId], references: [users.id], relationName: "workOrderAssignedUser" }),
+  closedByUser: one(users, { fields: [workOrders.closedBy], references: [users.id], relationName: "workOrderClosedBy" }),
+  ticket: one(workOrderTickets, { fields: [workOrders.ticketId], references: [workOrderTickets.id] }),
+  checklistItems: many(workOrderChecklistItems),
+  photos: many(workOrderPhotos),
+}));
+
+export const workOrderTicketsRelations = relations(workOrderTickets, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [workOrderTickets.tenantId], references: [tenants.id] }),
+  machine: one(machines, { fields: [workOrderTickets.machineId], references: [machines.id] }),
+  assignedUser: one(users, { fields: [workOrderTickets.assignedUserId], references: [users.id] }),
+  workOrders: many(workOrders),
+}));
+
+export const workOrderChecklistItemsRelations = relations(workOrderChecklistItems, ({ one }) => ({
+  workOrder: one(workOrders, { fields: [workOrderChecklistItems.workOrderId], references: [workOrders.id] }),
+  tenant: one(tenants, { fields: [workOrderChecklistItems.tenantId], references: [tenants.id] }),
+  completedByUser: one(users, { fields: [workOrderChecklistItems.completedBy], references: [users.id] }),
+}));
+
+export const workOrderPhotosRelations = relations(workOrderPhotos, ({ one }) => ({
+  workOrder: one(workOrders, { fields: [workOrderPhotos.workOrderId], references: [workOrders.id] }),
+  tenant: one(tenants, { fields: [workOrderPhotos.tenantId], references: [tenants.id] }),
+}));
+
+export const slaConfigRelations = relations(slaConfig, ({ one }) => ({
+  tenant: one(tenants, { fields: [slaConfig.tenantId], references: [tenants.id] }),
+}));
