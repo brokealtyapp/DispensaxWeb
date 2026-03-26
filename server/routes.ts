@@ -10108,7 +10108,15 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Ticket no encontrado" });
       }
 
-      const assignedUserId = req.body.assignedUserId || ticket.assignedUserId || null;
+      const createOrderFromTicketSchema = z.object({
+        type: workOrderTypeEnum.default("tecnico"),
+        priority: workOrderPriorityEnum.optional(),
+        assignedUserId: z.string().uuid().nullable().optional(),
+        description: z.string().optional(),
+      });
+      const parsed = createOrderFromTicketSchema.parse(req.body);
+
+      const assignedUserId = parsed.assignedUserId ?? ticket.assignedUserId ?? null;
       if (assignedUserId) {
         const assignee = await storage.getUser(assignedUserId);
         if (!assignee || assignee.tenantId !== tenantId) {
@@ -10118,25 +10126,24 @@ export async function registerRoutes(
 
       const slaConf = await storage.getSlaConfig(tenantId);
       const orderNumber = await storage.generateOrderNumber(tenantId);
-      const priority = req.body.priority || ticket.priority;
+      const priority = parsed.priority || ticket.priority;
       const slaDeadline = calculateSlaDeadline(priority, slaConf || undefined);
-      const type = req.body.type || "tecnico";
 
       const order = await storage.createWorkOrder({
         tenantId,
         orderNumber,
         machineId: ticket.machineId,
-        type,
+        type: parsed.type,
         priority,
         status: "pendiente",
         assignedUserId,
         ticketId: ticket.id,
-        description: req.body.description || ticket.description,
+        description: parsed.description || ticket.description,
         slaDeadline,
         slaStatus: "dentro_tiempo",
       });
 
-      const defaultItems = getDefaultChecklist(type);
+      const defaultItems = getDefaultChecklist(parsed.type);
       if (defaultItems.length > 0) {
         await storage.createChecklistItems(
           defaultItems.map((label, idx) => ({

@@ -7195,8 +7195,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async generateOrderNumber(tenantId: string): Promise<string> {
-    const [result] = await db.select({ cnt: count() }).from(workOrders).where(eq(workOrders.tenantId, tenantId));
-    const num = (result?.cnt || 0) + 1;
+    const [result] = await db.select({ maxNum: sql<number>`COALESCE(MAX(CAST(SUBSTRING(${workOrders.orderNumber} FROM 4) AS INTEGER)), 0)` }).from(workOrders).where(eq(workOrders.tenantId, tenantId));
+    const num = (result?.maxNum || 0) + 1;
     return `OT-${String(num).padStart(4, '0')}`;
   }
 
@@ -7226,8 +7226,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async generateTicketNumber(tenantId: string): Promise<string> {
-    const [result] = await db.select({ cnt: count() }).from(workOrderTickets).where(eq(workOrderTickets.tenantId, tenantId));
-    const num = (result?.cnt || 0) + 1;
+    const [result] = await db.select({ maxNum: sql<number>`COALESCE(MAX(CAST(SUBSTRING(${workOrderTickets.ticketNumber} FROM 4) AS INTEGER)), 0)` }).from(workOrderTickets).where(eq(workOrderTickets.tenantId, tenantId));
+    const num = (result?.maxNum || 0) + 1;
     return `TK-${String(num).padStart(4, '0')}`;
   }
 

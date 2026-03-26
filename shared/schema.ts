@@ -2631,7 +2631,7 @@ export const workOrderTickets = pgTable("work_order_tickets", {
   closedAt: timestamp("closed_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (t) => [uniqueIndex("uq_ticket_number_tenant").on(t.tenantId, t.ticketNumber)]);
 
 export const insertWorkOrderTicketSchema = createInsertSchema(workOrderTickets).omit({ id: true, createdAt: true, updatedAt: true }).extend({
   type: ticketTypeEnum.default("falla_cliente"),
@@ -2661,7 +2661,7 @@ export const workOrders = pgTable("work_orders", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (t) => [uniqueIndex("uq_order_number_tenant").on(t.tenantId, t.orderNumber)]);
 
 export const insertWorkOrderSchema = createInsertSchema(workOrders).omit({ id: true, createdAt: true, updatedAt: true }).extend({
   type: workOrderTypeEnum.default("tecnico"),
