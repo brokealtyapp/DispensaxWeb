@@ -191,7 +191,7 @@ export function WarehousePage() {
     queryKey: ["/api/suppliers"],
   });
 
-  const { data: vehicles = [] } = useQuery<Vehicle[]>({
+  const { data: vehicles = [] } = useQuery<(Vehicle & { assignedUser?: { id: string; fullName: string; role: string } | null })[]>({
     queryKey: ["/api/vehicles"],
   });
 
