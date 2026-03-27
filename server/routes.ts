@@ -9685,6 +9685,18 @@ export async function registerRoutes(
   app.get("/api/work-orders/stats", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
+      if (req.user!.role === "abastecedor") {
+        const allOrders = await storage.getWorkOrders(tenantId, { assignedUserId: req.user!.id });
+        const byStatus: Record<string, number> = {};
+        const byType: Record<string, number> = {};
+        let slaBreached = 0;
+        for (const o of allOrders) {
+          byStatus[o.status] = (byStatus[o.status] || 0) + 1;
+          byType[o.type] = (byType[o.type] || 0) + 1;
+          if (o.slaStatus === "vencido") slaBreached++;
+        }
+        return res.json({ byStatus, byType, slaBreached, total: allOrders.length });
+      }
       const stats = await storage.getWorkOrderStats(tenantId);
       res.json(stats);
     } catch (error) {
@@ -10200,7 +10212,7 @@ export async function registerRoutes(
 
   // --- SLA Status Update Endpoint ---
 
-  app.post("/api/work-orders/update-sla", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/work-orders/update-sla", authenticateJWT, authorizeAction("work_orders", "approve"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
       const now = new Date();
