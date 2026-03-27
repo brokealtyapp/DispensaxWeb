@@ -80,6 +80,7 @@ const operacionItems: MenuItem[] = [
   { icon: ShoppingCart, label: "Compras", href: "/compras", roles: ["admin", "almacen"] },
   { icon: Fuel, label: "Combustible", href: "/combustible", roles: ["admin", "supervisor"] },
   { icon: Building2, label: "Establecimientos", href: "/establecimientos", roles: ["admin", "supervisor"] },
+  { icon: Wrench, label: "Órdenes de Trabajo", href: "/ordenes-trabajo", roles: ["admin", "supervisor", "abastecedor"] },
 ];
 
 // Items específicos para el rol de abastecedor (menú expandido)

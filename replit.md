@@ -108,6 +108,7 @@ The application follows a client-server architecture. The frontend is built with
 - **API Endpoints:** Work Orders CRUD (`/api/work-orders`), Tickets CRUD (`/api/tickets`), Checklist (`/api/work-orders/:id/checklist`), Photos (`/api/work-orders/:id/photos`), SLA Config (`/api/sla-config`), Stats (`/api/work-orders/stats`), Machine History (`/api/machines/:id/work-orders`), Create Order from Ticket (`/api/tickets/:id/create-order`), SLA Update (`/api/work-orders/update-sla`)
 - **RBAC:** admin: full CRUD + approve; supervisor: view/create/edit; abastecedor: view + edit (assigned orders); others: view only or no access
 - **Security:** Whitelisted update fields, tenant-scoped FK validation on assignedUserId, checklist items scoped by workOrderId
+- **Frontend:** `/ordenes-trabajo` page with tabs (Órdenes, Tickets, Dashboard SLA), stats cards, filters, CRUD modals (SimpleModal), detail view with interactive checklist, create-order-from-ticket flow
 
 ## Documentation
 
