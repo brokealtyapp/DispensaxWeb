@@ -112,7 +112,7 @@ import {
   ticketStatusEnum,
   slaStatusEnum,
 } from "@shared/schema";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
 
 // =====================
@@ -9816,6 +9816,9 @@ export async function registerRoutes(
 
       res.status(201).json(order);
     } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
       console.error("Error creating work order:", error);
       res.status(500).json({ error: "Error al crear orden de trabajo" });
     }
@@ -9873,6 +9876,9 @@ export async function registerRoutes(
       const updated = await storage.updateWorkOrder(req.params.id, finalData as Partial<typeof existing>);
       res.json(updated);
     } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
       console.error("Error updating work order:", error);
       res.status(500).json({ error: "Error al actualizar orden de trabajo" });
     }
@@ -10091,6 +10097,9 @@ export async function registerRoutes(
       if (!ticket) throw new Error("Failed to create ticket after retries");
       res.status(201).json(ticket);
     } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
       console.error("Error creating ticket:", error);
       res.status(500).json({ error: "Error al crear ticket" });
     }
@@ -10132,6 +10141,9 @@ export async function registerRoutes(
       const updated = await storage.updateTicket(req.params.id, finalTicketData as Partial<typeof existing>);
       res.json(updated);
     } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
       console.error("Error updating ticket:", error);
       res.status(500).json({ error: "Error al actualizar ticket" });
     }
@@ -10207,6 +10219,9 @@ export async function registerRoutes(
 
       res.status(201).json(order);
     } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
       console.error("Error creating order from ticket:", error);
       res.status(500).json({ error: "Error al crear orden desde ticket" });
     }
