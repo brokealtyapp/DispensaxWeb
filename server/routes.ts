@@ -9962,7 +9962,7 @@ export async function registerRoutes(
     try {
       const tenantId = req.user!.tenantId!;
       if (req.user!.role === "abastecedor") {
-        const allOrders = await storage.getWorkOrders(tenantId, { assignedUserId: req.user!.id });
+        const allOrders = await storage.getWorkOrders(tenantId, { assignedUserId: req.user!.userId });
         const byStatus: Record<string, number> = {};
         const byType: Record<string, number> = {};
         const bySla: Record<string, number> = {};
@@ -9994,7 +9994,7 @@ export async function registerRoutes(
         assignedUserId: assignedUserId as string | undefined,
       };
       if (req.user!.role === "abastecedor") {
-        filters.assignedUserId = req.user!.id;
+        filters.assignedUserId = req.user!.userId;
       }
       const orders = await storage.getWorkOrders(tenantId, filters);
       res.json(orders);
@@ -10011,7 +10011,7 @@ export async function registerRoutes(
       if (!order || order.tenantId !== tenantId) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
-      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.id) {
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.userId) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
       const [checklist, photos, machine] = await Promise.all([
@@ -10111,7 +10111,7 @@ export async function registerRoutes(
       }
 
       if (req.user!.role === "abastecedor") {
-        if (existing.assignedUserId !== req.user!.id) {
+        if (existing.assignedUserId !== req.user!.userId) {
           return res.status(404).json({ error: "Orden de trabajo no encontrada" });
         }
         const abastecedorSchema = z.object({
@@ -10148,7 +10148,7 @@ export async function registerRoutes(
       }
       if (finalData.status === "cerrada" && existing.status !== "cerrada") {
         finalData.closedAt = new Date();
-        finalData.closedBy = req.user!.id;
+        finalData.closedBy = req.user!.userId;
       }
 
       const updated = await storage.updateWorkOrder(req.params.id, finalData as Partial<typeof existing>);
@@ -10186,7 +10186,7 @@ export async function registerRoutes(
       }
       let orders = await storage.getWorkOrdersByMachine(req.params.id, tenantId);
       if (req.user!.role === "abastecedor") {
-        orders = orders.filter(o => o.assignedUserId === req.user!.id);
+        orders = orders.filter(o => o.assignedUserId === req.user!.userId);
       }
       res.json(orders);
     } catch (error) {
@@ -10204,7 +10204,7 @@ export async function registerRoutes(
       if (!order || order.tenantId !== tenantId) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
-      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.id) {
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.userId) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
       const items = await storage.getChecklistItems(order.id);
@@ -10222,7 +10222,7 @@ export async function registerRoutes(
       if (!order || order.tenantId !== tenantId) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
-      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.id) {
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.userId) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
 
@@ -10235,7 +10235,7 @@ export async function registerRoutes(
       if (parsedChecklist.isCompleted !== undefined) {
         checklistUpdate.isCompleted = parsedChecklist.isCompleted;
         checklistUpdate.completedAt = parsedChecklist.isCompleted ? new Date() : null;
-        checklistUpdate.completedBy = parsedChecklist.isCompleted ? req.user!.id : null;
+        checklistUpdate.completedBy = parsedChecklist.isCompleted ? req.user!.userId : null;
       }
       if (parsedChecklist.notes !== undefined) {
         checklistUpdate.notes = parsedChecklist.notes;
@@ -10261,7 +10261,7 @@ export async function registerRoutes(
       if (!order || order.tenantId !== tenantId) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
-      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.id) {
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.userId) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
       const photos = await storage.getWorkOrderPhotos(order.id);
@@ -10279,7 +10279,7 @@ export async function registerRoutes(
       if (!order || order.tenantId !== tenantId) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
-      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.id) {
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.userId) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
 

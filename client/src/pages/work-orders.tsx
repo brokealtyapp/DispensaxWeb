@@ -303,6 +303,11 @@ const editOrderSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
+const editOrderAbastecedorSchema = z.object({
+  status: z.enum(["en_proceso", "en_ruta", "completada"]),
+  notes: z.string().nullable().optional(),
+});
+
 const createTicketSchema = z.object({
   machineId: z.string().min(1, "Seleccione una máquina"),
   type: z.enum(["falla_cliente", "alerta_sistema", "incidencia_interna", "solicitud_servicio"]),
@@ -714,7 +719,8 @@ function SLADashboard({ stats, orders, machines, users, onSelectOrder }: { stats
 }
 
 export function WorkOrdersPage() {
-  useAuth();
+  const { user } = useAuth();
+  const isAbastecedor = user?.role === "abastecedor";
   const { can, isLoading: permLoading } = usePermissions();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("ordenes");
@@ -851,6 +857,14 @@ export function WorkOrdersPage() {
     },
   });
 
+  const editOrderAbastecedorForm = useForm<z.infer<typeof editOrderAbastecedorSchema>>({
+    resolver: zodResolver(editOrderAbastecedorSchema),
+    defaultValues: {
+      status: "en_proceso",
+      notes: "",
+    },
+  });
+
   const ticketForm = useForm<z.infer<typeof createTicketSchema>>({
     resolver: zodResolver(createTicketSchema),
     defaultValues: {
@@ -874,16 +888,25 @@ export function WorkOrdersPage() {
 
   useEffect(() => {
     if (showEditOrder) {
-      editOrderForm.reset({
-        type: showEditOrder.type as z.infer<typeof editOrderSchema>["type"],
-        priority: showEditOrder.priority as z.infer<typeof editOrderSchema>["priority"],
-        status: showEditOrder.status as z.infer<typeof editOrderSchema>["status"],
-        assignedUserId: showEditOrder.assignedUserId || null,
-        description: showEditOrder.description || "",
-        notes: showEditOrder.notes || "",
-      });
+      if (isAbastecedor) {
+        const currentStatus = showEditOrder.status as z.infer<typeof editOrderAbastecedorSchema>["status"];
+        const allowedStatuses = ["en_proceso", "en_ruta", "completada"] as const;
+        editOrderAbastecedorForm.reset({
+          status: allowedStatuses.includes(currentStatus) ? currentStatus : "en_proceso",
+          notes: showEditOrder.notes || "",
+        });
+      } else {
+        editOrderForm.reset({
+          type: showEditOrder.type as z.infer<typeof editOrderSchema>["type"],
+          priority: showEditOrder.priority as z.infer<typeof editOrderSchema>["priority"],
+          status: showEditOrder.status as z.infer<typeof editOrderSchema>["status"],
+          assignedUserId: showEditOrder.assignedUserId || null,
+          description: showEditOrder.description || "",
+          notes: showEditOrder.notes || "",
+        });
+      }
     }
-  }, [showEditOrder]);
+  }, [showEditOrder, isAbastecedor]);
 
   useEffect(() => {
     if (showEditTicket) {
@@ -928,6 +951,21 @@ export function WorkOrdersPage() {
         payload.assignedUserId = null;
       }
       await apiRequest("PATCH", `/api/work-orders/${showEditOrder!.id}`, payload);
+    },
+    onSuccess: () => {
+      invalidateAll();
+      setShowEditOrder(null);
+      setSelectedOrder(null);
+      toast({ title: "Orden actualizada" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo actualizar la orden", variant: "destructive" });
+    },
+  });
+
+  const editOrderAbastecedorMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof editOrderAbastecedorSchema>) => {
+      await apiRequest("PATCH", `/api/work-orders/${showEditOrder!.id}`, data);
     },
     onSuccess: () => {
       invalidateAll();
@@ -1051,75 +1089,109 @@ export function WorkOrdersPage() {
         title="Editar Orden de Trabajo"
         description={`Editando ${showEditOrder?.orderNumber || ""}`}
       >
-        <Form {...editOrderForm}>
-          <form onSubmit={editOrderForm.handleSubmit((data) => editOrderMutation.mutate(data))} className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <FormField control={editOrderForm.control} name="type" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tipo</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger data-testid="select-edit-order-type"><SelectValue /></SelectTrigger></FormControl>
-                    <SelectContent>{Object.entries(TYPE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={editOrderForm.control} name="priority" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Prioridad</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger data-testid="select-edit-order-priority"><SelectValue /></SelectTrigger></FormControl>
-                    <SelectContent>{Object.entries(PRIORITY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={editOrderForm.control} name="status" render={({ field }) => (
+        {isAbastecedor ? (
+          <Form {...editOrderAbastecedorForm}>
+            <form onSubmit={editOrderAbastecedorForm.handleSubmit((data) => editOrderAbastecedorMutation.mutate(data))} className="space-y-4">
+              <FormField control={editOrderAbastecedorForm.control} name="status" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Estado</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger data-testid="select-edit-order-status"><SelectValue /></SelectTrigger></FormControl>
-                    <SelectContent>{Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                    <SelectContent>
+                      <SelectItem value="en_proceso">En Proceso</SelectItem>
+                      <SelectItem value="en_ruta">En Ruta</SelectItem>
+                      <SelectItem value="completada">Completada</SelectItem>
+                    </SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
               )} />
-            </div>
-            <FormField control={editOrderForm.control} name="assignedUserId" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Asignar a</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value || "none"}>
-                  <FormControl><SelectTrigger data-testid="select-edit-order-assignee"><SelectValue placeholder="Sin asignar" /></SelectTrigger></FormControl>
-                  <SelectContent>
-                    <SelectItem value="none">Sin asignar</SelectItem>
-                    {assignableUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.fullName} ({u.role})</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )} />
-            <FormField control={editOrderForm.control} name="description" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Descripción *</FormLabel>
-                <FormControl><Textarea {...field} data-testid="textarea-edit-order-description" /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
-            <FormField control={editOrderForm.control} name="notes" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Notas</FormLabel>
-                <FormControl><Textarea {...field} value={field.value || ""} data-testid="textarea-edit-order-notes" /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowEditOrder(null)}>Cancelar</Button>
-              <Button type="submit" disabled={editOrderMutation.isPending} data-testid="button-submit-edit-order">
-                {editOrderMutation.isPending ? "Guardando..." : "Guardar Cambios"}
-              </Button>
-            </div>
-          </form>
-        </Form>
+              <FormField control={editOrderAbastecedorForm.control} name="notes" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notas</FormLabel>
+                  <FormControl><Textarea {...field} value={field.value || ""} data-testid="textarea-edit-order-notes" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setShowEditOrder(null)}>Cancelar</Button>
+                <Button type="submit" disabled={editOrderAbastecedorMutation.isPending} data-testid="button-submit-edit-order">
+                  {editOrderAbastecedorMutation.isPending ? "Guardando..." : "Guardar Cambios"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        ) : (
+          <Form {...editOrderForm}>
+            <form onSubmit={editOrderForm.handleSubmit((data) => editOrderMutation.mutate(data))} className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <FormField control={editOrderForm.control} name="type" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipo</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger data-testid="select-edit-order-type"><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>{Object.entries(TYPE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={editOrderForm.control} name="priority" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Prioridad</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger data-testid="select-edit-order-priority"><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>{Object.entries(PRIORITY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={editOrderForm.control} name="status" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Estado</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger data-testid="select-edit-order-status"><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>{Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <FormField control={editOrderForm.control} name="assignedUserId" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Asignar a</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value || "none"}>
+                    <FormControl><SelectTrigger data-testid="select-edit-order-assignee"><SelectValue placeholder="Sin asignar" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      <SelectItem value="none">Sin asignar</SelectItem>
+                      {assignableUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.fullName} ({u.role})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editOrderForm.control} name="description" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Descripción *</FormLabel>
+                  <FormControl><Textarea {...field} data-testid="textarea-edit-order-description" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editOrderForm.control} name="notes" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notas</FormLabel>
+                  <FormControl><Textarea {...field} value={field.value || ""} data-testid="textarea-edit-order-notes" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setShowEditOrder(null)}>Cancelar</Button>
+                <Button type="submit" disabled={editOrderMutation.isPending} data-testid="button-submit-edit-order">
+                  {editOrderMutation.isPending ? "Guardando..." : "Guardar Cambios"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        )}
       </SimpleModal>
 
       <SimpleModal
