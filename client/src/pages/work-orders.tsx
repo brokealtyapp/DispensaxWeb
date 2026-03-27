@@ -37,6 +37,7 @@ import {
   Trash2,
   UserPlus,
   History,
+  RefreshCcw,
 } from "lucide-react";
 import {
   BarChart,
@@ -757,7 +758,7 @@ export function WorkOrdersPage() {
     queryKey: ["/api/tickets"],
   });
 
-  const { data: stats } = useQuery<WOStats>({
+  const { data: stats, isError: statsError, refetch: refetchStats } = useQuery<WOStats>({
     queryKey: ["/api/work-orders/stats"],
   });
 
@@ -1319,7 +1320,7 @@ export function WorkOrdersPage() {
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-red-500" />
               <div>
-                <p className="text-2xl font-bold" data-testid="text-sla-breached">{stats?.slaBreached || 0}</p>
+                <p className="text-2xl font-bold" data-testid="text-sla-breached">{statsError ? "—" : (stats?.slaBreached || 0)}</p>
                 <p className="text-xs text-muted-foreground">SLA Vencidos</p>
               </div>
             </div>
@@ -1627,7 +1628,19 @@ export function WorkOrdersPage() {
         </TabsContent>
 
         <TabsContent value="sla">
-          <SLADashboard stats={stats} orders={orders} machines={machines} users={users} onSelectOrder={setSelectedOrder} />
+          {statsError ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12 gap-3">
+                <AlertTriangle className="h-8 w-8 text-destructive" />
+                <p className="text-muted-foreground">Error al cargar estadísticas SLA</p>
+                <Button variant="outline" size="sm" onClick={() => refetchStats()} data-testid="button-retry-stats">
+                  <RefreshCcw className="mr-1 h-4 w-4" /> Reintentar
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <SLADashboard stats={stats} orders={orders} machines={machines} users={users} onSelectOrder={setSelectedOrder} />
+          )}
         </TabsContent>
       </Tabs>
 
