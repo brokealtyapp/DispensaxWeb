@@ -732,6 +732,17 @@ export function WorkOrdersPage() {
     queryKey: ["/api/work-orders"],
   });
 
+  useEffect(() => {
+    if (selectedOrder) {
+      const updated = orders.find(o => o.id === selectedOrder.id);
+      if (updated && JSON.stringify(updated) !== JSON.stringify(selectedOrder)) {
+        setSelectedOrder(updated);
+      } else if (!updated && orders.length > 0) {
+        setSelectedOrder(null);
+      }
+    }
+  }, [orders]);
+
   const { data: tickets = [], isLoading: ticketsLoading } = useQuery<Ticket[]>({
     queryKey: ["/api/tickets"],
   });
