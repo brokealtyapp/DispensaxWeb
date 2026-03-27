@@ -19,8 +19,13 @@ import {
   Truck,
   ShoppingCart,
   Trash2,
-  Plus
+  Plus,
+  Coins,
+  Loader2,
+  Eye
 } from "lucide-react";
+import { RD_DENOMINATIONS } from "@shared/schema";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -59,6 +64,11 @@ export function MoneyProductsPage() {
   const [activeTab, setActiveTab] = useState("cash");
   const [isNewMovementOpen, setIsNewMovementOpen] = useState(false);
   const [isNewShrinkageOpen, setIsNewShrinkageOpen] = useState(false);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
+  const [entregaDenomQtys, setEntregaDenomQtys] = useState<Record<number, number>>(
+    () => Object.fromEntries(RD_DENOMINATIONS.map(d => [d.value, 0]))
+  );
+  const [isEntregaDialogOpen, setIsEntregaDialogOpen] = useState(false);
 
   const cashMovementForm = useForm<CashMovementFormData>({
     resolver: zodResolver(cashMovementFormSchema),
@@ -154,6 +164,65 @@ export function MoneyProductsPage() {
       toast({ title: "Error", description: "No se pudo registrar la merma", variant: "destructive" });
     },
   });
+
+  const { data: cashCollections, isLoading: collectionsLoading } = useQuery<any[]>({
+    queryKey: ["/api/supplier/cash"],
+  });
+
+  const { data: selectedReconciliation, isLoading: reconciliationLoading } = useQuery<any>({
+    queryKey: ["/api/supplier/cash", selectedCollectionId, "reconciliation"],
+    enabled: !!selectedCollectionId,
+  });
+
+  const entregaTotal = RD_DENOMINATIONS.reduce((sum, d) => sum + d.value * (entregaDenomQtys[d.value] || 0), 0);
+
+  const createEntregaDenominationsMutation = useMutation({
+    mutationFn: async ({ collectionId, denominations }: { collectionId: string; denominations: any[] }) => {
+      return apiRequest("POST", `/api/supplier/cash/${collectionId}/denominations`, {
+        countType: "entrega",
+        denominations,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/cash"] });
+      if (selectedCollectionId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/supplier/cash", selectedCollectionId, "reconciliation"] });
+      }
+      toast({ title: "Conteo de entrega registrado", description: "El cuadre de denominaciones se ha actualizado" });
+      setIsEntregaDialogOpen(false);
+      setEntregaDenomQtys(Object.fromEntries(RD_DENOMINATIONS.map(d => [d.value, 0])));
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo registrar el conteo de entrega", variant: "destructive" });
+    },
+  });
+
+  const handleSubmitEntrega = () => {
+    if (!selectedCollectionId) return;
+    const denomsToSend = RD_DENOMINATIONS
+      .filter(d => (entregaDenomQtys[d.value] || 0) > 0)
+      .map(d => ({
+        denomination: d.value,
+        quantity: entregaDenomQtys[d.value],
+        denominationType: d.type,
+      }));
+    if (denomsToSend.length === 0) {
+      toast({ title: "Sin datos", description: "Ingresa al menos una denominación", variant: "destructive" });
+      return;
+    }
+    createEntregaDenominationsMutation.mutate({ collectionId: selectedCollectionId, denominations: denomsToSend });
+  };
+
+  const openEntregaDialog = (collectionId: string) => {
+    setSelectedCollectionId(collectionId);
+    setEntregaDenomQtys(Object.fromEntries(RD_DENOMINATIONS.map(d => [d.value, 0])));
+    setIsEntregaDialogOpen(true);
+  };
+
+  const viewReconciliation = (collectionId: string) => {
+    setSelectedCollectionId(collectionId);
+    setActiveTab("denominations");
+  };
 
   const onCashMovementSubmit = (data: CashMovementFormData) => {
     createCashMovementMutation.mutate(data);
@@ -292,7 +361,7 @@ export function MoneyProductsPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4" data-testid="tabs-money-products">
+          <TabsList className="grid w-full grid-cols-5" data-testid="tabs-money-products">
             <TabsTrigger value="cash" data-testid="tab-trigger-cash">
               <DollarSign className="h-4 w-4 mr-2" />
               Efectivo
@@ -304,6 +373,10 @@ export function MoneyProductsPage() {
             <TabsTrigger value="shrinkage" data-testid="tab-trigger-shrinkage">
               <Trash2 className="h-4 w-4 mr-2" />
               Mermas
+            </TabsTrigger>
+            <TabsTrigger value="denominations" data-testid="tab-trigger-denominations">
+              <Coins className="h-4 w-4 mr-2" />
+              Denominaciones
             </TabsTrigger>
             <TabsTrigger value="reconciliation" data-testid="tab-trigger-reconciliation">
               <CheckCircle2 className="h-4 w-4 mr-2" />
@@ -482,6 +555,158 @@ export function MoneyProductsPage() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="denominations" className="mt-4" data-testid="tab-content-denominations">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recolecciones para Cuadre</CardTitle>
+                  <CardDescription>Selecciona una recolección para registrar conteo de entrega o ver cuadre</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {collectionsLoading ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-16 w-full" />
+                      ))}
+                    </div>
+                  ) : !cashCollections || cashCollections.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground" data-testid="empty-state-denominations">
+                      <Coins className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No hay recolecciones registradas</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+                      {cashCollections.map((collection: any) => (
+                        <div
+                          key={collection.id}
+                          className={`p-3 border rounded-md hover-elevate cursor-pointer ${selectedCollectionId === collection.id ? "border-primary bg-muted/50" : ""}`}
+                          onClick={() => viewReconciliation(collection.id)}
+                          data-testid={`collection-row-${collection.id}`}
+                        >
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div>
+                              <p className="font-medium text-sm">{collection.machine?.name || "Máquina"}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {collection.user?.fullName || collection.user?.username} · {formatDateTime(collection.createdAt)}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm">{formatCurrency(parseFloat(collection.actualAmount))}</span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => { e.stopPropagation(); openEntregaDialog(collection.id); }}
+                                data-testid={`button-entrega-${collection.id}`}
+                              >
+                                <Coins className="h-3 w-3 mr-1" />
+                                Entrega
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={(e) => { e.stopPropagation(); viewReconciliation(collection.id); }}
+                                data-testid={`button-view-reconciliation-${collection.id}`}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Cuadre de Denominaciones</CardTitle>
+                  <CardDescription>
+                    {selectedCollectionId ? "Comparación conteo máquina vs entrega almacén" : "Selecciona una recolección para ver el cuadre"}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!selectedCollectionId ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Coins className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>Selecciona una recolección de la lista</p>
+                    </div>
+                  ) : reconciliationLoading ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-10 w-full" />
+                      ))}
+                    </div>
+                  ) : selectedReconciliation ? (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="p-3 bg-muted rounded-lg text-center" data-testid="stat-total-maquina">
+                          <p className="text-xs text-muted-foreground">Conteo Máquina</p>
+                          <p className="text-lg font-bold">{formatCurrency(selectedReconciliation.totalMaquina || 0)}</p>
+                        </div>
+                        <div className="p-3 bg-muted rounded-lg text-center" data-testid="stat-total-entrega">
+                          <p className="text-xs text-muted-foreground">Conteo Entrega</p>
+                          <p className="text-lg font-bold">{formatCurrency(selectedReconciliation.totalEntrega || 0)}</p>
+                        </div>
+                        <div className={`p-3 rounded-lg text-center ${(selectedReconciliation.difference || 0) === 0 ? "bg-emerald-500/10" : "bg-amber-500/10"}`} data-testid="stat-denomination-difference">
+                          <p className="text-xs text-muted-foreground">Diferencia</p>
+                          <p className={`text-lg font-bold ${(selectedReconciliation.difference || 0) === 0 ? "text-green-600" : "text-amber-600"}`}>
+                            {formatCurrency(Math.abs(selectedReconciliation.difference || 0))}
+                          </p>
+                        </div>
+                      </div>
+
+                      {(selectedReconciliation.maquina?.length > 0 || selectedReconciliation.entrega?.length > 0) ? (
+                        <div className="border rounded-md overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-muted">
+                                <th className="p-2 text-left">Denominación</th>
+                                <th className="p-2 text-center">Máquina</th>
+                                <th className="p-2 text-center">Entrega</th>
+                                <th className="p-2 text-right">Diferencia</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {RD_DENOMINATIONS.map((d) => {
+                                const maq = selectedReconciliation.maquina?.find((c: any) => parseFloat(c.denomination) === d.value);
+                                const ent = selectedReconciliation.entrega?.find((c: any) => parseFloat(c.denomination) === d.value);
+                                const maqQty = maq?.quantity || 0;
+                                const entQty = ent?.quantity || 0;
+                                const diff = maqQty - entQty;
+                                if (maqQty === 0 && entQty === 0) return null;
+                                return (
+                                  <tr key={d.value} className="border-t" data-testid={`reconciliation-row-${d.value}`}>
+                                    <td className="p-2">
+                                      <Badge variant="outline" className="text-xs">{d.label}</Badge>
+                                    </td>
+                                    <td className="p-2 text-center">{maqQty}</td>
+                                    <td className="p-2 text-center">{entQty}</td>
+                                    <td className={`p-2 text-right font-medium ${diff === 0 ? "text-green-600" : "text-amber-600"}`}>
+                                      {diff === 0 ? "OK" : (diff > 0 ? `+${diff}` : diff)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="text-center py-4 text-muted-foreground text-sm">
+                          <p>No hay conteos registrados para esta recolección</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>No hay datos de cuadre disponibles</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="reconciliation" className="mt-4" data-testid="tab-content-reconciliation">
@@ -801,6 +1026,57 @@ export function MoneyProductsPage() {
                 </DialogFooter>
               </form>
             </Form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isEntregaDialogOpen} onOpenChange={setIsEntregaDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Conteo de Entrega por Denominación</DialogTitle>
+              <DialogDescription>Registra el conteo de dinero al momento de la entrega en almacén</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                {RD_DENOMINATIONS.map((d) => (
+                  <div key={d.value} className="flex items-center gap-2 p-2 border rounded-md" data-testid={`entrega-denomination-row-${d.value}`}>
+                    <Badge variant="outline" className="min-w-[70px] justify-center text-xs">
+                      {d.label}
+                    </Badge>
+                    <Input
+                      type="number"
+                      min="0"
+                      className="h-8 w-16 text-center text-sm"
+                      value={entregaDenomQtys[d.value] || ""}
+                      onChange={(e) => setEntregaDenomQtys(prev => ({ ...prev, [d.value]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                      placeholder="0"
+                      data-testid={`input-entrega-denomination-${d.value}`}
+                    />
+                    <span className="text-xs text-muted-foreground min-w-[60px] text-right">
+                      {formatCurrency(d.value * (entregaDenomQtys[d.value] || 0))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="p-3 bg-muted rounded-lg">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium">Total entrega:</span>
+                  <span className="text-lg font-bold" data-testid="text-entrega-total">{formatCurrency(entregaTotal)}</span>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsEntregaDialogOpen(false)} data-testid="button-cancel-entrega">
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleSubmitEntrega}
+                  disabled={entregaTotal <= 0 || createEntregaDenominationsMutation.isPending}
+                  data-testid="button-submit-entrega"
+                >
+                  {createEntregaDenominationsMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Registrar Entrega
+                </Button>
+              </DialogFooter>
+            </div>
           </DialogContent>
         </Dialog>
       </div>

@@ -841,6 +841,50 @@ export const insertCashCollectionSchema = createInsertSchema(cashCollections).om
 export type InsertCashCollection = z.infer<typeof insertCashCollectionSchema>;
 export type CashCollection = typeof cashCollections.$inferSelect;
 
+export const denominationCountTypeEnum = pgEnum("denomination_count_type", [
+  "maquina",
+  "entrega"
+]);
+
+export const denominationTypeEnum = pgEnum("denomination_type", [
+  "moneda",
+  "billete"
+]);
+
+export const cashDenominationCounts = pgTable("cash_denomination_counts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  cashCollectionId: varchar("cash_collection_id").references(() => cashCollections.id).notNull(),
+  countType: text("count_type").notNull(),
+  denomination: decimal("denomination", { precision: 10, scale: 2 }).notNull(),
+  denominationType: text("denomination_type").notNull(),
+  quantity: integer("quantity").notNull().default(0),
+  subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCashDenominationCountSchema = createInsertSchema(cashDenominationCounts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCashDenominationCount = z.infer<typeof insertCashDenominationCountSchema>;
+export type CashDenominationCount = typeof cashDenominationCounts.$inferSelect;
+
+export const RD_DENOMINATIONS = [
+  { value: 1, type: "moneda" as const, label: "RD$1" },
+  { value: 5, type: "moneda" as const, label: "RD$5" },
+  { value: 10, type: "moneda" as const, label: "RD$10" },
+  { value: 25, type: "moneda" as const, label: "RD$25" },
+  { value: 50, type: "billete" as const, label: "RD$50" },
+  { value: 100, type: "billete" as const, label: "RD$100" },
+  { value: 200, type: "billete" as const, label: "RD$200" },
+  { value: 500, type: "billete" as const, label: "RD$500" },
+  { value: 1000, type: "billete" as const, label: "RD$1,000" },
+  { value: 2000, type: "billete" as const, label: "RD$2,000" },
+];
+
 export const productLoadTypeEnum = pgEnum("product_load_type", [
   "cargado",
   "retirado_caduco",

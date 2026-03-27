@@ -58,6 +58,7 @@ import {
   type WorkOrderChecklistItem, type InsertWorkOrderChecklistItem,
   type WorkOrderPhoto, type InsertWorkOrderPhoto,
   type SlaConfig, type InsertSlaConfig,
+  type CashDenominationCount, type InsertCashDenominationCount,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
@@ -71,7 +72,7 @@ import {
   establishmentViewers, machineViewerAssignments,
   machineTypeOptions,
   establishments, establishmentStages, establishmentFollowups, establishmentDocuments, establishmentContracts,
-  workOrders, workOrderTickets, workOrderChecklistItems, workOrderPhotos, slaConfig,
+  workOrders, workOrderTickets, workOrderChecklistItems, workOrderPhotos, slaConfig, cashDenominationCounts,
   tenants, subscriptionPlans, tenantSubscriptions, tenantSettings, tenantInvites, superAdminAuditLog,
   type Tenant, type InsertTenant,
   type SubscriptionPlan, type InsertSubscriptionPlan,
@@ -280,6 +281,11 @@ export interface IStorage {
   getCashCollections(userId?: string, machineId?: string, startDate?: Date, endDate?: Date, limit?: number): Promise<any[]>;
   createCashCollection(collection: InsertCashCollection): Promise<CashCollection>;
   getCashCollectionsSummary(userId: string, startDate?: Date, endDate?: Date): Promise<{ total: number; count: number; difference: number }>;
+  
+  // Conteo por Denominación
+  getCashDenominationCounts(cashCollectionId: string, countType?: string): Promise<CashDenominationCount[]>;
+  createCashDenominationCounts(counts: InsertCashDenominationCount[]): Promise<CashDenominationCount[]>;
+  getCashDenominationReconciliation(cashCollectionId: string): Promise<{ maquina: CashDenominationCount[]; entrega: CashDenominationCount[]; totalMaquina: number; totalEntrega: number; difference: number }>;
   
   // Carga/Retiro de Productos
   getProductLoads(serviceRecordId?: string, machineId?: string, userId?: string): Promise<any[]>;
@@ -2006,6 +2012,43 @@ export class DatabaseStorage implements IStorage {
       total: parseFloat(result[0]?.total || "0"),
       count: result[0]?.count || 0,
       difference: parseFloat(result[0]?.difference || "0")
+    };
+  }
+
+  async getCashDenominationCounts(cashCollectionId: string, countType?: string): Promise<CashDenominationCount[]> {
+    const conditions = [eq(cashDenominationCounts.cashCollectionId, cashCollectionId)];
+    if (countType) conditions.push(eq(cashDenominationCounts.countType, countType));
+    return db.select().from(cashDenominationCounts).where(and(...conditions)).orderBy(asc(cashDenominationCounts.denomination));
+  }
+
+  async createCashDenominationCounts(counts: InsertCashDenominationCount[]): Promise<CashDenominationCount[]> {
+    if (counts.length === 0) return [];
+    const results: CashDenominationCount[] = [];
+    for (const c of counts) {
+      const subtotal = (parseFloat(String(c.denomination)) * c.quantity).toFixed(2);
+      const [inserted] = await db.insert(cashDenominationCounts).values({ ...c, subtotal }).returning();
+      results.push(inserted);
+    }
+    return results;
+  }
+
+  async getCashDenominationReconciliation(cashCollectionId: string): Promise<{ maquina: CashDenominationCount[]; entrega: CashDenominationCount[]; totalMaquina: number; totalEntrega: number; difference: number }> {
+    const all = await db.select().from(cashDenominationCounts)
+      .where(eq(cashDenominationCounts.cashCollectionId, cashCollectionId))
+      .orderBy(asc(cashDenominationCounts.denomination));
+    
+    const maquina = all.filter(c => c.countType === "maquina");
+    const entrega = all.filter(c => c.countType === "entrega");
+    
+    const totalMaquina = maquina.reduce((sum, c) => sum + parseFloat(String(c.subtotal)), 0);
+    const totalEntrega = entrega.reduce((sum, c) => sum + parseFloat(String(c.subtotal)), 0);
+    
+    return {
+      maquina,
+      entrega,
+      totalMaquina,
+      totalEntrega,
+      difference: totalMaquina - totalEntrega,
     };
   }
 

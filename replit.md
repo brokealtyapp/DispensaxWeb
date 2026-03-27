@@ -110,6 +110,16 @@ The application follows a client-server architecture. The frontend is built with
 - **Security:** Whitelisted update fields, tenant-scoped FK validation on assignedUserId, checklist items scoped by workOrderId
 - **Frontend:** `/ordenes-trabajo` page with tabs (Órdenes, Tickets, Dashboard SLA), stats cards, filters, CRUD modals (SimpleModal), detail view with interactive checklist, create-order-from-ticket flow
 
+## Cash Denomination Counting Module
+- **Schema Table:** `cash_denomination_counts` — id, tenantId, cashCollectionId (FK to cash_collections), countType (maquina|entrega), denomination (decimal), denominationType (moneda|billete), quantity, subtotal, userId (FK to users), createdAt
+- **RD$ Denominations:** Monedas: 1, 5, 10, 25 | Billetes: 50, 100, 200, 500, 1000, 2000
+- **Double Count Flow:** Abastecedor counts by denomination at machine (countType=maquina), Almacén counts at delivery (countType=entrega)
+- **Reconciliation:** Per-collection comparison of machine vs delivery counts by denomination with difference calculation
+- **API Endpoints:** POST `/api/supplier/cash/:id/denominations`, GET `/api/supplier/cash/:id/denominations`, GET `/api/supplier/cash/:id/reconciliation`
+- **RBAC:** admin, supervisor, abastecedor, contabilidad, almacen can access; tenant isolation enforced via cash_collections ownership check
+- **Frontend (Supplier):** Denomination grid in cash collection dialog with checkbox toggle, auto-calculates total, posts denomination counts after collection creation
+- **Frontend (Money-Products):** New "Denominaciones" tab with: collection list, entrega counting dialog, reconciliation comparison table (denomination-by-denomination diff)
+
 ## Documentation
 
 - **MANUAL_USUARIO.md**: Comprehensive user manual (200+ sections) organized by user role (6 profiles) and module (12+ modules). Includes:

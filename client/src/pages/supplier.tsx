@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useSearch, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { RD_DENOMINATIONS } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -195,6 +196,10 @@ export function SupplierPage() {
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
   const [cashAmount, setCashAmount] = useState("");
   const [expectedAmount, setExpectedAmount] = useState("");
+  const [useDenominations, setUseDenominations] = useState(false);
+  const [denominationQtys, setDenominationQtys] = useState<Record<number, number>>(
+    () => Object.fromEntries(RD_DENOMINATIONS.map(d => [d.value, 0]))
+  );
   const [issueType, setIssueType] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
   const [issuePriority, setIssuePriority] = useState("media");
@@ -516,14 +521,37 @@ export function SupplierPage() {
 
   const createCashCollectionMutation = useMutation({
     mutationFn: async (data: any) => {
-      return apiRequest("POST", "/api/supplier/cash", data);
+      const res = await apiRequest("POST", "/api/supplier/cash", data);
+      return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: async (response: any) => {
+      if (useDenominations && response?.id) {
+        const denomsToSend = RD_DENOMINATIONS
+          .filter(d => (denominationQtys[d.value] || 0) > 0)
+          .map(d => ({
+            denomination: d.value,
+            quantity: denominationQtys[d.value],
+            denominationType: d.type,
+          }));
+        if (denomsToSend.length > 0) {
+          try {
+            await apiRequest("POST", `/api/supplier/cash/${response.id}/denominations`, {
+              countType: "maquina",
+              denominations: denomsToSend,
+            });
+          } catch (e) {
+            console.error("Error saving denominations:", e);
+          }
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/cash"] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/stats", supplierId] });
-      toast({ title: "Efectivo registrado", description: `${formatCurrency(parseFloat(cashAmount))} registrados` });
+      const amount = useDenominations ? denominationTotal : parseFloat(cashAmount);
+      toast({ title: "Efectivo registrado", description: `${formatCurrency(amount)} registrados` });
       setCashAmount("");
       setExpectedAmount("");
+      setUseDenominations(false);
+      setDenominationQtys(Object.fromEntries(RD_DENOMINATIONS.map(d => [d.value, 0])));
       setIsCashDialogOpen(false);
     },
   });
@@ -766,14 +794,25 @@ export function SupplierPage() {
     });
   };
 
+  const denominationTotal = useMemo(() => {
+    return RD_DENOMINATIONS.reduce((sum, d) => sum + d.value * (denominationQtys[d.value] || 0), 0);
+  }, [denominationQtys]);
+
+  const handleDenominationQtyChange = useCallback((denomination: number, qty: number) => {
+    setDenominationQtys(prev => ({ ...prev, [denomination]: Math.max(0, qty) }));
+  }, []);
+
   const handleCashCollection = () => {
     if (!supplierId || !currentStop) return;
     
+    const finalAmount = useDenominations ? String(denominationTotal) : cashAmount;
+    if (!finalAmount || parseFloat(finalAmount) <= 0) return;
+
     createCashCollectionMutation.mutate({
       machineId: currentStop.machine.id,
       userId: supplierId,
       serviceRecordId: activeServiceId,
-      actualAmount: cashAmount,
+      actualAmount: finalAmount,
       expectedAmount: expectedAmount || undefined,
     });
   };
@@ -2234,20 +2273,64 @@ export function SupplierPage() {
                 data-testid="input-expected-amount"
               />
             </div>
-            <div className="space-y-2">
-              <Label>Monto recolectado (RD$)</Label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={cashAmount}
-                onChange={(e) => setCashAmount(e.target.value)}
-                data-testid="input-actual-amount"
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="use-denominations"
+                checked={useDenominations}
+                onCheckedChange={(checked) => setUseDenominations(checked === true)}
+                data-testid="checkbox-use-denominations"
               />
+              <Label htmlFor="use-denominations" className="text-sm cursor-pointer">Contar por denominación</Label>
             </div>
-            {expectedAmount && cashAmount && (
-              <div className={`p-3 rounded-lg ${parseFloat(cashAmount) >= parseFloat(expectedAmount) ? "bg-emerald-500/10" : "bg-amber-500/10"}`}>
+
+            {useDenominations ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  {RD_DENOMINATIONS.map((d) => (
+                    <div key={d.value} className="flex items-center gap-2 p-2 border rounded-md" data-testid={`denomination-row-${d.value}`}>
+                      <Badge variant="outline" className="min-w-[70px] justify-center text-xs">
+                        {d.label}
+                      </Badge>
+                      <Input
+                        type="number"
+                        min="0"
+                        className="h-8 w-16 text-center text-sm"
+                        value={denominationQtys[d.value] || ""}
+                        onChange={(e) => handleDenominationQtyChange(d.value, parseInt(e.target.value) || 0)}
+                        placeholder="0"
+                        data-testid={`input-denomination-${d.value}`}
+                      />
+                      <span className="text-xs text-muted-foreground min-w-[60px] text-right">
+                        {formatCurrency(d.value * (denominationQtys[d.value] || 0))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="p-3 bg-muted rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium">Total contado:</span>
+                    <span className="text-lg font-bold" data-testid="text-denomination-total">{formatCurrency(denominationTotal)}</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Monto recolectado (RD$)</Label>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={cashAmount}
+                  onChange={(e) => setCashAmount(e.target.value)}
+                  data-testid="input-actual-amount"
+                />
+              </div>
+            )}
+
+            {expectedAmount && (useDenominations ? denominationTotal > 0 : cashAmount) && (
+              <div className={`p-3 rounded-lg ${(useDenominations ? denominationTotal : parseFloat(cashAmount)) >= parseFloat(expectedAmount) ? "bg-emerald-500/10" : "bg-amber-500/10"}`}>
                 <p className="text-sm">
-                  Diferencia: <span className="font-bold">{formatCurrency(parseFloat(cashAmount) - parseFloat(expectedAmount))}</span>
+                  Diferencia: <span className="font-bold">{formatCurrency((useDenominations ? denominationTotal : parseFloat(cashAmount)) - parseFloat(expectedAmount))}</span>
                 </p>
               </div>
             )}
@@ -2257,7 +2340,7 @@ export function SupplierPage() {
               </Button>
               <Button 
                 onClick={handleCashCollection} 
-                disabled={!cashAmount || createCashCollectionMutation.isPending}
+                disabled={(useDenominations ? denominationTotal <= 0 : !cashAmount) || createCashCollectionMutation.isPending}
                 data-testid="button-submit-cash"
               >
                 {createCashCollectionMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}

@@ -38,6 +38,8 @@ import {
   insertRouteStopSchema,
   insertServiceRecordSchema,
   insertCashCollectionSchema,
+  insertCashDenominationCountSchema,
+  RD_DENOMINATIONS,
   insertProductLoadSchema,
   insertIssueReportSchema,
   insertCashMovementSchema,
@@ -3137,6 +3139,80 @@ export async function registerRoutes(
       res.json(summary);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener resumen de efectivo" });
+    }
+  });
+
+  // Conteo por Denominación
+  app.post("/api/supplier/cash/:cashCollectionId/denominations", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { cashCollectionId } = req.params;
+      const { countType, denominations } = req.body;
+      
+      if (!countType || !["maquina", "entrega"].includes(countType)) {
+        return res.status(400).json({ error: "countType debe ser 'maquina' o 'entrega'" });
+      }
+      if (!Array.isArray(denominations) || denominations.length === 0) {
+        return res.status(400).json({ error: "Se requiere al menos una denominación" });
+      }
+
+      const allCollections = await storage.getCashCollections(undefined, undefined, undefined, undefined, 100);
+      const found = allCollections.find((c: any) => c.id === cashCollectionId);
+      if (!found) {
+        return res.status(404).json({ error: "Recolección no encontrada" });
+      }
+      if (found.tenantId !== req.user!.tenantId) {
+        return res.status(404).json({ error: "Recolección no encontrada" });
+      }
+
+      const counts = denominations
+        .filter((d: any) => d.quantity > 0)
+        .map((d: any) => ({
+          tenantId: req.user!.tenantId!,
+          cashCollectionId,
+          countType,
+          denomination: String(d.denomination),
+          denominationType: d.denominationType || (d.denomination >= 50 ? "billete" : "moneda"),
+          quantity: d.quantity,
+          subtotal: String(d.denomination * d.quantity),
+          userId: req.user!.userId,
+        }));
+
+      const result = await storage.createCashDenominationCounts(counts);
+      res.status(201).json(result);
+    } catch (error) {
+      console.error("Error creating denomination counts:", error);
+      res.status(500).json({ error: "Error al registrar conteo por denominación" });
+    }
+  });
+
+  app.get("/api/supplier/cash/:cashCollectionId/denominations", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { cashCollectionId } = req.params;
+      const { countType } = req.query;
+      const allCollections = await storage.getCashCollections(undefined, undefined, undefined, undefined, 200);
+      const found = allCollections.find((c: any) => c.id === cashCollectionId);
+      if (!found || (found.tenantId !== req.user!.tenantId && !req.user!.isSuperAdmin)) {
+        return res.status(404).json({ error: "Recolección no encontrada" });
+      }
+      const counts = await storage.getCashDenominationCounts(cashCollectionId, countType as string | undefined);
+      res.json(counts);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener conteo por denominación" });
+    }
+  });
+
+  app.get("/api/supplier/cash/:cashCollectionId/reconciliation", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { cashCollectionId } = req.params;
+      const allCollections = await storage.getCashCollections(undefined, undefined, undefined, undefined, 200);
+      const found = allCollections.find((c: any) => c.id === cashCollectionId);
+      if (!found || (found.tenantId !== req.user!.tenantId && !req.user!.isSuperAdmin)) {
+        return res.status(404).json({ error: "Recolección no encontrada" });
+      }
+      const reconciliation = await storage.getCashDenominationReconciliation(cashCollectionId);
+      res.json(reconciliation);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener cuadre de denominaciones" });
     }
   });
 
