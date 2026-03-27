@@ -2030,6 +2030,13 @@ export class DatabaseStorage implements IStorage {
 
   async createCashDenominationCounts(counts: InsertCashDenominationCount[]): Promise<CashDenominationCount[]> {
     if (counts.length === 0) return [];
+    const firstCount = counts[0];
+    await db.delete(cashDenominationCounts).where(
+      and(
+        eq(cashDenominationCounts.cashCollectionId, firstCount.cashCollectionId),
+        eq(cashDenominationCounts.countType, firstCount.countType)
+      )
+    );
     const results: CashDenominationCount[] = [];
     for (const c of counts) {
       const subtotal = (parseFloat(String(c.denomination)) * c.quantity).toFixed(2);
