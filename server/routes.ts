@@ -3214,6 +3214,17 @@ export async function registerRoutes(
         }));
 
       const result = await storage.createCashDenominationCounts(counts);
+
+      if (countType === "entrega") {
+        const collection = await storage.getCashCollectionById(cashCollectionId);
+        if (collection) {
+          const activeFund = await storage.getActiveChangeFundForSupplier(collection.userId, req.user!.tenantId!);
+          if (activeFund) {
+            await storage.updateChangeFundStatus(activeFund.id, "usado", cashCollectionId);
+          }
+        }
+      }
+
       res.status(201).json(result);
     } catch (error) {
       console.error("Error creating denomination counts:", error);
@@ -3281,11 +3292,13 @@ export async function registerRoutes(
         return res.status(400).json({ error: "El abastecedor ya tiene un fondo de cambio activo" });
       }
 
-      const validDenominations = denominations.filter((d: any) => d.quantity > 0);
+      const validDenomValues = RD_DENOMINATIONS.map(rd => rd.value);
+      const validDenominations = denominations.filter((d: any) => d.quantity > 0 && validDenomValues.includes(d.denomination));
+      if (validDenominations.length === 0) {
+        return res.status(400).json({ error: "No hay denominaciones válidas con cantidad mayor a 0" });
+      }
       const totalAmount = validDenominations.reduce((sum: number, d: any) => {
-        const denom = RD_DENOMINATIONS.find(rd => rd.value === d.denomination);
-        if (!denom) return sum;
-        return sum + (denom.value * d.quantity);
+        return sum + (d.denomination * d.quantity);
       }, 0);
 
       const fund = await storage.createChangeFund({

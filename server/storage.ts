@@ -2066,34 +2066,17 @@ export class DatabaseStorage implements IStorage {
     const entrega = collectionCounts.filter(c => c.countType === "entrega");
 
     let fondoCambio: CashDenominationCount[] = [];
-    const collection = await this.getCashCollectionById(cashCollectionId);
-    if (collection) {
-      const linkedFund = await db.select().from(changeFunds)
-        .where(eq(changeFunds.cashCollectionId, cashCollectionId))
-        .limit(1);
+    const linkedFund = await db.select().from(changeFunds)
+      .where(eq(changeFunds.cashCollectionId, cashCollectionId))
+      .limit(1);
 
-      let fundId: string | null = linkedFund.length > 0 ? linkedFund[0].id : null;
-
-      if (!fundId) {
-        const activeFund = await db.select().from(changeFunds)
-          .where(and(
-            eq(changeFunds.supplierId, collection.userId),
-            eq(changeFunds.tenantId, collection.tenantId!),
-            eq(changeFunds.status, "activo")
-          ))
-          .orderBy(desc(changeFunds.createdAt))
-          .limit(1);
-        if (activeFund.length > 0) fundId = activeFund[0].id;
-      }
-
-      if (fundId) {
-        fondoCambio = await db.select().from(cashDenominationCounts)
-          .where(and(
-            eq(cashDenominationCounts.cashCollectionId, fundId),
-            eq(cashDenominationCounts.countType, "fondo_cambio")
-          ))
-          .orderBy(asc(cashDenominationCounts.denomination));
-      }
+    if (linkedFund.length > 0) {
+      fondoCambio = await db.select().from(cashDenominationCounts)
+        .where(and(
+          eq(cashDenominationCounts.cashCollectionId, linkedFund[0].id),
+          eq(cashDenominationCounts.countType, "fondo_cambio")
+        ))
+        .orderBy(asc(cashDenominationCounts.denomination));
     }
     
     const totalMaquina = maquina.reduce((sum, c) => sum + parseFloat(String(c.subtotal)), 0);
