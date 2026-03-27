@@ -278,7 +278,7 @@ export interface IStorage {
   endService(id: string, notes?: string, signature?: string, responsibleName?: string, checklistData?: string): Promise<ServiceRecord | undefined>;
   
   // Recolección de Efectivo
-  getCashCollections(userId?: string, machineId?: string, startDate?: Date, endDate?: Date, limit?: number): Promise<any[]>;
+  getCashCollections(userId?: string, machineId?: string, startDate?: Date, endDate?: Date, limit?: number, tenantId?: string): Promise<any[]>;
   createCashCollection(collection: InsertCashCollection): Promise<CashCollection>;
   getCashCollectionsSummary(userId: string, startDate?: Date, endDate?: Date): Promise<{ total: number; count: number; difference: number }>;
   
@@ -1952,9 +1952,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Recolección de Efectivo
-  async getCashCollections(userId?: string, machineId?: string, startDate?: Date, endDate?: Date, limit: number = 30): Promise<any[]> {
+  async getCashCollections(userId?: string, machineId?: string, startDate?: Date, endDate?: Date, limit: number = 30, tenantId?: string): Promise<any[]> {
     let conditions: any[] = [];
     
+    if (tenantId) conditions.push(eq(cashCollections.tenantId, tenantId));
     if (userId) conditions.push(eq(cashCollections.userId, userId));
     if (machineId) conditions.push(eq(cashCollections.machineId, machineId));
     if (startDate) conditions.push(gte(cashCollections.createdAt, startDate));

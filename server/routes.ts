@@ -3100,11 +3100,14 @@ export async function registerRoutes(
       const userIdFilter = (role === "abastecedor")
         ? req.user!.userId
         : undefined;
+      const tenantId = req.user!.tenantId!;
       const collections = await storage.getCashCollections(
         userIdFilter,
         machineId as string | undefined,
         startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined
+        endDate ? new Date(endDate as string) : undefined,
+        30,
+        tenantId
       );
       res.json(collections);
     } catch (error) {
