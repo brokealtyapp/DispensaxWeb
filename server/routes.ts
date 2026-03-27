@@ -3093,7 +3093,7 @@ export async function registerRoutes(
   });
 
   // Recolección de Efectivo
-  app.get("/api/supplier/cash", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/supplier/cash", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { machineId, startDate, endDate } = req.query;
       // Abastecedor solo ve sus propias recolecciones
@@ -3143,6 +3143,21 @@ export async function registerRoutes(
   });
 
   // Conteo por Denominación
+  const VALID_DENOMINATIONS = RD_DENOMINATIONS.map(d => d.value);
+
+  async function verifyCashCollectionTenant(cashCollectionId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const collection = await storage.getCashCollectionById(cashCollectionId);
+    if (!collection) {
+      res.status(404).json({ error: "Recolección no encontrada" });
+      return false;
+    }
+    if (collection.tenantId !== req.user!.tenantId && !req.user!.isSuperAdmin) {
+      res.status(404).json({ error: "Recolección no encontrada" });
+      return false;
+    }
+    return true;
+  }
+
   app.post("/api/supplier/cash/:cashCollectionId/denominations", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { cashCollectionId } = req.params;
@@ -3155,14 +3170,16 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Se requiere al menos una denominación" });
       }
 
-      const allCollections = await storage.getCashCollections(undefined, undefined, undefined, undefined, 100);
-      const found = allCollections.find((c: any) => c.id === cashCollectionId);
-      if (!found) {
-        return res.status(404).json({ error: "Recolección no encontrada" });
+      for (const d of denominations) {
+        if (!VALID_DENOMINATIONS.includes(d.denomination)) {
+          return res.status(400).json({ error: `Denominación inválida: ${d.denomination}` });
+        }
+        if (typeof d.quantity !== "number" || d.quantity < 0 || !Number.isInteger(d.quantity)) {
+          return res.status(400).json({ error: "La cantidad debe ser un entero positivo" });
+        }
       }
-      if (found.tenantId !== req.user!.tenantId) {
-        return res.status(404).json({ error: "Recolección no encontrada" });
-      }
+
+      if (!await verifyCashCollectionTenant(cashCollectionId, req, res)) return;
 
       const counts = denominations
         .filter((d: any) => d.quantity > 0)
@@ -3189,11 +3206,7 @@ export async function registerRoutes(
     try {
       const { cashCollectionId } = req.params;
       const { countType } = req.query;
-      const allCollections = await storage.getCashCollections(undefined, undefined, undefined, undefined, 200);
-      const found = allCollections.find((c: any) => c.id === cashCollectionId);
-      if (!found || (found.tenantId !== req.user!.tenantId && !req.user!.isSuperAdmin)) {
-        return res.status(404).json({ error: "Recolección no encontrada" });
-      }
+      if (!await verifyCashCollectionTenant(cashCollectionId, req, res)) return;
       const counts = await storage.getCashDenominationCounts(cashCollectionId, countType as string | undefined);
       res.json(counts);
     } catch (error) {
@@ -3204,11 +3217,7 @@ export async function registerRoutes(
   app.get("/api/supplier/cash/:cashCollectionId/reconciliation", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { cashCollectionId } = req.params;
-      const allCollections = await storage.getCashCollections(undefined, undefined, undefined, undefined, 200);
-      const found = allCollections.find((c: any) => c.id === cashCollectionId);
-      if (!found || (found.tenantId !== req.user!.tenantId && !req.user!.isSuperAdmin)) {
-        return res.status(404).json({ error: "Recolección no encontrada" });
-      }
+      if (!await verifyCashCollectionTenant(cashCollectionId, req, res)) return;
       const reconciliation = await storage.getCashDenominationReconciliation(cashCollectionId);
       res.json(reconciliation);
     } catch (error) {

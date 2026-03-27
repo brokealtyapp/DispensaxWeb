@@ -282,6 +282,8 @@ export interface IStorage {
   createCashCollection(collection: InsertCashCollection): Promise<CashCollection>;
   getCashCollectionsSummary(userId: string, startDate?: Date, endDate?: Date): Promise<{ total: number; count: number; difference: number }>;
   
+  getCashCollectionById(id: string): Promise<CashCollection | undefined>;
+  
   // Conteo por Denominación
   getCashDenominationCounts(cashCollectionId: string, countType?: string): Promise<CashDenominationCount[]>;
   createCashDenominationCounts(counts: InsertCashDenominationCount[]): Promise<CashDenominationCount[]>;
@@ -2013,6 +2015,11 @@ export class DatabaseStorage implements IStorage {
       count: result[0]?.count || 0,
       difference: parseFloat(result[0]?.difference || "0")
     };
+  }
+
+  async getCashCollectionById(id: string): Promise<CashCollection | undefined> {
+    const [result] = await db.select().from(cashCollections).where(eq(cashCollections.id, id)).limit(1);
+    return result;
   }
 
   async getCashDenominationCounts(cashCollectionId: string, countType?: string): Promise<CashDenominationCount[]> {
