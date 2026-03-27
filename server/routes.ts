@@ -3270,17 +3270,23 @@ export async function registerRoutes(
     return true;
   }
 
+  const createChangeFundSchema = z.object({
+    supplierId: z.string().min(1, "Se requiere supplierId"),
+    notes: z.string().optional(),
+    denominations: z.array(z.object({
+      denomination: z.number(),
+      quantity: z.number().int().min(0),
+    })).min(1, "Se requiere al menos una denominación"),
+  });
+
   app.post("/api/change-funds", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { supplierId, notes, denominations } = req.body;
+      const parsed = createChangeFundSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.issues[0]?.message || "Datos inválidos" });
+      }
+      const { supplierId, notes, denominations } = parsed.data;
       const tenantId = req.user!.tenantId!;
-
-      if (!supplierId) {
-        return res.status(400).json({ error: "Se requiere supplierId" });
-      }
-      if (!Array.isArray(denominations) || denominations.length === 0) {
-        return res.status(400).json({ error: "Se requiere al menos una denominación" });
-      }
 
       const supplier = await storage.getUser(supplierId);
       if (!supplier || supplier.tenantId !== tenantId || supplier.role !== "abastecedor") {
