@@ -2483,9 +2483,10 @@ export async function registerRoutes(
       if (!route) {
         return res.status(404).json({ error: "Ruta no encontrada" });
       }
-      if (route.status !== "pendiente") {
-        return res.status(400).json({ error: "Solo se pueden eliminar rutas pendientes" });
+      if (route.status === "en_progreso") {
+        return res.status(400).json({ error: "No se pueden eliminar rutas en progreso" });
       }
+      const { notes } = req.body || {};
       await storage.deleteRoute(req.params.id);
       res.json({ success: true });
     } catch (error) {

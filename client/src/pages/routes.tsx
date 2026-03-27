@@ -26,6 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { DataPagination } from "@/components/DataPagination";
@@ -162,6 +163,8 @@ export default function RoutesPage() {
   const [selectedRouteIds, setSelectedRouteIds] = useState<Set<string>>(new Set());
   const [isBulkCancelOpen, setIsBulkCancelOpen] = useState(false);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+  const [deleteNotes, setDeleteNotes] = useState("");
+  const [bulkDeleteNotes, setBulkDeleteNotes] = useState("");
 
   const routeForm = useForm<RouteFormData>({
     resolver: zodResolver(routeFormSchema),
@@ -320,14 +323,15 @@ export default function RoutesPage() {
   });
 
   const deleteRouteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/supplier/routes/${id}`);
+    mutationFn: async ({ id, notes }: { id: string; notes?: string }) => {
+      return apiRequest("DELETE", `/api/supplier/routes/${id}`, { notes });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
       toast({ title: "Ruta eliminada", description: "La ruta se ha eliminado correctamente" });
       setIsDeleteRouteOpen(false);
       setRouteToDelete(null);
+      setDeleteNotes("");
     },
     onError: (error) => {
       const detail = getApiErrorMessage(error);
@@ -450,9 +454,9 @@ export default function RoutesPage() {
   });
 
   const bulkDeleteMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
+    mutationFn: async ({ ids, notes }: { ids: string[]; notes?: string }) => {
       for (const id of ids) {
-        await apiRequest("DELETE", `/api/supplier/routes/${id}`);
+        await apiRequest("DELETE", `/api/supplier/routes/${id}`, { notes });
       }
     },
     onSuccess: () => {
@@ -460,6 +464,7 @@ export default function RoutesPage() {
       toast({ title: "Rutas eliminadas", description: `${selectedRouteIds.size} ruta(s) eliminada(s)` });
       setSelectedRouteIds(new Set());
       setIsBulkDeleteOpen(false);
+      setBulkDeleteNotes("");
     },
     onError: (error) => {
       const detail = getApiErrorMessage(error);
@@ -569,9 +574,10 @@ export default function RoutesPage() {
     }
   };
 
-  const bulkDeletableIds = Array.from(selectedRouteIds).filter(id =>
-    paginatedRoutes.find(r => r.id === id)?.status === "pendiente"
-  );
+  const bulkDeletableIds = Array.from(selectedRouteIds).filter(id => {
+    const s = paginatedRoutes.find(r => r.id === id)?.status;
+    return s === "pendiente" || s === "cancelada" || s === "completada";
+  });
   const bulkCancellableIds = Array.from(selectedRouteIds).filter(id => {
     const s = paginatedRoutes.find(r => r.id === id)?.status;
     return s === "pendiente" || s === "en_progreso";
@@ -888,19 +894,6 @@ export default function RoutesPage() {
                                     >
                                       <XCircle className="h-4 w-4 text-orange-500" />
                                     </Button>
-                                    {canDelete("routes") && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => {
-                                          setRouteToDelete(route);
-                                          setIsDeleteRouteOpen(true);
-                                        }}
-                                        data-testid={`button-delete-route-${route.id}`}
-                                      >
-                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                      </Button>
-                                    )}
                                   </>
                                 )}
                                 {route.status === "en_progreso" && (
@@ -930,6 +923,21 @@ export default function RoutesPage() {
                                       <XCircle className="h-4 w-4 text-orange-500" />
                                     </Button>
                                   </>
+                                )}
+                                {route.status !== "en_progreso" && canDelete("routes") && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setRouteToDelete(route);
+                                      setDeleteNotes("");
+                                      setIsDeleteRouteOpen(true);
+                                    }}
+                                    data-testid={`button-delete-route-${route.id}`}
+                                    title="Eliminar ruta"
+                                  >
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
                                 )}
                               </div>
                             </TableCell>
@@ -1442,7 +1450,7 @@ export default function RoutesPage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={isDeleteRouteOpen} onOpenChange={setIsDeleteRouteOpen}>
+      <AlertDialog open={isDeleteRouteOpen} onOpenChange={(open) => { setIsDeleteRouteOpen(open); if (!open) setDeleteNotes(""); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar ruta?</AlertDialogTitle>
@@ -1450,10 +1458,19 @@ export default function RoutesPage() {
               Esta acción no se puede deshacer. Se eliminará la ruta y todas sus paradas asociadas.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Motivo de eliminación (opcional)</label>
+            <Textarea
+              placeholder="Escribe el motivo de la eliminación..."
+              value={deleteNotes}
+              onChange={(e) => setDeleteNotes(e.target.value)}
+              data-testid="input-delete-route-notes"
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => routeToDelete && deleteRouteMutation.mutate(routeToDelete.id)}
+              onClick={() => routeToDelete && deleteRouteMutation.mutate({ id: routeToDelete.id, notes: deleteNotes || undefined })}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleteRouteMutation.isPending ? "Eliminando..." : "Eliminar"}
@@ -1545,18 +1562,27 @@ export default function RoutesPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
+      <AlertDialog open={isBulkDeleteOpen} onOpenChange={(open) => { setIsBulkDeleteOpen(open); if (!open) setBulkDeleteNotes(""); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar {bulkDeletableIds.length} ruta(s)?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. Solo se pueden eliminar rutas en estado pendiente.
+              Esta acción no se puede deshacer. Se eliminarán las rutas seleccionadas y sus paradas asociadas.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Motivo de eliminación (opcional)</label>
+            <Textarea
+              placeholder="Escribe el motivo de la eliminación..."
+              value={bulkDeleteNotes}
+              onChange={(e) => setBulkDeleteNotes(e.target.value)}
+              data-testid="input-bulk-delete-notes"
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Volver</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => bulkDeleteMutation.mutate(bulkDeletableIds)}
+              onClick={() => bulkDeleteMutation.mutate({ ids: bulkDeletableIds, notes: bulkDeleteNotes || undefined })}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-bulk-delete"
             >
