@@ -1,26 +1,7 @@
 # Dispensax - Sistema de Gestión de Máquinas Expendedoras (Multi-Tenant SaaS)
 
 ## Overview
-Dispensax is a comprehensive multi-tenant SaaS platform for managing beverage vending machines. It supports multiple companies (tenants) with complete data isolation, featuring a Super Administrator role for managing all client companies. Each tenant operates independently with ~25 machines (scalable to hundreds) in Dominican Republic, implementing 12 operational modules with strict granular RBAC, secure JWT authentication with tenant context, and GMT-4 timezone handling. All monetary values display in Dominican Pesos (RD$).
-
-## Multi-Tenant Architecture
-The platform implements a 4-tier user hierarchy:
-1. **Super Admin** - Manages SaaS platform (all tenants, subscription plans, global metrics)
-2. **Admin** - Manages their company/tenant (machines, users, operations)
-3. **Operational Roles** (6 types) - Work within their assigned tenant
-4. **Establishment Viewers** - External users (establishment owners) with read-only access to their assigned machines' sales and commissions
-
-**Key Multi-Tenant Components:**
-- **New Tables:** tenants, subscription_plans, tenant_subscriptions, tenant_settings, tenant_invites, super_admin_audit_log
-- **Data Isolation:** All 40+ operational tables include tenantId for complete data separation
-- **JWT Tokens:** Include tenantId + isSuperAdmin for request-level tenant context
-- **Middleware:** requireTenant() validates tenant context, requireSuperAdmin() for platform management routes
-- **Tenant Switching:** Super Admins can operate in any tenant's context via query params
-
-**Critical IDs (Default Tenant):**
-- Tenant ID: `717d5e1f-7a58-42f6-b4cc-95cb58c2270f`
-- Plan ID: `75b6fd50-631a-4608-ad67-ad0e48d8f118`
-- Subscription ID: `06f9ddc5-7198-44b4-9b54-01bb2a0b8c2c`
+Dispensax is a multi-tenant SaaS platform designed for managing beverage vending machines. It provides complete data isolation for multiple client companies (tenants) and includes a Super Administrator role for platform-wide management. The system supports operations in the Dominican Republic, handling monetary values in Dominican Pesos (RD$) and standardizing timezone to GMT-4. Key capabilities include managing machines, inventory, sales, and personnel with a robust role-based access control system across 12 operational modules. The platform aims to serve companies with varying numbers of machines, from around 25 to hundreds.
 
 ## User Preferences
 - Idioma: Español
@@ -31,42 +12,31 @@ The platform implements a 4-tier user hierarchy:
 - Todos los endpoints validan con Zod
 
 ## System Architecture
-The application follows a client-server architecture. The frontend is built with React, TypeScript, and Vite, utilizing Tailwind CSS and shadcn/ui for styling, Recharts for data visualization, React Hook Form with Zod for forms, TanStack Query for state management, and Wouter for routing. The backend is an Express.js and Node.js API, interacting with a PostgreSQL database.
+The application uses a client-server architecture. The frontend is built with React, TypeScript, and Vite, styled with Tailwind CSS and shadcn/ui, and uses Recharts for data visualization, React Hook Form with Zod for forms, TanStack Query for state management, and Wouter for routing. The backend is an Express.js and Node.js API, interacting with a PostgreSQL database.
 
 **Key Architectural Decisions & Features:**
-- **Modular Design:** The application is divided into distinct modules like Dashboard, Machines, Warehouse, Accounting, HR, Fuel, Purchases, Petty Cash, Money & Products, Work Orders, and Settings.
-- **Responsive UI/UX:** Designed with a modern dashboard aesthetic, featuring responsive layouts and reusable components. Supports light/dark themes.
-- **Data Visualization:** Extensive use of Recharts for presenting financial, operational, and inventory data.
-- **Robust Form Handling:** All forms are managed using React Hook Form and validated with Zod for consistency and reliability.
-- **Centralized Timezone Management:** All date and time operations are standardized to 'America/Santo_Domingo' (GMT-4) for consistency across the application.
-- **In-Memory Caching System:** Implemented on the server (`server/cache.ts`) to pre-compute and store frequently accessed data. The DashboardCache (dashboard stats, machine lists, zone data) is no longer actively consumed by API endpoints. The SummaryCache was removed from all 6 summary endpoints (routes, petty-cash, purchases, fuel, hr, reconciliation) in favor of direct per-tenant DB queries to ensure complete tenant data isolation — each request now always filters by the authenticated user's tenantId.
-- **Optimized Database Interactions:** Employs efficient SQL JOINs instead of N+1 patterns, limits query results, and utilizes 23 critical database indexes for performance.
-- **Comprehensive JWT Authentication:** Features access and refresh tokens (HttpOnly cookies), middleware for role-based access control (RBAC), and automatic token renewal. Password changes revoke all active sessions.
-- **Granular Permission System (RBAC):** Complete action-based authorization using `authorizeAction(resource, action)` middleware on all mutation endpoints. Permission matrix defined in `shared/permissions.ts` with 8 roles (super_admin, admin, supervisor, abastecedor, almacen, contabilidad, rh, visor_establecimiento) and actions (view, create, edit, delete, approve, export) across 20+ resources. Frontend uses `usePermissions()` hook with isLoading/isAuthenticated states for conditional UI rendering.
-- **Establishment Viewer System:** External users (establishment owners) can view sales data and commissions for their assigned machines. Features include: invite-based onboarding, per-machine commission configuration (default 5%), dedicated dashboard at `/mi-panel`, and admin management panel at `/visores`. Tables: `establishment_viewers`, `machine_viewer_assignments`.
-- **Establishments CRM Pipeline + Active Contracts:** Full CRM pipeline with stages (Prospecto → En Evaluación → En Negociación → Aprobado → Convertido). Features: stage-based pipeline view, followups, document management with Object Storage, conversion to active locations. Active establishments tab shows converted establishments with installed machines, contract management (CRUD + renewal), and operational history (visits, services, alerts). Tables: `establishments`, `establishment_stages`, `establishment_followups`, `establishment_documents`, `establishment_contracts`. Contract statuses: activo/vencido/renovado/cancelado. Agreement types: comision/renta_fija/comodato/mixto.
-- **Enhanced Security (RBAC & Ownership):** Implemented `authorizeOwnership` middleware and `getEffectiveUserId` helper to prevent horizontal privilege escalation, ensuring users (especially "abastecedores") can only access their own data. Zone-based filtering for supervisors on machine data.
-- **Fail-Closed Zone Validation:** Critical security feature - supervisors and suppliers can only access machines in their assigned zone. If user OR machine lacks zone configuration, access is denied (fail closed). Admins bypass zone restrictions. Error codes: MACHINE_NOT_IN_ZONE, NO_VEHICLE_ASSIGNED, INSUFFICIENT_STOCK.
-- **Atomic Inventory Transactions:** All multi-table inventory operations (dispatchToVehicle, transferFromVehicleToMachine) use PostgreSQL transactions via `db.transaction()` to ensure consistency - partial updates are impossible on failure.
-- **Warehouse Module (Kardex):** Features weighted average cost, inventory movements (Kardex) with FEFO validation, low stock alerts, product/supplier management, and integration with purchases. Includes shrinkage recording and lot traceability.
-- **Fuel Module:** Manages fleet vehicles, fuel loads, calculates km/L performance, and tracks costs.
-- **Report Optimization:** Critical performance improvements in reporting functions by eliminating N+1 patterns, using `Promise.all` for parallel data fetching, and `Map` for O(1) lookups. New reporting features include product dashboards, CSV exports, and total rows.
-- **SMTP Password Recovery:** Implemented for user convenience.
-- **Plan Limit Validation:** `checkTenantPlanLimits()` enforces maxMachines and maxUsers before creation. Returns 403 with PLAN_LIMIT_EXCEEDED code when limits are reached.
-- **Rate Limiting:** In-memory rate limiter protects public and auth endpoints. Signup: 5/hour, Plans: 60/min, Login: 10/15min. Includes X-RateLimit headers and Retry-After for 429 responses.
-- **Tenant Isolation Security:** Complete multi-tenant data isolation across all modules:
-  - POST routes: Override tenantId from JWT context, preventing payload tampering
-  - GET/PATCH/DELETE routes: 20+ helper functions verify tenant ownership before any operation
-  - Protected modules: Machines, Locations, Products, Suppliers, Routes, Vehicles, Fuel, Cash, Purchases, Employees, Tasks, Calendar
-  - Returns 404 (not 403) to prevent cross-tenant information disclosure
-  - Super Admins bypass tenant checks via isSuperAdmin flag
-  - Fail-closed approach: access denied if tenantId missing or mismatched
-
-**UI/UX Decisions:**
-- **Primary Color:** #E84545 (Dispensax Red) as per user preference, overriding a previous blue.
-- **Color Palette:** Uses a consistent palette including #2F6FED (primary blue), #1D1D1D (dark), #8E59FF (purple), #4ECB71 (success green), and #FF6B3D (orange/red).
-- **Dashboard:** Modern design with colorful machine cards, interactive weekly calendar, task lists, and quick actions.
-- **Component Library:** Leverages shadcn/ui for consistent and accessible UI components.
+- **Multi-Tenant Architecture:** Features a 4-tier user hierarchy (Super Admin, Admin, Operational Roles, Establishment Viewers) with strict data isolation using `tenantId` across all operational tables. JWT tokens include `tenantId` and `isSuperAdmin` for request-level context, enforced by middleware.
+- **Modular Design:** Divided into distinct modules such as Dashboard, Machines, Warehouse, Accounting, HR, Fuel, Purchases, Petty Cash, Money & Products, Work Orders, and Settings.
+- **Responsive UI/UX:** Modern dashboard aesthetic with responsive layouts, reusable components, and support for light/dark themes. Utilizes `shadcn/ui` for consistent components.
+- **Data Visualization:** Employs Recharts extensively for financial, operational, and inventory data presentation.
+- **Robust Form Handling:** All forms use React Hook Form and Zod for validation and consistency.
+- **Centralized Timezone Management:** All date/time operations are standardized to 'America/Santo_Domingo' (GMT-4).
+- **Optimized Database Interactions:** Utilizes efficient SQL JOINs, query result limits, and 23 critical database indexes for performance.
+- **Comprehensive JWT Authentication:** Features access and refresh tokens (HttpOnly cookies), middleware for RBAC, and automatic token renewal.
+- **Granular Permission System (RBAC):** Action-based authorization using `authorizeAction(resource, action)` middleware and a permission matrix defined for 8 roles across 20+ resources. Frontend uses `usePermissions()` for conditional UI rendering.
+- **Establishment Viewer System:** Allows external users (establishment owners) read-only access to sales and commissions for assigned machines, managed via an invite-based system.
+- **Establishments CRM Pipeline:** Manages establishments through a sales pipeline (Prospecto → En Evaluación → En Negociación → Aprobado → Convertido) with follow-ups, document management, and conversion to active locations. Includes contract management (CRUD + renewal) for active establishments.
+- **Enhanced Security (RBAC & Ownership):** `authorizeOwnership` middleware and `getEffectiveUserId` prevent horizontal privilege escalation. Fail-closed zone validation ensures users only access machines in their assigned zones.
+- **Atomic Inventory Transactions:** All multi-table inventory operations are wrapped in PostgreSQL transactions for data consistency.
+- **Warehouse Module (Kardex):** Manages inventory with weighted average cost, movements (Kardex) with FEFO validation, low stock alerts, product/supplier management, and shrinkage recording.
+- **Fuel Module:** Tracks fleet vehicles, fuel loads, performance (km/L), and costs.
+- **Report Optimization:** Improved reporting performance by eliminating N+1 patterns and using parallel data fetching. Includes product dashboards and CSV exports.
+- **Plan Limit Validation:** `checkTenantPlanLimits()` enforces `maxMachines` and `maxUsers` with a 403 response if limits are exceeded.
+- **Rate Limiting:** In-memory rate limiter protects public and authentication endpoints.
+- **Nayax Integration:** Provides an HTTP client (`server/nayax.ts`) to interact with the Nayax Lynx API for managing machines, sales, and cashless operations, with per-tenant configuration.
+- **Work Orders Module:** Manages work orders and tickets with auto-numbering, configurable SLA, default checklists, and various order/ticket types. Features a dedicated frontend interface for management and tracking.
+- **Cash Denomination Counting Module:** Facilitates triple-count cash reconciliation for collections (machine, delivery, change fund) with specific RD$ denominations.
+- **Change Fund (Fondo de Cambio) Module:** Manages change funds issued to suppliers, tracking their status and denominations, ensuring one active fund per supplier.
 
 ## External Dependencies
 - **Frontend:**
@@ -89,43 +59,5 @@ The application follows a client-server architecture. The frontend is built with
     - JSON Web Tokens (JWT)
 - **Email Service:**
     - SMTP (for password recovery)
-
-## Nayax Integration
-- **Service:** `server/nayax.ts` - HTTP client for Nayax Lynx API (machines, sales, connection testing)
-- **Schema Tables:** `nayax_config` (per-tenant API token + settings), machines table extended with `nayax_machine_id`, `nayax_device_serial`, `nayax_linked_at`
-- **API Endpoints:** `/api/nayax/config` (GET/POST), `/api/nayax/test-connection` (POST), `/api/nayax/machines` (GET), `/api/nayax/machines/:id/sales` (GET), `/api/nayax/link-machine` (POST), `/api/nayax/unlink-machine` (POST), `/api/nayax/linked-machines` (GET)
-- **Frontend:** `/nayax` page with tabs for machine overview, linking, and cashless sales viewing
-- **Auth:** Admin-only access, token stored per tenant in `nayax_config` table
-- **Nayax Lynx API Base URL:** `https://lynx.nayax.com/operational/api/v1/`
-
-## Work Orders Module
-- **Schema Tables:** `work_orders`, `work_order_tickets`, `work_order_checklist_items`, `work_order_photos`, `sla_config` — all with tenantId NOT NULL for strict tenant isolation
-- **Auto-numbering:** Sequential per-tenant: OT-XXXX (orders), TK-XXXX (tickets)
-- **SLA:** Auto-calculated deadline by priority (Crítico: 2h, Alto: 4h, Medio: 24h, Bajo: 72h), configurable per tenant via sla_config
-- **Default Checklists:** Auto-generated per work order type (abastecimiento: 8 items, técnico: 8, mantenimiento_preventivo: 7, instalación: 7, retiro: 5)
-- **Work Order Types:** abastecimiento, tecnico, mantenimiento_preventivo, instalacion, retiro
-- **Ticket Types:** falla_cliente, alerta_sistema, incidencia_interna, solicitud_servicio
-- **API Endpoints:** Work Orders CRUD (`/api/work-orders`), Tickets CRUD (`/api/tickets`), Checklist (`/api/work-orders/:id/checklist`), Photos (`/api/work-orders/:id/photos`), SLA Config (`/api/sla-config`), Stats (`/api/work-orders/stats`), Machine History (`/api/machines/:id/work-orders`), Create Order from Ticket (`/api/tickets/:id/create-order`), SLA Update (`/api/work-orders/update-sla`)
-- **RBAC:** admin: full CRUD + approve; supervisor: view/create/edit; abastecedor: view + edit (assigned orders); others: view only or no access
-- **Security:** Whitelisted update fields, tenant-scoped FK validation on assignedUserId, checklist items scoped by workOrderId
-- **Frontend:** `/ordenes-trabajo` page with tabs (Órdenes, Tickets, Dashboard SLA), stats cards, filters, CRUD modals (SimpleModal), detail view with interactive checklist, create-order-from-ticket flow
-
-## Cash Denomination Counting Module
-- **Schema Table:** `cash_denomination_counts` — id, tenantId, cashCollectionId (FK to cash_collections), countType (maquina|entrega), denomination (decimal), denominationType (moneda|billete), quantity, subtotal, userId (FK to users), createdAt
-- **RD$ Denominations:** Monedas: 1, 5, 10, 25 | Billetes: 50, 100, 200, 500, 1000, 2000
-- **Double Count Flow:** Abastecedor counts by denomination at machine (countType=maquina), Almacén counts at delivery (countType=entrega)
-- **Reconciliation:** Per-collection comparison of machine vs delivery counts by denomination with difference calculation
-- **API Endpoints:** POST `/api/supplier/cash/:id/denominations`, GET `/api/supplier/cash/:id/denominations`, GET `/api/supplier/cash/:id/reconciliation`
-- **RBAC:** admin, supervisor, abastecedor, contabilidad, almacen can access; tenant isolation enforced via cash_collections ownership check
-- **Frontend (Supplier):** Denomination grid in cash collection dialog with checkbox toggle, auto-calculates total, posts denomination counts after collection creation
-- **Frontend (Money-Products):** New "Denominaciones" tab with: collection list, entrega counting dialog, reconciliation comparison table (denomination-by-denomination diff)
-
-## Documentation
-
-- **MANUAL_USUARIO.md**: Comprehensive user manual (200+ sections) organized by user role (6 profiles) and module (12+ modules). Includes:
-  - Detailed access and authentication instructions
-  - Role-specific guides for Admin, Supervisor, Abastecedor, Almacén, Contabilidad, and RH
-  - Practical step-by-step examples for every major functionality
-  - Module-by-module reference guide
-  - FAQ section and glossary
-  - All text in Spanish as per user preference
+- **Third-party APIs:**
+    - Nayax Lynx API (for vending machine integration)

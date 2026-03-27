@@ -843,7 +843,8 @@ export type CashCollection = typeof cashCollections.$inferSelect;
 
 export const denominationCountTypeEnum = pgEnum("denomination_count_type", [
   "maquina",
-  "entrega"
+  "entrega",
+  "fondo_cambio"
 ]);
 
 export const denominationTypeEnum = pgEnum("denomination_type", [
@@ -854,7 +855,7 @@ export const denominationTypeEnum = pgEnum("denomination_type", [
 export const cashDenominationCounts = pgTable("cash_denomination_counts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
-  cashCollectionId: varchar("cash_collection_id").references(() => cashCollections.id).notNull(),
+  cashCollectionId: varchar("cash_collection_id").notNull(),
   countType: denominationCountTypeEnum("count_type").notNull(),
   denomination: decimal("denomination", { precision: 10, scale: 2 }).notNull(),
   denominationType: denominationTypeEnum("denomination_type").notNull(),
@@ -884,6 +885,32 @@ export const RD_DENOMINATIONS = [
   { value: 1000, type: "billete" as const, label: "RD$1,000" },
   { value: 2000, type: "billete" as const, label: "RD$2,000" },
 ];
+
+export const changeFundStatusEnum = pgEnum("change_fund_status", [
+  "activo",
+  "usado",
+  "devuelto"
+]);
+
+export const changeFunds = pgTable("change_funds", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  supplierId: varchar("supplier_id").references(() => users.id).notNull(),
+  createdById: varchar("created_by_id").references(() => users.id).notNull(),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  status: changeFundStatusEnum("status").notNull().default("activo"),
+  notes: text("notes"),
+  cashCollectionId: varchar("cash_collection_id").references(() => cashCollections.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertChangeFundSchema = createInsertSchema(changeFunds).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertChangeFund = z.infer<typeof insertChangeFundSchema>;
+export type ChangeFund = typeof changeFunds.$inferSelect;
 
 export const productLoadTypeEnum = pgEnum("product_load_type", [
   "cargado",

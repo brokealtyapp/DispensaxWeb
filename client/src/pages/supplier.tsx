@@ -82,6 +82,8 @@ import {
   RotateCcw,
   Fuel,
   Wrench,
+  Wallet,
+  Coins,
 } from "lucide-react";
 
 interface MachineLocation {
@@ -315,6 +317,11 @@ export function SupplierPage() {
 
   const { data: supplierInventory } = useQuery<any[]>({
     queryKey: ["/api/supplier/inventory", supplierId],
+    enabled: !!supplierId,
+  });
+
+  const { data: activeChangeFund } = useQuery<any>({
+    queryKey: ["/api/change-funds/active", supplierId],
     enabled: !!supplierId,
   });
 
@@ -1149,6 +1156,39 @@ export function SupplierPage() {
           </CardContent>
         </Card>
       </div>
+
+      {activeChangeFund && (
+        <Card className="border-orange-200 dark:border-orange-800" data-testid="card-active-change-fund">
+          <CardContent className="p-3 md:p-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500">
+                  <Wallet className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-medium text-sm">Fondo de Cambio Activo</p>
+                  <p className="text-xs text-muted-foreground">
+                    {activeChangeFund.denominations?.length || 0} denominaciones
+                  </p>
+                </div>
+              </div>
+              <span className="text-xl font-bold text-orange-600" data-testid="text-active-fund-total">
+                {formatCurrency(parseFloat(activeChangeFund.totalAmount || "0"))}
+              </span>
+            </div>
+            {activeChangeFund.denominations && activeChangeFund.denominations.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {activeChangeFund.denominations.map((d: any) => (
+                  <Badge key={d.denomination} variant="outline" className="text-xs gap-1" data-testid={`badge-fund-denom-${d.denomination}`}>
+                    <Coins className="h-3 w-3" />
+                    {RD_DENOMINATIONS.find(rd => rd.value === parseFloat(d.denomination))?.label || `RD$${d.denomination}`}: {d.quantity}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList data-testid="tabs-list" className="w-full md:w-auto flex-wrap">

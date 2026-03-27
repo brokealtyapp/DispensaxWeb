@@ -59,6 +59,7 @@ import {
   type WorkOrderPhoto, type InsertWorkOrderPhoto,
   type SlaConfig, type InsertSlaConfig,
   type CashDenominationCount, type InsertCashDenominationCount,
+  type ChangeFund, type InsertChangeFund,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
@@ -72,7 +73,7 @@ import {
   establishmentViewers, machineViewerAssignments,
   machineTypeOptions,
   establishments, establishmentStages, establishmentFollowups, establishmentDocuments, establishmentContracts,
-  workOrders, workOrderTickets, workOrderChecklistItems, workOrderPhotos, slaConfig, cashDenominationCounts,
+  workOrders, workOrderTickets, workOrderChecklistItems, workOrderPhotos, slaConfig, cashDenominationCounts, changeFunds,
   tenants, subscriptionPlans, tenantSubscriptions, tenantSettings, tenantInvites, superAdminAuditLog,
   type Tenant, type InsertTenant,
   type SubscriptionPlan, type InsertSubscriptionPlan,
@@ -287,7 +288,14 @@ export interface IStorage {
   // Conteo por Denominación
   getCashDenominationCounts(cashCollectionId: string, countType?: string): Promise<CashDenominationCount[]>;
   createCashDenominationCounts(counts: InsertCashDenominationCount[]): Promise<CashDenominationCount[]>;
-  getCashDenominationReconciliation(cashCollectionId: string): Promise<{ maquina: CashDenominationCount[]; entrega: CashDenominationCount[]; totalMaquina: number; totalEntrega: number; difference: number }>;
+  getCashDenominationReconciliation(cashCollectionId: string): Promise<{ maquina: CashDenominationCount[]; entrega: CashDenominationCount[]; fondoCambio: CashDenominationCount[]; totalMaquina: number; totalEntrega: number; totalFondoCambio: number; difference: number }>;
+  
+  // Fondo de Cambio
+  createChangeFund(fund: InsertChangeFund): Promise<ChangeFund>;
+  getChangeFunds(tenantId: string, supplierId?: string, status?: string): Promise<any[]>;
+  getChangeFundById(id: string): Promise<ChangeFund | undefined>;
+  updateChangeFundStatus(id: string, status: string, cashCollectionId?: string): Promise<ChangeFund | undefined>;
+  getActiveChangeFundForSupplier(supplierId: string, tenantId: string): Promise<any | undefined>;
   
   // Carga/Retiro de Productos
   getProductLoads(serviceRecordId?: string, machineId?: string, userId?: string): Promise<any[]>;
@@ -2049,23 +2057,98 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getCashDenominationReconciliation(cashCollectionId: string): Promise<{ maquina: CashDenominationCount[]; entrega: CashDenominationCount[]; totalMaquina: number; totalEntrega: number; difference: number }> {
+  async getCashDenominationReconciliation(cashCollectionId: string): Promise<{ maquina: CashDenominationCount[]; entrega: CashDenominationCount[]; fondoCambio: CashDenominationCount[]; totalMaquina: number; totalEntrega: number; totalFondoCambio: number; difference: number }> {
     const all = await db.select().from(cashDenominationCounts)
       .where(eq(cashDenominationCounts.cashCollectionId, cashCollectionId))
       .orderBy(asc(cashDenominationCounts.denomination));
     
     const maquina = all.filter(c => c.countType === "maquina");
     const entrega = all.filter(c => c.countType === "entrega");
+    const fondoCambio = all.filter(c => c.countType === "fondo_cambio");
     
     const totalMaquina = maquina.reduce((sum, c) => sum + parseFloat(String(c.subtotal)), 0);
     const totalEntrega = entrega.reduce((sum, c) => sum + parseFloat(String(c.subtotal)), 0);
+    const totalFondoCambio = fondoCambio.reduce((sum, c) => sum + parseFloat(String(c.subtotal)), 0);
     
     return {
       maquina,
       entrega,
+      fondoCambio,
       totalMaquina,
       totalEntrega,
-      difference: totalMaquina - totalEntrega,
+      totalFondoCambio,
+      difference: totalEntrega - (totalMaquina + totalFondoCambio),
+    };
+  }
+
+  async createChangeFund(fund: InsertChangeFund): Promise<ChangeFund> {
+    const [created] = await db.insert(changeFunds).values(fund).returning();
+    return created;
+  }
+
+  async getChangeFunds(tenantId: string, supplierId?: string, status?: string): Promise<any[]> {
+    const conditions = [eq(changeFunds.tenantId, tenantId)];
+    if (supplierId) conditions.push(eq(changeFunds.supplierId, supplierId));
+    if (status) conditions.push(eq(changeFunds.status, status as any));
+    
+    const results = await db.select({
+      fund: changeFunds,
+      supplier: {
+        id: users.id,
+        fullName: users.fullName,
+        username: users.username,
+      }
+    })
+    .from(changeFunds)
+    .leftJoin(users, eq(changeFunds.supplierId, users.id))
+    .where(and(...conditions))
+    .orderBy(desc(changeFunds.createdAt))
+    .limit(50);
+    
+    return results.map(r => ({
+      ...r.fund,
+      supplier: r.supplier,
+    }));
+  }
+
+  async getChangeFundById(id: string): Promise<ChangeFund | undefined> {
+    const [result] = await db.select().from(changeFunds).where(eq(changeFunds.id, id)).limit(1);
+    return result;
+  }
+
+  async updateChangeFundStatus(id: string, status: string, cashCollectionId?: string): Promise<ChangeFund | undefined> {
+    const updates: any = { status };
+    if (cashCollectionId) updates.cashCollectionId = cashCollectionId;
+    const [updated] = await db.update(changeFunds).set(updates).where(eq(changeFunds.id, id)).returning();
+    return updated;
+  }
+
+  async getActiveChangeFundForSupplier(supplierId: string, tenantId: string): Promise<any | undefined> {
+    const [result] = await db.select({
+      fund: changeFunds,
+    })
+    .from(changeFunds)
+    .where(and(
+      eq(changeFunds.supplierId, supplierId),
+      eq(changeFunds.tenantId, tenantId),
+      eq(changeFunds.status, "activo")
+    ))
+    .orderBy(desc(changeFunds.createdAt))
+    .limit(1);
+    
+    if (!result) return undefined;
+    
+    const denominations = await db.select().from(cashDenominationCounts)
+      .where(and(
+        eq(cashDenominationCounts.userId, supplierId),
+        eq(cashDenominationCounts.countType, "fondo_cambio"),
+        eq(cashDenominationCounts.cashCollectionId, result.fund.id)
+      ))
+      .orderBy(asc(cashDenominationCounts.denomination));
+    
+    return {
+      ...result.fund,
+      denominations,
     };
   }
 

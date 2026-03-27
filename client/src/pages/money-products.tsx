@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatDateTime, formatCurrency } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useAuth } from "@/lib/auth-context";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -22,7 +23,9 @@ import {
   Plus,
   Coins,
   Loader2,
-  Eye
+  Eye,
+  Wallet,
+  UserCheck
 } from "lucide-react";
 import { RD_DENOMINATIONS } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -60,6 +63,7 @@ type ShrinkageFormData = z.infer<typeof shrinkageFormSchema>;
 export function MoneyProductsPage() {
   const { toast } = useToast();
   const { canCreate } = usePermissions();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("cash");
   const [isNewMovementOpen, setIsNewMovementOpen] = useState(false);
   const [isNewShrinkageOpen, setIsNewShrinkageOpen] = useState(false);
@@ -223,6 +227,73 @@ export function MoneyProductsPage() {
     setActiveTab("denominations");
   };
 
+  const [isChangeFundDialogOpen, setIsChangeFundDialogOpen] = useState(false);
+  const [changeFundSupplierId, setChangeFundSupplierId] = useState("");
+  const [changeFundNotes, setChangeFundNotes] = useState("");
+  const [changeFundDenomQtys, setChangeFundDenomQtys] = useState<Record<number, number>>(
+    () => Object.fromEntries(RD_DENOMINATIONS.map(d => [d.value, 0]))
+  );
+
+  const { data: changeFunds, isLoading: changeFundsLoading } = useQuery<any[]>({
+    queryKey: ["/api/change-funds"],
+  });
+
+  const suppliers = (users || []).filter((u: any) => u.role === "abastecedor");
+
+  const changeFundTotal = RD_DENOMINATIONS.reduce((sum, d) => sum + d.value * (changeFundDenomQtys[d.value] || 0), 0);
+
+  const createChangeFundMutation = useMutation({
+    mutationFn: async () => {
+      const denominations = RD_DENOMINATIONS
+        .filter(d => (changeFundDenomQtys[d.value] || 0) > 0)
+        .map(d => ({
+          denomination: d.value,
+          quantity: changeFundDenomQtys[d.value],
+          denominationType: d.type,
+        }));
+      return apiRequest("POST", "/api/change-funds", {
+        supplierId: changeFundSupplierId,
+        notes: changeFundNotes || undefined,
+        denominations,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/change-funds"] });
+      toast({ title: "Fondo de cambio creado", description: "El fondo de cambio ha sido asignado al abastecedor" });
+      setIsChangeFundDialogOpen(false);
+      setChangeFundSupplierId("");
+      setChangeFundNotes("");
+      setChangeFundDenomQtys(Object.fromEntries(RD_DENOMINATIONS.map(d => [d.value, 0])));
+    },
+    onError: async (error: any) => {
+      let message = "No se pudo crear el fondo de cambio";
+      try { const resp = await error?.response?.json?.(); if (resp?.error) message = resp.error; } catch {}
+      toast({ title: "Error", description: message, variant: "destructive" });
+    },
+  });
+
+  const markFundReturnedMutation = useMutation({
+    mutationFn: async (fundId: string) => {
+      return apiRequest("PATCH", `/api/change-funds/${fundId}/status`, { status: "devuelto" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/change-funds"] });
+      toast({ title: "Fondo devuelto", description: "El fondo de cambio ha sido marcado como devuelto" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo actualizar el estado del fondo", variant: "destructive" });
+    },
+  });
+
+  const getChangeFundStatusBadge = (status: string) => {
+    const styles: Record<string, string> = {
+      activo: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+      usado: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+      devuelto: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
+    };
+    return <Badge className={styles[status] || ""} data-testid={`badge-fund-status-${status}`}>{status}</Badge>;
+  };
+
   const onCashMovementSubmit = (data: CashMovementFormData) => {
     createCashMovementMutation.mutate(data);
   };
@@ -360,7 +431,7 @@ export function MoneyProductsPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-5" data-testid="tabs-money-products">
+          <TabsList className="grid w-full grid-cols-6" data-testid="tabs-money-products">
             <TabsTrigger value="cash" data-testid="tab-trigger-cash">
               <DollarSign className="h-4 w-4 mr-2" />
               Efectivo
@@ -376,6 +447,10 @@ export function MoneyProductsPage() {
             <TabsTrigger value="denominations" data-testid="tab-trigger-denominations">
               <Coins className="h-4 w-4 mr-2" />
               Denominaciones
+            </TabsTrigger>
+            <TabsTrigger value="changefund" data-testid="tab-trigger-changefund">
+              <Wallet className="h-4 w-4 mr-2" />
+              Fondo Cambio
             </TabsTrigger>
             <TabsTrigger value="reconciliation" data-testid="tab-trigger-reconciliation">
               <CheckCircle2 className="h-4 w-4 mr-2" />
@@ -640,10 +715,14 @@ export function MoneyProductsPage() {
                     </div>
                   ) : selectedReconciliation ? (
                     <div className="space-y-4">
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <div className="p-3 bg-muted rounded-lg text-center" data-testid="stat-total-maquina">
                           <p className="text-xs text-muted-foreground">Conteo Máquina</p>
                           <p className="text-lg font-bold">{formatCurrency(selectedReconciliation.totalMaquina || 0)}</p>
+                        </div>
+                        <div className="p-3 bg-muted rounded-lg text-center" data-testid="stat-total-fondo">
+                          <p className="text-xs text-muted-foreground">Fondo Cambio</p>
+                          <p className="text-lg font-bold text-orange-600">{formatCurrency(selectedReconciliation.totalFondoCambio || 0)}</p>
                         </div>
                         <div className="p-3 bg-muted rounded-lg text-center" data-testid="stat-total-entrega">
                           <p className="text-xs text-muted-foreground">Conteo Entrega</p>
@@ -656,14 +735,18 @@ export function MoneyProductsPage() {
                           </p>
                         </div>
                       </div>
+                      <p className="text-xs text-muted-foreground text-center">
+                        Fórmula: Entrega - (Máquina + Fondo) = Diferencia
+                      </p>
 
-                      {(selectedReconciliation.maquina?.length > 0 || selectedReconciliation.entrega?.length > 0) ? (
+                      {(selectedReconciliation.maquina?.length > 0 || selectedReconciliation.entrega?.length > 0 || selectedReconciliation.fondoCambio?.length > 0) ? (
                         <div className="border rounded-md overflow-hidden">
                           <table className="w-full text-sm">
                             <thead>
                               <tr className="bg-muted">
                                 <th className="p-2 text-left">Denominación</th>
                                 <th className="p-2 text-center">Máquina</th>
+                                <th className="p-2 text-center">Fondo</th>
                                 <th className="p-2 text-center">Entrega</th>
                                 <th className="p-2 text-right">Diferencia</th>
                               </tr>
@@ -671,17 +754,20 @@ export function MoneyProductsPage() {
                             <tbody>
                               {RD_DENOMINATIONS.map((d) => {
                                 const maq = selectedReconciliation.maquina?.find((c: any) => parseFloat(c.denomination) === d.value);
+                                const fondo = selectedReconciliation.fondoCambio?.find((c: any) => parseFloat(c.denomination) === d.value);
                                 const ent = selectedReconciliation.entrega?.find((c: any) => parseFloat(c.denomination) === d.value);
                                 const maqQty = maq?.quantity || 0;
+                                const fondoQty = fondo?.quantity || 0;
                                 const entQty = ent?.quantity || 0;
-                                const diff = maqQty - entQty;
-                                if (maqQty === 0 && entQty === 0) return null;
+                                const diff = entQty - (maqQty + fondoQty);
+                                if (maqQty === 0 && entQty === 0 && fondoQty === 0) return null;
                                 return (
                                   <tr key={d.value} className="border-t" data-testid={`reconciliation-row-${d.value}`}>
                                     <td className="p-2">
                                       <Badge variant="outline" className="text-xs">{d.label}</Badge>
                                     </td>
                                     <td className="p-2 text-center">{maqQty}</td>
+                                    <td className="p-2 text-center text-orange-600">{fondoQty}</td>
                                     <td className="p-2 text-center">{entQty}</td>
                                     <td className={`p-2 text-right font-medium ${diff === 0 ? "text-green-600" : "text-red-600"}`}>
                                       {diff === 0 ? "OK" : (diff > 0 ? `+${diff}` : diff)}
@@ -706,6 +792,82 @@ export function MoneyProductsPage() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="changefund" className="mt-4" data-testid="tab-content-changefund">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <CardTitle>Fondo de Cambio</CardTitle>
+                  <CardDescription>Dinero en denominaciones que el abastecedor lleva desde almacén para dar cambio</CardDescription>
+                </div>
+                {(user?.role === "admin" || user?.role === "almacen") && (
+                  <Button onClick={() => setIsChangeFundDialogOpen(true)} data-testid="button-new-change-fund">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Nuevo Fondo
+                  </Button>
+                )}
+              </CardHeader>
+              <CardContent>
+                {changeFundsLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-16 w-full" />
+                    ))}
+                  </div>
+                ) : !changeFunds || changeFunds.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground" data-testid="empty-state-change-funds">
+                    <Wallet className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No hay fondos de cambio registrados</p>
+                    <p className="text-sm mt-1">Crea un fondo para que el abastecedor lleve cambio</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {changeFunds.map((fund: any) => (
+                      <div
+                        key={fund.id}
+                        className="p-4 border rounded-md"
+                        data-testid={`change-fund-row-${fund.id}`}
+                      >
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-orange-100 dark:bg-orange-900 flex items-center justify-center">
+                              <UserCheck className="h-5 w-5 text-orange-600" />
+                            </div>
+                            <div>
+                              <p className="font-medium" data-testid={`text-fund-supplier-${fund.id}`}>
+                                {fund.supplier?.fullName || fund.supplier?.username || "Abastecedor"}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatDateTime(fund.createdAt)}
+                                {fund.notes && ` · ${fund.notes}`}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg font-bold" data-testid={`text-fund-amount-${fund.id}`}>
+                              {formatCurrency(parseFloat(fund.totalAmount))}
+                            </span>
+                            {getChangeFundStatusBadge(fund.status)}
+                            {fund.status === "activo" && (user?.role === "admin" || user?.role === "almacen") && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => markFundReturnedMutation.mutate(fund.id)}
+                                disabled={markFundReturnedMutation.isPending}
+                                data-testid={`button-return-fund-${fund.id}`}
+                              >
+                                Marcar Devuelto
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="reconciliation" className="mt-4" data-testid="tab-content-reconciliation">
@@ -1073,6 +1235,83 @@ export function MoneyProductsPage() {
                 >
                   {createEntregaDenominationsMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                   Registrar Entrega
+                </Button>
+              </DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={isChangeFundDialogOpen} onOpenChange={setIsChangeFundDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Nuevo Fondo de Cambio</DialogTitle>
+              <DialogDescription>Asigna un fondo en denominaciones a un abastecedor</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Abastecedor</label>
+                <Select onValueChange={setChangeFundSupplierId} value={changeFundSupplierId}>
+                  <SelectTrigger data-testid="select-change-fund-supplier">
+                    <SelectValue placeholder="Seleccionar abastecedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {suppliers.map((u: any) => (
+                      <SelectItem key={u.id} value={u.id} data-testid={`option-supplier-${u.id}`}>
+                        {u.fullName || u.username}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Denominaciones</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {RD_DENOMINATIONS.map((d) => (
+                    <div key={d.value} className="flex items-center gap-2 p-2 border rounded-md" data-testid={`fund-denomination-row-${d.value}`}>
+                      <Badge variant="outline" className="min-w-[70px] justify-center text-xs">
+                        {d.label}
+                      </Badge>
+                      <Input
+                        type="number"
+                        min="0"
+                        className="h-8 w-16 text-center text-sm"
+                        value={changeFundDenomQtys[d.value] || ""}
+                        onChange={(e) => setChangeFundDenomQtys(prev => ({ ...prev, [d.value]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                        placeholder="0"
+                        data-testid={`input-fund-denomination-${d.value}`}
+                      />
+                      <span className="text-xs text-muted-foreground min-w-[60px] text-right">
+                        {formatCurrency(d.value * (changeFundDenomQtys[d.value] || 0))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Notas (opcional)</label>
+                <Textarea
+                  value={changeFundNotes}
+                  onChange={(e) => setChangeFundNotes(e.target.value)}
+                  placeholder="Notas sobre el fondo..."
+                  data-testid="input-change-fund-notes"
+                />
+              </div>
+              <div className="p-3 bg-muted rounded-lg">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium">Total fondo:</span>
+                  <span className="text-lg font-bold text-orange-600" data-testid="text-fund-total">{formatCurrency(changeFundTotal)}</span>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsChangeFundDialogOpen(false)} data-testid="button-cancel-change-fund">
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={() => createChangeFundMutation.mutate()}
+                  disabled={changeFundTotal <= 0 || !changeFundSupplierId || createChangeFundMutation.isPending}
+                  data-testid="button-submit-change-fund"
+                >
+                  {createChangeFundMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Crear Fondo
                 </Button>
               </DialogFooter>
             </div>

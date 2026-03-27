@@ -112,6 +112,7 @@ import {
   ticketTypeEnum,
   ticketStatusEnum,
   slaStatusEnum,
+  changeFunds as changeFundsTable,
 } from "@shared/schema";
 import { z, ZodError } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
@@ -3167,8 +3168,8 @@ export async function registerRoutes(
       const { cashCollectionId } = req.params;
       const { countType, denominations } = req.body;
       
-      if (!countType || !["maquina", "entrega"].includes(countType)) {
-        return res.status(400).json({ error: "countType debe ser 'maquina' o 'entrega'" });
+      if (!countType || !["maquina", "entrega", "fondo_cambio"].includes(countType)) {
+        return res.status(400).json({ error: "countType debe ser 'maquina', 'entrega' o 'fondo_cambio'" });
       }
       if (!Array.isArray(denominations) || denominations.length === 0) {
         return res.status(400).json({ error: "Se requiere al menos una denominación" });
@@ -3197,6 +3198,9 @@ export async function registerRoutes(
       }
       if (countType === "entrega" && role === "abastecedor") {
         return res.status(403).json({ error: "Solo almacén/contabilidad/admin pueden registrar conteo de entrega" });
+      }
+      if (countType === "fondo_cambio" && role === "abastecedor") {
+        return res.status(403).json({ error: "Solo almacén/admin pueden registrar fondo de cambio" });
       }
 
       const counts = denominations
@@ -3240,6 +3244,148 @@ export async function registerRoutes(
       res.json(reconciliation);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener cuadre de denominaciones" });
+    }
+  });
+
+  // ===================== FONDO DE CAMBIO =====================
+
+  async function verifyChangeFundTenant(fundId: string, req: AuthenticatedRequest, res: Response): Promise<boolean> {
+    const fund = await storage.getChangeFundById(fundId);
+    if (!fund) {
+      res.status(404).json({ error: "Fondo de cambio no encontrado" });
+      return false;
+    }
+    if (fund.tenantId !== req.user!.tenantId && !req.user!.isSuperAdmin) {
+      res.status(404).json({ error: "Fondo de cambio no encontrado" });
+      return false;
+    }
+    return true;
+  }
+
+  app.post("/api/change-funds", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { supplierId, notes, denominations } = req.body;
+      const tenantId = req.user!.tenantId!;
+
+      if (!supplierId) {
+        return res.status(400).json({ error: "Se requiere supplierId" });
+      }
+      if (!Array.isArray(denominations) || denominations.length === 0) {
+        return res.status(400).json({ error: "Se requiere al menos una denominación" });
+      }
+
+      const supplier = await storage.getUser(supplierId);
+      if (!supplier || supplier.tenantId !== tenantId || supplier.role !== "abastecedor") {
+        return res.status(400).json({ error: "Abastecedor no válido" });
+      }
+
+      const existing = await storage.getActiveChangeFundForSupplier(supplierId, tenantId);
+      if (existing) {
+        return res.status(400).json({ error: "El abastecedor ya tiene un fondo de cambio activo" });
+      }
+
+      const validDenominations = denominations.filter((d: any) => d.quantity > 0);
+      const totalAmount = validDenominations.reduce((sum: number, d: any) => {
+        const denom = RD_DENOMINATIONS.find(rd => rd.value === d.denomination);
+        if (!denom) return sum;
+        return sum + (denom.value * d.quantity);
+      }, 0);
+
+      const fund = await storage.createChangeFund({
+        tenantId,
+        supplierId,
+        createdById: req.user!.userId,
+        totalAmount: String(totalAmount),
+        status: "activo",
+        notes: notes || null,
+        cashCollectionId: null,
+      });
+
+      const counts = validDenominations.map((d: any) => {
+        const denom = RD_DENOMINATIONS.find(rd => rd.value === d.denomination);
+        return {
+          tenantId,
+          cashCollectionId: fund.id,
+          countType: "fondo_cambio" as const,
+          denomination: String(d.denomination),
+          denominationType: denom?.type || "billete",
+          quantity: d.quantity,
+          subtotal: String(d.denomination * d.quantity),
+          userId: supplierId,
+        };
+      });
+
+      await storage.createCashDenominationCounts(counts);
+
+      res.status(201).json(fund);
+    } catch (error) {
+      res.status(500).json({ error: "Error al crear fondo de cambio" });
+    }
+  });
+
+  app.get("/api/change-funds", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "almacen", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const { supplierId, status } = req.query;
+
+      const effectiveSupplierId = req.user!.role === "abastecedor" ? req.user!.userId : (supplierId as string | undefined);
+
+      const funds = await storage.getChangeFunds(tenantId, effectiveSupplierId, status as string | undefined);
+      res.json(funds);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener fondos de cambio" });
+    }
+  });
+
+  app.get("/api/change-funds/active/:supplierId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "almacen", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const { supplierId } = req.params;
+
+      if (req.user!.role === "abastecedor" && supplierId !== req.user!.userId) {
+        return res.status(403).json({ error: "Solo puedes ver tu propio fondo de cambio" });
+      }
+
+      const fund = await storage.getActiveChangeFundForSupplier(supplierId, tenantId);
+      res.json(fund || null);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener fondo de cambio activo" });
+    }
+  });
+
+  app.patch("/api/change-funds/:id/status", authenticateJWT, authorizeRoles("admin", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      if (!await verifyChangeFundTenant(id, req, res)) return;
+
+      const { status, cashCollectionId } = req.body;
+      if (!status || !["usado", "devuelto"].includes(status)) {
+        return res.status(400).json({ error: "Estado debe ser 'usado' o 'devuelto'" });
+      }
+
+      if (cashCollectionId) {
+        const collection = await storage.getCashCollectionById(cashCollectionId);
+        if (!collection || (collection.tenantId !== req.user!.tenantId && !req.user!.isSuperAdmin)) {
+          return res.status(400).json({ error: "Recolección no válida" });
+        }
+      }
+
+      const updated = await storage.updateChangeFundStatus(id, status, cashCollectionId);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Error al actualizar estado del fondo" });
+    }
+  });
+
+  app.get("/api/change-funds/:id/denominations", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "almacen", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      if (!await verifyChangeFundTenant(id, req, res)) return;
+
+      const denominations = await storage.getCashDenominationCounts(id, "fondo_cambio");
+      res.json(denominations);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener denominaciones del fondo" });
     }
   });
 
