@@ -3168,8 +3168,8 @@ export async function registerRoutes(
       const { cashCollectionId } = req.params;
       const { countType, denominations } = req.body;
       
-      if (!countType || !["maquina", "entrega", "fondo_cambio"].includes(countType)) {
-        return res.status(400).json({ error: "countType debe ser 'maquina', 'entrega' o 'fondo_cambio'" });
+      if (!countType || !["maquina", "entrega"].includes(countType)) {
+        return res.status(400).json({ error: "countType debe ser 'maquina' o 'entrega'" });
       }
       if (!Array.isArray(denominations) || denominations.length === 0) {
         return res.status(400).json({ error: "Se requiere al menos una denominación" });
@@ -3198,9 +3198,6 @@ export async function registerRoutes(
       }
       if (countType === "entrega" && role === "abastecedor") {
         return res.status(403).json({ error: "Solo almacén/contabilidad/admin pueden registrar conteo de entrega" });
-      }
-      if (countType === "fondo_cambio" && role === "abastecedor") {
-        return res.status(403).json({ error: "Solo almacén/admin pueden registrar fondo de cambio" });
       }
 
       const counts = denominations

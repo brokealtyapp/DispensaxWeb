@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, boolean, pgEnum, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, boolean, pgEnum, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -863,7 +863,9 @@ export const cashDenominationCounts = pgTable("cash_denomination_counts", {
   subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_cash_denom_counts_collection_type").on(table.cashCollectionId, table.countType),
+]);
 
 export const insertCashDenominationCountSchema = createInsertSchema(cashDenominationCounts).omit({
   id: true,

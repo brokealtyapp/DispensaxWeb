@@ -2068,19 +2068,28 @@ export class DatabaseStorage implements IStorage {
     let fondoCambio: CashDenominationCount[] = [];
     const collection = await this.getCashCollectionById(cashCollectionId);
     if (collection) {
-      const fund = await db.select().from(changeFunds)
-        .where(and(
-          eq(changeFunds.supplierId, collection.userId),
-          eq(changeFunds.tenantId, collection.tenantId!),
-          eq(changeFunds.status, "activo")
-        ))
-        .orderBy(desc(changeFunds.createdAt))
+      const linkedFund = await db.select().from(changeFunds)
+        .where(eq(changeFunds.cashCollectionId, cashCollectionId))
         .limit(1);
 
-      if (fund.length > 0) {
+      let fundId: string | null = linkedFund.length > 0 ? linkedFund[0].id : null;
+
+      if (!fundId) {
+        const activeFund = await db.select().from(changeFunds)
+          .where(and(
+            eq(changeFunds.supplierId, collection.userId),
+            eq(changeFunds.tenantId, collection.tenantId!),
+            eq(changeFunds.status, "activo")
+          ))
+          .orderBy(desc(changeFunds.createdAt))
+          .limit(1);
+        if (activeFund.length > 0) fundId = activeFund[0].id;
+      }
+
+      if (fundId) {
         fondoCambio = await db.select().from(cashDenominationCounts)
           .where(and(
-            eq(cashDenominationCounts.cashCollectionId, fund[0].id),
+            eq(cashDenominationCounts.cashCollectionId, fundId),
             eq(cashDenominationCounts.countType, "fondo_cambio")
           ))
           .orderBy(asc(cashDenominationCounts.denomination));
