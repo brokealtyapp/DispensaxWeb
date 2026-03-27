@@ -540,7 +540,7 @@ export function SupplierPage() {
               denominations: denomsToSend,
             });
           } catch (e) {
-            console.error("Error saving denominations:", e);
+            toast({ title: "Error al guardar denominaciones", description: "La recolección se guardó pero el desglose por denominación no se registró. Intente nuevamente.", variant: "destructive" });
           }
         }
       }
