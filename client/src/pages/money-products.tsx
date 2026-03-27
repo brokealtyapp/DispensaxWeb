@@ -25,7 +25,6 @@ import {
   Eye
 } from "lucide-react";
 import { RD_DENOMINATIONS } from "@shared/schema";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -650,9 +649,9 @@ export function MoneyProductsPage() {
                           <p className="text-xs text-muted-foreground">Conteo Entrega</p>
                           <p className="text-lg font-bold">{formatCurrency(selectedReconciliation.totalEntrega || 0)}</p>
                         </div>
-                        <div className={`p-3 rounded-lg text-center ${(selectedReconciliation.difference || 0) === 0 ? "bg-emerald-500/10" : "bg-amber-500/10"}`} data-testid="stat-denomination-difference">
+                        <div className={`p-3 rounded-lg text-center ${(selectedReconciliation.difference || 0) === 0 ? "bg-emerald-500/10" : "bg-red-500/10"}`} data-testid="stat-denomination-difference">
                           <p className="text-xs text-muted-foreground">Diferencia</p>
-                          <p className={`text-lg font-bold ${(selectedReconciliation.difference || 0) === 0 ? "text-green-600" : "text-amber-600"}`}>
+                          <p className={`text-lg font-bold ${(selectedReconciliation.difference || 0) === 0 ? "text-green-600" : "text-red-600"}`}>
                             {formatCurrency(Math.abs(selectedReconciliation.difference || 0))}
                           </p>
                         </div>
@@ -684,7 +683,7 @@ export function MoneyProductsPage() {
                                     </td>
                                     <td className="p-2 text-center">{maqQty}</td>
                                     <td className="p-2 text-center">{entQty}</td>
-                                    <td className={`p-2 text-right font-medium ${diff === 0 ? "text-green-600" : "text-amber-600"}`}>
+                                    <td className={`p-2 text-right font-medium ${diff === 0 ? "text-green-600" : "text-red-600"}`}>
                                       {diff === 0 ? "OK" : (diff > 0 ? `+${diff}` : diff)}
                                     </td>
                                   </tr>

@@ -38,7 +38,6 @@ import {
   insertRouteStopSchema,
   insertServiceRecordSchema,
   insertCashCollectionSchema,
-  insertCashDenominationCountSchema,
   RD_DENOMINATIONS,
   insertProductLoadSchema,
   insertIssueReportSchema,
