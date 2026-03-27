@@ -946,8 +946,9 @@ export function WorkOrdersPage() {
 
   const reassignMutation = useMutation({
     mutationFn: async ({ orderId, userId }: { orderId: string; userId: string }) => {
-      const payload: Record<string, string | null> = { assignedUserId: userId === "none" ? null : userId };
-      if (userId && userId !== "none") {
+      const normalizedUserId = (!userId || userId === "none" || userId === "") ? null : userId;
+      const payload: Record<string, string | null> = { assignedUserId: normalizedUserId };
+      if (normalizedUserId) {
         payload.status = "asignada";
       }
       await apiRequest("PATCH", `/api/work-orders/${orderId}`, payload);
