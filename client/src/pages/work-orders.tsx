@@ -323,7 +323,7 @@ function formatDate(dateStr: string | null) {
   return d.toLocaleDateString("es-DO", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function formatSlaCountdown(deadline: string | null) {
+function formatSlaCountdown(deadline: string | null, _tick?: number) {
   if (!deadline) return "—";
   const now = new Date();
   const dl = new Date(deadline);
@@ -333,6 +333,15 @@ function formatSlaCountdown(deadline: string | null) {
   const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
   if (hours > 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`;
   return `${hours}h ${mins}m`;
+}
+
+function useSlaTimer() {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
+  return tick;
 }
 
 function OrderDetailView({
@@ -354,6 +363,7 @@ function OrderDetailView({
 }) {
   const { toast } = useToast();
   const { can } = usePermissions();
+  const slaTick = useSlaTimer();
   const machine = machines.find(m => m.id === order.machineId);
   const assignee = users.find(u => u.id === order.assignedUserId);
 
@@ -466,7 +476,7 @@ function OrderDetailView({
             <div className="flex items-center gap-2 text-sm">
               <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
               <span className="text-muted-foreground">SLA:</span>
-              <span className={order.slaStatus === "vencido" ? "text-red-600 font-semibold" : ""}>{formatSlaCountdown(order.slaDeadline)}</span>
+              <span className={order.slaStatus === "vencido" ? "text-red-600 font-semibold" : ""}>{formatSlaCountdown(order.slaDeadline, slaTick)}</span>
             </div>
             {order.description && (
               <div className="pt-2 border-t">
@@ -703,7 +713,7 @@ function SLADashboard({ stats, orders, machines, users, onSelectOrder }: { stats
 }
 
 export function WorkOrdersPage() {
-  const { user } = useAuth();
+  useAuth();
   const { can, isLoading: permLoading } = usePermissions();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("ordenes");
@@ -728,7 +738,7 @@ export function WorkOrdersPage() {
   const [ticketPage, setTicketPage] = useState(1);
   const [reassignUserId, setReassignUserId] = useState("");
 
-  const { data: orders = [], isLoading: ordersLoading } = useQuery<WorkOrder[]>({
+  const { data: orders = [], isLoading: ordersLoading, isError: ordersError } = useQuery<WorkOrder[]>({
     queryKey: ["/api/work-orders"],
   });
 
@@ -743,7 +753,7 @@ export function WorkOrdersPage() {
     }
   }, [orders]);
 
-  const { data: tickets = [], isLoading: ticketsLoading } = useQuery<Ticket[]>({
+  const { data: tickets = [], isLoading: ticketsLoading, isError: ticketsError } = useQuery<Ticket[]>({
     queryKey: ["/api/tickets"],
   });
 
@@ -1032,146 +1042,229 @@ export function WorkOrdersPage() {
 
   const assignableUsers = users.filter(u => ["admin", "supervisor", "abastecedor"].includes(u.role));
 
+  const sharedModals = (
+    <>
+      <SimpleModal
+        open={!!showEditOrder}
+        onClose={() => setShowEditOrder(null)}
+        title="Editar Orden de Trabajo"
+        description={`Editando ${showEditOrder?.orderNumber || ""}`}
+      >
+        <Form {...editOrderForm}>
+          <form onSubmit={editOrderForm.handleSubmit((data) => editOrderMutation.mutate(data))} className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <FormField control={editOrderForm.control} name="type" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipo</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-edit-order-type"><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>{Object.entries(TYPE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editOrderForm.control} name="priority" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Prioridad</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-edit-order-priority"><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>{Object.entries(PRIORITY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editOrderForm.control} name="status" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Estado</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-edit-order-status"><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>{Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+            <FormField control={editOrderForm.control} name="assignedUserId" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Asignar a</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value || "none"}>
+                  <FormControl><SelectTrigger data-testid="select-edit-order-assignee"><SelectValue placeholder="Sin asignar" /></SelectTrigger></FormControl>
+                  <SelectContent>
+                    <SelectItem value="none">Sin asignar</SelectItem>
+                    {assignableUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.fullName} ({u.role})</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={editOrderForm.control} name="description" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Descripción *</FormLabel>
+                <FormControl><Textarea {...field} data-testid="textarea-edit-order-description" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={editOrderForm.control} name="notes" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Notas</FormLabel>
+                <FormControl><Textarea {...field} value={field.value || ""} data-testid="textarea-edit-order-notes" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setShowEditOrder(null)}>Cancelar</Button>
+              <Button type="submit" disabled={editOrderMutation.isPending} data-testid="button-submit-edit-order">
+                {editOrderMutation.isPending ? "Guardando..." : "Guardar Cambios"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </SimpleModal>
+
+      <SimpleModal
+        open={!!showReassign}
+        onClose={() => { setShowReassign(null); setReassignUserId(""); }}
+        title="Reasignar Orden"
+        description={`Reasignar ${showReassign?.orderNumber || ""} a otro usuario`}
+      >
+        <div className="space-y-4">
+          <Select value={reassignUserId || "none"} onValueChange={setReassignUserId}>
+            <SelectTrigger data-testid="select-reassign-user"><SelectValue placeholder="Seleccionar usuario" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Sin asignar</SelectItem>
+              {assignableUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.fullName} ({u.role})</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => { setShowReassign(null); setReassignUserId(""); }}>Cancelar</Button>
+            <Button
+              onClick={() => reassignMutation.mutate({ orderId: showReassign!.id, userId: reassignUserId })}
+              disabled={reassignMutation.isPending}
+              data-testid="button-confirm-reassign"
+            >
+              {reassignMutation.isPending ? "Reasignando..." : "Confirmar"}
+            </Button>
+          </div>
+        </div>
+      </SimpleModal>
+
+      <SimpleModal
+        open={!!showDeleteOrder}
+        onClose={() => setShowDeleteOrder(null)}
+        title="Eliminar Orden"
+        description={`¿Está seguro que desea eliminar ${showDeleteOrder?.orderNumber || ""}? Esta acción no se puede deshacer.`}
+      >
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="outline" onClick={() => setShowDeleteOrder(null)}>Cancelar</Button>
+          <Button
+            variant="destructive"
+            onClick={() => deleteOrderMutation.mutate(showDeleteOrder!.id)}
+            disabled={deleteOrderMutation.isPending}
+            data-testid="button-confirm-delete-order"
+          >
+            {deleteOrderMutation.isPending ? "Eliminando..." : "Eliminar"}
+          </Button>
+        </div>
+      </SimpleModal>
+
+      <SimpleModal
+        open={!!showEditTicket}
+        onClose={() => setShowEditTicket(null)}
+        title="Editar Ticket"
+        description={`Editando ${showEditTicket?.ticketNumber || ""}`}
+      >
+        <Form {...editTicketForm}>
+          <form onSubmit={editTicketForm.handleSubmit((data) => editTicketMutation.mutate(data))} className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <FormField control={editTicketForm.control} name="type" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipo</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-edit-ticket-type"><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>{Object.entries(TICKET_TYPE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editTicketForm.control} name="priority" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Prioridad</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-edit-ticket-priority"><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>{Object.entries(PRIORITY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editTicketForm.control} name="status" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Estado</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-edit-ticket-status"><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>{Object.entries(TICKET_STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+            <FormField control={editTicketForm.control} name="resolution" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Resolución</FormLabel>
+                <FormControl><Textarea {...field} value={field.value || ""} placeholder="Describa la resolución..." data-testid="textarea-edit-ticket-resolution" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setShowEditTicket(null)}>Cancelar</Button>
+              <Button type="submit" disabled={editTicketMutation.isPending} data-testid="button-submit-edit-ticket">
+                {editTicketMutation.isPending ? "Guardando..." : "Guardar Cambios"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </SimpleModal>
+
+      <SimpleModal
+        open={!!showDeleteTicket}
+        onClose={() => setShowDeleteTicket(null)}
+        title="Eliminar Ticket"
+        description={`¿Está seguro que desea eliminar ${showDeleteTicket?.ticketNumber || ""}? Esta acción no se puede deshacer.`}
+      >
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="outline" onClick={() => setShowDeleteTicket(null)}>Cancelar</Button>
+          <Button
+            variant="destructive"
+            onClick={() => deleteTicketMutation.mutate(showDeleteTicket!.id)}
+            disabled={deleteTicketMutation.isPending}
+            data-testid="button-confirm-delete-ticket"
+          >
+            {deleteTicketMutation.isPending ? "Eliminando..." : "Eliminar"}
+          </Button>
+        </div>
+      </SimpleModal>
+    </>
+  );
+
   if (permLoading) {
     return <div className="flex items-center justify-center h-64"><p className="text-muted-foreground">Cargando...</p></div>;
   }
 
   if (selectedOrder) {
     return (
-      <div className="p-6">
-        <OrderDetailView
-          order={selectedOrder}
-          machines={machines}
-          users={users}
-          onBack={() => setSelectedOrder(null)}
-          onEdit={() => setShowEditOrder(selectedOrder)}
-          onReassign={() => { setShowReassign(selectedOrder); setReassignUserId(selectedOrder.assignedUserId || ""); }}
-          onDelete={() => setShowDeleteOrder(selectedOrder)}
-        />
-
-        <SimpleModal
-          open={!!showEditOrder}
-          onClose={() => setShowEditOrder(null)}
-          title="Editar Orden de Trabajo"
-          description={`Editando ${selectedOrder.orderNumber}`}
-        >
-          <Form {...editOrderForm}>
-            <form onSubmit={editOrderForm.handleSubmit((data) => editOrderMutation.mutate(data))} className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <FormField control={editOrderForm.control} name="type" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tipo</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger data-testid="select-edit-order-type"><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>{Object.entries(TYPE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={editOrderForm.control} name="priority" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Prioridad</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger data-testid="select-edit-order-priority"><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>{Object.entries(PRIORITY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={editOrderForm.control} name="status" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Estado</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger data-testid="select-edit-order-status"><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>{Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </div>
-              <FormField control={editOrderForm.control} name="assignedUserId" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Asignar a</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || "none"}>
-                    <FormControl><SelectTrigger data-testid="select-edit-order-assignee"><SelectValue placeholder="Sin asignar" /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      <SelectItem value="none">Sin asignar</SelectItem>
-                      {assignableUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.fullName} ({u.role})</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={editOrderForm.control} name="description" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Descripción *</FormLabel>
-                  <FormControl><Textarea {...field} data-testid="textarea-edit-order-description" /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={editOrderForm.control} name="notes" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Notas</FormLabel>
-                  <FormControl><Textarea {...field} value={field.value || ""} data-testid="textarea-edit-order-notes" /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => setShowEditOrder(null)}>Cancelar</Button>
-                <Button type="submit" disabled={editOrderMutation.isPending} data-testid="button-submit-edit-order">
-                  {editOrderMutation.isPending ? "Guardando..." : "Guardar Cambios"}
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </SimpleModal>
-
-        <SimpleModal
-          open={!!showReassign}
-          onClose={() => { setShowReassign(null); setReassignUserId(""); }}
-          title="Reasignar Orden"
-          description={`Reasignar ${selectedOrder.orderNumber} a otro usuario`}
-        >
-          <div className="space-y-4">
-            <Select value={reassignUserId || "none"} onValueChange={setReassignUserId}>
-              <SelectTrigger data-testid="select-reassign-user"><SelectValue placeholder="Seleccionar usuario" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Sin asignar</SelectItem>
-                {assignableUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.fullName} ({u.role})</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setShowReassign(null); setReassignUserId(""); }}>Cancelar</Button>
-              <Button
-                onClick={() => reassignMutation.mutate({ orderId: showReassign!.id, userId: reassignUserId })}
-                disabled={reassignMutation.isPending}
-                data-testid="button-confirm-reassign"
-              >
-                {reassignMutation.isPending ? "Reasignando..." : "Confirmar"}
-              </Button>
-            </div>
-          </div>
-        </SimpleModal>
-
-        <SimpleModal
-          open={!!showDeleteOrder}
-          onClose={() => setShowDeleteOrder(null)}
-          title="Eliminar Orden"
-          description={`¿Está seguro que desea eliminar ${showDeleteOrder?.orderNumber}? Esta acción no se puede deshacer.`}
-        >
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setShowDeleteOrder(null)}>Cancelar</Button>
-            <Button
-              variant="destructive"
-              onClick={() => deleteOrderMutation.mutate(showDeleteOrder!.id)}
-              disabled={deleteOrderMutation.isPending}
-              data-testid="button-confirm-delete-order"
-            >
-              {deleteOrderMutation.isPending ? "Eliminando..." : "Eliminar"}
-            </Button>
-          </div>
-        </SimpleModal>
-      </div>
+      <>
+        <div className="p-6">
+          <OrderDetailView
+            order={selectedOrder}
+            machines={machines}
+            users={users}
+            onBack={() => setSelectedOrder(null)}
+            onEdit={() => setShowEditOrder(selectedOrder)}
+            onReassign={() => { setShowReassign(selectedOrder); setReassignUserId(selectedOrder.assignedUserId || ""); }}
+            onDelete={() => setShowDeleteOrder(selectedOrder)}
+          />
+        </div>
+        {sharedModals}
+      </>
     );
   }
 
@@ -1311,7 +1404,18 @@ export function WorkOrdersPage() {
             </Select>
           </div>
 
-          {ordersLoading ? (
+          {ordersError ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <AlertTriangle className="h-12 w-12 text-destructive mb-3" />
+                <p className="text-destructive font-medium">Error al cargar órdenes de trabajo</p>
+                <p className="text-sm text-muted-foreground mt-1">Intente recargar la página</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] })} data-testid="button-retry-orders">
+                  Reintentar
+                </Button>
+              </CardContent>
+            </Card>
+          ) : ordersLoading ? (
             <div className="flex items-center justify-center h-32"><p className="text-muted-foreground">Cargando órdenes...</p></div>
           ) : filteredOrders.length === 0 ? (
             <Card>
@@ -1432,7 +1536,18 @@ export function WorkOrdersPage() {
             </Select>
           </div>
 
-          {ticketsLoading ? (
+          {ticketsError ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <AlertTriangle className="h-12 w-12 text-destructive mb-3" />
+                <p className="text-destructive font-medium">Error al cargar tickets</p>
+                <p className="text-sm text-muted-foreground mt-1">Intente recargar la página</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/tickets"] })} data-testid="button-retry-tickets">
+                  Reintentar
+                </Button>
+              </CardContent>
+            </Card>
+          ) : ticketsLoading ? (
             <div className="flex items-center justify-center h-32"><p className="text-muted-foreground">Cargando tickets...</p></div>
           ) : filteredTickets.length === 0 ? (
             <Card>
@@ -1767,181 +1882,7 @@ export function WorkOrdersPage() {
         </Form>
       </SimpleModal>
 
-      {showEditOrder && !selectedOrder && (
-        <SimpleModal
-          open={!!showEditOrder}
-          onClose={() => setShowEditOrder(null)}
-          title="Editar Orden de Trabajo"
-          description={`Editando ${showEditOrder.orderNumber}`}
-        >
-          <Form {...editOrderForm}>
-            <form onSubmit={editOrderForm.handleSubmit((data) => editOrderMutation.mutate(data))} className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <FormField control={editOrderForm.control} name="type" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tipo</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger data-testid="select-edit-order-type-list"><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>{Object.entries(TYPE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={editOrderForm.control} name="priority" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Prioridad</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger data-testid="select-edit-order-priority-list"><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>{Object.entries(PRIORITY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={editOrderForm.control} name="status" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Estado</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger data-testid="select-edit-order-status-list"><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>{Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </div>
-              <FormField control={editOrderForm.control} name="assignedUserId" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Asignar a</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || "none"}>
-                    <FormControl><SelectTrigger data-testid="select-edit-order-assignee-list"><SelectValue placeholder="Sin asignar" /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      <SelectItem value="none">Sin asignar</SelectItem>
-                      {assignableUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.fullName} ({u.role})</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={editOrderForm.control} name="description" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Descripción *</FormLabel>
-                  <FormControl><Textarea {...field} data-testid="textarea-edit-order-description-list" /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={editOrderForm.control} name="notes" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Notas</FormLabel>
-                  <FormControl><Textarea {...field} value={field.value || ""} data-testid="textarea-edit-order-notes-list" /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => setShowEditOrder(null)}>Cancelar</Button>
-                <Button type="submit" disabled={editOrderMutation.isPending} data-testid="button-submit-edit-order-list">
-                  {editOrderMutation.isPending ? "Guardando..." : "Guardar Cambios"}
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </SimpleModal>
-      )}
-
-      <SimpleModal
-        open={!!showEditTicket}
-        onClose={() => setShowEditTicket(null)}
-        title="Editar Ticket"
-        description={`Editando ${showEditTicket?.ticketNumber || ""}`}
-      >
-        <Form {...editTicketForm}>
-          <form onSubmit={editTicketForm.handleSubmit((data) => editTicketMutation.mutate(data))} className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <FormField control={editTicketForm.control} name="type" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tipo</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger data-testid="select-edit-ticket-type"><SelectValue /></SelectTrigger></FormControl>
-                    <SelectContent>{Object.entries(TICKET_TYPE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={editTicketForm.control} name="priority" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Prioridad</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger data-testid="select-edit-ticket-priority"><SelectValue /></SelectTrigger></FormControl>
-                    <SelectContent>{Object.entries(PRIORITY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={editTicketForm.control} name="status" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Estado</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger data-testid="select-edit-ticket-status"><SelectValue /></SelectTrigger></FormControl>
-                    <SelectContent>{Object.entries(TICKET_STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-            </div>
-            <FormField control={editTicketForm.control} name="resolution" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Resolución</FormLabel>
-                <FormControl><Textarea {...field} value={field.value || ""} placeholder="Describa la resolución..." data-testid="textarea-edit-ticket-resolution" /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowEditTicket(null)}>Cancelar</Button>
-              <Button type="submit" disabled={editTicketMutation.isPending} data-testid="button-submit-edit-ticket">
-                {editTicketMutation.isPending ? "Guardando..." : "Guardar Cambios"}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </SimpleModal>
-
-      {showDeleteOrder && !selectedOrder && (
-        <SimpleModal
-          open={!!showDeleteOrder}
-          onClose={() => setShowDeleteOrder(null)}
-          title="Eliminar Orden"
-          description={`¿Está seguro que desea eliminar ${showDeleteOrder.orderNumber}? Esta acción no se puede deshacer.`}
-        >
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setShowDeleteOrder(null)}>Cancelar</Button>
-            <Button
-              variant="destructive"
-              onClick={() => deleteOrderMutation.mutate(showDeleteOrder.id)}
-              disabled={deleteOrderMutation.isPending}
-              data-testid="button-confirm-delete-order-list"
-            >
-              {deleteOrderMutation.isPending ? "Eliminando..." : "Eliminar"}
-            </Button>
-          </div>
-        </SimpleModal>
-      )}
-
-      <SimpleModal
-        open={!!showDeleteTicket}
-        onClose={() => setShowDeleteTicket(null)}
-        title="Eliminar Ticket"
-        description={`¿Está seguro que desea eliminar ${showDeleteTicket?.ticketNumber}? Esta acción no se puede deshacer.`}
-      >
-        <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={() => setShowDeleteTicket(null)}>Cancelar</Button>
-          <Button
-            variant="destructive"
-            onClick={() => deleteTicketMutation.mutate(showDeleteTicket!.id)}
-            disabled={deleteTicketMutation.isPending}
-            data-testid="button-confirm-delete-ticket"
-          >
-            {deleteTicketMutation.isPending ? "Eliminando..." : "Eliminar"}
-          </Button>
-        </div>
-      </SimpleModal>
+      {sharedModals}
     </div>
   );
 }
