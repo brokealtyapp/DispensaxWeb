@@ -1387,14 +1387,14 @@ export function WarehousePage() {
       </Dialog>
 
       <Dialog open={isDispatchToVehicleDialogOpen} onOpenChange={setIsDispatchToVehicleDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Despachar Productos a Vehículo</DialogTitle>
             <DialogDescription>
               Transfiere productos del almacén a un vehículo de abastecimiento
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto flex-1 pr-1">
             <div>
               <label className="text-sm font-medium">Vehículo</label>
               <Select value={dispatchVehicleId} onValueChange={setDispatchVehicleId}>
@@ -1500,29 +1500,29 @@ export function WarehousePage() {
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setIsDispatchToVehicleDialogOpen(false);
-                  setDispatchVehicleId("");
-                  setDispatchItems([]);
-                  setDispatchNotes("");
-                }}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                onClick={handleSubmitDispatch}
-                disabled={dispatchToVehicleMutation.isPending || dispatchItems.length === 0}
-                className="bg-blue-600"
-                data-testid="button-submit-dispatch"
-              >
-                {dispatchToVehicleMutation.isPending ? "Despachando..." : `Despachar ${dispatchItems.length} producto(s)`}
-              </Button>
-            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsDispatchToVehicleDialogOpen(false);
+                setDispatchVehicleId("");
+                setDispatchItems([]);
+                setDispatchNotes("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmitDispatch}
+              disabled={dispatchToVehicleMutation.isPending || dispatchItems.length === 0}
+              className="bg-blue-600"
+              data-testid="button-submit-dispatch"
+            >
+              {dispatchToVehicleMutation.isPending ? "Despachando..." : `Despachar ${dispatchItems.length} producto(s)`}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
