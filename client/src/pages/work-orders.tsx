@@ -26,14 +26,17 @@ import {
   Wrench,
   X,
   ChevronLeft,
+  ChevronRight,
   Eye,
   User,
   Calendar,
   MapPin,
   TicketCheck,
   ArrowRight,
-  RefreshCw,
-  Filter,
+  Pencil,
+  Trash2,
+  UserPlus,
+  History,
 } from "lucide-react";
 import {
   BarChart,
@@ -50,6 +53,7 @@ import {
 } from "recharts";
 
 const COLORS = ["#4ECB71", "#FF6B3D", "#E84545", "#2F6FED", "#8E59FF", "#6B7280", "#F59E0B"];
+const ITEMS_PER_PAGE = 15;
 
 const TYPE_LABELS: Record<string, string> = {
   abastecimiento: "Abastecimiento",
@@ -166,6 +170,7 @@ interface UserInfo {
 interface WOStats {
   byStatus: Record<string, number>;
   byType: Record<string, number>;
+  bySla: Record<string, number>;
   slaBreached: number;
   total: number;
 }
@@ -250,10 +255,48 @@ function SimpleModal({ open, onClose, title, description, children }: { open: bo
   );
 }
 
+function Pagination({ currentPage, totalPages, onPageChange }: { currentPage: number; totalPages: number; onPageChange: (page: number) => void }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-2 pt-4">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        data-testid="button-prev-page"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+      <span className="text-sm text-muted-foreground">
+        Página {currentPage} de {totalPages}
+      </span>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        data-testid="button-next-page"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
 const createOrderSchema = z.object({
   machineId: z.string().min(1, "Seleccione una máquina"),
   type: z.enum(["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"]),
   priority: z.enum(["critico", "alto", "medio", "bajo"]),
+  assignedUserId: z.string().nullable().optional(),
+  description: z.string().min(1, "Descripción requerida"),
+  notes: z.string().nullable().optional(),
+});
+
+const editOrderSchema = z.object({
+  type: z.enum(["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"]),
+  priority: z.enum(["critico", "alto", "medio", "bajo"]),
+  status: z.enum(["pendiente", "asignada", "en_proceso", "en_ruta", "completada", "cerrada", "cancelada"]),
   assignedUserId: z.string().nullable().optional(),
   description: z.string().min(1, "Descripción requerida"),
   notes: z.string().nullable().optional(),
@@ -265,6 +308,13 @@ const createTicketSchema = z.object({
   priority: z.enum(["critico", "alto", "medio", "bajo"]),
   reportedBy: z.string().nullable().optional(),
   description: z.string().min(1, "Descripción requerida"),
+});
+
+const editTicketSchema = z.object({
+  type: z.enum(["falla_cliente", "alerta_sistema", "incidencia_interna", "solicitud_servicio"]),
+  priority: z.enum(["critico", "alto", "medio", "bajo"]),
+  status: z.enum(["pendiente", "en_proceso", "en_ruta", "resuelto", "cerrado"]),
+  resolution: z.string().nullable().optional(),
 });
 
 function formatDate(dateStr: string | null) {
@@ -290,11 +340,17 @@ function OrderDetailView({
   machines,
   users,
   onBack,
+  onEdit,
+  onReassign,
+  onDelete,
 }: {
   order: WorkOrder;
   machines: Machine[];
   users: UserInfo[];
   onBack: () => void;
+  onEdit: () => void;
+  onReassign: () => void;
+  onDelete: () => void;
 }) {
   const { toast } = useToast();
   const { can } = usePermissions();
@@ -339,6 +395,21 @@ function OrderDetailView({
   const totalItems = checklist.length;
   const progress = totalItems > 0 ? Math.round((completedCount / totalItems) * 100) : 0;
 
+  const timelineEntries = useMemo(() => {
+    const entries: { label: string; date: string; icon: string }[] = [];
+    entries.push({ label: "Orden creada", date: order.createdAt, icon: "created" });
+    if (order.status !== "pendiente" && order.updatedAt !== order.createdAt) {
+      entries.push({ label: `Estado: ${STATUS_LABELS[order.status] || order.status}`, date: order.updatedAt, icon: "status" });
+    }
+    if (order.completedAt) {
+      entries.push({ label: "Orden completada", date: order.completedAt, icon: "completed" });
+    }
+    if (order.closedAt) {
+      entries.push({ label: "Orden cerrada", date: order.closedAt, icon: "closed" });
+    }
+    return entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [order]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3 flex-wrap">
@@ -352,6 +423,23 @@ function OrderDetailView({
         <PriorityBadge priority={order.priority} />
         <StatusBadge status={order.status} />
         <SlaBadge slaStatus={order.slaStatus} />
+        {can("work_orders", "edit") && (
+          <Button variant="outline" size="sm" onClick={onEdit} data-testid="button-edit-order-detail">
+            <Pencil className="mr-1 h-3 w-3" />
+            Editar
+          </Button>
+        )}
+        {can("work_orders", "edit") && !["cerrada", "cancelada"].includes(order.status) && (
+          <Button variant="outline" size="sm" onClick={onReassign} data-testid="button-reassign-order">
+            <UserPlus className="mr-1 h-3 w-3" />
+            Reasignar
+          </Button>
+        )}
+        {can("work_orders", "delete") && (
+          <Button variant="outline" size="sm" onClick={onDelete} data-testid="button-delete-order-detail">
+            <Trash2 className="mr-1 h-3 w-3" />
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -437,10 +525,33 @@ function OrderDetailView({
         </Card>
       </div>
 
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <History className="h-4 w-4" />
+            Historial / Timeline
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="relative pl-6 space-y-4">
+            <div className="absolute left-2 top-1 bottom-1 w-px bg-border" />
+            {timelineEntries.map((entry, idx) => (
+              <div key={idx} className="relative flex items-start gap-3" data-testid={`timeline-entry-${idx}`}>
+                <div className="absolute -left-4 top-1 h-3 w-3 rounded-full border-2 border-primary bg-background" />
+                <div>
+                  <p className="text-sm font-medium">{entry.label}</p>
+                  <p className="text-xs text-muted-foreground">{formatDate(entry.date)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {can("work_orders", "edit") && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Acciones</CardTitle>
+            <CardTitle className="text-sm font-medium">Acciones de Estado</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2 flex-wrap">
@@ -483,13 +594,14 @@ function OrderDetailView({
   );
 }
 
-function SLADashboard({ stats }: { stats: WOStats | undefined }) {
+function SLADashboard({ stats, orders, machines, users, onSelectOrder }: { stats: WOStats | undefined; orders: WorkOrder[]; machines: Machine[]; users: UserInfo[]; onSelectOrder: (o: WorkOrder) => void }) {
   if (!stats) return <p className="text-sm text-muted-foreground p-4">Cargando estadísticas...</p>;
 
-  const slaData = [
-    { name: "En Tiempo", value: 0, fill: "#4ECB71" },
-    { name: "Próximo a Vencer", value: 0, fill: "#F59E0B" },
-    { name: "Vencido", value: stats.slaBreached, fill: "#E84545" },
+  const bySla = stats.bySla || {};
+  const slaBarData = [
+    { name: "En Tiempo", cantidad: bySla["dentro_tiempo"] || 0, fill: "#4ECB71" },
+    { name: "Próx. Vencer", cantidad: bySla["proximo_vencer"] || 0, fill: "#F59E0B" },
+    { name: "Vencido", cantidad: bySla["vencido"] || 0, fill: "#E84545" },
   ];
 
   const typeData = Object.entries(stats.byType).map(([key, value]) => ({
@@ -497,29 +609,30 @@ function SLADashboard({ stats }: { stats: WOStats | undefined }) {
     cantidad: value,
   }));
 
-  const statusData = Object.entries(stats.byStatus).map(([key, value]) => ({
-    name: STATUS_LABELS[key] || key,
-    cantidad: value,
-  }));
+  const overdueOrders = orders.filter(o => o.slaStatus === "vencido" && !["cerrada", "cancelada", "completada"].includes(o.status));
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Órdenes por Estado</CardTitle>
+            <CardTitle className="text-sm font-medium">Estado SLA de Órdenes</CardTitle>
           </CardHeader>
           <CardContent>
-            {statusData.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Sin datos</p>
+            {slaBarData.every(d => d.cantidad === 0) ? (
+              <p className="text-sm text-muted-foreground text-center py-8">Sin datos de SLA</p>
             ) : (
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={statusData}>
+                <BarChart data={slaBarData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" fontSize={11} />
                   <YAxis allowDecimals={false} />
                   <Tooltip />
-                  <Bar dataKey="cantidad" fill="#2F6FED" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="cantidad" radius={[4, 4, 0, 0]}>
+                    {slaBarData.map((entry, index) => (
+                      <Cell key={index} fill={entry.fill} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -554,16 +667,34 @@ function SLADashboard({ stats }: { stats: WOStats | undefined }) {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-red-500" />
-            SLA Vencidos: {stats.slaBreached}
+            Órdenes con SLA Vencido ({overdueOrders.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {stats.slaBreached === 0 ? (
+          {overdueOrders.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">No hay órdenes con SLA vencido</p>
           ) : (
-            <p className="text-sm text-red-600 dark:text-red-400">
-              Hay {stats.slaBreached} orden(es) con SLA vencido que requieren atención inmediata.
-            </p>
+            <div className="space-y-2">
+              {overdueOrders.map((order) => {
+                const machine = machines.find(m => m.id === order.machineId);
+                const assignee = users.find(u => u.id === order.assignedUserId);
+                return (
+                  <div
+                    key={order.id}
+                    className="flex items-center gap-3 p-3 rounded-md border border-red-200 dark:border-red-900/40 cursor-pointer hover-elevate flex-wrap"
+                    onClick={() => onSelectOrder(order)}
+                    data-testid={`sla-overdue-order-${order.id}`}
+                  >
+                    <span className="font-semibold text-sm">{order.orderNumber}</span>
+                    <span className="text-xs text-muted-foreground">{machine?.name || "—"}</span>
+                    <PriorityBadge priority={order.priority} />
+                    <StatusBadge status={order.status} />
+                    <span className="text-xs text-muted-foreground ml-auto">{assignee?.fullName || "Sin asignar"}</span>
+                    <span className="text-xs text-red-600 dark:text-red-400 font-medium">SLA: {formatSlaCountdown(order.slaDeadline)}</span>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -579,13 +710,23 @@ export function WorkOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
   const [showCreateOrder, setShowCreateOrder] = useState(false);
   const [showCreateTicket, setShowCreateTicket] = useState(false);
+  const [showEditOrder, setShowEditOrder] = useState<WorkOrder | null>(null);
+  const [showEditTicket, setShowEditTicket] = useState<Ticket | null>(null);
+  const [showReassign, setShowReassign] = useState<WorkOrder | null>(null);
+  const [showDeleteOrder, setShowDeleteOrder] = useState<WorkOrder | null>(null);
+  const [showDeleteTicket, setShowDeleteTicket] = useState<Ticket | null>(null);
   const [orderSearch, setOrderSearch] = useState("");
   const [orderTypeFilter, setOrderTypeFilter] = useState("all");
   const [orderStatusFilter, setOrderStatusFilter] = useState("all");
   const [orderPriorityFilter, setOrderPriorityFilter] = useState("all");
+  const [orderAssigneeFilter, setOrderAssigneeFilter] = useState("all");
+  const [orderPage, setOrderPage] = useState(1);
   const [ticketSearch, setTicketSearch] = useState("");
   const [ticketTypeFilter, setTicketTypeFilter] = useState("all");
   const [ticketStatusFilter, setTicketStatusFilter] = useState("all");
+  const [ticketPriorityFilter, setTicketPriorityFilter] = useState("all");
+  const [ticketPage, setTicketPage] = useState(1);
+  const [reassignUserId, setReassignUserId] = useState("");
 
   const { data: orders = [], isLoading: ordersLoading } = useQuery<WorkOrder[]>({
     queryKey: ["/api/work-orders"],
@@ -620,9 +761,24 @@ export function WorkOrdersPage() {
       if (orderTypeFilter !== "all" && o.type !== orderTypeFilter) return false;
       if (orderStatusFilter !== "all" && o.status !== orderStatusFilter) return false;
       if (orderPriorityFilter !== "all" && o.priority !== orderPriorityFilter) return false;
+      if (orderAssigneeFilter !== "all") {
+        if (orderAssigneeFilter === "unassigned") {
+          if (o.assignedUserId) return false;
+        } else {
+          if (o.assignedUserId !== orderAssigneeFilter) return false;
+        }
+      }
       return true;
     });
-  }, [orders, orderSearch, orderTypeFilter, orderStatusFilter, orderPriorityFilter, machines]);
+  }, [orders, orderSearch, orderTypeFilter, orderStatusFilter, orderPriorityFilter, orderAssigneeFilter, machines]);
+
+  const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / ITEMS_PER_PAGE));
+  const paginatedOrders = useMemo(() => {
+    const start = (orderPage - 1) * ITEMS_PER_PAGE;
+    return filteredOrders.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredOrders, orderPage]);
+
+  useEffect(() => { setOrderPage(1); }, [orderSearch, orderTypeFilter, orderStatusFilter, orderPriorityFilter, orderAssigneeFilter]);
 
   const filteredTickets = useMemo(() => {
     return tickets.filter((t) => {
@@ -636,9 +792,18 @@ export function WorkOrdersPage() {
       }
       if (ticketTypeFilter !== "all" && t.type !== ticketTypeFilter) return false;
       if (ticketStatusFilter !== "all" && t.status !== ticketStatusFilter) return false;
+      if (ticketPriorityFilter !== "all" && t.priority !== ticketPriorityFilter) return false;
       return true;
     });
-  }, [tickets, ticketSearch, ticketTypeFilter, ticketStatusFilter, machines]);
+  }, [tickets, ticketSearch, ticketTypeFilter, ticketStatusFilter, ticketPriorityFilter, machines]);
+
+  const ticketTotalPages = Math.max(1, Math.ceil(filteredTickets.length / ITEMS_PER_PAGE));
+  const paginatedTickets = useMemo(() => {
+    const start = (ticketPage - 1) * ITEMS_PER_PAGE;
+    return filteredTickets.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredTickets, ticketPage]);
+
+  useEffect(() => { setTicketPage(1); }, [ticketSearch, ticketTypeFilter, ticketStatusFilter, ticketPriorityFilter]);
 
   const orderForm = useForm<z.infer<typeof createOrderSchema>>({
     resolver: zodResolver(createOrderSchema),
@@ -646,6 +811,18 @@ export function WorkOrdersPage() {
       machineId: "",
       type: "tecnico",
       priority: "medio",
+      assignedUserId: null,
+      description: "",
+      notes: "",
+    },
+  });
+
+  const editOrderForm = useForm<z.infer<typeof editOrderSchema>>({
+    resolver: zodResolver(editOrderSchema),
+    defaultValues: {
+      type: "tecnico",
+      priority: "medio",
+      status: "pendiente",
       assignedUserId: null,
       description: "",
       notes: "",
@@ -663,6 +840,46 @@ export function WorkOrdersPage() {
     },
   });
 
+  const editTicketForm = useForm<z.infer<typeof editTicketSchema>>({
+    resolver: zodResolver(editTicketSchema),
+    defaultValues: {
+      type: "falla_cliente",
+      priority: "medio",
+      status: "pendiente",
+      resolution: "",
+    },
+  });
+
+  useEffect(() => {
+    if (showEditOrder) {
+      editOrderForm.reset({
+        type: showEditOrder.type as any,
+        priority: showEditOrder.priority as any,
+        status: showEditOrder.status as any,
+        assignedUserId: showEditOrder.assignedUserId || null,
+        description: showEditOrder.description || "",
+        notes: showEditOrder.notes || "",
+      });
+    }
+  }, [showEditOrder]);
+
+  useEffect(() => {
+    if (showEditTicket) {
+      editTicketForm.reset({
+        type: showEditTicket.type as any,
+        priority: showEditTicket.priority as any,
+        status: showEditTicket.status as any,
+        resolution: showEditTicket.resolution || "",
+      });
+    }
+  }, [showEditTicket]);
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/work-orders/stats"] });
+  };
+
   const createOrderMutation = useMutation({
     mutationFn: async (data: z.infer<typeof createOrderSchema>) => {
       const payload = { ...data };
@@ -672,8 +889,7 @@ export function WorkOrdersPage() {
       await apiRequest("POST", "/api/work-orders", payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/work-orders/stats"] });
+      invalidateAll();
       setShowCreateOrder(false);
       orderForm.reset();
       toast({ title: "Orden creada exitosamente" });
@@ -683,13 +899,66 @@ export function WorkOrdersPage() {
     },
   });
 
+  const editOrderMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof editOrderSchema>) => {
+      const payload = { ...data };
+      if (payload.assignedUserId === "none" || !payload.assignedUserId) {
+        payload.assignedUserId = null;
+      }
+      await apiRequest("PATCH", `/api/work-orders/${showEditOrder!.id}`, payload);
+    },
+    onSuccess: () => {
+      invalidateAll();
+      setShowEditOrder(null);
+      setSelectedOrder(null);
+      toast({ title: "Orden actualizada" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo actualizar la orden", variant: "destructive" });
+    },
+  });
+
+  const deleteOrderMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/work-orders/${id}`);
+    },
+    onSuccess: () => {
+      invalidateAll();
+      setShowDeleteOrder(null);
+      setSelectedOrder(null);
+      toast({ title: "Orden eliminada" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo eliminar la orden", variant: "destructive" });
+    },
+  });
+
+  const reassignMutation = useMutation({
+    mutationFn: async ({ orderId, userId }: { orderId: string; userId: string }) => {
+      const payload: any = { assignedUserId: userId === "none" ? null : userId };
+      if (userId && userId !== "none") {
+        payload.status = "asignada";
+      }
+      await apiRequest("PATCH", `/api/work-orders/${orderId}`, payload);
+    },
+    onSuccess: () => {
+      invalidateAll();
+      setShowReassign(null);
+      setSelectedOrder(null);
+      setReassignUserId("");
+      toast({ title: "Orden reasignada" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo reasignar la orden", variant: "destructive" });
+    },
+  });
+
   const createTicketMutation = useMutation({
     mutationFn: async (data: z.infer<typeof createTicketSchema>) => {
       await apiRequest("POST", "/api/tickets", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/work-orders/stats"] });
+      invalidateAll();
       setShowCreateTicket(false);
       ticketForm.reset();
       toast({ title: "Ticket creado exitosamente" });
@@ -699,14 +968,40 @@ export function WorkOrdersPage() {
     },
   });
 
+  const editTicketMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof editTicketSchema>) => {
+      await apiRequest("PATCH", `/api/tickets/${showEditTicket!.id}`, data);
+    },
+    onSuccess: () => {
+      invalidateAll();
+      setShowEditTicket(null);
+      toast({ title: "Ticket actualizado" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo actualizar el ticket", variant: "destructive" });
+    },
+  });
+
+  const deleteTicketMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/tickets/${id}`);
+    },
+    onSuccess: () => {
+      invalidateAll();
+      setShowDeleteTicket(null);
+      toast({ title: "Ticket eliminado" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo eliminar el ticket", variant: "destructive" });
+    },
+  });
+
   const createOrderFromTicketMutation = useMutation({
     mutationFn: async (ticketId: string) => {
       await apiRequest("POST", `/api/tickets/${ticketId}/create-order`, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/work-orders/stats"] });
+      invalidateAll();
       toast({ title: "Orden creada desde ticket" });
     },
     onError: () => {
@@ -735,7 +1030,133 @@ export function WorkOrdersPage() {
           machines={machines}
           users={users}
           onBack={() => setSelectedOrder(null)}
+          onEdit={() => setShowEditOrder(selectedOrder)}
+          onReassign={() => { setShowReassign(selectedOrder); setReassignUserId(selectedOrder.assignedUserId || ""); }}
+          onDelete={() => setShowDeleteOrder(selectedOrder)}
         />
+
+        <SimpleModal
+          open={!!showEditOrder}
+          onClose={() => setShowEditOrder(null)}
+          title="Editar Orden de Trabajo"
+          description={`Editando ${selectedOrder.orderNumber}`}
+        >
+          <Form {...editOrderForm}>
+            <form onSubmit={editOrderForm.handleSubmit((data) => editOrderMutation.mutate(data))} className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <FormField control={editOrderForm.control} name="type" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipo</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger data-testid="select-edit-order-type"><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>{Object.entries(TYPE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={editOrderForm.control} name="priority" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Prioridad</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger data-testid="select-edit-order-priority"><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>{Object.entries(PRIORITY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={editOrderForm.control} name="status" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Estado</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger data-testid="select-edit-order-status"><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>{Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <FormField control={editOrderForm.control} name="assignedUserId" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Asignar a</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value || "none"}>
+                    <FormControl><SelectTrigger data-testid="select-edit-order-assignee"><SelectValue placeholder="Sin asignar" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      <SelectItem value="none">Sin asignar</SelectItem>
+                      {assignableUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.fullName} ({u.role})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editOrderForm.control} name="description" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Descripción *</FormLabel>
+                  <FormControl><Textarea {...field} data-testid="textarea-edit-order-description" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editOrderForm.control} name="notes" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notas</FormLabel>
+                  <FormControl><Textarea {...field} value={field.value || ""} data-testid="textarea-edit-order-notes" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setShowEditOrder(null)}>Cancelar</Button>
+                <Button type="submit" disabled={editOrderMutation.isPending} data-testid="button-submit-edit-order">
+                  {editOrderMutation.isPending ? "Guardando..." : "Guardar Cambios"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </SimpleModal>
+
+        <SimpleModal
+          open={!!showReassign}
+          onClose={() => { setShowReassign(null); setReassignUserId(""); }}
+          title="Reasignar Orden"
+          description={`Reasignar ${selectedOrder.orderNumber} a otro usuario`}
+        >
+          <div className="space-y-4">
+            <Select value={reassignUserId || "none"} onValueChange={setReassignUserId}>
+              <SelectTrigger data-testid="select-reassign-user"><SelectValue placeholder="Seleccionar usuario" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sin asignar</SelectItem>
+                {assignableUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.fullName} ({u.role})</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setShowReassign(null); setReassignUserId(""); }}>Cancelar</Button>
+              <Button
+                onClick={() => reassignMutation.mutate({ orderId: showReassign!.id, userId: reassignUserId })}
+                disabled={reassignMutation.isPending}
+                data-testid="button-confirm-reassign"
+              >
+                {reassignMutation.isPending ? "Reasignando..." : "Confirmar"}
+              </Button>
+            </div>
+          </div>
+        </SimpleModal>
+
+        <SimpleModal
+          open={!!showDeleteOrder}
+          onClose={() => setShowDeleteOrder(null)}
+          title="Eliminar Orden"
+          description={`¿Está seguro que desea eliminar ${showDeleteOrder?.orderNumber}? Esta acción no se puede deshacer.`}
+        >
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setShowDeleteOrder(null)}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteOrderMutation.mutate(showDeleteOrder!.id)}
+              disabled={deleteOrderMutation.isPending}
+              data-testid="button-confirm-delete-order"
+            >
+              {deleteOrderMutation.isPending ? "Eliminando..." : "Eliminar"}
+            </Button>
+          </div>
+        </SimpleModal>
       </div>
     );
   }
@@ -864,6 +1285,18 @@ export function WorkOrdersPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={orderAssigneeFilter} onValueChange={setOrderAssigneeFilter}>
+              <SelectTrigger className="w-[170px]" data-testid="select-order-assignee">
+                <SelectValue placeholder="Asignado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="unassigned">Sin asignar</SelectItem>
+                {assignableUsers.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>{u.fullName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {ordersLoading ? (
@@ -877,7 +1310,8 @@ export function WorkOrdersPage() {
             </Card>
           ) : (
             <div className="space-y-2">
-              {filteredOrders.map((order) => {
+              <p className="text-xs text-muted-foreground">{filteredOrders.length} resultado(s)</p>
+              {paginatedOrders.map((order) => {
                 const machine = machines.find(m => m.id === order.machineId);
                 const assignee = users.find(u => u.id === order.assignedUserId);
                 return (
@@ -908,12 +1342,33 @@ export function WorkOrdersPage() {
                         <span className="text-xs text-muted-foreground hidden md:inline">
                           {formatDate(order.createdAt)}
                         </span>
+                        {can("work_orders", "edit") && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={(e) => { e.stopPropagation(); setShowEditOrder(order); }}
+                            data-testid={`button-edit-order-${order.id}`}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        )}
+                        {can("work_orders", "delete") && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={(e) => { e.stopPropagation(); setShowDeleteOrder(order); }}
+                            data-testid={`button-delete-order-${order.id}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
                         <Eye className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       </div>
                     </CardContent>
                   </Card>
                 );
               })}
+              <Pagination currentPage={orderPage} totalPages={orderTotalPages} onPageChange={setOrderPage} />
             </div>
           )}
         </TabsContent>
@@ -952,6 +1407,17 @@ export function WorkOrdersPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={ticketPriorityFilter} onValueChange={setTicketPriorityFilter}>
+              <SelectTrigger className="w-[140px]" data-testid="select-ticket-priority">
+                <SelectValue placeholder="Prioridad" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {Object.entries(PRIORITY_LABELS).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {ticketsLoading ? (
@@ -965,7 +1431,8 @@ export function WorkOrdersPage() {
             </Card>
           ) : (
             <div className="space-y-2">
-              {filteredTickets.map((ticket) => {
+              <p className="text-xs text-muted-foreground">{filteredTickets.length} resultado(s)</p>
+              {paginatedTickets.map((ticket) => {
                 const machine = machines.find(m => m.id === ticket.machineId);
                 return (
                   <Card key={ticket.id} data-testid={`card-ticket-${ticket.id}`}>
@@ -1002,17 +1469,38 @@ export function WorkOrdersPage() {
                             Crear Orden
                           </Button>
                         )}
+                        {can("work_order_tickets", "edit") && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={(e) => { e.stopPropagation(); setShowEditTicket(ticket); }}
+                            data-testid={`button-edit-ticket-${ticket.id}`}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        )}
+                        {can("work_order_tickets", "delete") && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={(e) => { e.stopPropagation(); setShowDeleteTicket(ticket); }}
+                            data-testid={`button-delete-ticket-${ticket.id}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
                 );
               })}
+              <Pagination currentPage={ticketPage} totalPages={ticketTotalPages} onPageChange={setTicketPage} />
             </div>
           )}
         </TabsContent>
 
         <TabsContent value="sla">
-          <SLADashboard stats={stats} />
+          <SLADashboard stats={stats} orders={orders} machines={machines} users={users} onSelectOrder={setSelectedOrder} />
         </TabsContent>
       </Tabs>
 
@@ -1265,6 +1753,182 @@ export function WorkOrdersPage() {
             </div>
           </form>
         </Form>
+      </SimpleModal>
+
+      {showEditOrder && !selectedOrder && (
+        <SimpleModal
+          open={!!showEditOrder}
+          onClose={() => setShowEditOrder(null)}
+          title="Editar Orden de Trabajo"
+          description={`Editando ${showEditOrder.orderNumber}`}
+        >
+          <Form {...editOrderForm}>
+            <form onSubmit={editOrderForm.handleSubmit((data) => editOrderMutation.mutate(data))} className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <FormField control={editOrderForm.control} name="type" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipo</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger data-testid="select-edit-order-type-list"><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>{Object.entries(TYPE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={editOrderForm.control} name="priority" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Prioridad</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger data-testid="select-edit-order-priority-list"><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>{Object.entries(PRIORITY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={editOrderForm.control} name="status" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Estado</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger data-testid="select-edit-order-status-list"><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>{Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <FormField control={editOrderForm.control} name="assignedUserId" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Asignar a</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value || "none"}>
+                    <FormControl><SelectTrigger data-testid="select-edit-order-assignee-list"><SelectValue placeholder="Sin asignar" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      <SelectItem value="none">Sin asignar</SelectItem>
+                      {assignableUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.fullName} ({u.role})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editOrderForm.control} name="description" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Descripción *</FormLabel>
+                  <FormControl><Textarea {...field} data-testid="textarea-edit-order-description-list" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editOrderForm.control} name="notes" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notas</FormLabel>
+                  <FormControl><Textarea {...field} value={field.value || ""} data-testid="textarea-edit-order-notes-list" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setShowEditOrder(null)}>Cancelar</Button>
+                <Button type="submit" disabled={editOrderMutation.isPending} data-testid="button-submit-edit-order-list">
+                  {editOrderMutation.isPending ? "Guardando..." : "Guardar Cambios"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </SimpleModal>
+      )}
+
+      <SimpleModal
+        open={!!showEditTicket}
+        onClose={() => setShowEditTicket(null)}
+        title="Editar Ticket"
+        description={`Editando ${showEditTicket?.ticketNumber || ""}`}
+      >
+        <Form {...editTicketForm}>
+          <form onSubmit={editTicketForm.handleSubmit((data) => editTicketMutation.mutate(data))} className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <FormField control={editTicketForm.control} name="type" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipo</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-edit-ticket-type"><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>{Object.entries(TICKET_TYPE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editTicketForm.control} name="priority" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Prioridad</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-edit-ticket-priority"><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>{Object.entries(PRIORITY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editTicketForm.control} name="status" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Estado</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-edit-ticket-status"><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>{Object.entries(TICKET_STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+            <FormField control={editTicketForm.control} name="resolution" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Resolución</FormLabel>
+                <FormControl><Textarea {...field} value={field.value || ""} placeholder="Describa la resolución..." data-testid="textarea-edit-ticket-resolution" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setShowEditTicket(null)}>Cancelar</Button>
+              <Button type="submit" disabled={editTicketMutation.isPending} data-testid="button-submit-edit-ticket">
+                {editTicketMutation.isPending ? "Guardando..." : "Guardar Cambios"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </SimpleModal>
+
+      {showDeleteOrder && !selectedOrder && (
+        <SimpleModal
+          open={!!showDeleteOrder}
+          onClose={() => setShowDeleteOrder(null)}
+          title="Eliminar Orden"
+          description={`¿Está seguro que desea eliminar ${showDeleteOrder.orderNumber}? Esta acción no se puede deshacer.`}
+        >
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setShowDeleteOrder(null)}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteOrderMutation.mutate(showDeleteOrder.id)}
+              disabled={deleteOrderMutation.isPending}
+              data-testid="button-confirm-delete-order-list"
+            >
+              {deleteOrderMutation.isPending ? "Eliminando..." : "Eliminar"}
+            </Button>
+          </div>
+        </SimpleModal>
+      )}
+
+      <SimpleModal
+        open={!!showDeleteTicket}
+        onClose={() => setShowDeleteTicket(null)}
+        title="Eliminar Ticket"
+        description={`¿Está seguro que desea eliminar ${showDeleteTicket?.ticketNumber}? Esta acción no se puede deshacer.`}
+      >
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="outline" onClick={() => setShowDeleteTicket(null)}>Cancelar</Button>
+          <Button
+            variant="destructive"
+            onClick={() => deleteTicketMutation.mutate(showDeleteTicket!.id)}
+            disabled={deleteTicketMutation.isPending}
+            data-testid="button-confirm-delete-ticket"
+          >
+            {deleteTicketMutation.isPending ? "Eliminando..." : "Eliminar"}
+          </Button>
+        </div>
       </SimpleModal>
     </div>
   );

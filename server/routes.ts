@@ -9689,13 +9689,15 @@ export async function registerRoutes(
         const allOrders = await storage.getWorkOrders(tenantId, { assignedUserId: req.user!.id });
         const byStatus: Record<string, number> = {};
         const byType: Record<string, number> = {};
+        const bySla: Record<string, number> = {};
         let slaBreached = 0;
         for (const o of allOrders) {
           byStatus[o.status] = (byStatus[o.status] || 0) + 1;
           byType[o.type] = (byType[o.type] || 0) + 1;
+          if (o.slaStatus) bySla[o.slaStatus] = (bySla[o.slaStatus] || 0) + 1;
           if (o.slaStatus === "vencido") slaBreached++;
         }
-        return res.json({ byStatus, byType, slaBreached, total: allOrders.length });
+        return res.json({ byStatus, byType, bySla, slaBreached, total: allOrders.length });
       }
       const stats = await storage.getWorkOrderStats(tenantId);
       res.json(stats);
@@ -10146,6 +10148,21 @@ export async function registerRoutes(
       }
       console.error("Error updating ticket:", error);
       res.status(500).json({ error: "Error al actualizar ticket" });
+    }
+  });
+
+  app.delete("/api/tickets/:id", authenticateJWT, authorizeAction("work_order_tickets", "delete"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getTicketById(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Ticket no encontrado" });
+      }
+      await storage.deleteTicket(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting ticket:", error);
+      res.status(500).json({ error: "Error al eliminar ticket" });
     }
   });
 

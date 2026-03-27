@@ -729,13 +729,14 @@ export interface IStorage {
   updateWorkOrder(id: string, data: Partial<InsertWorkOrder>): Promise<WorkOrder | undefined>;
   deleteWorkOrder(id: string): Promise<boolean>;
   getWorkOrdersByMachine(machineId: string, tenantId: string): Promise<WorkOrder[]>;
-  getWorkOrderStats(tenantId: string): Promise<{ byStatus: Record<string, number>; byType: Record<string, number>; slaBreached: number; total: number }>;
+  getWorkOrderStats(tenantId: string): Promise<{ byStatus: Record<string, number>; byType: Record<string, number>; bySla: Record<string, number>; slaBreached: number; total: number }>;
   generateOrderNumber(tenantId: string, retryOffset?: number): Promise<string>;
 
   getTickets(tenantId: string, filters?: { status?: string; type?: string; machineId?: string }): Promise<WorkOrderTicket[]>;
   getTicketById(id: string): Promise<WorkOrderTicket | undefined>;
   createTicket(data: InsertWorkOrderTicket): Promise<WorkOrderTicket>;
   updateTicket(id: string, data: Partial<InsertWorkOrderTicket>): Promise<WorkOrderTicket | undefined>;
+  deleteTicket(id: string): Promise<boolean>;
   generateTicketNumber(tenantId: string, retryOffset?: number): Promise<string>;
 
   getChecklistItems(workOrderId: string): Promise<WorkOrderChecklistItem[]>;
@@ -7181,17 +7182,21 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(workOrders).where(and(eq(workOrders.machineId, machineId), eq(workOrders.tenantId, tenantId))).orderBy(desc(workOrders.createdAt));
   }
 
-  async getWorkOrderStats(tenantId: string): Promise<{ byStatus: Record<string, number>; byType: Record<string, number>; slaBreached: number; total: number }> {
+  async getWorkOrderStats(tenantId: string): Promise<{ byStatus: Record<string, number>; byType: Record<string, number>; bySla: Record<string, number>; slaBreached: number; total: number }> {
     const allOrders = await db.select().from(workOrders).where(eq(workOrders.tenantId, tenantId));
     const byStatus: Record<string, number> = {};
     const byType: Record<string, number> = {};
+    const bySla: Record<string, number> = {};
     let slaBreached = 0;
     for (const o of allOrders) {
       byStatus[o.status] = (byStatus[o.status] || 0) + 1;
       byType[o.type] = (byType[o.type] || 0) + 1;
+      if (o.slaStatus) {
+        bySla[o.slaStatus] = (bySla[o.slaStatus] || 0) + 1;
+      }
       if (o.slaStatus === 'vencido') slaBreached++;
     }
-    return { byStatus, byType, slaBreached, total: allOrders.length };
+    return { byStatus, byType, bySla, slaBreached, total: allOrders.length };
   }
 
   async generateOrderNumber(tenantId: string, retryOffset = 0): Promise<string> {
@@ -7223,6 +7228,11 @@ export class DatabaseStorage implements IStorage {
   async updateTicket(id: string, data: Partial<InsertWorkOrderTicket>): Promise<WorkOrderTicket | undefined> {
     const [t] = await db.update(workOrderTickets).set({ ...data, updatedAt: new Date() }).where(eq(workOrderTickets.id, id)).returning();
     return t;
+  }
+
+  async deleteTicket(id: string): Promise<boolean> {
+    const [deleted] = await db.delete(workOrderTickets).where(eq(workOrderTickets.id, id)).returning();
+    return !!deleted;
   }
 
   async generateTicketNumber(tenantId: string, retryOffset = 0): Promise<string> {
