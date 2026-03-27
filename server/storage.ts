@@ -2058,13 +2058,34 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCashDenominationReconciliation(cashCollectionId: string): Promise<{ maquina: CashDenominationCount[]; entrega: CashDenominationCount[]; fondoCambio: CashDenominationCount[]; totalMaquina: number; totalEntrega: number; totalFondoCambio: number; difference: number }> {
-    const all = await db.select().from(cashDenominationCounts)
+    const collectionCounts = await db.select().from(cashDenominationCounts)
       .where(eq(cashDenominationCounts.cashCollectionId, cashCollectionId))
       .orderBy(asc(cashDenominationCounts.denomination));
     
-    const maquina = all.filter(c => c.countType === "maquina");
-    const entrega = all.filter(c => c.countType === "entrega");
-    const fondoCambio = all.filter(c => c.countType === "fondo_cambio");
+    const maquina = collectionCounts.filter(c => c.countType === "maquina");
+    const entrega = collectionCounts.filter(c => c.countType === "entrega");
+
+    let fondoCambio: CashDenominationCount[] = [];
+    const collection = await this.getCashCollectionById(cashCollectionId);
+    if (collection) {
+      const fund = await db.select().from(changeFunds)
+        .where(and(
+          eq(changeFunds.supplierId, collection.userId),
+          eq(changeFunds.tenantId, collection.tenantId!),
+          eq(changeFunds.status, "activo")
+        ))
+        .orderBy(desc(changeFunds.createdAt))
+        .limit(1);
+
+      if (fund.length > 0) {
+        fondoCambio = await db.select().from(cashDenominationCounts)
+          .where(and(
+            eq(cashDenominationCounts.cashCollectionId, fund[0].id),
+            eq(cashDenominationCounts.countType, "fondo_cambio")
+          ))
+          .orderBy(asc(cashDenominationCounts.denomination));
+      }
+    }
     
     const totalMaquina = maquina.reduce((sum, c) => sum + parseFloat(String(c.subtotal)), 0);
     const totalEntrega = entrega.reduce((sum, c) => sum + parseFloat(String(c.subtotal)), 0);

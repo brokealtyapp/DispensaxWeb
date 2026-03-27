@@ -3380,7 +3380,16 @@ export async function registerRoutes(
   app.get("/api/change-funds/:id/denominations", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "almacen", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
-      if (!await verifyChangeFundTenant(id, req, res)) return;
+      const fund = await storage.getChangeFundById(id);
+      if (!fund) {
+        return res.status(404).json({ error: "Fondo de cambio no encontrado" });
+      }
+      if (fund.tenantId !== req.user!.tenantId && !req.user!.isSuperAdmin) {
+        return res.status(404).json({ error: "Fondo de cambio no encontrado" });
+      }
+      if (req.user!.role === "abastecedor" && fund.supplierId !== req.user!.userId) {
+        return res.status(403).json({ error: "Solo puedes ver tu propio fondo de cambio" });
+      }
 
       const denominations = await storage.getCashDenominationCounts(id, "fondo_cambio");
       res.json(denominations);
