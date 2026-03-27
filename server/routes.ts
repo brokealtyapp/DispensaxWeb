@@ -3096,10 +3096,12 @@ export async function registerRoutes(
   app.get("/api/supplier/cash", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad", "almacen"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { machineId, startDate, endDate } = req.query;
-      // Abastecedor solo ve sus propias recolecciones
-      const effectiveUserId = getEffectiveUserId(req, "userId");
+      const role = req.user!.role;
+      const userIdFilter = (role === "abastecedor")
+        ? req.user!.userId
+        : undefined;
       const collections = await storage.getCashCollections(
-        effectiveUserId,
+        userIdFilter,
         machineId as string | undefined,
         startDate ? new Date(startDate as string) : undefined,
         endDate ? new Date(endDate as string) : undefined
@@ -3180,6 +3182,20 @@ export async function registerRoutes(
       }
 
       if (!await verifyCashCollectionTenant(cashCollectionId, req, res)) return;
+
+      const role = req.user!.role;
+      if (countType === "maquina" && role === "abastecedor") {
+        const collection = await storage.getCashCollectionById(cashCollectionId);
+        if (collection && collection.userId !== req.user!.userId) {
+          return res.status(403).json({ error: "Solo puedes registrar conteo de máquina para tus propias recolecciones" });
+        }
+      }
+      if (countType === "maquina" && (role === "almacen")) {
+        return res.status(403).json({ error: "Solo abastecedores pueden registrar conteo de máquina" });
+      }
+      if (countType === "entrega" && role === "abastecedor") {
+        return res.status(403).json({ error: "Solo almacén/contabilidad/admin pueden registrar conteo de entrega" });
+      }
 
       const counts = denominations
         .filter((d: any) => d.quantity > 0)
