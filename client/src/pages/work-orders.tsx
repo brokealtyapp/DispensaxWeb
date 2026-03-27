@@ -853,9 +853,9 @@ export function WorkOrdersPage() {
   useEffect(() => {
     if (showEditOrder) {
       editOrderForm.reset({
-        type: showEditOrder.type as any,
-        priority: showEditOrder.priority as any,
-        status: showEditOrder.status as any,
+        type: showEditOrder.type as z.infer<typeof editOrderSchema>["type"],
+        priority: showEditOrder.priority as z.infer<typeof editOrderSchema>["priority"],
+        status: showEditOrder.status as z.infer<typeof editOrderSchema>["status"],
         assignedUserId: showEditOrder.assignedUserId || null,
         description: showEditOrder.description || "",
         notes: showEditOrder.notes || "",
@@ -866,9 +866,9 @@ export function WorkOrdersPage() {
   useEffect(() => {
     if (showEditTicket) {
       editTicketForm.reset({
-        type: showEditTicket.type as any,
-        priority: showEditTicket.priority as any,
-        status: showEditTicket.status as any,
+        type: showEditTicket.type as z.infer<typeof editTicketSchema>["type"],
+        priority: showEditTicket.priority as z.infer<typeof editTicketSchema>["priority"],
+        status: showEditTicket.status as z.infer<typeof editTicketSchema>["status"],
         resolution: showEditTicket.resolution || "",
       });
     }
@@ -935,7 +935,7 @@ export function WorkOrdersPage() {
 
   const reassignMutation = useMutation({
     mutationFn: async ({ orderId, userId }: { orderId: string; userId: string }) => {
-      const payload: any = { assignedUserId: userId === "none" ? null : userId };
+      const payload: Record<string, string | null> = { assignedUserId: userId === "none" ? null : userId };
       if (userId && userId !== "none") {
         payload.status = "asignada";
       }
@@ -1017,6 +1017,8 @@ export function WorkOrdersPage() {
     const today = new Date();
     return d.toDateString() === today.toDateString();
   }).length;
+
+  const assignableUsers = users.filter(u => ["admin", "supervisor", "abastecedor"].includes(u.role));
 
   if (permLoading) {
     return <div className="flex items-center justify-center h-64"><p className="text-muted-foreground">Cargando...</p></div>;
@@ -1160,8 +1162,6 @@ export function WorkOrdersPage() {
       </div>
     );
   }
-
-  const assignableUsers = users.filter(u => ["admin", "supervisor", "abastecedor"].includes(u.role));
 
   return (
     <div className="p-6 space-y-6">
