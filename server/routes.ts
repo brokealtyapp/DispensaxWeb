@@ -3207,7 +3207,7 @@ export async function registerRoutes(
           cashCollectionId,
           countType,
           denomination: String(d.denomination),
-          denominationType: d.denominationType || (d.denomination >= 50 ? "billete" : "moneda"),
+          denominationType: (d.denomination >= 50 ? "billete" : "moneda") as "billete" | "moneda",
           quantity: d.quantity,
           subtotal: String(d.denomination * d.quantity),
           userId: req.user!.userId,

@@ -2032,19 +2032,21 @@ export class DatabaseStorage implements IStorage {
   async createCashDenominationCounts(counts: InsertCashDenominationCount[]): Promise<CashDenominationCount[]> {
     if (counts.length === 0) return [];
     const firstCount = counts[0];
-    await db.delete(cashDenominationCounts).where(
-      and(
-        eq(cashDenominationCounts.cashCollectionId, firstCount.cashCollectionId),
-        eq(cashDenominationCounts.countType, firstCount.countType)
-      )
-    );
-    const results: CashDenominationCount[] = [];
-    for (const c of counts) {
-      const subtotal = (parseFloat(String(c.denomination)) * c.quantity).toFixed(2);
-      const [inserted] = await db.insert(cashDenominationCounts).values({ ...c, subtotal }).returning();
-      results.push(inserted);
-    }
-    return results;
+    return await db.transaction(async (tx) => {
+      await tx.delete(cashDenominationCounts).where(
+        and(
+          eq(cashDenominationCounts.cashCollectionId, firstCount.cashCollectionId),
+          eq(cashDenominationCounts.countType, firstCount.countType)
+        )
+      );
+      const results: CashDenominationCount[] = [];
+      for (const c of counts) {
+        const subtotal = (parseFloat(String(c.denomination)) * c.quantity).toFixed(2);
+        const [inserted] = await tx.insert(cashDenominationCounts).values({ ...c, subtotal }).returning();
+        results.push(inserted);
+      }
+      return results;
+    });
   }
 
   async getCashDenominationReconciliation(cashCollectionId: string): Promise<{ maquina: CashDenominationCount[]; entrega: CashDenominationCount[]; totalMaquina: number; totalEntrega: number; difference: number }> {
