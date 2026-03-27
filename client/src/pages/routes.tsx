@@ -326,9 +326,9 @@ export default function RoutesPage() {
     mutationFn: async ({ id, notes }: { id: string; notes?: string }) => {
       return apiRequest("DELETE", `/api/supplier/routes/${id}`, { notes });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
-      toast({ title: "Ruta eliminada", description: "La ruta se ha eliminado correctamente" });
+      toast({ title: "Ruta eliminada", description: variables.notes ? `Motivo: ${variables.notes}` : "La ruta se ha eliminado correctamente" });
       setIsDeleteRouteOpen(false);
       setRouteToDelete(null);
       setDeleteNotes("");
@@ -459,9 +459,10 @@ export default function RoutesPage() {
         await apiRequest("DELETE", `/api/supplier/routes/${id}`, { notes });
       }
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
-      toast({ title: "Rutas eliminadas", description: `${selectedRouteIds.size} ruta(s) eliminada(s)` });
+      const desc = variables.notes ? `${variables.ids.length} ruta(s) eliminada(s). Motivo: ${variables.notes}` : `${variables.ids.length} ruta(s) eliminada(s)`;
+      toast({ title: "Rutas eliminadas", description: desc });
       setSelectedRouteIds(new Set());
       setIsBulkDeleteOpen(false);
       setBulkDeleteNotes("");

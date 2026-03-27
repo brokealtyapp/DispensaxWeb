@@ -2487,8 +2487,9 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No se pueden eliminar rutas en progreso" });
       }
       const { notes } = req.body || {};
+      console.log(`[Audit] Ruta eliminada: id=${req.params.id}, status=${route.status}, user=${req.user!.id}, tenant=${req.user!.tenantId}${notes ? `, motivo: ${notes}` : ""}`);
       await storage.deleteRoute(req.params.id);
-      res.json({ success: true });
+      res.json({ success: true, notes: notes || null });
     } catch (error) {
       res.status(500).json({ error: "Error al eliminar ruta" });
     }
