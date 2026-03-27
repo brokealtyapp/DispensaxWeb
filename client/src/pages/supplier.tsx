@@ -274,13 +274,13 @@ export function SupplierPage() {
   }, [toast]);
 
   const { data: todayRoute, isLoading: isLoadingRoute, refetch: refetchRoute } = useQuery<Route>({
-    queryKey: [`/api/supplier/today-route/${supplierId}`],
+    queryKey: ["/api/supplier/today-route", supplierId],
     enabled: !!supplierId,
     staleTime: 0,
   });
 
   const { data: supplierStats } = useQuery({
-    queryKey: [`/api/supplier/stats/${supplierId}`],
+    queryKey: ["/api/supplier/stats", supplierId],
     enabled: !!supplierId,
   });
 
@@ -304,12 +304,12 @@ export function SupplierPage() {
   });
 
   const { data: machineInventory } = useQuery({
-    queryKey: [`/api/machines/${currentStop?.machine?.id}/inventory`],
+    queryKey: ["/api/machines", currentStop?.machine?.id, "inventory"],
     enabled: !!currentStop?.machine?.id && isServiceActive,
   });
 
   const { data: supplierInventory } = useQuery<any[]>({
-    queryKey: [`/api/supplier/inventory/${supplierId}`],
+    queryKey: ["/api/supplier/inventory", supplierId],
     enabled: !!supplierId,
   });
 
@@ -319,7 +319,7 @@ export function SupplierPage() {
 
   // Query para obtener el vehículo asignado al abastecedor
   const { data: assignedVehicles = [] } = useQuery<any[]>({
-    queryKey: [`/api/vehicles?assignedUserId=${supplierId}`],
+    queryKey: ["/api/vehicles", { assignedUserId: supplierId }],
     enabled: !!supplierId && !isViewingOther,
   });
 
@@ -338,7 +338,7 @@ export function SupplierPage() {
   });
 
   const { data: machineHistory } = useQuery<any[]>({
-    queryKey: [`/api/machines/${currentStop?.machine?.id}/history`],
+    queryKey: ["/api/machines", currentStop?.machine?.id, "history"],
     enabled: !!currentStop?.machine?.id && isHistoryDialogOpen,
   });
 
@@ -404,7 +404,7 @@ export function SupplierPage() {
 
   // Query para productos cargados en el servicio actual
   const { data: loadedProducts = [] } = useQuery<any[]>({
-    queryKey: [`/api/supplier/services/${activeServiceId}/products`],
+    queryKey: ["/api/supplier/services", activeServiceId, "products"],
     enabled: !!activeServiceId && isServiceActive,
   });
 
@@ -460,7 +460,7 @@ export function SupplierPage() {
       return apiRequest("POST", `/api/supplier/routes/${routeId}/start`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/supplier/today-route/${supplierId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route", supplierId] });
       toast({ title: "Ruta iniciada", description: "Tu ruta del día ha comenzado" });
     },
   });
@@ -470,7 +470,7 @@ export function SupplierPage() {
       return apiRequest("POST", `/api/supplier/stops/${stopId}/start`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/supplier/today-route/${supplierId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route", supplierId] });
     },
   });
 
@@ -479,7 +479,7 @@ export function SupplierPage() {
       return apiRequest("POST", `/api/supplier/stops/${stopId}/complete`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/supplier/today-route/${supplierId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route", supplierId] });
     },
   });
 
@@ -503,9 +503,9 @@ export function SupplierPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/services"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/supplier/services/${activeServiceId}/products`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/services", activeServiceId, "products"] });
       queryClient.invalidateQueries({ queryKey: [activeServiceUrl] });
-      queryClient.invalidateQueries({ queryKey: [`/api/supplier/today-route/${supplierId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route", supplierId] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/stats", supplierId] });
     },
     onError: () => {
@@ -534,7 +534,7 @@ export function SupplierPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/issues"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/supplier/today-route/${supplierId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route", supplierId] });
       toast({ title: "Reporte enviado", description: "El supervisor ha sido notificado" });
       setIssueType("");
       setIssueDescription("");
@@ -572,7 +572,7 @@ export function SupplierPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/machines", currentStop?.machine?.id, "inventory"] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/stats", supplierId] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/inventory", supplierId] });
-      queryClient.invalidateQueries({ queryKey: [`/api/supplier/services/${activeServiceId}/products`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/services", activeServiceId, "products"] });
       queryClient.invalidateQueries({ queryKey: ["/api/my-vehicle-inventory"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-transfers"] });
       toast({ title: "Productos cargados", description: "El inventario ha sido actualizado" });
@@ -642,7 +642,7 @@ export function SupplierPage() {
       return apiRequest("POST", `/api/supplier/services/${serviceId}/cancel`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/supplier/today-route/${supplierId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route", supplierId] });
       toast({ title: "Servicio cancelado", description: "La parada ha vuelto a estado pendiente" });
       setIsServiceActive(false);
       setCurrentStop(null);
@@ -658,7 +658,7 @@ export function SupplierPage() {
       return apiRequest("POST", `/api/supplier/stops/${stopId}/recover`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/supplier/today-route/${supplierId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/today-route", supplierId] });
       toast({ title: "Parada recuperada", description: "La parada ha vuelto a estado pendiente" });
     },
     onError: () => {

@@ -358,6 +358,11 @@ export function WarehousePage() {
       queryClient.invalidateQueries({ queryKey: ["/api/vehicle-inventory"] });
       queryClient.invalidateQueries({ queryKey: ["/api/my-vehicle-inventory"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-transfers"] });
+      const dispatchedVehicle = vehicles.find(v => v.id === dispatchVehicleId);
+      if (dispatchedVehicle?.assignedUserId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/supplier/inventory", dispatchedVehicle.assignedUserId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/supplier/stats", dispatchedVehicle.assignedUserId] });
+      }
       setIsDispatchToVehicleDialogOpen(false);
       setDispatchVehicleId("");
       setDispatchItems([]);
@@ -1399,7 +1404,7 @@ export function WarehousePage() {
                 <SelectContent>
                   {vehicles.filter(v => v.status === "activo").map((vehicle) => (
                     <SelectItem key={vehicle.id} value={vehicle.id}>
-                      {vehicle.plate} - {vehicle.brand} {vehicle.model}
+                      {vehicle.plate} - {vehicle.brand} {vehicle.model} {vehicle.assignedUser ? `(${vehicle.assignedUser.fullName})` : "(Sin asignar)"}
                     </SelectItem>
                   ))}
                 </SelectContent>
