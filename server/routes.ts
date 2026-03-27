@@ -9770,20 +9770,36 @@ export async function registerRoutes(
         }
       }
 
+      if (req.body.ticketId) {
+        const ticket = await storage.getTicketById(req.body.ticketId);
+        if (!ticket || ticket.tenantId !== tenantId) {
+          return res.status(400).json({ error: "Ticket no encontrado o no pertenece al tenant" });
+        }
+      }
+
       const slaConf = await storage.getSlaConfig(tenantId);
-      const orderNumber = await storage.generateOrderNumber(tenantId);
       const priority = req.body.priority || "medio";
       const slaDeadline = calculateSlaDeadline(priority, slaConf || undefined);
 
-      const parsed = insertWorkOrderSchema.parse({
-        ...req.body,
-        tenantId,
-        orderNumber,
-        slaDeadline,
-        slaStatus: "dentro_tiempo",
-      });
-
-      const order = await storage.createWorkOrder(parsed);
+      let order;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const orderNumber = await storage.generateOrderNumber(tenantId, attempt);
+        const parsed = insertWorkOrderSchema.parse({
+          ...req.body,
+          tenantId,
+          orderNumber,
+          slaDeadline,
+          slaStatus: "dentro_tiempo",
+        });
+        try {
+          order = await storage.createWorkOrder(parsed);
+          break;
+        } catch (err) {
+          if (isUniqueViolation(err) && attempt < 4) continue;
+          throw err;
+        }
+      }
+      if (!order) throw new Error("Failed to create work order after retries");
 
       const defaultItems = getDefaultChecklist(order.type);
       if (defaultItems.length > 0) {
@@ -10051,19 +10067,28 @@ export async function registerRoutes(
       }
 
       const slaConf = await storage.getSlaConfig(tenantId);
-      const ticketNumber = await storage.generateTicketNumber(tenantId);
       const priority = req.body.priority || "medio";
       const slaDeadline = calculateSlaDeadline(priority, slaConf || undefined);
 
-      const parsed = insertWorkOrderTicketSchema.parse({
-        ...req.body,
-        tenantId,
-        ticketNumber,
-        slaDeadline,
-        slaStatus: "dentro_tiempo",
-      });
-
-      const ticket = await storage.createTicket(parsed);
+      let ticket;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const ticketNumber = await storage.generateTicketNumber(tenantId, attempt);
+        const parsed = insertWorkOrderTicketSchema.parse({
+          ...req.body,
+          tenantId,
+          ticketNumber,
+          slaDeadline,
+          slaStatus: "dentro_tiempo",
+        });
+        try {
+          ticket = await storage.createTicket(parsed);
+          break;
+        } catch (err) {
+          if (isUniqueViolation(err) && attempt < 4) continue;
+          throw err;
+        }
+      }
+      if (!ticket) throw new Error("Failed to create ticket after retries");
       res.status(201).json(ticket);
     } catch (error) {
       console.error("Error creating ticket:", error);
@@ -10137,23 +10162,33 @@ export async function registerRoutes(
       }
 
       const slaConf = await storage.getSlaConfig(tenantId);
-      const orderNumber = await storage.generateOrderNumber(tenantId);
       const priority = parsed.priority || ticket.priority;
       const slaDeadline = calculateSlaDeadline(priority, slaConf || undefined);
 
-      const order = await storage.createWorkOrder({
-        tenantId,
-        orderNumber,
-        machineId: ticket.machineId,
-        type: parsed.type,
-        priority,
-        status: "pendiente",
-        assignedUserId,
-        ticketId: ticket.id,
-        description: parsed.description || ticket.description,
-        slaDeadline,
-        slaStatus: "dentro_tiempo",
-      });
+      let order;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const orderNumber = await storage.generateOrderNumber(tenantId, attempt);
+        try {
+          order = await storage.createWorkOrder({
+            tenantId,
+            orderNumber,
+            machineId: ticket.machineId,
+            type: parsed.type,
+            priority,
+            status: "pendiente",
+            assignedUserId,
+            ticketId: ticket.id,
+            description: parsed.description || ticket.description,
+            slaDeadline,
+            slaStatus: "dentro_tiempo",
+          });
+          break;
+        } catch (err) {
+          if (isUniqueViolation(err) && attempt < 4) continue;
+          throw err;
+        }
+      }
+      if (!order) throw new Error("Failed to create work order after retries");
 
       const defaultItems = getDefaultChecklist(parsed.type);
       if (defaultItems.length > 0) {

@@ -730,13 +730,13 @@ export interface IStorage {
   deleteWorkOrder(id: string): Promise<boolean>;
   getWorkOrdersByMachine(machineId: string, tenantId: string): Promise<WorkOrder[]>;
   getWorkOrderStats(tenantId: string): Promise<{ byStatus: Record<string, number>; byType: Record<string, number>; slaBreached: number; total: number }>;
-  generateOrderNumber(tenantId: string): Promise<string>;
+  generateOrderNumber(tenantId: string, retryOffset?: number): Promise<string>;
 
   getTickets(tenantId: string, filters?: { status?: string; type?: string; machineId?: string }): Promise<WorkOrderTicket[]>;
   getTicketById(id: string): Promise<WorkOrderTicket | undefined>;
   createTicket(data: InsertWorkOrderTicket): Promise<WorkOrderTicket>;
   updateTicket(id: string, data: Partial<InsertWorkOrderTicket>): Promise<WorkOrderTicket | undefined>;
-  generateTicketNumber(tenantId: string): Promise<string>;
+  generateTicketNumber(tenantId: string, retryOffset?: number): Promise<string>;
 
   getChecklistItems(workOrderId: string): Promise<WorkOrderChecklistItem[]>;
   createChecklistItems(items: InsertWorkOrderChecklistItem[]): Promise<WorkOrderChecklistItem[]>;
@@ -7194,9 +7194,9 @@ export class DatabaseStorage implements IStorage {
     return { byStatus, byType, slaBreached, total: allOrders.length };
   }
 
-  async generateOrderNumber(tenantId: string): Promise<string> {
+  async generateOrderNumber(tenantId: string, retryOffset = 0): Promise<string> {
     const [result] = await db.select({ maxNum: sql<number>`COALESCE(MAX(CAST(SUBSTRING(${workOrders.orderNumber} FROM 4) AS INTEGER)), 0)` }).from(workOrders).where(eq(workOrders.tenantId, tenantId));
-    const num = (result?.maxNum || 0) + 1;
+    const num = (result?.maxNum || 0) + 1 + retryOffset;
     return `OT-${String(num).padStart(4, '0')}`;
   }
 
@@ -7225,9 +7225,9 @@ export class DatabaseStorage implements IStorage {
     return t;
   }
 
-  async generateTicketNumber(tenantId: string): Promise<string> {
+  async generateTicketNumber(tenantId: string, retryOffset = 0): Promise<string> {
     const [result] = await db.select({ maxNum: sql<number>`COALESCE(MAX(CAST(SUBSTRING(${workOrderTickets.ticketNumber} FROM 4) AS INTEGER)), 0)` }).from(workOrderTickets).where(eq(workOrderTickets.tenantId, tenantId));
-    const num = (result?.maxNum || 0) + 1;
+    const num = (result?.maxNum || 0) + 1 + retryOffset;
     return `TK-${String(num).padStart(4, '0')}`;
   }
 
