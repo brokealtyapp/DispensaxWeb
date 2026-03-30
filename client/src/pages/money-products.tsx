@@ -131,8 +131,8 @@ export function MoneyProductsPage() {
     mutationFn: async (data: CashMovementFormData) => {
       return apiRequest("POST", "/api/cash-movements", {
         ...data,
-        amount: parseFloat(data.amount),
-        expectedAmount: data.expectedAmount ? parseFloat(data.expectedAmount) : undefined,
+        amount: data.amount,
+        expectedAmount: data.expectedAmount || undefined,
       });
     },
     onSuccess: () => {
