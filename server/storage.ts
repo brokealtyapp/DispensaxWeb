@@ -56,6 +56,7 @@ import {
   type WorkOrder, type InsertWorkOrder,
   type WorkOrderTicket, type InsertWorkOrderTicket,
   type WorkOrderChecklistItem, type InsertWorkOrderChecklistItem,
+  type WorkOrderChecklistTemplate, type InsertWorkOrderChecklistTemplate,
   type WorkOrderPhoto, type InsertWorkOrderPhoto,
   type SlaConfig, type InsertSlaConfig,
   type CashDenominationCount, type InsertCashDenominationCount,
@@ -73,7 +74,7 @@ import {
   establishmentViewers, machineViewerAssignments,
   machineTypeOptions,
   establishments, establishmentStages, establishmentFollowups, establishmentDocuments, establishmentContracts,
-  workOrders, workOrderTickets, workOrderChecklistItems, workOrderPhotos, slaConfig, cashDenominationCounts, changeFunds,
+  workOrders, workOrderTickets, workOrderChecklistItems, workOrderChecklistTemplates, workOrderPhotos, slaConfig, cashDenominationCounts, changeFunds,
   tenants, subscriptionPlans, tenantSubscriptions, tenantSettings, tenantInvites, superAdminAuditLog,
   type Tenant, type InsertTenant,
   type SubscriptionPlan, type InsertSubscriptionPlan,
@@ -758,6 +759,13 @@ export interface IStorage {
   getChecklistItems(workOrderId: string): Promise<WorkOrderChecklistItem[]>;
   createChecklistItems(items: InsertWorkOrderChecklistItem[]): Promise<WorkOrderChecklistItem[]>;
   updateChecklistItem(id: string, data: Partial<InsertWorkOrderChecklistItem>, workOrderId?: string): Promise<WorkOrderChecklistItem | undefined>;
+
+  getChecklistTemplates(tenantId: string): Promise<WorkOrderChecklistTemplate[]>;
+  getChecklistTemplatesByType(tenantId: string, orderType: string): Promise<WorkOrderChecklistTemplate[]>;
+  createChecklistTemplate(data: InsertWorkOrderChecklistTemplate): Promise<WorkOrderChecklistTemplate>;
+  createChecklistTemplates(items: InsertWorkOrderChecklistTemplate[]): Promise<WorkOrderChecklistTemplate[]>;
+  updateChecklistTemplate(id: string, tenantId: string, data: Partial<InsertWorkOrderChecklistTemplate>): Promise<WorkOrderChecklistTemplate | undefined>;
+  deleteChecklistTemplate(id: string, tenantId: string): Promise<boolean>;
 
   getWorkOrderPhotos(workOrderId: string): Promise<WorkOrderPhoto[]>;
   createWorkOrderPhoto(data: InsertWorkOrderPhoto): Promise<WorkOrderPhoto>;
@@ -7413,6 +7421,44 @@ export class DatabaseStorage implements IStorage {
     if (workOrderId) conditions.push(eq(workOrderChecklistItems.workOrderId, workOrderId));
     const [item] = await db.update(workOrderChecklistItems).set(data).where(and(...conditions)).returning();
     return item;
+  }
+
+  // ==================== CHECKLIST TEMPLATES ====================
+
+  async getChecklistTemplates(tenantId: string): Promise<WorkOrderChecklistTemplate[]> {
+    return db.select().from(workOrderChecklistTemplates)
+      .where(eq(workOrderChecklistTemplates.tenantId, tenantId))
+      .orderBy(asc(workOrderChecklistTemplates.orderType), asc(workOrderChecklistTemplates.sortOrder));
+  }
+
+  async getChecklistTemplatesByType(tenantId: string, orderType: string): Promise<WorkOrderChecklistTemplate[]> {
+    return db.select().from(workOrderChecklistTemplates)
+      .where(and(eq(workOrderChecklistTemplates.tenantId, tenantId), eq(workOrderChecklistTemplates.orderType, orderType)))
+      .orderBy(asc(workOrderChecklistTemplates.sortOrder));
+  }
+
+  async createChecklistTemplate(data: InsertWorkOrderChecklistTemplate): Promise<WorkOrderChecklistTemplate> {
+    const [template] = await db.insert(workOrderChecklistTemplates).values(data).returning();
+    return template;
+  }
+
+  async createChecklistTemplates(items: InsertWorkOrderChecklistTemplate[]): Promise<WorkOrderChecklistTemplate[]> {
+    if (items.length === 0) return [];
+    return db.insert(workOrderChecklistTemplates).values(items).returning();
+  }
+
+  async updateChecklistTemplate(id: string, tenantId: string, data: Partial<InsertWorkOrderChecklistTemplate>): Promise<WorkOrderChecklistTemplate | undefined> {
+    const [template] = await db.update(workOrderChecklistTemplates)
+      .set(data)
+      .where(and(eq(workOrderChecklistTemplates.id, id), eq(workOrderChecklistTemplates.tenantId, tenantId)))
+      .returning();
+    return template;
+  }
+
+  async deleteChecklistTemplate(id: string, tenantId: string): Promise<boolean> {
+    const result = await db.delete(workOrderChecklistTemplates)
+      .where(and(eq(workOrderChecklistTemplates.id, id), eq(workOrderChecklistTemplates.tenantId, tenantId)));
+    return (result.rowCount ?? 0) > 0;
   }
 
   // ==================== PHOTOS ====================

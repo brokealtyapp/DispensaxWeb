@@ -2761,6 +2761,20 @@ export const insertWorkOrderChecklistItemSchema = createInsertSchema(workOrderCh
 export type InsertWorkOrderChecklistItem = z.infer<typeof insertWorkOrderChecklistItemSchema>;
 export type WorkOrderChecklistItem = typeof workOrderChecklistItems.$inferSelect;
 
+export const workOrderChecklistTemplates = pgTable("work_order_checklist_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  orderType: varchar("order_type").notNull(),
+  label: varchar("label").notNull(),
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertWorkOrderChecklistTemplateSchema = createInsertSchema(workOrderChecklistTemplates).omit({ id: true, createdAt: true });
+export type InsertWorkOrderChecklistTemplate = z.infer<typeof insertWorkOrderChecklistTemplateSchema>;
+export type WorkOrderChecklistTemplate = typeof workOrderChecklistTemplates.$inferSelect;
+
 export const workOrderPhotos = pgTable("work_order_photos", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   workOrderId: varchar("work_order_id").references(() => workOrders.id).notNull(),
@@ -2804,4 +2818,8 @@ export const workOrderPhotosRelations = relations(workOrderPhotos, ({ one }) => 
 
 export const slaConfigRelations = relations(slaConfig, ({ one }) => ({
   tenant: one(tenants, { fields: [slaConfig.tenantId], references: [tenants.id] }),
+}));
+
+export const workOrderChecklistTemplatesRelations = relations(workOrderChecklistTemplates, ({ one }) => ({
+  tenant: one(tenants, { fields: [workOrderChecklistTemplates.tenantId], references: [tenants.id] }),
 }));
