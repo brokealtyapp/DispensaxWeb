@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, asc, or, inArray, count, SQL } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, asc, or, inArray, count, ne, SQL } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { 
   signAccessToken, 
@@ -2352,6 +2352,27 @@ export async function registerRoutes(
     }
   });
 
+  // Máquinas en rutas activas (para filtrar selectores en el frontend)
+  app.get("/api/supplier/busy-machines", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const conditions: SQL[] = [inArray(routesTable.status, ["pendiente", "en_progreso"])];
+      if (tenantId) conditions.push(eq(routesTable.tenantId, tenantId));
+
+      const busyMachines = await db
+        .select({ machineId: routeStops.machineId, supplierName: users.fullName })
+        .from(routeStops)
+        .innerJoin(routesTable, eq(routeStops.routeId, routesTable.id))
+        .innerJoin(users, eq(routesTable.supplierId, users.id))
+        .where(and(...conditions));
+
+      res.json(busyMachines);
+    } catch (error) {
+      console.error("Error getting busy machines:", error);
+      res.status(500).json({ error: "Error al obtener máquinas ocupadas" });
+    }
+  });
+
   app.post("/api/supplier/routes/:routeId/stops", authenticateJWT, authorizeAction("stops", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyRouteTenant(req.params.routeId, req, res)) return;
@@ -2360,14 +2381,38 @@ export async function registerRoutes(
         ...req.body,
         routeId: req.params.routeId,
       });
-      const stop = await storage.createRouteStop({ ...data, tenantId });
-      
-      // Actualizar total de paradas en la ruta
-      const route = await storage.getRoute(req.params.routeId);
-      if (route) {
-        await storage.updateRoute(req.params.routeId, { totalStops: (route.totalStops || 0) + 1 });
+
+      // Obtener la ruta actual (necesario para totalStops y para el chequeo de unicidad)
+      const currentRoute = await storage.getRoute(req.params.routeId);
+      if (!currentRoute) {
+        return res.status(404).json({ error: "Ruta no encontrada" });
       }
-      
+
+      // Verificar que la máquina no esté en otra ruta activa del mismo tenant
+      const conflictingRoute = await db
+        .select({ supplierName: users.fullName })
+        .from(routeStops)
+        .innerJoin(routesTable, eq(routeStops.routeId, routesTable.id))
+        .innerJoin(users, eq(routesTable.supplierId, users.id))
+        .where(and(
+          eq(routeStops.machineId, data.machineId),
+          eq(routesTable.tenantId, currentRoute.tenantId),
+          inArray(routesTable.status, ["pendiente", "en_progreso"]),
+          ne(routeStops.routeId, req.params.routeId)
+        ))
+        .limit(1);
+
+      if (conflictingRoute.length > 0) {
+        return res.status(400).json({
+          error: `Esta máquina ya está asignada a una ruta activa del abastecedor "${conflictingRoute[0].supplierName}". Completa o cancela esa ruta primero.`
+        });
+      }
+
+      const stop = await storage.createRouteStop({ ...data, tenantId });
+
+      // Actualizar total de paradas en la ruta
+      await storage.updateRoute(req.params.routeId, { totalStops: (currentRoute.totalStops || 0) + 1 });
+
       res.status(201).json(stop);
     } catch (error) {
       if (error instanceof z.ZodError) {

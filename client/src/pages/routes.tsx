@@ -256,6 +256,13 @@ export default function RoutesPage() {
     queryKey: ["/api/machines"],
   });
 
+  const { data: busyMachines = [] } = useQuery<{ machineId: string; supplierName: string }[]>({
+    queryKey: ["/api/supplier/busy-machines"],
+    staleTime: 30000,
+  });
+
+  const busyMachineIds = new Set(busyMachines.map(bm => bm.machineId));
+
   const stats = {
     total: routeStats?.total ?? 0,
     today: routeStats?.today ?? 0,
@@ -292,6 +299,7 @@ export default function RoutesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/busy-machines"] });
       toast({ title: "Ruta creada", description: "La ruta se ha creado correctamente" });
       setIsNewRouteOpen(false);
       routeForm.reset();
@@ -328,6 +336,7 @@ export default function RoutesPage() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/busy-machines"] });
       toast({ title: "Ruta eliminada", description: variables.notes ? `Motivo: ${variables.notes}` : "La ruta se ha eliminado correctamente" });
       setIsDeleteRouteOpen(false);
       setRouteToDelete(null);
@@ -349,6 +358,7 @@ export default function RoutesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes", selectedRoute?.id, "stops"] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/busy-machines"] });
       toast({ title: "Parada agregada", description: "La parada se ha agregado a la ruta" });
       setIsAddStopOpen(false);
       stopForm.reset();
@@ -366,6 +376,7 @@ export default function RoutesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes", selectedRoute?.id, "stops"] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/busy-machines"] });
       toast({ title: "Parada eliminada", description: "La parada se ha eliminado de la ruta" });
       setIsDeleteStopOpen(false);
       setStopToDelete(null);
@@ -382,6 +393,7 @@ export default function RoutesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/busy-machines"] });
       toast({ title: "Ruta cancelada", description: "La ruta ha sido cancelada" });
       setIsCancelRouteOpen(false);
       setSelectedRoute(null);
@@ -398,6 +410,7 @@ export default function RoutesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/busy-machines"] });
       toast({ title: "Ruta completada", description: "La ruta ha sido marcada como completada" });
       setIsCompleteRouteOpen(false);
       setSelectedRoute(null);
@@ -443,6 +456,7 @@ export default function RoutesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/busy-machines"] });
       toast({ title: "Rutas canceladas", description: `${selectedRouteIds.size} ruta(s) cancelada(s)` });
       setSelectedRouteIds(new Set());
       setIsBulkCancelOpen(false);
@@ -461,6 +475,7 @@ export default function RoutesPage() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/busy-machines"] });
       const desc = variables.notes ? `${variables.ids.length} ruta(s) eliminada(s). Motivo: ${variables.notes}` : `${variables.ids.length} ruta(s) eliminada(s)`;
       toast({ title: "Rutas eliminadas", description: desc });
       setSelectedRouteIds(new Set());
@@ -1085,6 +1100,7 @@ export default function RoutesPage() {
                       {machines
                         .filter(m => m.status !== "fuera_servicio")
                         .filter(m => !pendingStops.some(s => s.machineId === m.id))
+                        .filter(m => !busyMachineIds.has(m.id))
                         .map((machine) => (
                           <SelectItem key={machine.id} value={machine.id}>
                             {machine.name}{machine.code ? ` (${machine.code})` : ""}
@@ -1412,6 +1428,7 @@ export default function RoutesPage() {
                         {machines
                           .filter(m => m.status !== "fuera_servicio")
                           .filter(m => !routeStops.some(s => s.machineId === m.id))
+                          .filter(m => !busyMachineIds.has(m.id))
                           .map((machine) => (
                             <SelectItem key={machine.id} value={machine.id}>
                               {machine.name}{machine.code ? ` (${machine.code})` : ""}
