@@ -799,8 +799,8 @@ export function WorkOrdersPage() {
   });
 
   const addTemplateMutation = useMutation({
-    mutationFn: async ({ orderType, label, sortOrder }: { orderType: string; label: string; sortOrder: number }) => {
-      const res = await apiRequest("POST", "/api/work-orders/checklist-templates", { orderType, label, sortOrder, isActive: true });
+    mutationFn: async ({ orderType, label }: { orderType: string; label: string }) => {
+      const res = await apiRequest("POST", "/api/work-orders/checklist-templates", { orderType, label, isActive: true });
       return res.json();
     },
     onSuccess: () => {
@@ -837,8 +837,8 @@ export function WorkOrdersPage() {
     if (swapIdx < 0 || swapIdx >= items.length) return;
     const a = items[idx];
     const b = items[swapIdx];
-    updateTemplateMutation.mutate({ id: a.id, sortOrder: b.sortOrder });
-    updateTemplateMutation.mutate({ id: b.id, sortOrder: a.sortOrder });
+    updateTemplateMutation.mutate({ id: a.id, sortOrder: swapIdx });
+    updateTemplateMutation.mutate({ id: b.id, sortOrder: idx });
   };
 
   const filteredOrders = useMemo(() => {
@@ -1495,7 +1495,7 @@ export function WorkOrdersPage() {
                         onChange={e => setNewItemLabels(prev => ({ ...prev, [type]: e.target.value }))}
                         onKeyDown={e => {
                           if (e.key === "Enter" && (newItemLabels[type] || "").trim()) {
-                            addTemplateMutation.mutate({ orderType: type, label: (newItemLabels[type] || "").trim(), sortOrder: items.length });
+                            addTemplateMutation.mutate({ orderType: type, label: (newItemLabels[type] || "").trim() });
                           }
                         }}
                         className="flex-1"
@@ -1504,7 +1504,7 @@ export function WorkOrdersPage() {
                       <Button
                         onClick={() => {
                           const label = (newItemLabels[type] || "").trim();
-                          if (label) addTemplateMutation.mutate({ orderType: type, label, sortOrder: items.length });
+                          if (label) addTemplateMutation.mutate({ orderType: type, label });
                         }}
                         disabled={!newItemLabels[type]?.trim() || addTemplateMutation.isPending}
                         data-testid={`button-add-item-${type}`}

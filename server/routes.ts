@@ -10621,11 +10621,12 @@ export async function registerRoutes(
       const schema = z.object({
         orderType: z.enum(["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"]),
         label: z.string().min(1).max(300),
-        sortOrder: z.number().int().default(0),
         isActive: z.boolean().default(true),
       });
       const parsed = schema.parse(req.body);
-      const template = await storage.createChecklistTemplate({ ...parsed, tenantId });
+      const existing = await storage.getChecklistTemplatesByType(tenantId, parsed.orderType);
+      const sortOrder = existing.length > 0 ? Math.max(...existing.map((t) => t.sortOrder ?? 0)) + 1 : 0;
+      const template = await storage.createChecklistTemplate({ ...parsed, tenantId, sortOrder });
       res.status(201).json(template);
     } catch (error) {
       if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });
@@ -10662,8 +10663,18 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Solo administradores pueden modificar templates" });
       }
       const tenantId = req.user!.tenantId!;
+      const allTemplates = await storage.getChecklistTemplates(tenantId);
+      const item = allTemplates.find((t) => t.id === req.params.id);
+      if (!item) return res.status(404).json({ error: "Template no encontrado" });
+      const orderType = item.orderType;
       const deleted = await storage.deleteChecklistTemplate(req.params.id, tenantId);
       if (!deleted) return res.status(404).json({ error: "Template no encontrado" });
+      const remaining = await storage.getChecklistTemplatesByType(tenantId, orderType);
+      for (let i = 0; i < remaining.length; i++) {
+        if (remaining[i].sortOrder !== i) {
+          await storage.updateChecklistTemplate(remaining[i].id, tenantId, { sortOrder: i });
+        }
+      }
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting checklist template:", error);
