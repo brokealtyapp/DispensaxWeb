@@ -74,7 +74,7 @@ import {
   establishmentViewers, machineViewerAssignments,
   machineTypeOptions,
   establishments, establishmentStages, establishmentFollowups, establishmentDocuments, establishmentContracts,
-  workOrders, workOrderTickets, workOrderChecklistItems, workOrderChecklistTemplates, workOrderPhotos, slaConfig, cashDenominationCounts, changeFunds,
+  workOrders, workOrderTickets, workOrderChecklistItems, workOrderChecklistTemplates, workOrderChecklistTypesInit, workOrderPhotos, slaConfig, cashDenominationCounts, changeFunds,
   tenants, subscriptionPlans, tenantSubscriptions, tenantSettings, tenantInvites, superAdminAuditLog,
   type Tenant, type InsertTenant,
   type SubscriptionPlan, type InsertSubscriptionPlan,
@@ -766,6 +766,8 @@ export interface IStorage {
   createChecklistTemplates(items: InsertWorkOrderChecklistTemplate[]): Promise<WorkOrderChecklistTemplate[]>;
   updateChecklistTemplate(id: string, tenantId: string, data: Partial<InsertWorkOrderChecklistTemplate>): Promise<WorkOrderChecklistTemplate | undefined>;
   deleteChecklistTemplate(id: string, tenantId: string): Promise<boolean>;
+  isChecklistTypeInitialized(tenantId: string, orderType: string): Promise<boolean>;
+  markChecklistTypeInitialized(tenantId: string, orderType: string): Promise<void>;
 
   getWorkOrderPhotos(workOrderId: string): Promise<WorkOrderPhoto[]>;
   createWorkOrderPhoto(data: InsertWorkOrderPhoto): Promise<WorkOrderPhoto>;
@@ -7459,6 +7461,19 @@ export class DatabaseStorage implements IStorage {
     const result = await db.delete(workOrderChecklistTemplates)
       .where(and(eq(workOrderChecklistTemplates.id, id), eq(workOrderChecklistTemplates.tenantId, tenantId)));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async isChecklistTypeInitialized(tenantId: string, orderType: string): Promise<boolean> {
+    const [row] = await db.select({ id: workOrderChecklistTypesInit.id })
+      .from(workOrderChecklistTypesInit)
+      .where(and(eq(workOrderChecklistTypesInit.tenantId, tenantId), eq(workOrderChecklistTypesInit.orderType, orderType)));
+    return !!row;
+  }
+
+  async markChecklistTypeInitialized(tenantId: string, orderType: string): Promise<void> {
+    await db.insert(workOrderChecklistTypesInit)
+      .values({ tenantId, orderType })
+      .onConflictDoNothing();
   }
 
   // ==================== PHOTOS ====================

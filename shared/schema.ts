@@ -2823,3 +2823,10 @@ export const slaConfigRelations = relations(slaConfig, ({ one }) => ({
 export const workOrderChecklistTemplatesRelations = relations(workOrderChecklistTemplates, ({ one }) => ({
   tenant: one(tenants, { fields: [workOrderChecklistTemplates.tenantId], references: [tenants.id] }),
 }));
+
+export const workOrderChecklistTypesInit = pgTable("work_order_checklist_types_init", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  orderType: varchar("order_type").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [uniqueIndex("uq_checklist_init_tenant_type").on(t.tenantId, t.orderType)]);

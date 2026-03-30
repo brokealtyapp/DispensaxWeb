@@ -9939,11 +9939,19 @@ export async function registerRoutes(
   // ==================== WORK ORDERS MODULE ====================
 
   async function getChecklistItemsForTenant(tenantId: string, type: string): Promise<string[]> {
-    const templates = await storage.getChecklistTemplatesByType(tenantId, type);
-    if (templates.length > 0) {
+    const isInitialized = await storage.isChecklistTypeInitialized(tenantId, type);
+    if (isInitialized) {
+      const templates = await storage.getChecklistTemplatesByType(tenantId, type);
       return templates.filter((t) => t.isActive).map((t) => t.label);
     }
-    return getDefaultChecklist(type);
+    const defaults = getDefaultChecklist(type);
+    if (defaults.length > 0) {
+      await storage.createChecklistTemplates(
+        defaults.map((label, idx) => ({ tenantId, orderType: type, label, sortOrder: idx, isActive: true }))
+      );
+    }
+    await storage.markChecklistTypeInitialized(tenantId, type);
+    return defaults;
   }
 
   function getDefaultChecklist(type: string): string[] {
@@ -10579,17 +10587,16 @@ export async function registerRoutes(
     try {
       const tenantId = req.user!.tenantId!;
       const ALL_TYPES = ["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"];
-      const existingTemplates = await storage.getChecklistTemplates(tenantId);
-      const seededTypes = new Set(existingTemplates.map((t) => t.orderType));
-      const defaults = getDefaultChecklist;
       for (const type of ALL_TYPES) {
-        if (!seededTypes.has(type)) {
-          const items = defaults(type);
+        const isInitialized = await storage.isChecklistTypeInitialized(tenantId, type);
+        if (!isInitialized) {
+          const items = getDefaultChecklist(type);
           if (items.length > 0) {
             await storage.createChecklistTemplates(
               items.map((label, idx) => ({ tenantId, orderType: type, label, sortOrder: idx, isActive: true }))
             );
           }
+          await storage.markChecklistTypeInitialized(tenantId, type);
         }
       }
       const allTemplates = await storage.getChecklistTemplates(tenantId);
