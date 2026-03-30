@@ -10065,6 +10065,109 @@ export async function registerRoutes(
     }
   });
 
+  // --- Checklist Templates (must be before /:id route) ---
+
+  app.get("/api/work-orders/checklist-templates", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const ALL_TYPES = ["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"];
+      for (const type of ALL_TYPES) {
+        const isInitialized = await storage.isChecklistTypeInitialized(tenantId, type);
+        if (!isInitialized) {
+          const items = getDefaultChecklist(type);
+          if (items.length > 0) {
+            await storage.createChecklistTemplates(
+              items.map((label, idx) => ({ tenantId, orderType: type, label, sortOrder: idx, isActive: true }))
+            );
+          }
+          await storage.markChecklistTypeInitialized(tenantId, type);
+        }
+      }
+      const allTemplates = await storage.getChecklistTemplates(tenantId);
+      const grouped: Record<string, typeof allTemplates> = {};
+      for (const type of ALL_TYPES) grouped[type] = [];
+      for (const t of allTemplates) {
+        if (grouped[t.orderType]) grouped[t.orderType].push(t);
+      }
+      res.json(grouped);
+    } catch (error) {
+      console.error("Error fetching checklist templates:", error);
+      res.status(500).json({ error: "Error al obtener templates de checklist" });
+    }
+  });
+
+  app.post("/api/work-orders/checklist-templates", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
+        return res.status(403).json({ error: "Solo administradores pueden modificar templates" });
+      }
+      const tenantId = req.user!.tenantId!;
+      const schema = z.object({
+        orderType: z.enum(["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"]),
+        label: z.string().min(1).max(300),
+        isActive: z.boolean().default(true),
+      });
+      const parsed = schema.parse(req.body);
+      const existing = await storage.getChecklistTemplatesByType(tenantId, parsed.orderType);
+      const sortOrder = existing.length > 0 ? Math.max(...existing.map((t) => t.sortOrder ?? 0)) + 1 : 0;
+      const template = await storage.createChecklistTemplate({ ...parsed, tenantId, sortOrder });
+      res.status(201).json(template);
+    } catch (error) {
+      if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      console.error("Error creating checklist template:", error);
+      res.status(500).json({ error: "Error al crear template" });
+    }
+  });
+
+  app.patch("/api/work-orders/checklist-templates/:id", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
+        return res.status(403).json({ error: "Solo administradores pueden modificar templates" });
+      }
+      const tenantId = req.user!.tenantId!;
+      const schema = z.object({
+        label: z.string().min(1).max(300).optional(),
+        sortOrder: z.number().int().optional(),
+        isActive: z.boolean().optional(),
+      });
+      const parsed = schema.parse(req.body);
+      const updated = await storage.updateChecklistTemplate(req.params.id, tenantId, parsed);
+      if (!updated) return res.status(404).json({ error: "Template no encontrado" });
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      console.error("Error updating checklist template:", error);
+      res.status(500).json({ error: "Error al actualizar template" });
+    }
+  });
+
+  app.delete("/api/work-orders/checklist-templates/:id", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
+        return res.status(403).json({ error: "Solo administradores pueden modificar templates" });
+      }
+      const tenantId = req.user!.tenantId!;
+      const allTemplates = await storage.getChecklistTemplates(tenantId);
+      const item = allTemplates.find((t) => t.id === req.params.id);
+      if (!item) return res.status(404).json({ error: "Template no encontrado" });
+      const orderType = item.orderType;
+      const deleted = await storage.deleteChecklistTemplate(req.params.id, tenantId);
+      if (!deleted) return res.status(404).json({ error: "Template no encontrado" });
+      const remaining = await storage.getChecklistTemplatesByType(tenantId, orderType);
+      for (let i = 0; i < remaining.length; i++) {
+        if (remaining[i].sortOrder !== i) {
+          await storage.updateChecklistTemplate(remaining[i].id, tenantId, { sortOrder: i });
+        }
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting checklist template:", error);
+      res.status(500).json({ error: "Error al eliminar template" });
+    }
+  });
+
+  // --- Work Order by ID ---
+
   app.get("/api/work-orders/:id", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
@@ -10578,107 +10681,6 @@ export async function registerRoutes(
       }
       console.error("Error creating order from ticket:", error);
       res.status(500).json({ error: "Error al crear orden desde ticket" });
-    }
-  });
-
-  // --- Checklist Templates ---
-
-  app.get("/api/work-orders/checklist-templates", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const tenantId = req.user!.tenantId!;
-      const ALL_TYPES = ["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"];
-      for (const type of ALL_TYPES) {
-        const isInitialized = await storage.isChecklistTypeInitialized(tenantId, type);
-        if (!isInitialized) {
-          const items = getDefaultChecklist(type);
-          if (items.length > 0) {
-            await storage.createChecklistTemplates(
-              items.map((label, idx) => ({ tenantId, orderType: type, label, sortOrder: idx, isActive: true }))
-            );
-          }
-          await storage.markChecklistTypeInitialized(tenantId, type);
-        }
-      }
-      const allTemplates = await storage.getChecklistTemplates(tenantId);
-      const grouped: Record<string, typeof allTemplates> = {};
-      for (const type of ALL_TYPES) grouped[type] = [];
-      for (const t of allTemplates) {
-        if (grouped[t.orderType]) grouped[t.orderType].push(t);
-      }
-      res.json(grouped);
-    } catch (error) {
-      console.error("Error fetching checklist templates:", error);
-      res.status(500).json({ error: "Error al obtener templates de checklist" });
-    }
-  });
-
-  app.post("/api/work-orders/checklist-templates", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
-        return res.status(403).json({ error: "Solo administradores pueden modificar templates" });
-      }
-      const tenantId = req.user!.tenantId!;
-      const schema = z.object({
-        orderType: z.enum(["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"]),
-        label: z.string().min(1).max(300),
-        isActive: z.boolean().default(true),
-      });
-      const parsed = schema.parse(req.body);
-      const existing = await storage.getChecklistTemplatesByType(tenantId, parsed.orderType);
-      const sortOrder = existing.length > 0 ? Math.max(...existing.map((t) => t.sortOrder ?? 0)) + 1 : 0;
-      const template = await storage.createChecklistTemplate({ ...parsed, tenantId, sortOrder });
-      res.status(201).json(template);
-    } catch (error) {
-      if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });
-      console.error("Error creating checklist template:", error);
-      res.status(500).json({ error: "Error al crear template" });
-    }
-  });
-
-  app.patch("/api/work-orders/checklist-templates/:id", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
-        return res.status(403).json({ error: "Solo administradores pueden modificar templates" });
-      }
-      const tenantId = req.user!.tenantId!;
-      const schema = z.object({
-        label: z.string().min(1).max(300).optional(),
-        sortOrder: z.number().int().optional(),
-        isActive: z.boolean().optional(),
-      });
-      const parsed = schema.parse(req.body);
-      const updated = await storage.updateChecklistTemplate(req.params.id, tenantId, parsed);
-      if (!updated) return res.status(404).json({ error: "Template no encontrado" });
-      res.json(updated);
-    } catch (error) {
-      if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });
-      console.error("Error updating checklist template:", error);
-      res.status(500).json({ error: "Error al actualizar template" });
-    }
-  });
-
-  app.delete("/api/work-orders/checklist-templates/:id", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
-        return res.status(403).json({ error: "Solo administradores pueden modificar templates" });
-      }
-      const tenantId = req.user!.tenantId!;
-      const allTemplates = await storage.getChecklistTemplates(tenantId);
-      const item = allTemplates.find((t) => t.id === req.params.id);
-      if (!item) return res.status(404).json({ error: "Template no encontrado" });
-      const orderType = item.orderType;
-      const deleted = await storage.deleteChecklistTemplate(req.params.id, tenantId);
-      if (!deleted) return res.status(404).json({ error: "Template no encontrado" });
-      const remaining = await storage.getChecklistTemplatesByType(tenantId, orderType);
-      for (let i = 0; i < remaining.length; i++) {
-        if (remaining[i].sortOrder !== i) {
-          await storage.updateChecklistTemplate(remaining[i].id, tenantId, { sortOrder: i });
-        }
-      }
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Error deleting checklist template:", error);
-      res.status(500).json({ error: "Error al eliminar template" });
     }
   });
 
