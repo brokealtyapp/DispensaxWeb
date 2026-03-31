@@ -1176,7 +1176,7 @@ export function WorkOrdersPage() {
     resolver: zodResolver(createOrderSchema),
     defaultValues: {
       machineId: "",
-      type: "tecnico",
+      type: "",
       priority: "medio",
       assignedUserId: null,
       description: "",
@@ -1187,7 +1187,7 @@ export function WorkOrdersPage() {
   const editOrderForm = useForm<z.infer<typeof editOrderSchema>>({
     resolver: zodResolver(editOrderSchema),
     defaultValues: {
-      type: "tecnico",
+      type: "",
       priority: "medio",
       status: "pendiente",
       assignedUserId: null,
@@ -1195,6 +1195,24 @@ export function WorkOrdersPage() {
       notes: "",
     },
   });
+
+  useEffect(() => {
+    if (orderTypes.length === 0) return;
+    const validKeys = new Set(orderTypes.map(t => t.key));
+    const currentType = orderForm.getValues("type");
+    if (!currentType || !validKeys.has(currentType)) {
+      orderForm.setValue("type", orderTypes[0].key);
+    }
+  }, [orderTypes, orderForm]);
+
+  useEffect(() => {
+    if (orderTypes.length === 0) return;
+    const validKeys = new Set(orderTypes.map(t => t.key));
+    const currentType = editOrderForm.getValues("type");
+    if (!currentType || !validKeys.has(currentType)) {
+      editOrderForm.setValue("type", orderTypes[0].key);
+    }
+  }, [orderTypes, editOrderForm]);
 
   const editOrderAbastecedorForm = useForm<z.infer<typeof editOrderAbastecedorSchema>>({
     resolver: zodResolver(editOrderAbastecedorSchema),

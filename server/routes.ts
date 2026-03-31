@@ -10221,6 +10221,11 @@ export async function registerRoutes(
         requiresPhoto: z.boolean().default(false),
       });
       const parsed = schema.parse(req.body);
+      await ensureWorkOrderTypesSeed(tenantId);
+      const allTypes = await storage.getWorkOrderTypes(tenantId, true);
+      if (!allTypes.some(t => t.key === parsed.orderType)) {
+        return res.status(400).json({ error: "Tipo de orden no válido para este tenant" });
+      }
       const existing = await storage.getChecklistTemplatesByType(tenantId, parsed.orderType);
       const sortOrder = existing.length > 0 ? Math.max(...existing.map((t) => t.sortOrder ?? 0)) + 1 : 0;
       const template = await storage.createChecklistTemplate({ ...parsed, tenantId, sortOrder });
@@ -10333,6 +10338,15 @@ export async function registerRoutes(
         }
       }
 
+      if (req.body.type) {
+        await ensureWorkOrderTypesSeed(tenantId);
+        const activeTypes = await storage.getWorkOrderTypes(tenantId, false);
+        const validKeys = new Set(activeTypes.map(t => t.key));
+        if (!validKeys.has(req.body.type)) {
+          return res.status(400).json({ error: "Tipo de orden no válido o inactivo para este tenant" });
+        }
+      }
+
       const slaConf = await storage.getSlaConfig(tenantId);
       const priority = req.body.priority || "medio";
       const slaDeadline = calculateSlaDeadline(priority, slaConf || undefined);
@@ -10413,6 +10427,15 @@ export async function registerRoutes(
         notes: z.string().nullable().optional(),
       });
       const updateData = woUpdateSchema.parse(req.body);
+
+      if (updateData.type) {
+        await ensureWorkOrderTypesSeed(tenantId);
+        const allTypes = await storage.getWorkOrderTypes(tenantId, true);
+        const validKeys = new Set(allTypes.map(t => t.key));
+        if (!validKeys.has(updateData.type)) {
+          return res.status(400).json({ error: "Tipo de orden no válido para este tenant" });
+        }
+      }
 
       if (updateData.assignedUserId) {
         const assignee = await storage.getUser(updateData.assignedUserId);
@@ -10875,13 +10898,21 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Ticket no encontrado" });
       }
 
+      await ensureWorkOrderTypesSeed(tenantId);
+      const activeTypes = await storage.getWorkOrderTypes(tenantId, false);
+      const firstActiveKey = activeTypes[0]?.key ?? "tecnico";
       const createOrderFromTicketSchema = z.object({
-        type: z.string().min(1).default("tecnico"),
+        type: z.string().min(1).default(firstActiveKey),
         priority: workOrderPriorityEnum.optional(),
         assignedUserId: z.string().uuid().nullable().optional(),
         description: z.string().optional(),
       });
       const parsed = createOrderFromTicketSchema.parse(req.body);
+
+      const validTypeKeys = new Set(activeTypes.map(t => t.key));
+      if (!validTypeKeys.has(parsed.type)) {
+        return res.status(400).json({ error: "Tipo de orden no válido o inactivo para este tenant" });
+      }
 
       const assignedUserId = parsed.assignedUserId ?? ticket.assignedUserId ?? null;
       if (assignedUserId) {
