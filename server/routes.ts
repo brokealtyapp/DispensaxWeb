@@ -9938,20 +9938,20 @@ export async function registerRoutes(
 
   // ==================== WORK ORDERS MODULE ====================
 
-  async function getChecklistItemsForTenant(tenantId: string, type: string): Promise<string[]> {
+  async function getChecklistItemsForTenant(tenantId: string, type: string): Promise<{ label: string; requiresPhoto: boolean }[]> {
     const isInitialized = await storage.isChecklistTypeInitialized(tenantId, type);
     if (isInitialized) {
       const templates = await storage.getChecklistTemplatesByType(tenantId, type);
-      return templates.filter((t) => t.isActive).map((t) => t.label);
+      return templates.filter((t) => t.isActive).map((t) => ({ label: t.label, requiresPhoto: t.requiresPhoto ?? false }));
     }
     const defaults = getDefaultChecklist(type);
     if (defaults.length > 0) {
       await storage.createChecklistTemplates(
-        defaults.map((label, idx) => ({ tenantId, orderType: type, label, sortOrder: idx, isActive: true }))
+        defaults.map((label, idx) => ({ tenantId, orderType: type, label, sortOrder: idx, isActive: true, requiresPhoto: false }))
       );
     }
     await storage.markChecklistTypeInitialized(tenantId, type);
-    return defaults;
+    return defaults.map((label) => ({ label, requiresPhoto: false }));
   }
 
   function getDefaultChecklist(type: string): string[] {
@@ -10106,6 +10106,7 @@ export async function registerRoutes(
         orderType: z.enum(["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"]),
         label: z.string().min(1).max(300),
         isActive: z.boolean().default(true),
+        requiresPhoto: z.boolean().default(false),
       });
       const parsed = schema.parse(req.body);
       const existing = await storage.getChecklistTemplatesByType(tenantId, parsed.orderType);
@@ -10129,6 +10130,7 @@ export async function registerRoutes(
         label: z.string().min(1).max(300).optional(),
         sortOrder: z.number().int().optional(),
         isActive: z.boolean().optional(),
+        requiresPhoto: z.boolean().optional(),
       });
       const parsed = schema.parse(req.body);
       const updated = await storage.updateChecklistTemplate(req.params.id, tenantId, parsed);
@@ -10246,12 +10248,13 @@ export async function registerRoutes(
       const defaultItems = await getChecklistItemsForTenant(tenantId, order.type);
       if (defaultItems.length > 0) {
         await storage.createChecklistItems(
-          defaultItems.map((label, idx) => ({
+          defaultItems.map((item, idx) => ({
             workOrderId: order.id,
             tenantId,
-            label,
+            label: item.label,
             sortOrder: idx,
             isCompleted: false,
+            requiresPhoto: item.requiresPhoto,
           }))
         );
       }
@@ -10413,6 +10416,117 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating checklist item:", error);
       res.status(500).json({ error: "Error al actualizar item del checklist" });
+    }
+  });
+
+  // --- Checklist Photo Upload ---
+
+  const checklistUpload = (await import("multer")).default({ storage: (await import("multer")).default.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+  app.post("/api/work-orders/:id/checklist/:itemId/photo", authenticateJWT, authorizeAction("work_orders", "edit"), checklistUpload.single("photo"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const order = await storage.getWorkOrderById(req.params.id);
+      if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.userId) {
+        return res.status(403).json({ error: "Sin permisos" });
+      }
+
+      const file = (req as Express.Request & { file?: Express.Multer.File }).file;
+      if (!file) return res.status(400).json({ error: "Foto requerida" });
+      if (!file.mimetype.startsWith("image/")) return res.status(400).json({ error: "Solo se permiten imágenes" });
+
+      const lat = req.body?.lat || "";
+      const lng = req.body?.lng || "";
+      const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "").split(",")[0].trim();
+
+      const userRecord = await storage.getUser(req.user!.userId);
+      const techName = userRecord?.fullName || req.user!.userId;
+
+      const now = new Date();
+      const formatter = new Intl.DateTimeFormat("es-DO", {
+        timeZone: "America/Santo_Domingo",
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+      });
+      const dateLabel = formatter.format(now);
+
+      const sharp = (await import("sharp")).default;
+      const meta = await sharp(file.buffer).metadata();
+      const imgW = meta.width || 800;
+      const fontSize = Math.max(14, Math.round(imgW * 0.022));
+      const lineH = fontSize + 6;
+      const lines = [techName, `IP: ${ip}`, `GPS: ${lat}, ${lng}`, dateLabel];
+      const padX = 10;
+      const padY = 8;
+      const svgH = lines.length * lineH + padY * 2;
+      const svgW = imgW;
+
+      const svgOverlay = `<svg width="${svgW}" height="${svgH}" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="${svgW}" height="${svgH}" fill="rgba(0,0,0,0.55)" rx="0"/>
+  ${lines.map((line, i) => `<text x="${padX}" y="${padY + fontSize + i * lineH}" font-family="monospace" font-size="${fontSize}" fill="white">${line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</text>`).join("\n  ")}
+</svg>`;
+
+      const watermarked = await sharp(file.buffer)
+        .flatten({ background: { r: 0, g: 0, b: 0 } })
+        .composite([{
+          input: Buffer.from(svgOverlay),
+          gravity: "south",
+        }])
+        .jpeg({ quality: 85 })
+        .toBuffer();
+
+      const timestamp = Date.now();
+      const fileKey = `.private/${tenantId}/checklist-photos/${order.id}/${req.params.itemId}_${timestamp}.jpg`;
+
+      const { Client } = await import("@replit/object-storage");
+      const objClient = new Client();
+      await objClient.uploadFromBytes(fileKey, watermarked);
+
+      const updated = await storage.updateChecklistItem(req.params.itemId, {
+        isCompleted: true,
+        completedAt: now,
+        completedBy: req.user!.userId,
+        photoUrl: fileKey,
+        photoTakenAt: now,
+        photoIp: ip,
+        photoLat: lat,
+        photoLng: lng,
+        photoTechnicianName: techName,
+      }, order.id);
+
+      if (!updated) return res.status(404).json({ error: "Item del checklist no encontrado" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error uploading checklist photo:", error);
+      res.status(500).json({ error: "Error al subir foto" });
+    }
+  });
+
+  app.get("/api/work-orders/:id/checklist/:itemId/photo", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const order = await storage.getWorkOrderById(req.params.id);
+      if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+      const items = await storage.getChecklistItems(order.id);
+      const item = items.find((i) => i.id === req.params.itemId);
+      if (!item || !item.photoUrl) return res.status(404).json({ error: "Foto no encontrada" });
+
+      const { Client } = await import("@replit/object-storage");
+      const objClient = new Client();
+      const result = await objClient.downloadAsBytes(item.photoUrl);
+      if (!result.ok) return res.status(404).json({ error: "Foto no encontrada en storage" });
+
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.send(Buffer.from(result.value));
+    } catch (error) {
+      console.error("Error fetching checklist photo:", error);
+      res.status(500).json({ error: "Error al obtener foto" });
     }
   });
 
@@ -10662,12 +10776,13 @@ export async function registerRoutes(
       const defaultItems = await getChecklistItemsForTenant(tenantId, parsed.type);
       if (defaultItems.length > 0) {
         await storage.createChecklistItems(
-          defaultItems.map((label, idx) => ({
+          defaultItems.map((item, idx) => ({
             workOrderId: order.id,
             tenantId,
-            label,
+            label: item.label,
             sortOrder: idx,
             isCompleted: false,
+            requiresPhoto: item.requiresPhoto,
           }))
         );
       }

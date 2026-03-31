@@ -2755,6 +2755,13 @@ export const workOrderChecklistItems = pgTable("work_order_checklist_items", {
   completedBy: varchar("completed_by").references(() => users.id),
   sortOrder: integer("sort_order").default(0),
   notes: text("notes"),
+  requiresPhoto: boolean("requires_photo").default(false),
+  photoUrl: varchar("photo_url"),
+  photoTakenAt: timestamp("photo_taken_at"),
+  photoIp: varchar("photo_ip"),
+  photoLat: varchar("photo_lat"),
+  photoLng: varchar("photo_lng"),
+  photoTechnicianName: varchar("photo_technician_name"),
 });
 
 export const insertWorkOrderChecklistItemSchema = createInsertSchema(workOrderChecklistItems).omit({ id: true });
@@ -2768,6 +2775,7 @@ export const workOrderChecklistTemplates = pgTable("work_order_checklist_templat
   label: varchar("label").notNull(),
   sortOrder: integer("sort_order").default(0),
   isActive: boolean("is_active").default(true),
+  requiresPhoto: boolean("requires_photo").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

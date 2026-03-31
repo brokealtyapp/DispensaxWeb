@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { getAccessToken } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
@@ -46,6 +47,8 @@ import {
   ToggleRight,
   Save,
   PlusCircle,
+  Camera,
+  Loader2,
 } from "lucide-react";
 import {
   BarChart,
@@ -161,6 +164,13 @@ interface ChecklistItem {
   completedBy: string | null;
   sortOrder: number;
   notes: string | null;
+  requiresPhoto: boolean;
+  photoUrl: string | null;
+  photoTakenAt: string | null;
+  photoIp: string | null;
+  photoLat: string | null;
+  photoLng: string | null;
+  photoTechnicianName: string | null;
 }
 
 interface Machine {
@@ -380,6 +390,9 @@ function OrderDetailView({
   const slaTick = useSlaTimer();
   const machine = machines.find(m => m.id === order.machineId);
   const assignee = users.find(u => u.id === order.assignedUserId);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [capturingItemId, setCapturingItemId] = useState<string | null>(null);
+  const [uploadingItemId, setUploadingItemId] = useState<string | null>(null);
 
   const { data: checklist = [], isLoading: checklistLoading } = useQuery<ChecklistItem[]>({
     queryKey: ["/api/work-orders", order.id, "checklist"],
@@ -400,6 +413,64 @@ function OrderDetailView({
       toast({ title: "Error", description: "No se pudo actualizar el checklist", variant: "destructive" });
     },
   });
+
+  const handleCameraCapture = (itemId: string) => {
+    setCapturingItemId(itemId);
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = "";
+      cameraInputRef.current.click();
+    }
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const itemId = capturingItemId;
+    setCapturingItemId(null);
+    if (!file || !itemId) return;
+
+    setUploadingItemId(itemId);
+    try {
+      let lat = "";
+      let lng = "";
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+        });
+        lat = String(pos.coords.latitude);
+        lng = String(pos.coords.longitude);
+      } catch {
+        // Geolocation optional — continue without coordinates
+      }
+
+      const formData = new FormData();
+      formData.append("photo", file);
+      formData.append("lat", lat);
+      formData.append("lng", lng);
+
+      const token = getAccessToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/work-orders/${order.id}/checklist/${itemId}/photo`, {
+        method: "POST",
+        headers,
+        body: formData,
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Error desconocido" }));
+        throw new Error(err.error || "Error al subir foto");
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders", order.id, "checklist"] });
+      toast({ title: "Foto guardada", description: "El ítem se marcó como completado" });
+    } catch (error) {
+      toast({ title: "Error", description: (error as Error).message || "No se pudo subir la foto", variant: "destructive" });
+    } finally {
+      setUploadingItemId(null);
+    }
+  };
 
   const updateStatusMutation = useMutation({
     mutationFn: async (status: string) => {
@@ -527,22 +598,79 @@ function OrderDetailView({
                   />
                 </div>
                 {checklist.map((item) => (
-                  <div key={item.id} className="flex items-start gap-3" data-testid={`checklist-item-${item.id}`}>
-                    <Checkbox
-                      checked={item.isCompleted}
-                      onCheckedChange={(checked) => {
-                        if (can("work_orders", "edit")) {
-                          updateChecklistMutation.mutate({ itemId: item.id, isCompleted: !!checked });
-                        }
-                      }}
-                      disabled={!can("work_orders", "edit") || updateChecklistMutation.isPending}
-                      data-testid={`checkbox-checklist-${item.id}`}
-                    />
-                    <span className={`text-sm ${item.isCompleted ? "line-through text-muted-foreground" : ""}`}>
-                      {item.label}
-                    </span>
+                  <div key={item.id} className="space-y-1.5" data-testid={`checklist-item-${item.id}`}>
+                    <div className="flex items-start gap-3">
+                      {item.requiresPhoto ? (
+                        <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+                          {item.isCompleted ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                          ) : uploadingItemId === item.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
+                          ) : can("work_orders", "edit") ? (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() => handleCameraCapture(item.id)}
+                              disabled={uploadingItemId !== null}
+                              data-testid={`button-camera-${item.id}`}
+                              title="Tomar foto para completar este ítem"
+                            >
+                              <Camera className="h-4 w-4" />
+                            </Button>
+                          ) : (
+                            <Camera className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          )}
+                        </div>
+                      ) : (
+                        <Checkbox
+                          checked={item.isCompleted}
+                          onCheckedChange={(checked) => {
+                            if (can("work_orders", "edit")) {
+                              updateChecklistMutation.mutate({ itemId: item.id, isCompleted: !!checked });
+                            }
+                          }}
+                          disabled={!can("work_orders", "edit") || updateChecklistMutation.isPending}
+                          data-testid={`checkbox-checklist-${item.id}`}
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <span className={`text-sm ${item.isCompleted ? "line-through text-muted-foreground" : ""}`}>
+                          {item.label}
+                        </span>
+                        {item.requiresPhoto && !item.isCompleted && (
+                          <Badge className="ml-2 no-default-hover-elevate no-default-active-elevate text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+                            <Camera className="h-2.5 w-2.5 mr-1" />
+                            Requiere foto
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    {item.requiresPhoto && item.photoUrl && (
+                      <div className="ml-8 flex items-center gap-2">
+                        <img
+                          src={`/api/work-orders/${order.id}/checklist/${item.id}/photo`}
+                          alt="Foto del checklist"
+                          className="h-20 w-28 object-cover rounded-md border"
+                          data-testid={`photo-checklist-${item.id}`}
+                        />
+                        <div className="text-xs text-muted-foreground space-y-0.5">
+                          {item.photoTechnicianName && <p><span className="font-medium">Técnico:</span> {item.photoTechnicianName}</p>}
+                          {item.photoTakenAt && <p><span className="font-medium">Fecha:</span> {formatDate(item.photoTakenAt)}</p>}
+                          {item.photoLat && item.photoLng && <p><span className="font-medium">GPS:</span> {item.photoLat}, {item.photoLng}</p>}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handleFileSelected}
+                  data-testid="input-camera-capture"
+                />
               </div>
             )}
           </CardContent>
@@ -789,7 +917,7 @@ export function WorkOrdersPage() {
     queryKey: ["/api/users"],
   });
 
-  type ChecklistTemplate = { id: string; tenantId: string; orderType: string; label: string; sortOrder: number; isActive: boolean; createdAt: string };
+  type ChecklistTemplate = { id: string; tenantId: string; orderType: string; label: string; sortOrder: number; isActive: boolean; requiresPhoto: boolean; createdAt: string };
   type ChecklistTemplatesGrouped = Record<string, ChecklistTemplate[]>;
 
   const { data: checklistTemplates = {}, isLoading: templatesLoading } = useQuery<ChecklistTemplatesGrouped>({
@@ -811,7 +939,7 @@ export function WorkOrdersPage() {
   });
 
   const updateTemplateMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; label?: string; sortOrder?: number; isActive?: boolean }) => {
+    mutationFn: async ({ id, ...data }: { id: string; label?: string; sortOrder?: number; isActive?: boolean; requiresPhoto?: boolean }) => {
       const res = await apiRequest("PATCH", `/api/work-orders/checklist-templates/${id}`, data);
       return res.json();
     },
@@ -1453,7 +1581,12 @@ export function WorkOrdersPage() {
                               </Button>
                             </div>
                           ) : (
-                            <span className="flex-1 text-sm leading-tight line-clamp-2">{item.label}</span>
+                            <div className="flex-1 flex items-center gap-1.5 min-w-0">
+                              <span className="text-sm leading-tight line-clamp-2">{item.label}</span>
+                              {item.requiresPhoto && (
+                                <Camera className="h-3 w-3 text-blue-600 flex-shrink-0" title="Requiere foto" />
+                              )}
+                            </div>
                           )}
                           <div className="flex items-center gap-1 shrink-0">
                             {editingItemId !== item.id && (
@@ -1461,6 +1594,16 @@ export function WorkOrdersPage() {
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
                             )}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => updateTemplateMutation.mutate({ id: item.id, requiresPhoto: !item.requiresPhoto })}
+                              disabled={updateTemplateMutation.isPending}
+                              data-testid={`button-toggle-photo-${item.id}`}
+                              title={item.requiresPhoto ? "Quitar requisito de foto" : "Requerir foto para completar"}
+                            >
+                              <Camera className={`h-3.5 w-3.5 ${item.requiresPhoto ? "text-blue-600" : "text-muted-foreground"}`} />
+                            </Button>
                             <Button
                               size="icon"
                               variant="ghost"
