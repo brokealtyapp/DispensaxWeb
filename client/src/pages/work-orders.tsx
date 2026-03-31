@@ -393,6 +393,7 @@ function OrderDetailView({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [capturingItemId, setCapturingItemId] = useState<string | null>(null);
   const [uploadingItemId, setUploadingItemId] = useState<string | null>(null);
+  const pendingGeoRef = useRef<{ lat: string; lng: string }>({ lat: "", lng: "" });
 
   const { data: checklist = [], isLoading: checklistLoading } = useQuery<ChecklistItem[]>({
     queryKey: ["/api/work-orders", order.id, "checklist"],
@@ -414,7 +415,17 @@ function OrderDetailView({
     },
   });
 
-  const handleCameraCapture = (itemId: string) => {
+  const handleCameraCapture = async (itemId: string) => {
+    // Request geolocation BEFORE opening camera
+    pendingGeoRef.current = { lat: "", lng: "" };
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 6000, enableHighAccuracy: true });
+      });
+      pendingGeoRef.current = { lat: String(pos.coords.latitude), lng: String(pos.coords.longitude) };
+    } catch {
+      // Geolocation optional — proceed without coordinates
+    }
     setCapturingItemId(itemId);
     if (cameraInputRef.current) {
       cameraInputRef.current.value = "";
@@ -425,23 +436,12 @@ function OrderDetailView({
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     const itemId = capturingItemId;
+    const { lat, lng } = pendingGeoRef.current;
     setCapturingItemId(null);
     if (!file || !itemId) return;
 
     setUploadingItemId(itemId);
     try {
-      let lat = "";
-      let lng = "";
-      try {
-        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-        });
-        lat = String(pos.coords.latitude);
-        lng = String(pos.coords.longitude);
-      } catch {
-        // Geolocation optional — continue without coordinates
-      }
-
       const formData = new FormData();
       formData.append("photo", file);
       formData.append("lat", lat);

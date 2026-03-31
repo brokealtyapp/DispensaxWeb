@@ -10400,6 +10400,14 @@ export async function registerRoutes(
       const parsedChecklist = checklistUpdateSchema.parse(req.body);
       const checklistUpdate: Partial<{ isCompleted: boolean; completedAt: Date | null; completedBy: string | null; notes: string | null }> = {};
       if (parsedChecklist.isCompleted !== undefined) {
+        // If trying to mark as completed, check if item requires a photo first
+        if (parsedChecklist.isCompleted) {
+          const allItems = await storage.getChecklistItems(order.id);
+          const targetItem = allItems.find((i) => i.id === req.params.itemId);
+          if (targetItem?.requiresPhoto && !targetItem?.photoUrl) {
+            return res.status(422).json({ error: "Este ítem requiere una foto para ser completado" });
+          }
+        }
         checklistUpdate.isCompleted = parsedChecklist.isCompleted;
         checklistUpdate.completedAt = parsedChecklist.isCompleted ? new Date() : null;
         checklistUpdate.completedBy = parsedChecklist.isCompleted ? req.user!.userId : null;
@@ -10510,6 +10518,9 @@ export async function registerRoutes(
       const tenantId = req.user!.tenantId!;
       const order = await storage.getWorkOrderById(req.params.id);
       if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.userId) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
       const items = await storage.getChecklistItems(order.id);
