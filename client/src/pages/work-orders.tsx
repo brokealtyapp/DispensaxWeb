@@ -1058,10 +1058,6 @@ export function WorkOrdersPage() {
   const deleteTypeMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await apiRequest("DELETE", `/api/work-order-types/${id}`);
-      if (!res.ok) {
-        const body = await res.json();
-        throw new Error(body.error || "Error al eliminar tipo");
-      }
       return res.json();
     },
     onSuccess: () => {
@@ -1070,7 +1066,18 @@ export function WorkOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/work-orders/checklist-templates"] });
       toast({ title: "Tipo eliminado" });
     },
-    onError: (err: unknown) => toast({ title: "No se puede eliminar", description: err instanceof Error ? err.message : "Error al eliminar tipo", variant: "destructive" }),
+    onError: (err: unknown) => {
+      let description = "Error al eliminar tipo";
+      if (err instanceof Error) {
+        const match = err.message.match(/^\d+:\s*(.+)$/s);
+        if (match) {
+          try { description = JSON.parse(match[1]).error || match[1]; } catch { description = match[1]; }
+        } else {
+          description = err.message;
+        }
+      }
+      toast({ title: "No se puede eliminar", description, variant: "destructive" });
+    },
   });
 
   const addTemplateMutation = useMutation({
