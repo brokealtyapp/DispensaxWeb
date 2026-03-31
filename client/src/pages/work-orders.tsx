@@ -394,6 +394,7 @@ function OrderDetailView({
   const [capturingItemId, setCapturingItemId] = useState<string | null>(null);
   const [uploadingItemId, setUploadingItemId] = useState<string | null>(null);
   const pendingGeoRef = useRef<{ lat: string; lng: string }>({ lat: "", lng: "" });
+  const [photoBlobUrls, setPhotoBlobUrls] = useState<Record<string, string>>({});
 
   const { data: checklist = [], isLoading: checklistLoading } = useQuery<ChecklistItem[]>({
     queryKey: ["/api/work-orders", order.id, "checklist"],
@@ -402,6 +403,42 @@ function OrderDetailView({
       return res.json();
     },
   });
+
+  // Fetch photo blob URLs with auth headers for checklist items that have photos
+  useEffect(() => {
+    const itemsWithPhotos = checklist.filter(i => i.requiresPhoto && i.photoUrl);
+    if (itemsWithPhotos.length === 0) return;
+
+    const blobMap: Record<string, string> = {};
+    const fetchPromises = itemsWithPhotos.map(async (item) => {
+      if (photoBlobUrls[item.id]) return; // already loaded
+      try {
+        const token = getAccessToken();
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        const res = await fetch(`/api/work-orders/${order.id}/checklist/${item.id}/photo`, { headers, credentials: "include" });
+        if (res.ok) {
+          const blob = await res.blob();
+          blobMap[item.id] = URL.createObjectURL(blob);
+        }
+      } catch {
+        // ignore individual fetch errors
+      }
+    });
+
+    Promise.all(fetchPromises).then(() => {
+      if (Object.keys(blobMap).length > 0) {
+        setPhotoBlobUrls(prev => ({ ...prev, ...blobMap }));
+      }
+    });
+  }, [checklist]);
+
+  // Revoke blob URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      Object.values(photoBlobUrls).forEach(url => URL.revokeObjectURL(url));
+    };
+  }, []);
 
   const updateChecklistMutation = useMutation({
     mutationFn: async ({ itemId, isCompleted }: { itemId: string; isCompleted: boolean }) => {
@@ -462,6 +499,10 @@ function OrderDetailView({
         const err = await res.json().catch(() => ({ error: "Error desconocido" }));
         throw new Error(err.error || "Error al subir foto");
       }
+
+      // Create blob URL immediately from uploaded file for instant thumbnail display
+      const blobUrl = URL.createObjectURL(file);
+      setPhotoBlobUrls(prev => ({ ...prev, [itemId]: blobUrl }));
 
       queryClient.invalidateQueries({ queryKey: ["/api/work-orders", order.id, "checklist"] });
       toast({ title: "Foto guardada", description: "El ítem se marcó como completado" });
@@ -652,12 +693,14 @@ function OrderDetailView({
                           Foto tomada
                         </Badge>
                         <div className="flex items-center gap-2">
-                          <img
-                            src={`/api/work-orders/${order.id}/checklist/${item.id}/photo`}
-                            alt="Foto del checklist"
-                            className="h-20 w-28 object-cover rounded-md border"
-                            data-testid={`photo-checklist-${item.id}`}
-                          />
+                          {photoBlobUrls[item.id] && (
+                            <img
+                              src={photoBlobUrls[item.id]}
+                              alt="Foto del checklist"
+                              className="h-20 w-28 object-cover rounded-md border"
+                              data-testid={`photo-checklist-${item.id}`}
+                            />
+                          )}
                           <div className="text-xs text-muted-foreground space-y-0.5">
                             {item.photoTechnicianName && <p><span className="font-medium">Técnico:</span> {item.photoTechnicianName}</p>}
                             {item.photoTakenAt && <p><span className="font-medium">Fecha:</span> {formatDate(item.photoTakenAt)}</p>}
