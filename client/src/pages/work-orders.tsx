@@ -646,17 +646,23 @@ function OrderDetailView({
                       </div>
                     </div>
                     {item.requiresPhoto && item.photoUrl && (
-                      <div className="ml-8 flex items-center gap-2">
-                        <img
-                          src={`/api/work-orders/${order.id}/checklist/${item.id}/photo`}
-                          alt="Foto del checklist"
-                          className="h-20 w-28 object-cover rounded-md border"
-                          data-testid={`photo-checklist-${item.id}`}
-                        />
-                        <div className="text-xs text-muted-foreground space-y-0.5">
-                          {item.photoTechnicianName && <p><span className="font-medium">Técnico:</span> {item.photoTechnicianName}</p>}
-                          {item.photoTakenAt && <p><span className="font-medium">Fecha:</span> {formatDate(item.photoTakenAt)}</p>}
-                          {item.photoLat && item.photoLng && <p><span className="font-medium">GPS:</span> {item.photoLat}, {item.photoLng}</p>}
+                      <div className="ml-8 space-y-1.5">
+                        <Badge className="no-default-hover-elevate no-default-active-elevate text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                          <CheckCircle2 className="h-2.5 w-2.5 mr-1" />
+                          Foto tomada
+                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={`/api/work-orders/${order.id}/checklist/${item.id}/photo`}
+                            alt="Foto del checklist"
+                            className="h-20 w-28 object-cover rounded-md border"
+                            data-testid={`photo-checklist-${item.id}`}
+                          />
+                          <div className="text-xs text-muted-foreground space-y-0.5">
+                            {item.photoTechnicianName && <p><span className="font-medium">Técnico:</span> {item.photoTechnicianName}</p>}
+                            {item.photoTakenAt && <p><span className="font-medium">Fecha:</span> {formatDate(item.photoTakenAt)}</p>}
+                            {item.photoLat && item.photoLng && <p><span className="font-medium">GPS:</span> {item.photoLat}, {item.photoLng}</p>}
+                          </div>
                         </div>
                       </div>
                     )}

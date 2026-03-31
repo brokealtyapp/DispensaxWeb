@@ -10451,8 +10451,11 @@ export async function registerRoutes(
       if (!file) return res.status(400).json({ error: "Foto requerida" });
       if (!file.mimetype.startsWith("image/")) return res.status(400).json({ error: "Solo se permiten imágenes" });
 
-      const lat = req.body?.lat || "";
-      const lng = req.body?.lng || "";
+      // Validate and sanitize lat/lng numeric ranges
+      const rawLat = parseFloat(req.body?.lat || "");
+      const rawLng = parseFloat(req.body?.lng || "");
+      const lat = (!isNaN(rawLat) && rawLat >= -90 && rawLat <= 90) ? String(rawLat) : "";
+      const lng = (!isNaN(rawLng) && rawLng >= -180 && rawLng <= 180) ? String(rawLng) : "";
       const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "").split(",")[0].trim();
 
       const userRecord = await storage.getUser(req.user!.userId);
