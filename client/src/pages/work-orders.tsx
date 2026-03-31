@@ -23,6 +23,7 @@ import {
   Search,
   AlertTriangle,
   Clock,
+  Check,
   CheckCircle2,
   Wrench,
   X,
@@ -959,6 +960,7 @@ export function WorkOrdersPage() {
   const [newTypeLabel, setNewTypeLabel] = useState("");
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [editingTypeLabel, setEditingTypeLabel] = useState("");
+  const [confirmDeleteTypeId, setConfirmDeleteTypeId] = useState<string | null>(null);
 
   const { data: orders = [], isLoading: ordersLoading, isError: ordersError } = useQuery<WorkOrder[]>({
     queryKey: ["/api/work-orders"],
@@ -1502,7 +1504,15 @@ export function WorkOrdersPage() {
                     <FormLabel>Tipo</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger data-testid="select-edit-order-type"><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>{Object.entries(typeLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                      <SelectContent>
+                        {orderTypes.map((t) => <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>)}
+                        {/* Si el tipo actual está inactivo, mostrarlo igualmente */}
+                        {editOrderForm.getValues("type") && !orderTypes.find(t => t.key === editOrderForm.getValues("type")) && (
+                          <SelectItem key={editOrderForm.getValues("type")} value={editOrderForm.getValues("type")}>
+                            {typeLabels[editOrderForm.getValues("type")] || editOrderForm.getValues("type")} (inactivo)
+                          </SelectItem>
+                        )}
+                      </SelectContent>
                     </Select>
                     <FormMessage />
                   </FormItem>
@@ -1776,9 +1786,21 @@ export function WorkOrdersPage() {
                             <Button size="icon" variant="ghost" onClick={() => { setEditingTypeId(wot.id); setEditingTypeLabel(wot.label); }} data-testid={`button-rename-type-${wot.id}`} title="Renombrar">
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                            <Button size="icon" variant="ghost" onClick={() => deleteTypeMutation.mutate(wot.id)} disabled={deleteTypeMutation.isPending} data-testid={`button-delete-type-${wot.id}`} title="Eliminar tipo">
-                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                            </Button>
+                            {confirmDeleteTypeId === wot.id ? (
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-destructive">¿Confirmar?</span>
+                                <Button size="icon" variant="ghost" onClick={() => { deleteTypeMutation.mutate(wot.id); setConfirmDeleteTypeId(null); }} disabled={deleteTypeMutation.isPending} data-testid={`button-confirm-delete-type-${wot.id}`} title="Confirmar eliminación">
+                                  <Check className="h-3.5 w-3.5 text-destructive" />
+                                </Button>
+                                <Button size="icon" variant="ghost" onClick={() => setConfirmDeleteTypeId(null)} data-testid={`button-cancel-delete-type-${wot.id}`} title="Cancelar">
+                                  <X className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button size="icon" variant="ghost" onClick={() => setConfirmDeleteTypeId(wot.id)} disabled={deleteTypeMutation.isPending} data-testid={`button-delete-type-${wot.id}`} title="Eliminar tipo">
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -2390,8 +2412,8 @@ export function WorkOrdersPage() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {Object.entries(typeLabels).map(([k, v]) => (
-                          <SelectItem key={k} value={k}>{v}</SelectItem>
+                        {orderTypes.map((t) => (
+                          <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
