@@ -10429,9 +10429,20 @@ export async function registerRoutes(
 
   // --- Checklist Photo Upload ---
 
-  const checklistUpload = (await import("multer")).default({ storage: (await import("multer")).default.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+  const multerLib = (await import("multer")).default;
+  const checklistUpload = multerLib({ storage: multerLib.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
-  app.post("/api/work-orders/:id/checklist/:itemId/photo", authenticateJWT, authorizeAction("work_orders", "edit"), checklistUpload.single("photo"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/work-orders/:id/checklist/:itemId/photo", authenticateJWT, authorizeAction("work_orders", "edit"), (req: AuthenticatedRequest, res: Response, next) => {
+    // Use multer callback to intercept LIMIT_FILE_SIZE before it reaches global error handling
+    checklistUpload.single("photo")(req as Request, res, (err: unknown) => {
+      const multerErr = err as { code?: string } | null;
+      if (multerErr?.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ error: "La foto excede el tamaño máximo de 5MB" });
+      }
+      if (err) return next(err);
+      next();
+    });
+  }, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
       const order = await storage.getWorkOrderById(req.params.id);
@@ -10515,12 +10526,7 @@ export async function registerRoutes(
 
       if (!updated) return res.status(404).json({ error: "Item del checklist no encontrado" });
       res.json(updated);
-    } catch (error: unknown) {
-      // Handle multer file size limit error explicitly
-      const multerError = error as { code?: string; field?: string };
-      if (multerError?.code === "LIMIT_FILE_SIZE") {
-        return res.status(413).json({ error: "La foto excede el tamaño máximo de 5MB" });
-      }
+    } catch (error) {
       console.error("Error uploading checklist photo:", error);
       res.status(500).json({ error: "Error al subir foto" });
     }

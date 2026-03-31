@@ -433,10 +433,14 @@ function OrderDetailView({
     });
   }, [checklist]);
 
-  // Revoke blob URLs when component unmounts
+  // Revoke blob URLs when component unmounts (using ref to avoid stale closure)
+  const photoBlobUrlsRef = useRef(photoBlobUrls);
+  useEffect(() => {
+    photoBlobUrlsRef.current = photoBlobUrls;
+  }, [photoBlobUrls]);
   useEffect(() => {
     return () => {
-      Object.values(photoBlobUrls).forEach(url => URL.revokeObjectURL(url));
+      Object.values(photoBlobUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
     };
   }, []);
 
@@ -501,8 +505,12 @@ function OrderDetailView({
       }
 
       // Create blob URL immediately from uploaded file for instant thumbnail display
+      // Revoke any existing blob URL for this item before replacing it
       const blobUrl = URL.createObjectURL(file);
-      setPhotoBlobUrls(prev => ({ ...prev, [itemId]: blobUrl }));
+      setPhotoBlobUrls(prev => {
+        if (prev[itemId]) URL.revokeObjectURL(prev[itemId]);
+        return { ...prev, [itemId]: blobUrl };
+      });
 
       queryClient.invalidateQueries({ queryKey: ["/api/work-orders", order.id, "checklist"] });
       toast({ title: "Foto guardada", description: "El ítem se marcó como completado" });
