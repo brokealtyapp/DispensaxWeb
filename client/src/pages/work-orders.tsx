@@ -1010,8 +1010,7 @@ export function WorkOrdersPage() {
       const res = await apiRequest("GET", "/api/work-order-types?includeInactive=true");
       return res.json();
     },
-    enabled: showChecklistSettings,
-    staleTime: 0,
+    staleTime: 60000,
   });
 
   const typeLabels = useMemo<Record<string, string>>(() => {
