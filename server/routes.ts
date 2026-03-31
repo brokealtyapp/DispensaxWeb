@@ -10115,6 +10115,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Solo administradores pueden gestionar tipos de orden" });
       }
       const tenantId = req.user!.tenantId!;
+      await ensureWorkOrderTypesSeed(tenantId);
       const schema = z.object({ label: z.string().min(1).max(100) });
       const { label } = schema.parse(req.body);
       const key = slugifyTypeKey(label);
