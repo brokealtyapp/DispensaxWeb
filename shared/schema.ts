@@ -2737,7 +2737,7 @@ export const workOrders = pgTable("work_orders", {
 }, (t) => [uniqueIndex("uq_order_number_tenant").on(t.tenantId, t.orderNumber)]);
 
 export const insertWorkOrderSchema = createInsertSchema(workOrders).omit({ id: true, createdAt: true, updatedAt: true }).extend({
-  type: workOrderTypeEnum.default("tecnico"),
+  type: z.string().min(1).default("tecnico"),
   priority: workOrderPriorityEnum.default("medio"),
   status: workOrderStatusEnum.default("pendiente"),
   slaStatus: slaStatusEnum.optional().nullable(),
@@ -2838,3 +2838,18 @@ export const workOrderChecklistTypesInit = pgTable("work_order_checklist_types_i
   orderType: varchar("order_type").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => [uniqueIndex("uq_checklist_init_tenant_type").on(t.tenantId, t.orderType)]);
+
+export const workOrderTypes = pgTable("work_order_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  key: varchar("key").notNull(),
+  label: varchar("label").notNull(),
+  isActive: boolean("is_active").default(true),
+  isDefault: boolean("is_default").default(false),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [uniqueIndex("uq_work_order_type_key_tenant").on(t.tenantId, t.key)]);
+
+export const insertWorkOrderTypeSchema = createInsertSchema(workOrderTypes).omit({ id: true, createdAt: true });
+export type InsertWorkOrderType = z.infer<typeof insertWorkOrderTypeSchema>;
+export type WorkOrderType = typeof workOrderTypes.$inferSelect;

@@ -112,6 +112,7 @@ import {
   ticketTypeEnum,
   ticketStatusEnum,
   slaStatusEnum,
+  type WorkOrderType,
   changeFunds as changeFundsTable,
 } from "@shared/schema";
 import { z, ZodError } from "zod";
@@ -9938,6 +9939,34 @@ export async function registerRoutes(
 
   // ==================== WORK ORDERS MODULE ====================
 
+  const DEFAULT_WORK_ORDER_TYPES = [
+    { key: "tecnico", label: "Técnico", sortOrder: 0, isDefault: true, isActive: true },
+    { key: "abastecimiento", label: "Abastecimiento", sortOrder: 1, isDefault: true, isActive: true },
+    { key: "mantenimiento_preventivo", label: "Mant. Preventivo", sortOrder: 2, isDefault: true, isActive: true },
+    { key: "instalacion", label: "Instalación", sortOrder: 3, isDefault: true, isActive: true },
+    { key: "retiro", label: "Retiro", sortOrder: 4, isDefault: true, isActive: true },
+  ];
+
+  async function ensureWorkOrderTypesSeed(tenantId: string): Promise<void> {
+    const existing = await storage.getWorkOrderTypes(tenantId, true);
+    if (existing.length > 0) return;
+    for (const t of DEFAULT_WORK_ORDER_TYPES) {
+      try {
+        await storage.createWorkOrderType({ ...t, tenantId });
+      } catch (_e) { /* ignore duplicate */ }
+    }
+  }
+
+  function slugifyTypeKey(label: string): string {
+    return label
+      .toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s_]/g, "")
+      .trim()
+      .replace(/\s+/g, "_")
+      .slice(0, 60);
+  }
+
   async function getChecklistItemsForTenant(tenantId: string, type: string): Promise<{ label: string; requiresPhoto: boolean }[]> {
     const isInitialized = await storage.isChecklistTypeInitialized(tenantId, type);
     if (isInitialized) {
@@ -10065,29 +10094,111 @@ export async function registerRoutes(
     }
   });
 
+  // --- Work Order Types CRUD ---
+
+  app.get("/api/work-order-types", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      await ensureWorkOrderTypesSeed(tenantId);
+      const types = await storage.getWorkOrderTypes(tenantId, false);
+      res.json(types);
+    } catch (error) {
+      console.error("Error fetching work order types:", error);
+      res.status(500).json({ error: "Error al obtener tipos de orden" });
+    }
+  });
+
+  app.post("/api/work-order-types", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
+        return res.status(403).json({ error: "Solo administradores pueden gestionar tipos de orden" });
+      }
+      const tenantId = req.user!.tenantId!;
+      const schema = z.object({ label: z.string().min(1).max(100) });
+      const { label } = schema.parse(req.body);
+      const key = slugifyTypeKey(label);
+      if (!key) return res.status(400).json({ error: "Etiqueta inválida para generar clave" });
+      const existing = await storage.getWorkOrderTypes(tenantId, true);
+      if (existing.find(t => t.key === key)) {
+        return res.status(409).json({ error: "Ya existe un tipo con esa clave" });
+      }
+      const sortOrder = existing.length > 0 ? Math.max(...existing.map(t => t.sortOrder ?? 0)) + 1 : 5;
+      const created = await storage.createWorkOrderType({ tenantId, key, label, isActive: true, isDefault: false, sortOrder });
+      res.status(201).json(created);
+    } catch (error) {
+      if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      console.error("Error creating work order type:", error);
+      res.status(500).json({ error: "Error al crear tipo de orden" });
+    }
+  });
+
+  app.patch("/api/work-order-types/:id", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
+        return res.status(403).json({ error: "Solo administradores pueden gestionar tipos de orden" });
+      }
+      const tenantId = req.user!.tenantId!;
+      const schema = z.object({
+        label: z.string().min(1).max(100).optional(),
+        isActive: z.boolean().optional(),
+      });
+      const updates = schema.parse(req.body);
+      const existing = await storage.getWorkOrderType(req.params.id, tenantId);
+      if (!existing) return res.status(404).json({ error: "Tipo de orden no encontrado" });
+      const updated = await storage.updateWorkOrderType(req.params.id, tenantId, updates);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      console.error("Error updating work order type:", error);
+      res.status(500).json({ error: "Error al actualizar tipo de orden" });
+    }
+  });
+
+  app.delete("/api/work-order-types/:id", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
+        return res.status(403).json({ error: "Solo administradores pueden gestionar tipos de orden" });
+      }
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getWorkOrderType(req.params.id, tenantId);
+      if (!existing) return res.status(404).json({ error: "Tipo de orden no encontrado" });
+      const orders = await storage.getWorkOrders(tenantId, { type: existing.key });
+      if (orders.length > 0) {
+        return res.status(409).json({ error: `No se puede eliminar: existen ${orders.length} orden(es) de trabajo de este tipo` });
+      }
+      await storage.deleteWorkOrderType(req.params.id, tenantId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting work order type:", error);
+      res.status(500).json({ error: "Error al eliminar tipo de orden" });
+    }
+  });
+
   // --- Checklist Templates (must be before /:id route) ---
 
   app.get("/api/work-orders/checklist-templates", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
-      const ALL_TYPES = ["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"];
-      for (const type of ALL_TYPES) {
-        const isInitialized = await storage.isChecklistTypeInitialized(tenantId, type);
+      await ensureWorkOrderTypesSeed(tenantId);
+      const allTypes = await storage.getWorkOrderTypes(tenantId, true);
+      for (const wot of allTypes) {
+        const isInitialized = await storage.isChecklistTypeInitialized(tenantId, wot.key);
         if (!isInitialized) {
-          const items = getDefaultChecklist(type);
+          const items = getDefaultChecklist(wot.key);
           if (items.length > 0) {
             await storage.createChecklistTemplates(
-              items.map((label, idx) => ({ tenantId, orderType: type, label, sortOrder: idx, isActive: true }))
+              items.map((label, idx) => ({ tenantId, orderType: wot.key, label, sortOrder: idx, isActive: true }))
             );
           }
-          await storage.markChecklistTypeInitialized(tenantId, type);
+          await storage.markChecklistTypeInitialized(tenantId, wot.key);
         }
       }
       const allTemplates = await storage.getChecklistTemplates(tenantId);
       const grouped: Record<string, typeof allTemplates> = {};
-      for (const type of ALL_TYPES) grouped[type] = [];
+      for (const wot of allTypes) grouped[wot.key] = [];
       for (const t of allTemplates) {
-        if (grouped[t.orderType]) grouped[t.orderType].push(t);
+        if (grouped[t.orderType] !== undefined) grouped[t.orderType].push(t);
+        else grouped[t.orderType] = [t];
       }
       res.json(grouped);
     } catch (error) {
@@ -10103,7 +10214,7 @@ export async function registerRoutes(
       }
       const tenantId = req.user!.tenantId!;
       const schema = z.object({
-        orderType: z.enum(["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"]),
+        orderType: z.string().min(1),
         label: z.string().min(1).max(300),
         isActive: z.boolean().default(true),
         requiresPhoto: z.boolean().default(false),
@@ -10295,7 +10406,7 @@ export async function registerRoutes(
       const woUpdateSchema = z.object({
         status: workOrderStatusEnum.optional(),
         priority: workOrderPriorityEnum.optional(),
-        type: workOrderTypeEnum.optional(),
+        type: z.string().min(1).optional(),
         assignedUserId: z.string().nullable().optional(),
         description: z.string().nullable().optional(),
         notes: z.string().nullable().optional(),
@@ -10764,7 +10875,7 @@ export async function registerRoutes(
       }
 
       const createOrderFromTicketSchema = z.object({
-        type: workOrderTypeEnum.default("tecnico"),
+        type: z.string().min(1).default("tecnico"),
         priority: workOrderPriorityEnum.optional(),
         assignedUserId: z.string().uuid().nullable().optional(),
         description: z.string().optional(),

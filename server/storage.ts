@@ -61,6 +61,7 @@ import {
   type SlaConfig, type InsertSlaConfig,
   type CashDenominationCount, type InsertCashDenominationCount,
   type ChangeFund, type InsertChangeFund,
+  type WorkOrderType, type InsertWorkOrderType,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
@@ -74,7 +75,7 @@ import {
   establishmentViewers, machineViewerAssignments,
   machineTypeOptions,
   establishments, establishmentStages, establishmentFollowups, establishmentDocuments, establishmentContracts,
-  workOrders, workOrderTickets, workOrderChecklistItems, workOrderChecklistTemplates, workOrderChecklistTypesInit, workOrderPhotos, slaConfig, cashDenominationCounts, changeFunds,
+  workOrders, workOrderTickets, workOrderChecklistItems, workOrderChecklistTemplates, workOrderChecklistTypesInit, workOrderPhotos, slaConfig, cashDenominationCounts, changeFunds, workOrderTypes,
   tenants, subscriptionPlans, tenantSubscriptions, tenantSettings, tenantInvites, superAdminAuditLog,
   type Tenant, type InsertTenant,
   type SubscriptionPlan, type InsertSubscriptionPlan,
@@ -774,6 +775,12 @@ export interface IStorage {
 
   getSlaConfig(tenantId: string): Promise<SlaConfig | undefined>;
   upsertSlaConfig(data: InsertSlaConfig): Promise<SlaConfig>;
+
+  getWorkOrderTypes(tenantId: string, includeInactive?: boolean): Promise<WorkOrderType[]>;
+  getWorkOrderType(id: string, tenantId: string): Promise<WorkOrderType | undefined>;
+  createWorkOrderType(data: InsertWorkOrderType): Promise<WorkOrderType>;
+  updateWorkOrderType(id: string, tenantId: string, data: Partial<InsertWorkOrderType>): Promise<WorkOrderType | undefined>;
+  deleteWorkOrderType(id: string, tenantId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -7502,6 +7509,34 @@ export class DatabaseStorage implements IStorage {
     }
     const [created] = await db.insert(slaConfig).values(data).returning();
     return created;
+  }
+
+  // ==================== WORK ORDER TYPES ====================
+
+  async getWorkOrderTypes(tenantId: string, includeInactive = false): Promise<WorkOrderType[]> {
+    const conditions: SQL[] = [eq(workOrderTypes.tenantId, tenantId)];
+    if (!includeInactive) conditions.push(eq(workOrderTypes.isActive, true));
+    return db.select().from(workOrderTypes).where(and(...conditions)).orderBy(asc(workOrderTypes.sortOrder), asc(workOrderTypes.createdAt));
+  }
+
+  async getWorkOrderType(id: string, tenantId: string): Promise<WorkOrderType | undefined> {
+    const [row] = await db.select().from(workOrderTypes).where(and(eq(workOrderTypes.id, id), eq(workOrderTypes.tenantId, tenantId)));
+    return row;
+  }
+
+  async createWorkOrderType(data: InsertWorkOrderType): Promise<WorkOrderType> {
+    const [row] = await db.insert(workOrderTypes).values(data).returning();
+    return row;
+  }
+
+  async updateWorkOrderType(id: string, tenantId: string, data: Partial<InsertWorkOrderType>): Promise<WorkOrderType | undefined> {
+    const [row] = await db.update(workOrderTypes).set(data).where(and(eq(workOrderTypes.id, id), eq(workOrderTypes.tenantId, tenantId))).returning();
+    return row;
+  }
+
+  async deleteWorkOrderType(id: string, tenantId: string): Promise<boolean> {
+    const result = await db.delete(workOrderTypes).where(and(eq(workOrderTypes.id, id), eq(workOrderTypes.tenantId, tenantId)));
+    return (result.rowCount ?? 0) > 0;
   }
 }
 

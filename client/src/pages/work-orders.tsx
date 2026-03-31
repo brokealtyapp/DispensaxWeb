@@ -67,12 +67,15 @@ import {
 const COLORS = ["#4ECB71", "#FF6B3D", "#E84545", "#2F6FED", "#8E59FF", "#6B7280", "#F59E0B"];
 const ITEMS_PER_PAGE = 15;
 
-const TYPE_LABELS: Record<string, string> = {
-  abastecimiento: "Abastecimiento",
-  tecnico: "Técnico",
-  mantenimiento_preventivo: "Mant. Preventivo",
-  instalacion: "Instalación",
-  retiro: "Retiro",
+type WorkOrderType = {
+  id: string;
+  tenantId: string;
+  key: string;
+  label: string;
+  isActive: boolean;
+  isDefault: boolean;
+  sortOrder: number;
+  createdAt: string;
 };
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -305,7 +308,7 @@ function Pagination({ currentPage, totalPages, onPageChange }: { currentPage: nu
 
 const createOrderSchema = z.object({
   machineId: z.string().min(1, "Seleccione una máquina"),
-  type: z.enum(["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"]),
+  type: z.string().min(1, "Tipo requerido"),
   priority: z.enum(["critico", "alto", "medio", "bajo"]),
   assignedUserId: z.string().nullable().optional(),
   description: z.string().min(1, "Descripción requerida"),
@@ -313,7 +316,7 @@ const createOrderSchema = z.object({
 });
 
 const editOrderSchema = z.object({
-  type: z.enum(["abastecimiento", "tecnico", "mantenimiento_preventivo", "instalacion", "retiro"]),
+  type: z.string().min(1, "Tipo requerido"),
   priority: z.enum(["critico", "alto", "medio", "bajo"]),
   status: z.enum(["pendiente", "asignada", "en_proceso", "en_ruta", "completada", "cerrada", "cancelada"]),
   assignedUserId: z.string().nullable().optional(),
@@ -376,6 +379,7 @@ function OrderDetailView({
   onEdit,
   onReassign,
   onDelete,
+  typeLabels = {},
 }: {
   order: WorkOrder;
   machines: Machine[];
@@ -384,6 +388,7 @@ function OrderDetailView({
   onEdit: () => void;
   onReassign: () => void;
   onDelete: () => void;
+  typeLabels?: Record<string, string>;
 }) {
   const { toast } = useToast();
   const { can } = usePermissions();
@@ -570,7 +575,7 @@ function OrderDetailView({
         </Button>
         <div className="flex-1 min-w-0">
           <h2 className="text-xl font-bold" data-testid="text-order-number">{order.orderNumber}</h2>
-          <p className="text-sm text-muted-foreground">{TYPE_LABELS[order.type] || order.type}</p>
+          <p className="text-sm text-muted-foreground">{typeLabels[order.type] || order.type}</p>
         </div>
         <PriorityBadge priority={order.priority} />
         <StatusBadge status={order.status} />
@@ -811,7 +816,7 @@ function OrderDetailView({
   );
 }
 
-function SLADashboard({ stats, orders, machines, users, onSelectOrder }: { stats: WOStats | undefined; orders: WorkOrder[]; machines: Machine[]; users: UserInfo[]; onSelectOrder: (o: WorkOrder) => void }) {
+function SLADashboard({ stats, orders, machines, users, onSelectOrder, typeLabels = {} }: { stats: WOStats | undefined; orders: WorkOrder[]; machines: Machine[]; users: UserInfo[]; onSelectOrder: (o: WorkOrder) => void; typeLabels?: Record<string, string> }) {
   if (!stats) return <p className="text-sm text-muted-foreground p-4">Cargando estadísticas...</p>;
 
   const bySla = stats.bySla || {};
@@ -822,7 +827,7 @@ function SLADashboard({ stats, orders, machines, users, onSelectOrder }: { stats
   ];
 
   const typeData = Object.entries(stats.byType).map(([key, value]) => ({
-    name: TYPE_LABELS[key] || key,
+    name: typeLabels[key] || key,
     cantidad: value,
   }));
 
@@ -950,6 +955,10 @@ export function WorkOrdersPage() {
   const [newItemLabels, setNewItemLabels] = useState<Record<string, string>>({});
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
+  const [showAddType, setShowAddType] = useState(false);
+  const [newTypeLabel, setNewTypeLabel] = useState("");
+  const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
+  const [editingTypeLabel, setEditingTypeLabel] = useState("");
 
   const { data: orders = [], isLoading: ordersLoading, isError: ordersError } = useQuery<WorkOrder[]>({
     queryKey: ["/api/work-orders"],
@@ -989,6 +998,65 @@ export function WorkOrdersPage() {
     queryKey: ["/api/work-orders/checklist-templates"],
     enabled: showChecklistSettings,
     staleTime: 0,
+  });
+
+  const { data: orderTypes = [], isLoading: orderTypesLoading } = useQuery<WorkOrderType[]>({
+    queryKey: ["/api/work-order-types"],
+  });
+
+  const typeLabels = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    for (const t of orderTypes) map[t.key] = t.label;
+    return map;
+  }, [orderTypes]);
+
+  const createTypeMutation = useMutation({
+    mutationFn: async (label: string) => {
+      const res = await apiRequest("POST", "/api/work-order-types", { label });
+      return res.json();
+    },
+    onSuccess: (created: WorkOrderType) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-order-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders/checklist-templates"] });
+      setShowAddType(false);
+      setNewTypeLabel("");
+      setActiveTemplateTab(created.key);
+      toast({ title: "Tipo creado", description: `"${created.label}" agregado correctamente` });
+    },
+    onError: (err: any) => {
+      const msg = err?.message || "No se pudo crear el tipo";
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    },
+  });
+
+  const updateTypeMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; label?: string; isActive?: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/work-order-types/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-order-types"] });
+      setEditingTypeId(null);
+      setEditingTypeLabel("");
+    },
+    onError: () => toast({ title: "Error", description: "No se pudo actualizar el tipo", variant: "destructive" }),
+  });
+
+  const deleteTypeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/work-order-types/${id}`);
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error || "Error al eliminar tipo");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-order-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders/checklist-templates"] });
+      toast({ title: "Tipo eliminado" });
+    },
+    onError: (err: any) => toast({ title: "No se puede eliminar", description: err.message, variant: "destructive" }),
   });
 
   const addTemplateMutation = useMutation({
@@ -1388,7 +1456,7 @@ export function WorkOrdersPage() {
                     <FormLabel>Tipo</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger data-testid="select-edit-order-type"><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>{Object.entries(TYPE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                      <SelectContent>{Object.entries(typeLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
                     </Select>
                     <FormMessage />
                   </FormItem>
@@ -1576,158 +1644,239 @@ export function WorkOrdersPage() {
 
       <SimpleModal
         open={showChecklistSettings}
-        onClose={() => { setShowChecklistSettings(false); setEditingItemId(null); setEditingLabel(""); }}
+        onClose={() => { setShowChecklistSettings(false); setEditingItemId(null); setEditingLabel(""); setEditingTypeId(null); setEditingTypeLabel(""); setShowAddType(false); setNewTypeLabel(""); }}
         title="Configurar Checklists por Tipo de Orden"
-        description="Personaliza los ítems de checklist que se asignan automáticamente al crear órdenes de trabajo según su tipo."
+        description="Personaliza los tipos de orden y los ítems de checklist asignados automáticamente al crear órdenes."
       >
         <div className="mt-2">
-          {templatesLoading ? (
-            <div className="flex items-center justify-center py-8 text-muted-foreground">Cargando templates...</div>
+          {(templatesLoading || orderTypesLoading) ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">Cargando...</div>
           ) : (
-            <Tabs value={activeTemplateTab} onValueChange={setActiveTemplateTab}>
-              <TabsList className="flex flex-wrap gap-1 h-auto mb-4">
-                {[
-                  { value: "tecnico", label: "Técnico" },
-                  { value: "abastecimiento", label: "Abastecimiento" },
-                  { value: "mantenimiento_preventivo", label: "Mantenimiento" },
-                  { value: "instalacion", label: "Instalación" },
-                  { value: "retiro", label: "Retiro" },
-                ].map(({ value, label }) => (
-                  <TabsTrigger key={value} value={value} data-testid={`tab-checklist-${value}`}>{label}</TabsTrigger>
-                ))}
-              </TabsList>
-
-              {["tecnico", "abastecimiento", "mantenimiento_preventivo", "instalacion", "retiro"].map((type) => {
-                const items: ChecklistTemplate[] = checklistTemplates[type] || [];
-                return (
-                  <TabsContent key={type} value={type} className="space-y-2">
-                    <p className="text-xs text-muted-foreground mb-3">
-                      {items.filter(i => i.isActive).length} de {items.length} ítems activos se agregarán a nuevas órdenes de este tipo.
-                    </p>
-                    <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
-                      {items.map((item, idx) => (
-                        <div key={item.id} className={`flex items-center gap-2 rounded-md px-2 py-1.5 border ${item.isActive ? "bg-card" : "bg-muted/40 opacity-60"}`}>
-                          <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <div className="flex flex-col gap-0.5 shrink-0">
-                            <button
-                              className="disabled:opacity-30 hover:text-foreground text-muted-foreground transition-colors"
-                              onClick={() => moveTemplateItem(items, idx, "up")}
-                              disabled={idx === 0 || updateTemplateMutation.isPending}
-                              data-testid={`button-move-up-${item.id}`}
-                              title="Mover arriba"
-                            >
-                              <ChevronUp className="h-3 w-3" />
-                            </button>
-                            <button
-                              className="disabled:opacity-30 hover:text-foreground text-muted-foreground transition-colors"
-                              onClick={() => moveTemplateItem(items, idx, "down")}
-                              disabled={idx === items.length - 1 || updateTemplateMutation.isPending}
-                              data-testid={`button-move-down-${item.id}`}
-                              title="Mover abajo"
-                            >
-                              <ChevronDown className="h-3 w-3" />
-                            </button>
-                          </div>
-                          {editingItemId === item.id ? (
-                            <div className="flex items-center gap-1 flex-1">
-                              <Input
-                                value={editingLabel}
-                                onChange={e => setEditingLabel(e.target.value)}
-                                className="h-7 text-sm flex-1"
-                                onKeyDown={e => {
-                                  if (e.key === "Enter") updateTemplateMutation.mutate({ id: item.id, label: editingLabel });
-                                  if (e.key === "Escape") { setEditingItemId(null); setEditingLabel(""); }
-                                }}
-                                autoFocus
-                                data-testid={`input-edit-label-${item.id}`}
-                              />
-                              <Button size="icon" variant="ghost" onClick={() => updateTemplateMutation.mutate({ id: item.id, label: editingLabel })} disabled={!editingLabel.trim() || updateTemplateMutation.isPending} data-testid={`button-save-label-${item.id}`}>
-                                <Save className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex-1 flex items-center gap-1.5 min-w-0">
-                              <span className="text-sm leading-tight line-clamp-2">{item.label}</span>
-                              {item.requiresPhoto && (
-                                <Camera className="h-3 w-3 text-blue-600 flex-shrink-0" title="Requiere foto" />
-                              )}
-                            </div>
-                          )}
-                          <div className="flex items-center gap-1 shrink-0">
-                            {editingItemId !== item.id && (
-                              <Button size="icon" variant="ghost" onClick={() => { setEditingItemId(item.id); setEditingLabel(item.label); }} data-testid={`button-edit-${item.id}`} title="Editar">
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => updateTemplateMutation.mutate({ id: item.id, requiresPhoto: !item.requiresPhoto })}
-                              disabled={updateTemplateMutation.isPending}
-                              data-testid={`button-toggle-photo-${item.id}`}
-                              title={item.requiresPhoto ? "Quitar requisito de foto" : "Requerir foto para completar"}
-                            >
-                              <Camera className={`h-3.5 w-3.5 ${item.requiresPhoto ? "text-blue-600" : "text-muted-foreground"}`} />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => updateTemplateMutation.mutate({ id: item.id, isActive: !item.isActive })}
-                              disabled={updateTemplateMutation.isPending}
-                              data-testid={`button-toggle-${item.id}`}
-                              title={item.isActive ? "Desactivar" : "Activar"}
-                            >
-                              {item.isActive ? <ToggleRight className="h-4 w-4 text-green-600" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => deleteTemplateMutation.mutate(item.id)}
-                              disabled={deleteTemplateMutation.isPending}
-                              data-testid={`button-delete-template-${item.id}`}
-                              title="Eliminar"
-                            >
-                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                      {items.length === 0 && (
-                        <p className="text-sm text-muted-foreground text-center py-4">No hay ítems. Agrega el primero.</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 pt-2 border-t">
+            <>
+              {user?.role === "admin" && (
+                <div className="mb-4 rounded-md border bg-muted/20 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tipos de Orden</p>
+                    <Button size="sm" variant="outline" onClick={() => { setShowAddType(v => !v); setNewTypeLabel(""); }} data-testid="button-toggle-add-type">
+                      <Plus className="mr-1 h-3.5 w-3.5" />
+                      Nuevo Tipo
+                    </Button>
+                  </div>
+                  {showAddType && (
+                    <div className="flex items-center gap-2 mb-2">
                       <Input
-                        placeholder="Nuevo ítem de checklist..."
-                        value={newItemLabels[type] || ""}
-                        onChange={e => setNewItemLabels(prev => ({ ...prev, [type]: e.target.value }))}
-                        onKeyDown={e => {
-                          if (e.key === "Enter" && (newItemLabels[type] || "").trim()) {
-                            addTemplateMutation.mutate({ orderType: type, label: (newItemLabels[type] || "").trim() });
-                          }
-                        }}
+                        placeholder="Nombre del nuevo tipo..."
+                        value={newTypeLabel}
+                        onChange={e => setNewTypeLabel(e.target.value)}
                         className="flex-1"
-                        data-testid={`input-new-item-${type}`}
-                      />
-                      <Button
-                        onClick={() => {
-                          const label = (newItemLabels[type] || "").trim();
-                          if (label) addTemplateMutation.mutate({ orderType: type, label });
+                        autoFocus
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && newTypeLabel.trim()) createTypeMutation.mutate(newTypeLabel.trim());
+                          if (e.key === "Escape") { setShowAddType(false); setNewTypeLabel(""); }
                         }}
-                        disabled={!newItemLabels[type]?.trim() || addTemplateMutation.isPending}
-                        data-testid={`button-add-item-${type}`}
-                      >
-                        <PlusCircle className="mr-1 h-4 w-4" />
-                        Agregar
+                        data-testid="input-new-type-label"
+                      />
+                      <Button size="sm" onClick={() => { if (newTypeLabel.trim()) createTypeMutation.mutate(newTypeLabel.trim()); }} disabled={!newTypeLabel.trim() || createTypeMutation.isPending} data-testid="button-confirm-add-type">
+                        {createTypeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Crear"}
+                      </Button>
+                      <Button size="icon" variant="ghost" onClick={() => { setShowAddType(false); setNewTypeLabel(""); }}>
+                        <X className="h-3.5 w-3.5" />
                       </Button>
                     </div>
-                  </TabsContent>
-                );
-              })}
-            </Tabs>
+                  )}
+                  <div className="space-y-1">
+                    {orderTypes.map(wot => (
+                      <div key={wot.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 bg-background border">
+                        {editingTypeId === wot.id ? (
+                          <div className="flex items-center gap-1 flex-1">
+                            <Input
+                              value={editingTypeLabel}
+                              onChange={e => setEditingTypeLabel(e.target.value)}
+                              className="h-7 text-sm flex-1"
+                              autoFocus
+                              onKeyDown={e => {
+                                if (e.key === "Enter" && editingTypeLabel.trim()) updateTypeMutation.mutate({ id: wot.id, label: editingTypeLabel.trim() });
+                                if (e.key === "Escape") { setEditingTypeId(null); setEditingTypeLabel(""); }
+                              }}
+                              data-testid={`input-rename-type-${wot.id}`}
+                            />
+                            <Button size="icon" variant="ghost" onClick={() => { if (editingTypeLabel.trim()) updateTypeMutation.mutate({ id: wot.id, label: editingTypeLabel.trim() }); }} disabled={!editingTypeLabel.trim() || updateTypeMutation.isPending} data-testid={`button-save-type-${wot.id}`}>
+                              <Save className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => { setEditingTypeId(null); setEditingTypeLabel(""); }}>
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            <span className="text-sm truncate">{wot.label}</span>
+                            {wot.isDefault && (
+                              <Badge variant="outline" className="text-xs py-0 shrink-0 no-default-hover-elevate no-default-active-elevate">Default</Badge>
+                            )}
+                          </div>
+                        )}
+                        {editingTypeId !== wot.id && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button size="icon" variant="ghost" onClick={() => { setEditingTypeId(wot.id); setEditingTypeLabel(wot.label); }} data-testid={`button-rename-type-${wot.id}`} title="Renombrar">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            {!wot.isDefault && (
+                              <Button size="icon" variant="ghost" onClick={() => deleteTypeMutation.mutate(wot.id)} disabled={deleteTypeMutation.isPending} data-testid={`button-delete-type-${wot.id}`} title="Eliminar tipo">
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {orderTypes.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">No hay tipos de orden configurados.</p>
+              ) : (
+                <Tabs value={activeTemplateTab} onValueChange={setActiveTemplateTab}>
+                  <TabsList className="flex flex-wrap gap-1 h-auto mb-4">
+                    {orderTypes.map(wot => (
+                      <TabsTrigger key={wot.key} value={wot.key} data-testid={`tab-checklist-${wot.key}`}>{wot.label}</TabsTrigger>
+                    ))}
+                  </TabsList>
+
+                  {orderTypes.map(wot => {
+                    const type = wot.key;
+                    const items: ChecklistTemplate[] = checklistTemplates[type] || [];
+                    return (
+                      <TabsContent key={type} value={type} className="space-y-2">
+                        <p className="text-xs text-muted-foreground mb-3">
+                          {items.filter(i => i.isActive).length} de {items.length} ítems activos se agregarán a nuevas órdenes de este tipo.
+                        </p>
+                        <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                          {items.map((item, idx) => (
+                            <div key={item.id} className={`flex items-center gap-2 rounded-md px-2 py-1.5 border ${item.isActive ? "bg-card" : "bg-muted/40 opacity-60"}`}>
+                              <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+                              <div className="flex flex-col gap-0.5 shrink-0">
+                                <button
+                                  className="disabled:opacity-30 hover:text-foreground text-muted-foreground transition-colors"
+                                  onClick={() => moveTemplateItem(items, idx, "up")}
+                                  disabled={idx === 0 || updateTemplateMutation.isPending}
+                                  data-testid={`button-move-up-${item.id}`}
+                                  title="Mover arriba"
+                                >
+                                  <ChevronUp className="h-3 w-3" />
+                                </button>
+                                <button
+                                  className="disabled:opacity-30 hover:text-foreground text-muted-foreground transition-colors"
+                                  onClick={() => moveTemplateItem(items, idx, "down")}
+                                  disabled={idx === items.length - 1 || updateTemplateMutation.isPending}
+                                  data-testid={`button-move-down-${item.id}`}
+                                  title="Mover abajo"
+                                >
+                                  <ChevronDown className="h-3 w-3" />
+                                </button>
+                              </div>
+                              {editingItemId === item.id ? (
+                                <div className="flex items-center gap-1 flex-1">
+                                  <Input
+                                    value={editingLabel}
+                                    onChange={e => setEditingLabel(e.target.value)}
+                                    className="h-7 text-sm flex-1"
+                                    onKeyDown={e => {
+                                      if (e.key === "Enter") updateTemplateMutation.mutate({ id: item.id, label: editingLabel });
+                                      if (e.key === "Escape") { setEditingItemId(null); setEditingLabel(""); }
+                                    }}
+                                    autoFocus
+                                    data-testid={`input-edit-label-${item.id}`}
+                                  />
+                                  <Button size="icon" variant="ghost" onClick={() => updateTemplateMutation.mutate({ id: item.id, label: editingLabel })} disabled={!editingLabel.trim() || updateTemplateMutation.isPending} data-testid={`button-save-label-${item.id}`}>
+                                    <Save className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex-1 flex items-center gap-1.5 min-w-0">
+                                  <span className="text-sm leading-tight line-clamp-2">{item.label}</span>
+                                  {item.requiresPhoto && (
+                                    <Camera className="h-3 w-3 text-blue-600 flex-shrink-0" title="Requiere foto" />
+                                  )}
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1 shrink-0">
+                                {editingItemId !== item.id && (
+                                  <Button size="icon" variant="ghost" onClick={() => { setEditingItemId(item.id); setEditingLabel(item.label); }} data-testid={`button-edit-${item.id}`} title="Editar">
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => updateTemplateMutation.mutate({ id: item.id, requiresPhoto: !item.requiresPhoto })}
+                                  disabled={updateTemplateMutation.isPending}
+                                  data-testid={`button-toggle-photo-${item.id}`}
+                                  title={item.requiresPhoto ? "Quitar requisito de foto" : "Requerir foto para completar"}
+                                >
+                                  <Camera className={`h-3.5 w-3.5 ${item.requiresPhoto ? "text-blue-600" : "text-muted-foreground"}`} />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => updateTemplateMutation.mutate({ id: item.id, isActive: !item.isActive })}
+                                  disabled={updateTemplateMutation.isPending}
+                                  data-testid={`button-toggle-${item.id}`}
+                                  title={item.isActive ? "Desactivar" : "Activar"}
+                                >
+                                  {item.isActive ? <ToggleRight className="h-4 w-4 text-green-600" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => deleteTemplateMutation.mutate(item.id)}
+                                  disabled={deleteTemplateMutation.isPending}
+                                  data-testid={`button-delete-template-${item.id}`}
+                                  title="Eliminar"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                          {items.length === 0 && (
+                            <p className="text-sm text-muted-foreground text-center py-4">No hay ítems. Agrega el primero.</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 pt-2 border-t">
+                          <Input
+                            placeholder="Nuevo ítem de checklist..."
+                            value={newItemLabels[type] || ""}
+                            onChange={e => setNewItemLabels(prev => ({ ...prev, [type]: e.target.value }))}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" && (newItemLabels[type] || "").trim()) {
+                                addTemplateMutation.mutate({ orderType: type, label: (newItemLabels[type] || "").trim() });
+                              }
+                            }}
+                            className="flex-1"
+                            data-testid={`input-new-item-${type}`}
+                          />
+                          <Button
+                            onClick={() => {
+                              const label = (newItemLabels[type] || "").trim();
+                              if (label) addTemplateMutation.mutate({ orderType: type, label });
+                            }}
+                            disabled={!newItemLabels[type]?.trim() || addTemplateMutation.isPending}
+                            data-testid={`button-add-item-${type}`}
+                          >
+                            <PlusCircle className="mr-1 h-4 w-4" />
+                            Agregar
+                          </Button>
+                        </div>
+                      </TabsContent>
+                    );
+                  })}
+                </Tabs>
+              )}
+            </>
           )}
           <div className="flex justify-end pt-4 border-t mt-4">
-            <Button variant="outline" onClick={() => { setShowChecklistSettings(false); setEditingItemId(null); setEditingLabel(""); }} data-testid="button-close-checklist-settings">
+            <Button variant="outline" onClick={() => { setShowChecklistSettings(false); setEditingItemId(null); setEditingLabel(""); setEditingTypeId(null); setEditingTypeLabel(""); setShowAddType(false); setNewTypeLabel(""); }} data-testid="button-close-checklist-settings">
               Cerrar
             </Button>
           </div>
@@ -1752,6 +1901,7 @@ export function WorkOrdersPage() {
             onEdit={() => setShowEditOrder(selectedOrder)}
             onReassign={() => { setShowReassign(selectedOrder); setReassignUserId(selectedOrder.assignedUserId || ""); }}
             onDelete={() => setShowDeleteOrder(selectedOrder)}
+            typeLabels={typeLabels}
           />
         </div>
         {sharedModals}
@@ -1859,7 +2009,7 @@ export function WorkOrdersPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos los tipos</SelectItem>
-                {Object.entries(TYPE_LABELS).map(([k, v]) => (
+                {Object.entries(typeLabels).map(([k, v]) => (
                   <SelectItem key={k} value={k}>{v}</SelectItem>
                 ))}
               </SelectContent>
@@ -1943,7 +2093,7 @@ export function WorkOrdersPage() {
                           <p className="text-xs text-muted-foreground truncate mt-0.5">{order.description || "Sin descripción"}</p>
                         </div>
                         <Badge variant="outline" className="no-default-hover-elevate no-default-active-elevate text-xs">
-                          {TYPE_LABELS[order.type] || order.type}
+                          {typeLabels[order.type] || order.type}
                         </Badge>
                         <PriorityBadge priority={order.priority} />
                         <StatusBadge status={order.status} />
@@ -2134,7 +2284,7 @@ export function WorkOrdersPage() {
               </CardContent>
             </Card>
           ) : (
-            <SLADashboard stats={stats} orders={orders} machines={machines} users={users} onSelectOrder={setSelectedOrder} />
+            <SLADashboard stats={stats} orders={orders} machines={machines} users={users} onSelectOrder={setSelectedOrder} typeLabels={typeLabels} />
           )}
         </TabsContent>
       </Tabs>
@@ -2183,7 +2333,7 @@ export function WorkOrdersPage() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {Object.entries(TYPE_LABELS).map(([k, v]) => (
+                        {Object.entries(typeLabels).map(([k, v]) => (
                           <SelectItem key={k} value={k}>{v}</SelectItem>
                         ))}
                       </SelectContent>
