@@ -1017,8 +1017,9 @@ export function WorkOrdersPage() {
   const typeLabels = useMemo<Record<string, string>>(() => {
     const map: Record<string, string> = {};
     for (const t of orderTypes) map[t.key] = t.label;
+    for (const t of orderTypesAll) if (!map[t.key]) map[t.key] = t.label;
     return map;
-  }, [orderTypes]);
+  }, [orderTypes, orderTypesAll]);
 
   const createTypeMutation = useMutation({
     mutationFn: async (label: string) => {
