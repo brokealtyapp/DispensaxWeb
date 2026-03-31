@@ -395,6 +395,8 @@ function OrderDetailView({
   const [uploadingItemId, setUploadingItemId] = useState<string | null>(null);
   const pendingGeoRef = useRef<{ lat: string; lng: string }>({ lat: "", lng: "" });
   const [photoBlobUrls, setPhotoBlobUrls] = useState<Record<string, string>>({});
+  // Track which item IDs have been fetched — avoids stale-closure issues with photoBlobUrls state
+  const fetchedPhotoIdsRef = useRef<Set<string>>(new Set());
 
   const { data: checklist = [], isLoading: checklistLoading } = useQuery<ChecklistItem[]>({
     queryKey: ["/api/work-orders", order.id, "checklist"],
@@ -404,14 +406,16 @@ function OrderDetailView({
     },
   });
 
-  // Fetch photo blob URLs with auth headers for checklist items that have photos
+  // Fetch photo blob URLs with auth headers for checklist items that have photos.
+  // fetchedPhotoIdsRef (not state) is used as the guard to avoid stale-closure issues.
   useEffect(() => {
     const itemsWithPhotos = checklist.filter(i => i.requiresPhoto && i.photoUrl);
     if (itemsWithPhotos.length === 0) return;
 
     const blobMap: Record<string, string> = {};
     const fetchPromises = itemsWithPhotos.map(async (item) => {
-      if (photoBlobUrls[item.id]) return; // already loaded
+      if (fetchedPhotoIdsRef.current.has(item.id)) return; // already fetched or in-flight
+      fetchedPhotoIdsRef.current.add(item.id); // mark immediately to prevent concurrent duplicates
       try {
         const token = getAccessToken();
         const headers: Record<string, string> = {};
@@ -420,9 +424,12 @@ function OrderDetailView({
         if (res.ok) {
           const blob = await res.blob();
           blobMap[item.id] = URL.createObjectURL(blob);
+        } else {
+          // Remove from fetched set so retry is possible on next checklist refresh
+          fetchedPhotoIdsRef.current.delete(item.id);
         }
       } catch {
-        // ignore individual fetch errors
+        fetchedPhotoIdsRef.current.delete(item.id); // allow retry on error
       }
     });
 
@@ -507,6 +514,7 @@ function OrderDetailView({
       // Create blob URL immediately from uploaded file for instant thumbnail display
       // Revoke any existing blob URL for this item before replacing it
       const blobUrl = URL.createObjectURL(file);
+      fetchedPhotoIdsRef.current.add(itemId); // mark as fetched so useEffect doesn't re-fetch
       setPhotoBlobUrls(prev => {
         if (prev[itemId]) URL.revokeObjectURL(prev[itemId]);
         return { ...prev, [itemId]: blobUrl };

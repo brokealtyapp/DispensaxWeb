@@ -10458,6 +10458,11 @@ export async function registerRoutes(
       const checklistItem = allChecklistItems.find((i) => i.id === req.params.itemId);
       if (!checklistItem) return res.status(404).json({ error: "Item del checklist no encontrado" });
 
+      // Prevent orphaned files: reject if item already has a photo
+      if (checklistItem.photoUrl) {
+        return res.status(409).json({ error: "Este ítem ya tiene una foto registrada" });
+      }
+
       const file = (req as Express.Request & { file?: Express.Multer.File }).file;
       if (!file) return res.status(400).json({ error: "Foto requerida" });
       if (!file.mimetype.startsWith("image/")) return res.status(400).json({ error: "Solo se permiten imágenes" });
