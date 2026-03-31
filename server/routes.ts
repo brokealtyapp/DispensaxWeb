@@ -10338,13 +10338,13 @@ export async function registerRoutes(
         }
       }
 
-      if (req.body.type) {
-        await ensureWorkOrderTypesSeed(tenantId);
-        const activeTypes = await storage.getWorkOrderTypes(tenantId, false);
-        const validKeys = new Set(activeTypes.map(t => t.key));
-        if (!validKeys.has(req.body.type)) {
-          return res.status(400).json({ error: "Tipo de orden no válido o inactivo para este tenant" });
-        }
+      await ensureWorkOrderTypesSeed(tenantId);
+      const activeTypes = await storage.getWorkOrderTypes(tenantId, false);
+      const validTypeKeys = new Set(activeTypes.map(t => t.key));
+      const firstActiveTypeKey = activeTypes[0]?.key ?? "tecnico";
+      const effectiveType: string = (req.body.type as string) || firstActiveTypeKey;
+      if (!validTypeKeys.has(effectiveType)) {
+        return res.status(400).json({ error: "Tipo de orden no válido o inactivo para este tenant" });
       }
 
       const slaConf = await storage.getSlaConfig(tenantId);
@@ -10356,6 +10356,7 @@ export async function registerRoutes(
         const orderNumber = await storage.generateOrderNumber(tenantId, attempt);
         const parsed = insertWorkOrderSchema.parse({
           ...req.body,
+          type: effectiveType,
           tenantId,
           orderNumber,
           slaDeadline,

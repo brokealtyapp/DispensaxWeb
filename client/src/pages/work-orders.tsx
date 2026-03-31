@@ -1214,6 +1214,14 @@ export function WorkOrdersPage() {
     }
   }, [orderTypes, editOrderForm]);
 
+  useEffect(() => {
+    if (orderTypesAll.length === 0) return;
+    const validKeys = new Set(orderTypesAll.map(t => t.key));
+    if (!validKeys.has(activeTemplateTab)) {
+      setActiveTemplateTab(orderTypesAll[0].key);
+    }
+  }, [orderTypesAll, activeTemplateTab]);
+
   const editOrderAbastecedorForm = useForm<z.infer<typeof editOrderAbastecedorSchema>>({
     resolver: zodResolver(editOrderAbastecedorSchema),
     defaultValues: {
