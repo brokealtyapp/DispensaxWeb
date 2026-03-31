@@ -10100,7 +10100,8 @@ export async function registerRoutes(
     try {
       const tenantId = req.user!.tenantId!;
       await ensureWorkOrderTypesSeed(tenantId);
-      const types = await storage.getWorkOrderTypes(tenantId, false);
+      const includeInactive = req.query.includeInactive === "true";
+      const types = await storage.getWorkOrderTypes(tenantId, includeInactive);
       res.json(types);
     } catch (error) {
       console.error("Error fetching work order types:", error);

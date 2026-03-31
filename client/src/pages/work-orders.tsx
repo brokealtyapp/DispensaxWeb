@@ -1004,6 +1004,16 @@ export function WorkOrdersPage() {
     queryKey: ["/api/work-order-types"],
   });
 
+  const { data: orderTypesAll = [] } = useQuery<WorkOrderType[]>({
+    queryKey: ["/api/work-order-types", "all"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/work-order-types?includeInactive=true");
+      return res.json();
+    },
+    enabled: showChecklistSettings,
+    staleTime: 0,
+  });
+
   const typeLabels = useMemo<Record<string, string>>(() => {
     const map: Record<string, string> = {};
     for (const t of orderTypes) map[t.key] = t.label;
@@ -1017,14 +1027,15 @@ export function WorkOrdersPage() {
     },
     onSuccess: (created: WorkOrderType) => {
       queryClient.invalidateQueries({ queryKey: ["/api/work-order-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/work-order-types", "all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/work-orders/checklist-templates"] });
       setShowAddType(false);
       setNewTypeLabel("");
       setActiveTemplateTab(created.key);
       toast({ title: "Tipo creado", description: `"${created.label}" agregado correctamente` });
     },
-    onError: (err: any) => {
-      const msg = err?.message || "No se pudo crear el tipo";
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "No se pudo crear el tipo";
       toast({ title: "Error", description: msg, variant: "destructive" });
     },
   });
@@ -1036,6 +1047,7 @@ export function WorkOrdersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/work-order-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/work-order-types", "all"] });
       setEditingTypeId(null);
       setEditingTypeLabel("");
     },
@@ -1053,10 +1065,11 @@ export function WorkOrdersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/work-order-types"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/work-order-types", "all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/work-orders/checklist-templates"] });
       toast({ title: "Tipo eliminado" });
     },
-    onError: (err: any) => toast({ title: "No se puede eliminar", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "No se puede eliminar", description: err instanceof Error ? err.message : "Error al eliminar tipo", variant: "destructive" }),
   });
 
   const addTemplateMutation = useMutation({
@@ -1653,7 +1666,7 @@ export function WorkOrdersPage() {
             <div className="flex items-center justify-center py-8 text-muted-foreground">Cargando...</div>
           ) : (
             <>
-              {user?.role === "admin" && (
+              {(user?.role === "admin" || user?.isSuperAdmin) && (
                 <div className="mb-4 rounded-md border bg-muted/20 p-3">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tipos de Orden</p>
@@ -1685,8 +1698,8 @@ export function WorkOrdersPage() {
                     </div>
                   )}
                   <div className="space-y-1">
-                    {orderTypes.map(wot => (
-                      <div key={wot.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 bg-background border">
+                    {orderTypesAll.map(wot => (
+                      <div key={wot.id} className={`flex items-center gap-2 rounded-md px-2 py-1.5 bg-background border ${!wot.isActive ? "opacity-50" : ""}`}>
                         {editingTypeId === wot.id ? (
                           <div className="flex items-center gap-1 flex-1">
                             <Input
@@ -1717,6 +1730,16 @@ export function WorkOrdersPage() {
                         )}
                         {editingTypeId !== wot.id && (
                           <div className="flex items-center gap-1 shrink-0">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => updateTypeMutation.mutate({ id: wot.id, isActive: !wot.isActive })}
+                              disabled={updateTypeMutation.isPending}
+                              data-testid={`button-toggle-type-${wot.id}`}
+                              title={wot.isActive ? "Desactivar tipo" : "Activar tipo"}
+                            >
+                              {wot.isActive ? <ToggleRight className="h-4 w-4 text-green-600" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
+                            </Button>
                             <Button size="icon" variant="ghost" onClick={() => { setEditingTypeId(wot.id); setEditingTypeLabel(wot.label); }} data-testid={`button-rename-type-${wot.id}`} title="Renombrar">
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -1733,17 +1756,20 @@ export function WorkOrdersPage() {
                 </div>
               )}
 
-              {orderTypes.length === 0 ? (
+              {orderTypesAll.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">No hay tipos de orden configurados.</p>
               ) : (
                 <Tabs value={activeTemplateTab} onValueChange={setActiveTemplateTab}>
                   <TabsList className="flex flex-wrap gap-1 h-auto mb-4">
-                    {orderTypes.map(wot => (
-                      <TabsTrigger key={wot.key} value={wot.key} data-testid={`tab-checklist-${wot.key}`}>{wot.label}</TabsTrigger>
+                    {orderTypesAll.map(wot => (
+                      <TabsTrigger key={wot.key} value={wot.key} data-testid={`tab-checklist-${wot.key}`}>
+                        {wot.label}
+                        {!wot.isActive && <span className="ml-1 text-xs text-muted-foreground">(inactivo)</span>}
+                      </TabsTrigger>
                     ))}
                   </TabsList>
 
-                  {orderTypes.map(wot => {
+                  {orderTypesAll.map(wot => {
                     const type = wot.key;
                     const items: ChecklistTemplate[] = checklistTemplates[type] || [];
                     return (
