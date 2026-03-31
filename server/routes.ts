@@ -10442,6 +10442,11 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Sin permisos" });
       }
 
+      // Validate checklist item exists before processing image
+      const allChecklistItems = await storage.getChecklistItems(order.id);
+      const checklistItem = allChecklistItems.find((i) => i.id === req.params.itemId);
+      if (!checklistItem) return res.status(404).json({ error: "Item del checklist no encontrado" });
+
       const file = (req as Express.Request & { file?: Express.Multer.File }).file;
       if (!file) return res.status(400).json({ error: "Foto requerida" });
       if (!file.mimetype.startsWith("image/")) return res.status(400).json({ error: "Solo se permiten imágenes" });
@@ -10507,7 +10512,12 @@ export async function registerRoutes(
 
       if (!updated) return res.status(404).json({ error: "Item del checklist no encontrado" });
       res.json(updated);
-    } catch (error) {
+    } catch (error: unknown) {
+      // Handle multer file size limit error explicitly
+      const multerError = error as { code?: string; field?: string };
+      if (multerError?.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ error: "La foto excede el tamaño máximo de 5MB" });
+      }
       console.error("Error uploading checklist photo:", error);
       res.status(500).json({ error: "Error al subir foto" });
     }

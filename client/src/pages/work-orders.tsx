@@ -603,7 +603,7 @@ function OrderDetailView({
                       {item.requiresPhoto ? (
                         <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
                           {item.isCompleted ? (
-                            <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                            <Checkbox checked={true} disabled data-testid={`checkbox-checklist-${item.id}`} />
                           ) : uploadingItemId === item.id ? (
                             <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
                           ) : can("work_orders", "edit") ? (
