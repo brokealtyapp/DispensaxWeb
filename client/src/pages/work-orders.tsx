@@ -1777,11 +1777,9 @@ export function WorkOrdersPage() {
                             <Button size="icon" variant="ghost" onClick={() => { setEditingTypeId(wot.id); setEditingTypeLabel(wot.label); }} data-testid={`button-rename-type-${wot.id}`} title="Renombrar">
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                            {!wot.isDefault && (
-                              <Button size="icon" variant="ghost" onClick={() => deleteTypeMutation.mutate(wot.id)} disabled={deleteTypeMutation.isPending} data-testid={`button-delete-type-${wot.id}`} title="Eliminar tipo">
-                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                              </Button>
-                            )}
+                            <Button size="icon" variant="ghost" onClick={() => deleteTypeMutation.mutate(wot.id)} disabled={deleteTypeMutation.isPending} data-testid={`button-delete-type-${wot.id}`} title="Eliminar tipo">
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
                           </div>
                         )}
                       </div>
