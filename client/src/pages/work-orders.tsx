@@ -472,6 +472,10 @@ function OrderDetailView({
 
   const [pendingAnswers, setPendingAnswers] = useState<Record<string, string>>({});
 
+  useEffect(() => {
+    setPendingAnswers({});
+  }, [order.id]);
+
   const updateChecklistMutation = useMutation({
     mutationFn: async ({ itemId, isCompleted, answer }: { itemId: string; isCompleted?: boolean; answer?: string | null }) => {
       const body: Record<string, unknown> = {};
