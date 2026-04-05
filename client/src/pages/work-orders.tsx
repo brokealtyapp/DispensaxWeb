@@ -692,7 +692,7 @@ function OrderDetailView({
                       {effectiveRequiresPhoto ? (
                         <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
                           {item.isCompleted ? (
-                            <Checkbox checked={true} disabled data-testid={`checkbox-checklist-${item.id}`} />
+                            <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" data-testid={`checkbox-checklist-${item.id}`} />
                           ) : uploadingItemId === item.id ? (
                             <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
                           ) : canEdit ? (

@@ -10231,6 +10231,12 @@ export async function registerRoutes(
         options: z.array(z.string().min(1).max(200)).max(20).nullable().optional(),
       });
       const parsed = schema.parse(req.body);
+      if ((parsed.itemType === "multiple_choice" || parsed.itemType === "multi_select") && (!parsed.options || parsed.options.length === 0)) {
+        return res.status(400).json({ error: "Los tipos selección única y selección múltiple requieren al menos una opción" });
+      }
+      if (parsed.itemType !== "multiple_choice" && parsed.itemType !== "multi_select" && parsed.options?.length) {
+        parsed.options = null;
+      }
       await ensureWorkOrderTypesSeed(tenantId);
       const allTypes = await storage.getWorkOrderTypes(tenantId, true);
       if (!allTypes.some(t => t.key === parsed.orderType)) {
@@ -10262,6 +10268,12 @@ export async function registerRoutes(
         options: z.array(z.string().min(1).max(200)).max(20).nullable().optional(),
       });
       const parsed = schema.parse(req.body);
+      if (parsed.itemType && (parsed.itemType === "multiple_choice" || parsed.itemType === "multi_select") && parsed.options !== undefined && (!parsed.options || parsed.options.length === 0)) {
+        return res.status(400).json({ error: "Los tipos selección única y selección múltiple requieren al menos una opción" });
+      }
+      if (parsed.itemType && parsed.itemType !== "multiple_choice" && parsed.itemType !== "multi_select" && parsed.options?.length) {
+        parsed.options = null;
+      }
       const updated = await storage.updateChecklistTemplate(req.params.id, tenantId, parsed);
       if (!updated) return res.status(404).json({ error: "Template no encontrado" });
       res.json(updated);
