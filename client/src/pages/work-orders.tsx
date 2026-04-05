@@ -412,6 +412,8 @@ function OrderDetailView({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [capturingItemId, setCapturingItemId] = useState<string | null>(null);
   const [uploadingItemId, setUploadingItemId] = useState<string | null>(null);
+  const [replacePhotoItemId, setReplacePhotoItemId] = useState<string | null>(null);
+  const isReplacingRef = useRef(false);
   const pendingGeoRef = useRef<{ lat: string; lng: string }>({ lat: "", lng: "" });
   const [photoBlobUrls, setPhotoBlobUrls] = useState<Record<string, string>>({});
   // Track which item IDs have been fetched — avoids stale-closure issues with photoBlobUrls state
@@ -520,6 +522,8 @@ function OrderDetailView({
     const file = e.target.files?.[0];
     const itemId = capturingItemId;
     const { lat, lng } = pendingGeoRef.current;
+    const isReplace = isReplacingRef.current;
+    isReplacingRef.current = false;
     setCapturingItemId(null);
     if (!file || !itemId) return;
 
@@ -534,7 +538,8 @@ function OrderDetailView({
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
 
-      const res = await fetch(`/api/work-orders/${order.id}/checklist/${itemId}/photo`, {
+      const photoUrl = `/api/work-orders/${order.id}/checklist/${itemId}/photo${isReplace ? "?replace=true" : ""}`;
+      const res = await fetch(photoUrl, {
         method: "POST",
         headers,
         body: formData,
@@ -556,7 +561,7 @@ function OrderDetailView({
       });
 
       queryClient.invalidateQueries({ queryKey: ["/api/work-orders", order.id, "checklist"] });
-      toast({ title: "Foto guardada", description: "El ítem se marcó como completado" });
+      toast({ title: isReplace ? "Foto reemplazada" : "Foto guardada", description: isReplace ? "La foto anterior fue eliminada y la nueva fue guardada" : "El ítem se marcó como completado" });
     } catch (error) {
       toast({ title: "Error", description: (error as Error).message || "No se pudo subir la foto", variant: "destructive" });
     } finally {
@@ -878,6 +883,19 @@ function OrderDetailView({
                             {item.photoTechnicianName && <p><span className="font-medium">Técnico:</span> {item.photoTechnicianName}</p>}
                             {item.photoTakenAt && <p><span className="font-medium">Fecha:</span> {formatDate(item.photoTakenAt)}</p>}
                             {item.photoLat && item.photoLng && <p><span className="font-medium">GPS:</span> {item.photoLat}, {item.photoLng}</p>}
+                            {can("work_orders", "edit") && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="mt-1"
+                                onClick={() => setReplacePhotoItemId(item.id)}
+                                disabled={uploadingItemId === item.id}
+                                data-testid={`btn-replace-photo-${item.id}`}
+                              >
+                                <RefreshCcw className="h-3 w-3 mr-1" />
+                                Reemplazar foto
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -899,6 +917,31 @@ function OrderDetailView({
           </CardContent>
         </Card>
       </div>
+
+      <SimpleModal
+        open={replacePhotoItemId !== null}
+        onClose={() => setReplacePhotoItemId(null)}
+        title="Reemplazar foto"
+        description="La foto anterior será eliminada permanentemente y no podrá recuperarse. ¿Deseas continuar?"
+      >
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={() => setReplacePhotoItemId(null)} data-testid="btn-cancel-replace-photo">
+            Cancelar
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              const itemId = replacePhotoItemId!;
+              setReplacePhotoItemId(null);
+              isReplacingRef.current = true;
+              handleCameraCapture(itemId);
+            }}
+            data-testid="btn-confirm-replace-photo"
+          >
+            Sí, reemplazar
+          </Button>
+        </div>
+      </SimpleModal>
 
       <Card>
         <CardHeader className="pb-3">

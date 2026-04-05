@@ -10679,9 +10679,19 @@ export async function registerRoutes(
       const checklistItem = allChecklistItems.find((i) => i.id === req.params.itemId);
       if (!checklistItem) return res.status(404).json({ error: "Item del checklist no encontrado" });
 
-      // Prevent orphaned files: reject if item already has a photo
-      if (checklistItem.photoUrl) {
+      // Allow replacement when ?replace=true; otherwise reject if photo exists
+      const isReplace = req.query.replace === "true";
+      if (checklistItem.photoUrl && !isReplace) {
         return res.status(409).json({ error: "Este ítem ya tiene una foto registrada" });
+      }
+      if (checklistItem.photoUrl && isReplace) {
+        try {
+          const { Client: ObjClientDel } = await import("@replit/object-storage");
+          const objClientDel = new ObjClientDel();
+          await objClientDel.delete(checklistItem.photoUrl);
+        } catch (deleteErr) {
+          console.warn("Error deleting old checklist photo (non-fatal):", deleteErr);
+        }
       }
 
       const file = (req as Express.Request & { file?: Express.Multer.File }).file;
