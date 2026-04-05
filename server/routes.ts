@@ -9967,20 +9967,27 @@ export async function registerRoutes(
       .slice(0, 60);
   }
 
-  async function getChecklistItemsForTenant(tenantId: string, type: string): Promise<{ label: string; requiresPhoto: boolean }[]> {
+  type ChecklistItemSeed = { label: string; requiresPhoto: boolean; itemType: string; options: string[] | null };
+
+  async function getChecklistItemsForTenant(tenantId: string, type: string): Promise<ChecklistItemSeed[]> {
     const isInitialized = await storage.isChecklistTypeInitialized(tenantId, type);
     if (isInitialized) {
       const templates = await storage.getChecklistTemplatesByType(tenantId, type);
-      return templates.filter((t) => t.isActive).map((t) => ({ label: t.label, requiresPhoto: t.requiresPhoto ?? false }));
+      return templates.filter((t) => t.isActive).map((t) => ({
+        label: t.label,
+        requiresPhoto: t.requiresPhoto ?? false,
+        itemType: t.itemType ?? "checkbox",
+        options: (t.options as string[] | null) ?? null,
+      }));
     }
     const defaults = getDefaultChecklist(type);
     if (defaults.length > 0) {
       await storage.createChecklistTemplates(
-        defaults.map((label, idx) => ({ tenantId, orderType: type, label, sortOrder: idx, isActive: true, requiresPhoto: false }))
+        defaults.map((label, idx) => ({ tenantId, orderType: type, label, sortOrder: idx, isActive: true, requiresPhoto: false, itemType: "checkbox", options: null }))
       );
     }
     await storage.markChecklistTypeInitialized(tenantId, type);
-    return defaults.map((label) => ({ label, requiresPhoto: false }));
+    return defaults.map((label) => ({ label, requiresPhoto: false, itemType: "checkbox", options: null }));
   }
 
   function getDefaultChecklist(type: string): string[] {
@@ -10220,6 +10227,8 @@ export async function registerRoutes(
         label: z.string().min(1).max(300),
         isActive: z.boolean().default(true),
         requiresPhoto: z.boolean().default(false),
+        itemType: z.enum(["checkbox", "multiple_choice", "multi_select", "open_question", "numeric", "photo"]).default("checkbox"),
+        options: z.array(z.string().min(1).max(200)).max(20).nullable().optional(),
       });
       const parsed = schema.parse(req.body);
       await ensureWorkOrderTypesSeed(tenantId);
@@ -10249,6 +10258,8 @@ export async function registerRoutes(
         sortOrder: z.number().int().optional(),
         isActive: z.boolean().optional(),
         requiresPhoto: z.boolean().optional(),
+        itemType: z.enum(["checkbox", "multiple_choice", "multi_select", "open_question", "numeric", "photo"]).optional(),
+        options: z.array(z.string().min(1).max(200)).max(20).nullable().optional(),
       });
       const parsed = schema.parse(req.body);
       const updated = await storage.updateChecklistTemplate(req.params.id, tenantId, parsed);
@@ -10383,6 +10394,8 @@ export async function registerRoutes(
             sortOrder: idx,
             isCompleted: false,
             requiresPhoto: item.requiresPhoto,
+            itemType: item.itemType,
+            options: item.options,
           }))
         );
       }
@@ -10533,14 +10546,31 @@ export async function registerRoutes(
       const checklistUpdateSchema = z.object({
         isCompleted: z.boolean().optional(),
         notes: z.string().nullable().optional(),
+        answer: z.string().nullable().optional(),
       });
       const parsedChecklist = checklistUpdateSchema.parse(req.body);
-      const checklistUpdate: Partial<{ isCompleted: boolean; completedAt: Date | null; completedBy: string | null; notes: string | null }> = {};
+      const checklistUpdate: Partial<{ isCompleted: boolean; completedAt: Date | null; completedBy: string | null; notes: string | null; answer: string | null }> = {};
+
+      const allItems = await storage.getChecklistItems(order.id);
+      const targetItem = allItems.find((i) => i.id === req.params.itemId);
+
+      if (parsedChecklist.answer !== undefined) {
+        checklistUpdate.answer = parsedChecklist.answer;
+        // Auto-complete item when answer is provided (non-checkbox types)
+        if (parsedChecklist.isCompleted === undefined && targetItem) {
+          const itype = targetItem.itemType ?? "checkbox";
+          if (itype !== "checkbox") {
+            const hasAnswer = parsedChecklist.answer !== null && parsedChecklist.answer.trim() !== "";
+            checklistUpdate.isCompleted = hasAnswer;
+            checklistUpdate.completedAt = hasAnswer ? new Date() : null;
+            checklistUpdate.completedBy = hasAnswer ? req.user!.userId : null;
+          }
+        }
+      }
+
       if (parsedChecklist.isCompleted !== undefined) {
         // If trying to mark as completed, check if item requires a photo first
         if (parsedChecklist.isCompleted) {
-          const allItems = await storage.getChecklistItems(order.id);
-          const targetItem = allItems.find((i) => i.id === req.params.itemId);
           if (targetItem?.requiresPhoto && !targetItem?.photoUrl) {
             return res.status(422).json({ error: "Este ítem requiere una foto para ser completado" });
           }
@@ -10963,6 +10993,8 @@ export async function registerRoutes(
             sortOrder: idx,
             isCompleted: false,
             requiresPhoto: item.requiresPhoto,
+            itemType: item.itemType,
+            options: item.options,
           }))
         );
       }

@@ -35,6 +35,7 @@ The application uses a client-server architecture. The frontend is built with Re
 - **Rate Limiting:** In-memory rate limiter protects public and authentication endpoints.
 - **Nayax Integration:** Provides an HTTP client (`server/nayax.ts`) to interact with the Nayax Lynx API for managing machines, sales, and cashless operations, with per-tenant configuration.
 - **Work Orders Module:** Manages work orders and tickets with auto-numbering, configurable SLA, default checklists, and various order/ticket types. Features a dedicated frontend interface for management and tracking.
+- **Checklist Item Types:** Checklist items support 6 types — checkbox (default), selección única (single choice RadioGroup), selección múltiple (multi-select checkboxes), pregunta abierta (textarea), numérico (number input), foto obligatoria (camera). Templates store `itemType` and `options` (JSONB); executed items store `answer` (text, JSON for multi_select). Non-checkbox types auto-complete when an answer is saved.
 - **Cash Denomination Counting Module:** Facilitates triple-count cash reconciliation for collections (machine, delivery, change fund) with specific RD$ denominations.
 - **Change Fund (Fondo de Cambio) Module:** Manages change funds issued to suppliers, tracking their status and denominations, ensuring one active fund per supplier.
 

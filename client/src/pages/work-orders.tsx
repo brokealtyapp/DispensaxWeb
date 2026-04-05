@@ -50,7 +50,15 @@ import {
   PlusCircle,
   Camera,
   Loader2,
+  ListChecks,
+  CircleDot,
+  SquareCheck,
+  MessageSquare,
+  Hash,
+  ImageIcon,
 } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import {
   BarChart,
   Bar,
@@ -158,6 +166,8 @@ interface Ticket {
   updatedAt: string;
 }
 
+type ChecklistItemType = "checkbox" | "multiple_choice" | "multi_select" | "open_question" | "numeric" | "photo";
+
 interface ChecklistItem {
   id: string;
   workOrderId: string;
@@ -175,6 +185,9 @@ interface ChecklistItem {
   photoLat: string | null;
   photoLng: string | null;
   photoTechnicianName: string | null;
+  itemType: ChecklistItemType | null;
+  options: string[] | null;
+  answer: string | null;
 }
 
 interface Machine {
@@ -415,7 +428,7 @@ function OrderDetailView({
   // Fetch photo blob URLs with auth headers for checklist items that have photos.
   // fetchedPhotoIdsRef (not state) is used as the guard to avoid stale-closure issues.
   useEffect(() => {
-    const itemsWithPhotos = checklist.filter(i => i.requiresPhoto && i.photoUrl);
+    const itemsWithPhotos = checklist.filter(i => (i.requiresPhoto || i.itemType === "photo") && i.photoUrl);
     if (itemsWithPhotos.length === 0) return;
 
     const blobMap: Record<string, string> = {};
@@ -457,9 +470,14 @@ function OrderDetailView({
     };
   }, []);
 
+  const [pendingAnswers, setPendingAnswers] = useState<Record<string, string>>({});
+
   const updateChecklistMutation = useMutation({
-    mutationFn: async ({ itemId, isCompleted }: { itemId: string; isCompleted: boolean }) => {
-      await apiRequest("PATCH", `/api/work-orders/${order.id}/checklist/${itemId}`, { isCompleted });
+    mutationFn: async ({ itemId, isCompleted, answer }: { itemId: string; isCompleted?: boolean; answer?: string | null }) => {
+      const body: Record<string, unknown> = {};
+      if (isCompleted !== undefined) body.isCompleted = isCompleted;
+      if (answer !== undefined) body.answer = answer;
+      await apiRequest("PATCH", `/api/work-orders/${order.id}/checklist/${itemId}`, body);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/work-orders", order.id, "checklist"] });
@@ -660,16 +678,24 @@ function OrderDetailView({
                     style={{ width: `${progress}%` }}
                   />
                 </div>
-                {checklist.map((item) => (
+                {checklist.map((item) => {
+                  const itype: ChecklistItemType = item.itemType ?? "checkbox";
+                  const opts = item.options ?? [];
+                  const canEdit = can("work_orders", "edit");
+                  const isPhotoType = itype === "photo";
+                  const effectiveRequiresPhoto = item.requiresPhoto || isPhotoType;
+                  const selectedMulti: string[] = (() => { try { return item.answer ? JSON.parse(item.answer) : []; } catch { return []; } })();
+                  return (
                   <div key={item.id} className="space-y-1.5" data-testid={`checklist-item-${item.id}`}>
                     <div className="flex items-start gap-3">
-                      {item.requiresPhoto ? (
+                      {/* Left control column */}
+                      {effectiveRequiresPhoto ? (
                         <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
                           {item.isCompleted ? (
                             <Checkbox checked={true} disabled data-testid={`checkbox-checklist-${item.id}`} />
                           ) : uploadingItemId === item.id ? (
                             <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
-                          ) : can("work_orders", "edit") ? (
+                          ) : canEdit ? (
                             <Button
                               size="icon"
                               variant="outline"
@@ -684,31 +710,145 @@ function OrderDetailView({
                             <Camera className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           )}
                         </div>
-                      ) : (
+                      ) : itype === "checkbox" ? (
                         <Checkbox
                           checked={item.isCompleted}
                           onCheckedChange={(checked) => {
-                            if (can("work_orders", "edit")) {
+                            if (canEdit) {
                               updateChecklistMutation.mutate({ itemId: item.id, isCompleted: !!checked });
                             }
                           }}
-                          disabled={!can("work_orders", "edit") || updateChecklistMutation.isPending}
+                          disabled={!canEdit || updateChecklistMutation.isPending}
                           data-testid={`checkbox-checklist-${item.id}`}
                         />
+                      ) : (
+                        <div className="mt-0.5 shrink-0">
+                          {item.isCompleted ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/40" />
+                          )}
+                        </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <span className={`text-sm ${item.isCompleted ? "line-through text-muted-foreground" : ""}`}>
+                        <span className={`text-sm font-medium ${item.isCompleted ? "text-muted-foreground" : ""}`}>
                           {item.label}
                         </span>
-                        {item.requiresPhoto && !item.isCompleted && (
+                        {effectiveRequiresPhoto && !item.isCompleted && !isPhotoType && (
                           <Badge className="ml-2 no-default-hover-elevate no-default-active-elevate text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
                             <Camera className="h-2.5 w-2.5 mr-1" />
                             Requiere foto
                           </Badge>
                         )}
+                        {/* Answer controls by type */}
+                        {itype === "multiple_choice" && opts.length > 0 && (
+                          <RadioGroup
+                            value={item.answer ?? pendingAnswers[item.id] ?? ""}
+                            onValueChange={(val) => {
+                              if (!canEdit) return;
+                              setPendingAnswers(prev => ({ ...prev, [item.id]: val }));
+                              updateChecklistMutation.mutate({ itemId: item.id, answer: val });
+                            }}
+                            disabled={!canEdit || updateChecklistMutation.isPending}
+                            className="mt-2 space-y-1"
+                            data-testid={`radio-group-${item.id}`}
+                          >
+                            {opts.map((opt) => (
+                              <div key={opt} className="flex items-center gap-2">
+                                <RadioGroupItem value={opt} id={`${item.id}-${opt}`} data-testid={`radio-${item.id}-${opt}`} />
+                                <Label htmlFor={`${item.id}-${opt}`} className="text-sm font-normal cursor-pointer">{opt}</Label>
+                              </div>
+                            ))}
+                          </RadioGroup>
+                        )}
+                        {itype === "multi_select" && opts.length > 0 && (
+                          <div className="mt-2 space-y-1" data-testid={`multi-select-${item.id}`}>
+                            {opts.map((opt) => {
+                              const checked = selectedMulti.includes(opt);
+                              return (
+                                <div key={opt} className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`${item.id}-${opt}`}
+                                    checked={checked}
+                                    onCheckedChange={(c) => {
+                                      if (!canEdit) return;
+                                      const next = c ? [...selectedMulti, opt] : selectedMulti.filter(o => o !== opt);
+                                      const val = JSON.stringify(next);
+                                      updateChecklistMutation.mutate({ itemId: item.id, answer: next.length > 0 ? val : null });
+                                    }}
+                                    disabled={!canEdit || updateChecklistMutation.isPending}
+                                    data-testid={`checkbox-multi-${item.id}-${opt}`}
+                                  />
+                                  <Label htmlFor={`${item.id}-${opt}`} className="text-sm font-normal cursor-pointer">{opt}</Label>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {itype === "open_question" && (
+                          <div className="mt-2" data-testid={`open-question-${item.id}`}>
+                            {canEdit ? (
+                              <div className="flex gap-2">
+                                <Textarea
+                                  value={pendingAnswers[item.id] ?? item.answer ?? ""}
+                                  onChange={e => setPendingAnswers(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                  placeholder="Escribe tu respuesta..."
+                                  className="text-sm resize-none min-h-[60px]"
+                                  disabled={updateChecklistMutation.isPending}
+                                  data-testid={`textarea-answer-${item.id}`}
+                                />
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    const ans = (pendingAnswers[item.id] ?? item.answer ?? "").trim();
+                                    updateChecklistMutation.mutate({ itemId: item.id, answer: ans || null });
+                                  }}
+                                  disabled={updateChecklistMutation.isPending}
+                                  data-testid={`button-save-answer-${item.id}`}
+                                >
+                                  <Save className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : item.answer ? (
+                              <p className="text-sm bg-muted/50 rounded p-2">{item.answer}</p>
+                            ) : null}
+                          </div>
+                        )}
+                        {itype === "numeric" && (
+                          <div className="mt-2 flex gap-2 items-center" data-testid={`numeric-input-${item.id}`}>
+                            {canEdit ? (
+                              <>
+                                <Input
+                                  type="number"
+                                  value={pendingAnswers[item.id] ?? item.answer ?? ""}
+                                  onChange={e => setPendingAnswers(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                  placeholder="0"
+                                  className="w-32 text-sm"
+                                  disabled={updateChecklistMutation.isPending}
+                                  data-testid={`input-numeric-${item.id}`}
+                                />
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    const ans = (pendingAnswers[item.id] ?? item.answer ?? "").trim();
+                                    updateChecklistMutation.mutate({ itemId: item.id, answer: ans || null });
+                                  }}
+                                  disabled={updateChecklistMutation.isPending}
+                                  data-testid={`button-save-numeric-${item.id}`}
+                                >
+                                  <Save className="h-4 w-4" />
+                                </Button>
+                              </>
+                            ) : item.answer ? (
+                              <span className="text-sm font-medium">{item.answer}</span>
+                            ) : null}
+                          </div>
+                        )}
                       </div>
                     </div>
-                    {item.requiresPhoto && item.photoUrl && (
+                    {effectiveRequiresPhoto && item.photoUrl && (
                       <div className="ml-8 space-y-1.5">
                         <Badge className="no-default-hover-elevate no-default-active-elevate text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
                           <CheckCircle2 className="h-2.5 w-2.5 mr-1" />
@@ -732,7 +872,8 @@ function OrderDetailView({
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
                 <input
                   ref={cameraInputRef}
                   type="file"
@@ -925,6 +1066,17 @@ function SLADashboard({ stats, orders, machines, users, onSelectOrder, typeLabel
   );
 }
 
+const ITEM_TYPE_META: Record<ChecklistItemType, { label: string; icon: React.ElementType; color: string }> = {
+  checkbox: { label: "Casilla", icon: SquareCheck, color: "text-muted-foreground" },
+  multiple_choice: { label: "Selección única", icon: CircleDot, color: "text-blue-600" },
+  multi_select: { label: "Selección múltiple", icon: ListChecks, color: "text-violet-600" },
+  open_question: { label: "Pregunta abierta", icon: MessageSquare, color: "text-amber-600" },
+  numeric: { label: "Numérico", icon: Hash, color: "text-green-600" },
+  photo: { label: "Foto obligatoria", icon: ImageIcon, color: "text-pink-600" },
+};
+
+const ITEM_TYPE_OPTIONS: ChecklistItemType[] = ["checkbox", "multiple_choice", "multi_select", "open_question", "numeric", "photo"];
+
 export function WorkOrdersPage() {
   const { user } = useAuth();
   const isAbastecedor = user?.role === "abastecedor";
@@ -954,8 +1106,14 @@ export function WorkOrdersPage() {
   const [showChecklistSettings, setShowChecklistSettings] = useState(false);
   const [activeTemplateTab, setActiveTemplateTab] = useState("tecnico");
   const [newItemLabels, setNewItemLabels] = useState<Record<string, string>>({});
+  const [newItemTypes, setNewItemTypes] = useState<Record<string, ChecklistItemType>>({});
+  const [newItemOptions, setNewItemOptions] = useState<Record<string, string[]>>({});
+  const [newItemOptionInput, setNewItemOptionInput] = useState<Record<string, string>>({});
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
+  const [editingItemType, setEditingItemType] = useState<ChecklistItemType>("checkbox");
+  const [editingOptions, setEditingOptions] = useState<string[]>([]);
+  const [editingOptionInput, setEditingOptionInput] = useState("");
   const [showAddType, setShowAddType] = useState(false);
   const [newTypeLabel, setNewTypeLabel] = useState("");
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
@@ -993,7 +1151,7 @@ export function WorkOrdersPage() {
     queryKey: ["/api/users"],
   });
 
-  type ChecklistTemplate = { id: string; tenantId: string; orderType: string; label: string; sortOrder: number; isActive: boolean; requiresPhoto: boolean; createdAt: string };
+  type ChecklistTemplate = { id: string; tenantId: string; orderType: string; label: string; sortOrder: number; isActive: boolean; requiresPhoto: boolean; createdAt: string; itemType: ChecklistItemType; options: string[] | null };
   type ChecklistTemplatesGrouped = Record<string, ChecklistTemplate[]>;
 
   const { data: checklistTemplates = {}, isLoading: templatesLoading } = useQuery<ChecklistTemplatesGrouped>({
@@ -1082,19 +1240,22 @@ export function WorkOrdersPage() {
   });
 
   const addTemplateMutation = useMutation({
-    mutationFn: async ({ orderType, label }: { orderType: string; label: string }) => {
-      const res = await apiRequest("POST", "/api/work-orders/checklist-templates", { orderType, label, isActive: true });
+    mutationFn: async ({ orderType, label, itemType, options }: { orderType: string; label: string; itemType?: ChecklistItemType; options?: string[] | null }) => {
+      const res = await apiRequest("POST", "/api/work-orders/checklist-templates", { orderType, label, isActive: true, itemType: itemType ?? "checkbox", options: options ?? null });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/work-orders/checklist-templates"] });
       setNewItemLabels(prev => ({ ...prev, [activeTemplateTab]: "" }));
+      setNewItemTypes(prev => ({ ...prev, [activeTemplateTab]: "checkbox" }));
+      setNewItemOptions(prev => ({ ...prev, [activeTemplateTab]: [] }));
+      setNewItemOptionInput(prev => ({ ...prev, [activeTemplateTab]: "" }));
     },
     onError: () => toast({ title: "Error", description: "No se pudo agregar el ítem", variant: "destructive" }),
   });
 
   const updateTemplateMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; label?: string; sortOrder?: number; isActive?: boolean; requiresPhoto?: boolean }) => {
+    mutationFn: async ({ id, ...data }: { id: string; label?: string; sortOrder?: number; isActive?: boolean; requiresPhoto?: boolean; itemType?: ChecklistItemType; options?: string[] | null }) => {
       const res = await apiRequest("PATCH", `/api/work-orders/checklist-templates/${id}`, data);
       return res.json();
     },
@@ -1831,121 +1992,242 @@ export function WorkOrdersPage() {
                           {items.filter(i => i.isActive).length} de {items.length} ítems activos se agregarán a nuevas órdenes de este tipo.
                         </p>
                         <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-                          {items.map((item, idx) => (
-                            <div key={item.id} className={`flex items-center gap-2 rounded-md px-2 py-1.5 border ${item.isActive ? "bg-card" : "bg-muted/40 opacity-60"}`}>
-                              <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
-                              <div className="flex flex-col gap-0.5 shrink-0">
-                                <button
-                                  className="disabled:opacity-30 hover:text-foreground text-muted-foreground transition-colors"
-                                  onClick={() => moveTemplateItem(items, idx, "up")}
-                                  disabled={idx === 0 || updateTemplateMutation.isPending}
-                                  data-testid={`button-move-up-${item.id}`}
-                                  title="Mover arriba"
-                                >
-                                  <ChevronUp className="h-3 w-3" />
-                                </button>
-                                <button
-                                  className="disabled:opacity-30 hover:text-foreground text-muted-foreground transition-colors"
-                                  onClick={() => moveTemplateItem(items, idx, "down")}
-                                  disabled={idx === items.length - 1 || updateTemplateMutation.isPending}
-                                  data-testid={`button-move-down-${item.id}`}
-                                  title="Mover abajo"
-                                >
-                                  <ChevronDown className="h-3 w-3" />
-                                </button>
-                              </div>
-                              {editingItemId === item.id ? (
-                                <div className="flex items-center gap-1 flex-1">
-                                  <Input
-                                    value={editingLabel}
-                                    onChange={e => setEditingLabel(e.target.value)}
-                                    className="h-7 text-sm flex-1"
-                                    onKeyDown={e => {
-                                      if (e.key === "Enter") updateTemplateMutation.mutate({ id: item.id, label: editingLabel });
-                                      if (e.key === "Escape") { setEditingItemId(null); setEditingLabel(""); }
-                                    }}
-                                    autoFocus
-                                    data-testid={`input-edit-label-${item.id}`}
-                                  />
-                                  <Button size="icon" variant="ghost" onClick={() => updateTemplateMutation.mutate({ id: item.id, label: editingLabel })} disabled={!editingLabel.trim() || updateTemplateMutation.isPending} data-testid={`button-save-label-${item.id}`}>
-                                    <Save className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="flex-1 flex items-center gap-1.5 min-w-0">
-                                  <span className="text-sm leading-tight line-clamp-2">{item.label}</span>
-                                  {item.requiresPhoto && (
-                                    <Camera className="h-3 w-3 text-blue-600 flex-shrink-0" title="Requiere foto" />
+                          {items.map((item, idx) => {
+                              const itype: ChecklistItemType = item.itemType ?? "checkbox";
+                              const meta = ITEM_TYPE_META[itype];
+                              const TypeIcon = meta.icon;
+                              const isEditing = editingItemId === item.id;
+                              return (
+                                <div key={item.id} className={`rounded-md border ${item.isActive ? "bg-card" : "bg-muted/40 opacity-60"}`}>
+                                  <div className="flex items-center gap-2 px-2 py-1.5">
+                                    <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+                                    <div className="flex flex-col gap-0.5 shrink-0">
+                                      <button
+                                        className="disabled:opacity-30 hover:text-foreground text-muted-foreground transition-colors"
+                                        onClick={() => moveTemplateItem(items, idx, "up")}
+                                        disabled={idx === 0 || updateTemplateMutation.isPending}
+                                        data-testid={`button-move-up-${item.id}`}
+                                        title="Mover arriba"
+                                      >
+                                        <ChevronUp className="h-3 w-3" />
+                                      </button>
+                                      <button
+                                        className="disabled:opacity-30 hover:text-foreground text-muted-foreground transition-colors"
+                                        onClick={() => moveTemplateItem(items, idx, "down")}
+                                        disabled={idx === items.length - 1 || updateTemplateMutation.isPending}
+                                        data-testid={`button-move-down-${item.id}`}
+                                        title="Mover abajo"
+                                      >
+                                        <ChevronDown className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                    {isEditing ? (
+                                      <div className="flex items-center gap-1 flex-1">
+                                        <Input
+                                          value={editingLabel}
+                                          onChange={e => setEditingLabel(e.target.value)}
+                                          className="h-7 text-sm flex-1"
+                                          onKeyDown={e => {
+                                            if (e.key === "Escape") { setEditingItemId(null); setEditingLabel(""); }
+                                          }}
+                                          autoFocus
+                                          data-testid={`input-edit-label-${item.id}`}
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div className="flex-1 flex items-center gap-1.5 min-w-0">
+                                        <TypeIcon className={`h-3.5 w-3.5 shrink-0 ${meta.color}`} title={meta.label} />
+                                        <span className="text-sm leading-tight line-clamp-2">{item.label}</span>
+                                        {item.requiresPhoto && itype !== "photo" && (
+                                          <Camera className="h-3 w-3 text-blue-600 flex-shrink-0" title="Requiere foto" />
+                                        )}
+                                      </div>
+                                    )}
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      {isEditing ? (
+                                        <Button size="icon" variant="ghost" onClick={() => updateTemplateMutation.mutate({ id: item.id, label: editingLabel, itemType: editingItemType, options: (editingItemType === "multiple_choice" || editingItemType === "multi_select") ? editingOptions : null })} disabled={!editingLabel.trim() || updateTemplateMutation.isPending} data-testid={`button-save-label-${item.id}`}>
+                                          <Save className="h-3.5 w-3.5" />
+                                        </Button>
+                                      ) : (
+                                        <Button size="icon" variant="ghost" onClick={() => { setEditingItemId(item.id); setEditingLabel(item.label); setEditingItemType(itype); setEditingOptions(item.options ?? []); setEditingOptionInput(""); }} data-testid={`button-edit-${item.id}`} title="Editar">
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </Button>
+                                      )}
+                                      {itype !== "photo" && (
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          onClick={() => updateTemplateMutation.mutate({ id: item.id, requiresPhoto: !item.requiresPhoto })}
+                                          disabled={updateTemplateMutation.isPending}
+                                          data-testid={`button-toggle-photo-${item.id}`}
+                                          title={item.requiresPhoto ? "Quitar requisito de foto" : "Requerir foto para completar"}
+                                        >
+                                          <Camera className={`h-3.5 w-3.5 ${item.requiresPhoto ? "text-blue-600" : "text-muted-foreground"}`} />
+                                        </Button>
+                                      )}
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={() => updateTemplateMutation.mutate({ id: item.id, isActive: !item.isActive })}
+                                        disabled={updateTemplateMutation.isPending}
+                                        data-testid={`button-toggle-${item.id}`}
+                                        title={item.isActive ? "Desactivar" : "Activar"}
+                                      >
+                                        {item.isActive ? <ToggleRight className="h-4 w-4 text-green-600" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={() => deleteTemplateMutation.mutate(item.id)}
+                                        disabled={deleteTemplateMutation.isPending}
+                                        data-testid={`button-delete-template-${item.id}`}
+                                        title="Eliminar"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  {isEditing && (
+                                    <div className="px-3 pb-2 pt-1 border-t flex flex-col gap-2">
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {ITEM_TYPE_OPTIONS.map(t => {
+                                          const m = ITEM_TYPE_META[t];
+                                          const TIcon = m.icon;
+                                          return (
+                                            <button
+                                              key={t}
+                                              type="button"
+                                              onClick={() => { setEditingItemType(t); if (t !== "multiple_choice" && t !== "multi_select") setEditingOptions([]); }}
+                                              className={`flex items-center gap-1 text-xs px-2 py-1 rounded border transition-colors ${editingItemType === t ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover-elevate"}`}
+                                              data-testid={`button-type-${t}-${item.id}`}
+                                            >
+                                              <TIcon className="h-3 w-3" />
+                                              {m.label}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                      {(editingItemType === "multiple_choice" || editingItemType === "multi_select") && (
+                                        <div className="flex flex-col gap-1">
+                                          <span className="text-xs text-muted-foreground">Opciones:</span>
+                                          {editingOptions.map((opt, oi) => (
+                                            <div key={oi} className="flex items-center gap-1">
+                                              <span className="text-xs flex-1 bg-muted/50 rounded px-2 py-0.5">{opt}</span>
+                                              <button type="button" onClick={() => setEditingOptions(prev => prev.filter((_, i) => i !== oi))} className="text-destructive hover:text-destructive/80">
+                                                <X className="h-3 w-3" />
+                                              </button>
+                                            </div>
+                                          ))}
+                                          <div className="flex gap-1">
+                                            <Input
+                                              value={editingOptionInput}
+                                              onChange={e => setEditingOptionInput(e.target.value)}
+                                              placeholder="Nueva opción..."
+                                              className="h-7 text-xs flex-1"
+                                              onKeyDown={e => {
+                                                if (e.key === "Enter" && editingOptionInput.trim()) {
+                                                  setEditingOptions(prev => [...prev, editingOptionInput.trim()]);
+                                                  setEditingOptionInput("");
+                                                }
+                                              }}
+                                              data-testid={`input-option-edit-${item.id}`}
+                                            />
+                                            <Button size="icon" variant="ghost" onClick={() => { if (editingOptionInput.trim()) { setEditingOptions(prev => [...prev, editingOptionInput.trim()]); setEditingOptionInput(""); } }} disabled={!editingOptionInput.trim()}>
+                                              <PlusCircle className="h-3.5 w-3.5" />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
-                              )}
-                              <div className="flex items-center gap-1 shrink-0">
-                                {editingItemId !== item.id && (
-                                  <Button size="icon" variant="ghost" onClick={() => { setEditingItemId(item.id); setEditingLabel(item.label); }} data-testid={`button-edit-${item.id}`} title="Editar">
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </Button>
-                                )}
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => updateTemplateMutation.mutate({ id: item.id, requiresPhoto: !item.requiresPhoto })}
-                                  disabled={updateTemplateMutation.isPending}
-                                  data-testid={`button-toggle-photo-${item.id}`}
-                                  title={item.requiresPhoto ? "Quitar requisito de foto" : "Requerir foto para completar"}
-                                >
-                                  <Camera className={`h-3.5 w-3.5 ${item.requiresPhoto ? "text-blue-600" : "text-muted-foreground"}`} />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => updateTemplateMutation.mutate({ id: item.id, isActive: !item.isActive })}
-                                  disabled={updateTemplateMutation.isPending}
-                                  data-testid={`button-toggle-${item.id}`}
-                                  title={item.isActive ? "Desactivar" : "Activar"}
-                                >
-                                  {item.isActive ? <ToggleRight className="h-4 w-4 text-green-600" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => deleteTemplateMutation.mutate(item.id)}
-                                  disabled={deleteTemplateMutation.isPending}
-                                  data-testid={`button-delete-template-${item.id}`}
-                                  title="Eliminar"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
+                              );
+                            })}
                           {items.length === 0 && (
                             <p className="text-sm text-muted-foreground text-center py-4">No hay ítems. Agrega el primero.</p>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 pt-2 border-t">
-                          <Input
-                            placeholder="Nuevo ítem de checklist..."
-                            value={newItemLabels[type] || ""}
-                            onChange={e => setNewItemLabels(prev => ({ ...prev, [type]: e.target.value }))}
-                            onKeyDown={e => {
-                              if (e.key === "Enter" && (newItemLabels[type] || "").trim()) {
-                                addTemplateMutation.mutate({ orderType: type, label: (newItemLabels[type] || "").trim() });
-                              }
-                            }}
-                            className="flex-1"
-                            data-testid={`input-new-item-${type}`}
-                          />
-                          <Button
-                            onClick={() => {
-                              const label = (newItemLabels[type] || "").trim();
-                              if (label) addTemplateMutation.mutate({ orderType: type, label });
-                            }}
-                            disabled={!newItemLabels[type]?.trim() || addTemplateMutation.isPending}
-                            data-testid={`button-add-item-${type}`}
-                          >
-                            <PlusCircle className="mr-1 h-4 w-4" />
-                            Agregar
-                          </Button>
+                        <div className="flex flex-col gap-2 pt-2 border-t">
+                          <div className="flex flex-wrap gap-1.5">
+                            {ITEM_TYPE_OPTIONS.map(t => {
+                              const m = ITEM_TYPE_META[t];
+                              const TIcon = m.icon;
+                              const current = newItemTypes[type] ?? "checkbox";
+                              return (
+                                <button
+                                  key={t}
+                                  type="button"
+                                  onClick={() => { setNewItemTypes(prev => ({ ...prev, [type]: t })); if (t !== "multiple_choice" && t !== "multi_select") setNewItemOptions(prev => ({ ...prev, [type]: [] })); }}
+                                  className={`flex items-center gap-1 text-xs px-2 py-1 rounded border transition-colors ${current === t ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover-elevate"}`}
+                                  data-testid={`button-new-type-${t}-${type}`}
+                                >
+                                  <TIcon className="h-3 w-3" />
+                                  {m.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {((newItemTypes[type] ?? "checkbox") === "multiple_choice" || (newItemTypes[type] ?? "checkbox") === "multi_select") && (
+                            <div className="flex flex-col gap-1 pl-1">
+                              <span className="text-xs text-muted-foreground">Opciones:</span>
+                              {(newItemOptions[type] ?? []).map((opt, oi) => (
+                                <div key={oi} className="flex items-center gap-1">
+                                  <span className="text-xs flex-1 bg-muted/50 rounded px-2 py-0.5">{opt}</span>
+                                  <button type="button" onClick={() => setNewItemOptions(prev => ({ ...prev, [type]: (prev[type] ?? []).filter((_, i) => i !== oi) }))} className="text-destructive hover:text-destructive/80">
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                              <div className="flex gap-1">
+                                <Input
+                                  value={newItemOptionInput[type] ?? ""}
+                                  onChange={e => setNewItemOptionInput(prev => ({ ...prev, [type]: e.target.value }))}
+                                  placeholder="Nueva opción..."
+                                  className="h-7 text-xs flex-1"
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter" && (newItemOptionInput[type] ?? "").trim()) {
+                                      const val = (newItemOptionInput[type] ?? "").trim();
+                                      setNewItemOptions(prev => ({ ...prev, [type]: [...(prev[type] ?? []), val] }));
+                                      setNewItemOptionInput(prev => ({ ...prev, [type]: "" }));
+                                    }
+                                  }}
+                                  data-testid={`input-new-option-${type}`}
+                                />
+                                <Button size="icon" variant="ghost" onClick={() => { const val = (newItemOptionInput[type] ?? "").trim(); if (val) { setNewItemOptions(prev => ({ ...prev, [type]: [...(prev[type] ?? []), val] })); setNewItemOptionInput(prev => ({ ...prev, [type]: "" })); }}} disabled={!(newItemOptionInput[type] ?? "").trim()}>
+                                  <PlusCircle className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <Input
+                              placeholder="Nuevo ítem de checklist..."
+                              value={newItemLabels[type] || ""}
+                              onChange={e => setNewItemLabels(prev => ({ ...prev, [type]: e.target.value }))}
+                              onKeyDown={e => {
+                                if (e.key === "Enter" && (newItemLabels[type] || "").trim()) {
+                                  const itype = newItemTypes[type] ?? "checkbox";
+                                  const opts = (itype === "multiple_choice" || itype === "multi_select") ? (newItemOptions[type] ?? []) : null;
+                                  addTemplateMutation.mutate({ orderType: type, label: (newItemLabels[type] || "").trim(), itemType: itype, options: opts });
+                                }
+                              }}
+                              className="flex-1"
+                              data-testid={`input-new-item-${type}`}
+                            />
+                            <Button
+                              onClick={() => {
+                                const label = (newItemLabels[type] || "").trim();
+                                const itype = newItemTypes[type] ?? "checkbox";
+                                const opts = (itype === "multiple_choice" || itype === "multi_select") ? (newItemOptions[type] ?? []) : null;
+                                if (label) addTemplateMutation.mutate({ orderType: type, label, itemType: itype, options: opts });
+                              }}
+                              disabled={!newItemLabels[type]?.trim() || addTemplateMutation.isPending}
+                              data-testid={`button-add-item-${type}`}
+                            >
+                              <PlusCircle className="mr-1 h-4 w-4" />
+                              Agregar
+                            </Button>
+                          </div>
                         </div>
                       </TabsContent>
                     );
