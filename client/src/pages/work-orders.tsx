@@ -479,8 +479,15 @@ function OrderDetailView({
       if (answer !== undefined) body.answer = answer;
       await apiRequest("PATCH", `/api/work-orders/${order.id}/checklist/${itemId}`, body);
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/work-orders", order.id, "checklist"] });
+      if (variables.answer !== undefined) {
+        setPendingAnswers(prev => {
+          const next = { ...prev };
+          delete next[variables.itemId];
+          return next;
+        });
+      }
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo actualizar el checklist", variant: "destructive" });
