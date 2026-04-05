@@ -413,7 +413,7 @@ function OrderDetailView({
   const [capturingItemId, setCapturingItemId] = useState<string | null>(null);
   const [uploadingItemId, setUploadingItemId] = useState<string | null>(null);
   const [replacePhotoItemId, setReplacePhotoItemId] = useState<string | null>(null);
-  const isReplacingRef = useRef(false);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
   const pendingGeoRef = useRef<{ lat: string; lng: string }>({ lat: "", lng: "" });
   const [photoBlobUrls, setPhotoBlobUrls] = useState<Record<string, string>>({});
   // Track which item IDs have been fetched — avoids stale-closure issues with photoBlobUrls state
@@ -518,15 +518,7 @@ function OrderDetailView({
     }
   };
 
-  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    const itemId = capturingItemId;
-    const { lat, lng } = pendingGeoRef.current;
-    const isReplace = isReplacingRef.current;
-    isReplacingRef.current = false;
-    setCapturingItemId(null);
-    if (!file || !itemId) return;
-
+  const uploadChecklistPhoto = async (itemId: string, file: File, lat: string, lng: string, replace: boolean) => {
     setUploadingItemId(itemId);
     try {
       const formData = new FormData();
@@ -538,8 +530,8 @@ function OrderDetailView({
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
 
-      const photoUrl = `/api/work-orders/${order.id}/checklist/${itemId}/photo${isReplace ? "?replace=true" : ""}`;
-      const res = await fetch(photoUrl, {
+      const endpoint = `/api/work-orders/${order.id}/checklist/${itemId}/photo${replace ? "?replace=true" : ""}`;
+      const res = await fetch(endpoint, {
         method: "POST",
         headers,
         body: formData,
@@ -551,8 +543,7 @@ function OrderDetailView({
         throw new Error(err.error || "Error al subir foto");
       }
 
-      // Create blob URL immediately from uploaded file for instant thumbnail display
-      // Revoke any existing blob URL for this item before replacing it
+      // Create blob URL immediately for instant thumbnail display
       const blobUrl = URL.createObjectURL(file);
       fetchedPhotoIdsRef.current.add(itemId); // mark as fetched so useEffect doesn't re-fetch
       setPhotoBlobUrls(prev => {
@@ -561,12 +552,33 @@ function OrderDetailView({
       });
 
       queryClient.invalidateQueries({ queryKey: ["/api/work-orders", order.id, "checklist"] });
-      toast({ title: isReplace ? "Foto reemplazada" : "Foto guardada", description: isReplace ? "La foto anterior fue eliminada y la nueva fue guardada" : "El ítem se marcó como completado" });
+      toast({
+        title: replace ? "Foto reemplazada" : "Foto guardada",
+        description: replace ? "La foto anterior fue eliminada y la nueva fue guardada" : "El ítem se marcó como completado",
+      });
     } catch (error) {
       toast({ title: "Error", description: (error as Error).message || "No se pudo subir la foto", variant: "destructive" });
     } finally {
       setUploadingItemId(null);
     }
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const itemId = capturingItemId;
+    const { lat, lng } = pendingGeoRef.current;
+    setCapturingItemId(null);
+    if (!file || !itemId) return;
+    await uploadChecklistPhoto(itemId, file, lat, lng, false);
+  };
+
+  const handleReplaceFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const itemId = capturingItemId;
+    const { lat, lng } = pendingGeoRef.current;
+    setCapturingItemId(null);
+    if (!file || !itemId) return;
+    await uploadChecklistPhoto(itemId, file, lat, lng, true);
   };
 
   const updateStatusMutation = useMutation({
@@ -912,6 +924,15 @@ function OrderDetailView({
                   onChange={handleFileSelected}
                   data-testid="input-camera-capture"
                 />
+                <input
+                  ref={replaceInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handleReplaceFileSelected}
+                  data-testid="input-camera-replace"
+                />
               </div>
             )}
           </CardContent>
@@ -930,11 +951,22 @@ function OrderDetailView({
           </Button>
           <Button
             variant="destructive"
-            onClick={() => {
+            onClick={async () => {
               const itemId = replacePhotoItemId!;
               setReplacePhotoItemId(null);
-              isReplacingRef.current = true;
-              handleCameraCapture(itemId);
+              // Use geo flow then open the dedicated replace file input
+              pendingGeoRef.current = { lat: "", lng: "" };
+              try {
+                const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+                  navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 6000, enableHighAccuracy: true });
+                });
+                pendingGeoRef.current = { lat: String(pos.coords.latitude), lng: String(pos.coords.longitude) };
+              } catch { /* geo optional */ }
+              setCapturingItemId(itemId);
+              if (replaceInputRef.current) {
+                replaceInputRef.current.value = "";
+                replaceInputRef.current.click();
+              }
             }}
             data-testid="btn-confirm-replace-photo"
           >

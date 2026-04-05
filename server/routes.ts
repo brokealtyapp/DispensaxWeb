@@ -10684,16 +10684,6 @@ export async function registerRoutes(
       if (checklistItem.photoUrl && !isReplace) {
         return res.status(409).json({ error: "Este ítem ya tiene una foto registrada" });
       }
-      if (checklistItem.photoUrl && isReplace) {
-        try {
-          const { Client: ObjClientDel } = await import("@replit/object-storage");
-          const objClientDel = new ObjClientDel();
-          await objClientDel.delete(checklistItem.photoUrl);
-        } catch (deleteErr) {
-          console.warn("Error deleting old checklist photo (non-fatal):", deleteErr);
-        }
-      }
-
       const file = (req as Express.Request & { file?: Express.Multer.File }).file;
       if (!file) return res.status(400).json({ error: "Foto requerida" });
       if (!file.mimetype.startsWith("image/")) return res.status(400).json({ error: "Solo se permiten imágenes" });
@@ -10761,6 +10751,17 @@ export async function registerRoutes(
       }, order.id);
 
       if (!updated) return res.status(404).json({ error: "Item del checklist no encontrado" });
+
+      // Delete old photo AFTER successful DB update (best-effort, non-fatal)
+      if (isReplace && checklistItem.photoUrl) {
+        try {
+          const { Client: ObjClientDel } = await import("@replit/object-storage");
+          await new ObjClientDel().delete(checklistItem.photoUrl);
+        } catch (deleteErr) {
+          console.warn("Error deleting old checklist photo (non-fatal):", deleteErr);
+        }
+      }
+
       res.json(updated);
     } catch (error) {
       console.error("Error uploading checklist photo:", error);
