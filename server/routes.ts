@@ -10554,13 +10554,42 @@ export async function registerRoutes(
       const allItems = await storage.getChecklistItems(order.id);
       const targetItem = allItems.find((i) => i.id === req.params.itemId);
 
+      const itype = targetItem?.itemType ?? "checkbox";
+      const requiresPhoto = targetItem?.requiresPhoto || itype === "photo";
+
       if (parsedChecklist.answer !== undefined) {
+        // `photo` type items: answer field is not meaningful — ignore
+        if (itype === "photo") {
+          return res.status(422).json({ error: "Los ítems de tipo foto se completan únicamente subiendo una fotografía" });
+        }
+        // Validate answer shape per type
+        if (parsedChecklist.answer !== null) {
+          if (itype === "multi_select") {
+            try {
+              const arr = JSON.parse(parsedChecklist.answer);
+              if (!Array.isArray(arr)) throw new Error("not array");
+            } catch {
+              return res.status(422).json({ error: "Respuesta inválida para tipo multi_select: debe ser JSON array" });
+            }
+          }
+          if (itype === "numeric") {
+            if (parsedChecklist.answer.trim() !== "" && isNaN(Number(parsedChecklist.answer))) {
+              return res.status(422).json({ error: "Respuesta inválida para tipo numérico" });
+            }
+          }
+        }
         checklistUpdate.answer = parsedChecklist.answer;
         // Auto-complete item when answer is provided (non-checkbox types)
-        if (parsedChecklist.isCompleted === undefined && targetItem) {
-          const itype = targetItem.itemType ?? "checkbox";
+        if (parsedChecklist.isCompleted === undefined) {
+          let hasAnswer = false;
+          if (parsedChecklist.answer !== null && parsedChecklist.answer.trim() !== "") {
+            if (itype === "multi_select") {
+              try { hasAnswer = (JSON.parse(parsedChecklist.answer) as unknown[]).length > 0; } catch { hasAnswer = false; }
+            } else {
+              hasAnswer = true;
+            }
+          }
           if (itype !== "checkbox") {
-            const hasAnswer = parsedChecklist.answer !== null && parsedChecklist.answer.trim() !== "";
             checklistUpdate.isCompleted = hasAnswer;
             checklistUpdate.completedAt = hasAnswer ? new Date() : null;
             checklistUpdate.completedBy = hasAnswer ? req.user!.userId : null;
@@ -10569,9 +10598,9 @@ export async function registerRoutes(
       }
 
       if (parsedChecklist.isCompleted !== undefined) {
-        // If trying to mark as completed, check if item requires a photo first
+        // If trying to mark as completed, check if item requires a photo
         if (parsedChecklist.isCompleted) {
-          if (targetItem?.requiresPhoto && !targetItem?.photoUrl) {
+          if (requiresPhoto && !targetItem?.photoUrl) {
             return res.status(422).json({ error: "Este ítem requiere una foto para ser completado" });
           }
         }
