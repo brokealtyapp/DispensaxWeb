@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
@@ -714,12 +714,24 @@ function ActiveEstablishmentDetail({
   onClose,
   canEdit,
   canCreate,
+  canDelete,
+  onInviteRequested,
+  scrollToViewerToken,
 }: {
   establishment: ActiveEstablishment;
   onClose: () => void;
   canEdit: boolean;
   canCreate: boolean;
+  canDelete: boolean;
+  onInviteRequested: (est: ActiveEstablishment) => void;
+  scrollToViewerToken?: number;
 }) {
+  const viewerSectionRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (scrollToViewerToken && viewerSectionRef.current) {
+      viewerSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [scrollToViewerToken]);
   const { toast } = useToast();
   const [showContractForm, setShowContractForm] = useState(false);
   const [editingContract, setEditingContract] = useState<EstablishmentContract | null>(null);
@@ -1008,47 +1020,16 @@ function ActiveEstablishmentDetail({
         </Card>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Eye className="h-4 w-4" /> Visor del Establecimiento
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {linkedViewer ? (
-            <div className="space-y-2 text-sm" data-testid="section-linked-viewer">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium" data-testid="text-viewer-username">
-                    {linkedViewer.user?.username}
-                  </span>
-                  {linkedViewer.user?.email && (
-                    <span className="text-muted-foreground">— {linkedViewer.user.email}</span>
-                  )}
-                </div>
-                <Link href="/visores-establecimiento">
-                  <Button variant="outline" size="sm" data-testid="button-go-to-viewer">
-                    Ver visor
-                  </Button>
-                </Link>
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <TrendingUp className="h-4 w-4" />
-                Comisión por defecto: {linkedViewer.defaultCommissionPercent || "5.00"}%
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Building2 className="h-4 w-4" />
-                Máquinas asignadas: {linkedViewer.assignments?.length || 0}
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between gap-2 flex-wrap text-sm">
-              <p className="text-muted-foreground">No hay visor asignado a este establecimiento.</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <div ref={viewerSectionRef}>
+        <LinkedViewerSection
+          establishment={establishment}
+          establishmentMachines={machinesData}
+          canEdit={canEdit}
+          canCreate={canCreate}
+          canDelete={canDelete}
+          onInviteRequested={onInviteRequested}
+        />
+      </div>
 
       <Tabs defaultValue="machines">
         <TabsList>
@@ -1358,12 +1339,13 @@ type ViewerSummary = {
   user?: { id: string; username: string; email?: string | null; fullName?: string | null } | null;
 };
 
-function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; canCreate: boolean }) {
+function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: boolean; canCreate: boolean; canDelete: boolean }) {
   const { toast } = useToast();
   const [searchActive, setSearchActive] = useState("");
   const [contractStatusFilter, setContractStatusFilter] = useState<string>("");
   const [selectedActive, setSelectedActive] = useState<ActiveEstablishment | null>(null);
   const [inviteEstablishment, setInviteEstablishment] = useState<ActiveEstablishment | null>(null);
+  const [scrollViewerToken, setScrollViewerToken] = useState<number | undefined>(undefined);
   const search = useSearch();
   const targetEstablishmentId = new URLSearchParams(search).get("establishmentId");
 
@@ -1426,6 +1408,10 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/establishment-viewers"] });
+      if (inviteEstablishment) {
+        queryClient.invalidateQueries({ queryKey: ["/api/establishments", inviteEstablishment.id, "viewer-invite"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/establishments", inviteEstablishment.id, "viewer"] });
+      }
       setInviteEstablishment(null);
       toast({ title: "Invitación enviada al visor" });
     },
@@ -1458,16 +1444,130 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
       : []
   );
 
+  const inviteModal = (
+    <SimpleModal
+      open={!!inviteEstablishment}
+      onClose={() => setInviteEstablishment(null)}
+      title={`Invitar Visor: ${inviteEstablishment?.name || ""}`}
+      description="Crea una invitación para que el dueño del establecimiento pueda ver sus máquinas y comisiones."
+    >
+      <Form {...inviteForm}>
+        <form
+          onSubmit={inviteForm.handleSubmit((data) => {
+            if (!data.email) {
+              toast({ title: "Email requerido", variant: "destructive" });
+              return;
+            }
+            if (data.machineIds.length === 0) {
+              toast({ title: "Selecciona al menos una máquina", variant: "destructive" });
+              return;
+            }
+            inviteMutation.mutate(data);
+          })}
+          className="flex flex-col min-h-0 flex-1"
+          data-testid="modal-invite-viewer"
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
+            <FormField control={inviteForm.control} name="email" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email del Visor *</FormLabel>
+                <FormControl><Input type="email" {...field} data-testid="input-invite-email" /></FormControl>
+              </FormItem>
+            )} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField control={inviteForm.control} name="contactName" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nombre de Contacto</FormLabel>
+                  <FormControl><Input {...field} data-testid="input-invite-contact-name" /></FormControl>
+                </FormItem>
+              )} />
+              <FormField control={inviteForm.control} name="phone" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Teléfono</FormLabel>
+                  <FormControl><Input {...field} data-testid="input-invite-phone" /></FormControl>
+                </FormItem>
+              )} />
+            </div>
+            <FormField control={inviteForm.control} name="commissionPercent" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Comisión (%)</FormLabel>
+                <FormControl><Input type="number" step="0.01" {...field} data-testid="input-invite-commission" /></FormControl>
+              </FormItem>
+            )} />
+            <div>
+              <p className="text-sm font-medium mb-2">Máquinas a Asignar *</p>
+              {preselectedMachineIds.size > 0 && (
+                <p className="text-xs text-muted-foreground mb-2">
+                  Las máquinas instaladas en este establecimiento están pre-seleccionadas.
+                </p>
+              )}
+              {machinesForEstablishment.length === 0 ? (
+                <p className="text-sm text-muted-foreground border rounded-md p-3">
+                  No hay máquinas disponibles en el sistema.
+                </p>
+              ) : (
+                <div className="space-y-2 border rounded-md p-3 max-h-60 overflow-y-auto">
+                  <FormField control={inviteForm.control} name="machineIds" render={({ field }) => (
+                    <>
+                      {machinesForEstablishment.map((m) => {
+                        const checked = field.value?.includes(m.id);
+                        const isPreselected = preselectedMachineIds.has(m.id);
+                        return (
+                          <label key={m.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                const next = e.target.checked
+                                  ? [...(field.value || []), m.id]
+                                  : (field.value || []).filter((id: string) => id !== m.id);
+                                field.onChange(next);
+                              }}
+                              data-testid={`checkbox-invite-machine-${m.id}`}
+                            />
+                            <span className="font-medium">{m.code}</span>
+                            <span className="text-muted-foreground">— {m.name}</span>
+                            {isPreselected && (
+                              <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 text-xs">
+                                En este establecimiento
+                              </Badge>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </>
+                  )} />
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-4 flex-shrink-0">
+            <Button type="button" variant="ghost" onClick={() => setInviteEstablishment(null)}>Cancelar</Button>
+            <Button type="submit" disabled={inviteMutation.isPending} data-testid="button-submit-invite-viewer">
+              {inviteMutation.isPending ? "Enviando..." : "Enviar invitación"}
+            </Button>
+          </div>
+        </form>
+      </Form>
+    </SimpleModal>
+  );
+
   if (selectedActive) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <ActiveEstablishmentDetail
-          establishment={selectedActive}
-          onClose={() => setSelectedActive(null)}
-          canEdit={canEdit}
-          canCreate={canCreate}
-        />
-      </div>
+      <>
+        <div className="max-w-4xl mx-auto">
+          <ActiveEstablishmentDetail
+            establishment={selectedActive}
+            onClose={() => { setSelectedActive(null); setScrollViewerToken(undefined); }}
+            canEdit={canEdit}
+            canCreate={canCreate}
+            canDelete={canDelete}
+            onInviteRequested={(est) => setInviteEstablishment(est)}
+            scrollToViewerToken={scrollViewerToken}
+          />
+        </div>
+        {inviteModal}
+      </>
     );
   }
 
@@ -1528,15 +1628,16 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
                     <Badge variant="secondary" className="bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400">Sin contrato</Badge>
                   )}
                   {viewerByEstablishment.has(est.id) ? (
-                    <Link
-                      href="/visores-establecimiento"
-                      onClick={(e: any) => e.stopPropagation()}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setSelectedActive(est); setScrollViewerToken(Date.now()); }}
                       data-testid={`link-viewer-${est.id}`}
+                      className="appearance-none p-0 bg-transparent border-0"
                     >
                       <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 cursor-pointer hover-elevate">
                         <Eye className="h-3 w-3 mr-1" /> Visor: {viewerByEstablishment.get(est.id)?.user?.username || "asignado"}
                       </Badge>
-                    </Link>
+                    </button>
                   ) : canCreate && (
                     <Button
                       size="sm"
@@ -1569,111 +1670,7 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
         </div>
       )}
 
-      <SimpleModal
-        open={!!inviteEstablishment}
-        onClose={() => setInviteEstablishment(null)}
-        title={`Invitar Visor: ${inviteEstablishment?.name || ""}`}
-        description="Crea una invitación para que el dueño del establecimiento pueda ver sus máquinas y comisiones."
-      >
-        <Form {...inviteForm}>
-          <form
-            onSubmit={inviteForm.handleSubmit((data) => {
-              if (!data.email) {
-                toast({ title: "Email requerido", variant: "destructive" });
-                return;
-              }
-              if (data.machineIds.length === 0) {
-                toast({ title: "Selecciona al menos una máquina", variant: "destructive" });
-                return;
-              }
-              inviteMutation.mutate(data);
-            })}
-            className="flex flex-col min-h-0 flex-1"
-            data-testid="modal-invite-viewer"
-          >
-            <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
-              <FormField control={inviteForm.control} name="email" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email del Visor *</FormLabel>
-                  <FormControl><Input type="email" {...field} data-testid="input-invite-email" /></FormControl>
-                </FormItem>
-              )} />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField control={inviteForm.control} name="contactName" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nombre de Contacto</FormLabel>
-                    <FormControl><Input {...field} data-testid="input-invite-contact-name" /></FormControl>
-                  </FormItem>
-                )} />
-                <FormField control={inviteForm.control} name="phone" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Teléfono</FormLabel>
-                    <FormControl><Input {...field} data-testid="input-invite-phone" /></FormControl>
-                  </FormItem>
-                )} />
-              </div>
-              <FormField control={inviteForm.control} name="commissionPercent" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Comisión (%)</FormLabel>
-                  <FormControl><Input type="number" step="0.01" {...field} data-testid="input-invite-commission" /></FormControl>
-                </FormItem>
-              )} />
-              <div>
-                <p className="text-sm font-medium mb-2">Máquinas a Asignar *</p>
-                {preselectedMachineIds.size > 0 && (
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Las máquinas instaladas en este establecimiento están pre-seleccionadas.
-                  </p>
-                )}
-                {machinesForEstablishment.length === 0 ? (
-                  <p className="text-sm text-muted-foreground border rounded-md p-3">
-                    No hay máquinas disponibles en el sistema.
-                  </p>
-                ) : (
-                  <div className="space-y-2 border rounded-md p-3 max-h-60 overflow-y-auto">
-                    <FormField control={inviteForm.control} name="machineIds" render={({ field }) => (
-                      <>
-                        {machinesForEstablishment.map((m) => {
-                          const checked = field.value?.includes(m.id);
-                          const isPreselected = preselectedMachineIds.has(m.id);
-                          return (
-                            <label key={m.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(e) => {
-                                  const next = e.target.checked
-                                    ? [...(field.value || []), m.id]
-                                    : (field.value || []).filter((id: string) => id !== m.id);
-                                  field.onChange(next);
-                                }}
-                                data-testid={`checkbox-invite-machine-${m.id}`}
-                              />
-                              <span className="font-medium">{m.code}</span>
-                              <span className="text-muted-foreground">— {m.name}</span>
-                              {isPreselected && (
-                                <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 text-xs">
-                                  En este establecimiento
-                                </Badge>
-                              )}
-                            </label>
-                          );
-                        })}
-                      </>
-                    )} />
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-4 flex-shrink-0">
-              <Button type="button" variant="ghost" onClick={() => setInviteEstablishment(null)}>Cancelar</Button>
-              <Button type="submit" disabled={inviteMutation.isPending} data-testid="button-submit-invite-viewer">
-                {inviteMutation.isPending ? "Enviando..." : "Enviar Invitación"}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </SimpleModal>
+      {inviteModal}
     </div>
   );
 }
@@ -1865,6 +1862,401 @@ function EstablishmentFormFields({ form, isEdit = false, stages, adminUsers }: {
         </div>
       </div>
     </div>
+  );
+}
+
+type LinkedViewerData = {
+  id: string;
+  defaultCommissionPercent: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  isActive: boolean;
+  user: { id: string; username: string; email?: string | null; fullName?: string | null } | null;
+  assignments: Array<{
+    id: string;
+    machineId: string;
+    commissionPercent: string | null;
+    isActive: boolean;
+    machine: { id: string; code: string; name: string } | null;
+  }>;
+};
+
+type PendingViewerInvite = {
+  id: string;
+  email: string;
+  expiresAt: string;
+  createdAt: string;
+  metadata: {
+    establishmentName?: string;
+    contactName?: string;
+    phone?: string;
+    machineIds?: string[];
+    commissionPercent?: string;
+  } | null;
+};
+
+function parseApiError(err: any, fallback: string): string {
+  let msg: string = err?.message || fallback;
+  const match = typeof msg === "string" ? msg.match(/^\d+:\s*(.+)$/) : null;
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      if (parsed?.error) return parsed.error;
+    } catch {
+      return match[1];
+    }
+  }
+  return msg;
+}
+
+function LinkedViewerSection({
+  establishment,
+  establishmentMachines,
+  canEdit,
+  canCreate,
+  canDelete,
+  onInviteRequested,
+}: {
+  establishment: ActiveEstablishment;
+  establishmentMachines: Array<{ id: string; code: string; name: string; locationId?: string | null }>;
+  canEdit: boolean;
+  canCreate: boolean;
+  canDelete: boolean;
+  onInviteRequested: (est: ActiveEstablishment) => void;
+}) {
+  const { toast } = useToast();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValues, setEditValues] = useState({ contactName: "", contactPhone: "", defaultCommissionPercent: "5.00" });
+  const [machinesToAdd, setMachinesToAdd] = useState<string[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const { data: linkedViewer } = useQuery<LinkedViewerData | null>({
+    queryKey: ["/api/establishments", establishment.id, "viewer"],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest("GET", `/api/establishments/${establishment.id}/viewer`);
+        return await res.json();
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  const { data: pendingInvite } = useQuery<PendingViewerInvite | null>({
+    queryKey: ["/api/establishments", establishment.id, "viewer-invite"],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest("GET", `/api/establishments/${establishment.id}/viewer-invite`);
+        return await res.json();
+      } catch {
+        return null;
+      }
+    },
+    enabled: !linkedViewer,
+  });
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "viewer"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "viewer-invite"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/establishment-viewers"] });
+  };
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: { contactName?: string; contactPhone?: string; defaultCommissionPercent?: string; isActive?: boolean }) => {
+      if (!linkedViewer) throw new Error("Sin visor");
+      return apiRequest("PATCH", `/api/establishment-viewers/${linkedViewer.id}`, data);
+    },
+    onSuccess: () => {
+      invalidateAll();
+      setIsEditing(false);
+      toast({ title: "Visor actualizado" });
+    },
+    onError: (err: any) => toast({ title: "Error al actualizar", description: parseApiError(err, "Intenta nuevamente"), variant: "destructive" }),
+  });
+
+  const addAssignmentsMutation = useMutation({
+    mutationFn: async (machineIds: string[]) => {
+      if (!linkedViewer) throw new Error("Sin visor");
+      return apiRequest("POST", `/api/establishment-viewers/${linkedViewer.id}/assignments`, { machineIds });
+    },
+    onSuccess: () => {
+      invalidateAll();
+      setMachinesToAdd([]);
+      toast({ title: "Máquinas asignadas" });
+    },
+    onError: (err: any) => toast({ title: "Error al asignar máquinas", description: parseApiError(err, "Intenta nuevamente"), variant: "destructive" }),
+  });
+
+  const removeAssignmentMutation = useMutation({
+    mutationFn: async (assignmentId: string) => {
+      if (!linkedViewer) throw new Error("Sin visor");
+      return apiRequest("DELETE", `/api/establishment-viewers/${linkedViewer.id}/assignments/${assignmentId}`);
+    },
+    onSuccess: () => {
+      invalidateAll();
+      toast({ title: "Máquina desasignada" });
+    },
+    onError: (err: any) => toast({ title: "Error al desasignar", description: parseApiError(err, "Intenta nuevamente"), variant: "destructive" }),
+  });
+
+  const deleteViewerMutation = useMutation({
+    mutationFn: async () => {
+      if (!linkedViewer) throw new Error("Sin visor");
+      return apiRequest("DELETE", `/api/establishment-viewers/${linkedViewer.id}`);
+    },
+    onSuccess: () => {
+      invalidateAll();
+      setConfirmDelete(false);
+      toast({ title: "Visor eliminado" });
+    },
+    onError: (err: any) => toast({ title: "Error al eliminar visor", description: parseApiError(err, "Intenta nuevamente"), variant: "destructive" }),
+  });
+
+  const resendInviteMutation = useMutation({
+    mutationFn: async () => {
+      if (!pendingInvite) throw new Error("Sin invitación");
+      const meta = pendingInvite.metadata || {};
+      return apiRequest("POST", "/api/viewer-invites", {
+        email: pendingInvite.email,
+        establishmentName: meta.establishmentName || establishment.name,
+        contactName: meta.contactName || "",
+        phone: meta.phone || "",
+        commissionPercent: meta.commissionPercent || "5.00",
+        machineIds: meta.machineIds || [],
+        establishmentId: establishment.id,
+      });
+    },
+    onSuccess: () => {
+      invalidateAll();
+      toast({ title: "Invitación reenviada" });
+    },
+    onError: (err: any) => toast({ title: "Error al reenviar", description: parseApiError(err, "Intenta nuevamente"), variant: "destructive" }),
+  });
+
+  const startEditing = () => {
+    if (!linkedViewer) return;
+    setEditValues({
+      contactName: linkedViewer.contactName || "",
+      contactPhone: linkedViewer.contactPhone || "",
+      defaultCommissionPercent: linkedViewer.defaultCommissionPercent || "5.00",
+    });
+    setIsEditing(true);
+  };
+
+  const assignedMachineIds = new Set((linkedViewer?.assignments || []).map(a => a.machineId));
+  const eligibleMachines = establishmentMachines.filter(m => !assignedMachineIds.has(m.id));
+
+  const renderHeader = (right?: React.ReactNode) => (
+    <CardHeader className="pb-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Eye className="h-4 w-4" /> Visor del Establecimiento
+        </CardTitle>
+        {right}
+      </div>
+    </CardHeader>
+  );
+
+  if (linkedViewer) {
+    return (
+      <Card>
+        {renderHeader(
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className={linkedViewer.isActive ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400"}>
+              {linkedViewer.isActive ? "Activo" : "Inactivo"}
+            </Badge>
+            {canEdit && !isEditing && (
+              <Button size="sm" variant="outline" onClick={startEditing} data-testid="button-edit-viewer">
+                <Pencil className="h-3 w-3 mr-1" /> Editar
+              </Button>
+            )}
+          </div>
+        )}
+        <CardContent className="space-y-4 text-sm" data-testid="section-linked-viewer">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium" data-testid="text-viewer-username">{linkedViewer.user?.username}</span>
+              {linkedViewer.user?.email && <span className="text-muted-foreground">— {linkedViewer.user.email}</span>}
+            </div>
+          </div>
+
+          {isEditing ? (
+            <div className="space-y-3 border rounded-md p-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground">Nombre de contacto</label>
+                  <Input value={editValues.contactName} onChange={(e) => setEditValues(v => ({ ...v, contactName: e.target.value }))} data-testid="input-edit-viewer-contact" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Teléfono</label>
+                  <Input value={editValues.contactPhone} onChange={(e) => setEditValues(v => ({ ...v, contactPhone: e.target.value }))} data-testid="input-edit-viewer-phone" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Comisión por defecto (%)</label>
+                  <Input type="number" step="0.01" value={editValues.defaultCommissionPercent} onChange={(e) => setEditValues(v => ({ ...v, defaultCommissionPercent: e.target.value }))} data-testid="input-edit-viewer-commission" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)}>Cancelar</Button>
+                <Button size="sm" onClick={() => updateMutation.mutate(editValues)} disabled={updateMutation.isPending} data-testid="button-save-viewer">
+                  Guardar
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-muted-foreground">
+              {linkedViewer.contactName && (
+                <div className="flex items-center gap-2"><User className="h-4 w-4" /> Contacto: {linkedViewer.contactName}</div>
+              )}
+              {linkedViewer.contactPhone && (
+                <div className="flex items-center gap-2"><Phone className="h-4 w-4" /> {linkedViewer.contactPhone}</div>
+              )}
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" />
+                Comisión por defecto: {linkedViewer.defaultCommissionPercent || "5.00"}%
+              </div>
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                Máquinas asignadas: {linkedViewer.assignments?.length || 0}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <p className="font-medium">Máquinas asignadas</p>
+            {linkedViewer.assignments.length === 0 ? (
+              <p className="text-muted-foreground text-xs">Aún no hay máquinas asignadas.</p>
+            ) : (
+              <div className="border rounded-md divide-y">
+                {linkedViewer.assignments.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between gap-2 p-2" data-testid={`row-viewer-assignment-${a.id}`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="font-medium">{a.machine?.code || "—"}</span>
+                      <span className="text-muted-foreground truncate">{a.machine?.name || ""}</span>
+                      {a.commissionPercent && <Badge variant="secondary" className="text-xs">{a.commissionPercent}%</Badge>}
+                    </div>
+                    {canEdit && (
+                      <Button size="icon" variant="ghost" onClick={() => removeAssignmentMutation.mutate(a.id)} disabled={removeAssignmentMutation.isPending} data-testid={`button-remove-assignment-${a.id}`}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {canEdit && eligibleMachines.length > 0 && (
+              <div className="border rounded-md p-3 space-y-2">
+                <p className="text-xs font-medium">Agregar máquinas del establecimiento</p>
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {eligibleMachines.map((m) => {
+                    const checked = machinesToAdd.includes(m.id);
+                    return (
+                      <label key={m.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setMachinesToAdd(prev => e.target.checked ? [...prev, m.id] : prev.filter(id => id !== m.id));
+                          }}
+                          data-testid={`checkbox-add-machine-${m.id}`}
+                        />
+                        <span className="font-medium">{m.code}</span>
+                        <span className="text-muted-foreground">— {m.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={() => addAssignmentsMutation.mutate(machinesToAdd)} disabled={machinesToAdd.length === 0 || addAssignmentsMutation.isPending} data-testid="button-add-assignments">
+                    <Plus className="h-3 w-3 mr-1" /> Asignar seleccionadas
+                  </Button>
+                </div>
+              </div>
+            )}
+            {canEdit && eligibleMachines.length === 0 && linkedViewer.assignments.length > 0 && establishmentMachines.length > 0 && (
+              <p className="text-xs text-muted-foreground">Todas las máquinas del establecimiento están asignadas al visor.</p>
+            )}
+          </div>
+
+          {(canEdit || canDelete) && (
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t">
+              {canEdit && (
+                <Button size="sm" variant="outline" onClick={() => updateMutation.mutate({ isActive: !linkedViewer.isActive })} disabled={updateMutation.isPending} data-testid="button-toggle-viewer-active">
+                  {linkedViewer.isActive ? "Desactivar" : "Activar"}
+                </Button>
+              )}
+              {canDelete && (
+                <Button size="sm" variant="destructive" onClick={() => setConfirmDelete(true)} data-testid="button-delete-viewer">
+                  <Trash2 className="h-3 w-3 mr-1" /> Eliminar
+                </Button>
+              )}
+            </div>
+          )}
+        </CardContent>
+
+        <SimpleModal
+          open={confirmDelete}
+          onClose={() => setConfirmDelete(false)}
+          title="Eliminar visor"
+          description="Se desactivará el visor y se removerán sus permisos. Esta acción no se puede deshacer fácilmente."
+        >
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="ghost" onClick={() => setConfirmDelete(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => deleteViewerMutation.mutate()} disabled={deleteViewerMutation.isPending} data-testid="button-confirm-delete-viewer">
+              Eliminar visor
+            </Button>
+          </div>
+        </SimpleModal>
+      </Card>
+    );
+  }
+
+  if (pendingInvite) {
+    return (
+      <Card>
+        {renderHeader(
+          <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+            Invitación pendiente
+          </Badge>
+        )}
+        <CardContent className="space-y-3 text-sm" data-testid="section-pending-invite">
+          <div className="flex items-center gap-2">
+            <Mail className="h-4 w-4 text-muted-foreground" />
+            <span className="font-medium" data-testid="text-pending-invite-email">{pendingInvite.email}</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Enviada {format(new Date(pendingInvite.createdAt), "dd MMM yyyy HH:mm", { locale: es })} · expira {format(new Date(pendingInvite.expiresAt), "dd MMM yyyy", { locale: es })}
+          </p>
+          <p className="text-muted-foreground text-xs">
+            Máquinas pre-asignadas: {pendingInvite.metadata?.machineIds?.length || 0}
+          </p>
+          {canCreate && (
+            <div className="flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => resendInviteMutation.mutate()} disabled={resendInviteMutation.isPending} data-testid="button-resend-invite">
+                <RefreshCw className="h-3 w-3 mr-1" /> Reenviar invitación
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      {renderHeader()}
+      <CardContent className="flex items-center justify-between gap-2 flex-wrap text-sm">
+        <p className="text-muted-foreground">No hay visor asignado a este establecimiento.</p>
+        {canCreate && (
+          <Button size="sm" variant="outline" onClick={() => onInviteRequested(establishment)} data-testid="button-invite-viewer-inline">
+            <UserPlus className="h-3 w-3 mr-1" /> Invitar Visor
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2300,7 +2692,7 @@ export function EstablishmentsPage() {
         </TabsContent>
 
         <TabsContent value="activos">
-          <ActiveEstablishmentsTab canEdit={canEdit} canCreate={canCreate} />
+          <ActiveEstablishmentsTab canEdit={canEdit} canCreate={canCreate} canDelete={canDelete} />
         </TabsContent>
       </Tabs>
 

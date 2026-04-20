@@ -9595,6 +9595,49 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/establishments/:id/viewer-invite", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const est = await storage.getEstablishment(req.params.id);
+      if (!est || est.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const invites = await db
+        .select()
+        .from(tenantInvites)
+        .where(and(
+          eq(tenantInvites.tenantId, tenantId),
+          eq(tenantInvites.role, "visor_establecimiento"),
+        ))
+        .orderBy(desc(tenantInvites.createdAt));
+      const now = new Date();
+      const pending = invites.find((inv) => {
+        if (inv.acceptedAt) return false;
+        if (inv.expiresAt && inv.expiresAt < now) return false;
+        const meta = inv.metadata as { establishmentId?: string | null } | null;
+        return meta?.establishmentId === req.params.id;
+      });
+      if (!pending) return res.json(null);
+      const meta = pending.metadata as {
+        establishmentName?: string;
+        contactName?: string;
+        phone?: string;
+        machineIds?: string[];
+        commissionPercent?: string;
+      } | null;
+      res.json({
+        id: pending.id,
+        email: pending.email,
+        expiresAt: pending.expiresAt,
+        createdAt: pending.createdAt,
+        metadata: meta,
+      });
+    } catch (error) {
+      console.error("Error getting viewer invite for establishment:", error);
+      res.status(500).json({ error: "Error al obtener invitación pendiente" });
+    }
+  });
+
   app.get("/api/establishments/:id", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
