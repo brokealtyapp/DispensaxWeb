@@ -115,6 +115,9 @@ import {
   type WorkOrderType,
   changeFunds as changeFundsTable,
   tenantInvites,
+  workOrders as workOrdersTable,
+  workOrderChecklistItems as workOrderChecklistItemsTable,
+  workOrderChecklistTemplates as workOrderChecklistTemplatesTable,
 } from "@shared/schema";
 import { z, ZodError } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
@@ -10195,7 +10198,178 @@ export async function registerRoutes(
 
   type ChecklistItemSeed = { label: string; requiresPhoto: boolean; itemType: string; options: string[] | null };
 
+  type DefaultChecklistEntry = { label: string; itemType: string; options?: string[] | null };
+
+  const DEFAULT_CHECKLISTS: Record<string, DefaultChecklistEntry[]> = {
+    abastecimiento: [
+      { label: "Verificar niveles de inventario actuales", itemType: "checkbox" },
+      { label: "Retirar productos vencidos o dañados", itemType: "checkbox" },
+      { label: "Cargar productos según planograma", itemType: "checkbox" },
+      { label: "Verificar fechas de vencimiento", itemType: "checkbox" },
+      { label: "Limpiar bandejas y dispensadores", itemType: "checkbox" },
+      { label: "Verificar precios configurados", itemType: "checkbox" },
+      { label: "Registrar conteo de monedas/billetes", itemType: "numeric" },
+      { label: "Tomar foto de la máquina abastecida", itemType: "photo" },
+    ],
+    tecnico: [
+      { label: "Diagnosticar falla reportada", itemType: "open_question" },
+      { label: "Verificar conexión eléctrica", itemType: "checkbox" },
+      { label: "Revisar sistema de refrigeración", itemType: "checkbox" },
+      { label: "Probar mecanismo de dispensado", itemType: "checkbox" },
+      { label: "Verificar aceptador de monedas/billetes", itemType: "checkbox" },
+      { label: "Verificar sistema de pago cashless", itemType: "checkbox" },
+      { label: "Limpiar componentes internos", itemType: "checkbox" },
+      { label: "Realizar prueba de funcionamiento completa", itemType: "checkbox" },
+    ],
+    mantenimiento_preventivo: [
+      { label: "Limpieza general exterior e interior", itemType: "checkbox" },
+      { label: "Verificar y limpiar condensador", itemType: "checkbox" },
+      { label: "Revisar sellos y empaques", itemType: "checkbox" },
+      { label: "Lubricar mecanismos móviles", itemType: "checkbox" },
+      { label: "Verificar temperatura de refrigeración", itemType: "numeric" },
+      { label: "Inspeccionar cableado eléctrico", itemType: "checkbox" },
+      { label: "Actualizar software/firmware si aplica", itemType: "checkbox" },
+    ],
+    instalacion: [
+      { label: "Verificar punto de instalación (electricidad, espacio)", itemType: "checkbox" },
+      { label: "Posicionar y nivelar máquina", itemType: "checkbox" },
+      { label: "Conectar a fuente de energía", itemType: "checkbox" },
+      { label: "Configurar parámetros iniciales", itemType: "checkbox" },
+      { label: "Cargar inventario inicial", itemType: "checkbox" },
+      { label: "Realizar pruebas de dispensado", itemType: "checkbox" },
+      { label: "Capacitar al personal del establecimiento", itemType: "checkbox" },
+    ],
+    retiro: [
+      { label: "Retirar todo el inventario restante", itemType: "checkbox" },
+      { label: "Recolectar efectivo pendiente", itemType: "checkbox" },
+      { label: "Desconectar de fuente de energía", itemType: "checkbox" },
+      { label: "Documentar estado de la máquina", itemType: "open_question" },
+      { label: "Coordinar transporte de retiro", itemType: "checkbox" },
+    ],
+  };
+
+  function getDefaultChecklistEntries(type: string): DefaultChecklistEntry[] {
+    return DEFAULT_CHECKLISTS[type] ?? [];
+  }
+
+  // Lookup scoped by (orderType, label). Only upgrades items belonging to a
+  // known default order type AND whose label matches a default entry whose
+  // intended type is non-checkbox. Custom labels and custom order types are
+  // always left alone.
+  function getDefaultEntryFor(orderType: string, label: string): DefaultChecklistEntry | undefined {
+    const entries = DEFAULT_CHECKLISTS[orderType];
+    if (!entries) return undefined;
+    const match = entries.find((e) => e.label === label);
+    if (match && match.itemType !== "checkbox") return match;
+    return undefined;
+  }
+
+  // Per-tenant in-flight migration promises so concurrent callers await the
+  // same run instead of racing past it.
+  const checklistDefaultsUpgrades = new Map<string, Promise<void>>();
+
+  async function runChecklistDefaultsUpgrade(tenantId: string): Promise<void> {
+    // 1) Upgrade matching templates still on the legacy default ("checkbox" + no options),
+    // scoped by both tenantId and orderType.
+    const templates = await db
+      .select()
+      .from(workOrderChecklistTemplatesTable)
+      .where(eq(workOrderChecklistTemplatesTable.tenantId, tenantId));
+    for (const tpl of templates) {
+      const currentType = tpl.itemType ?? "checkbox";
+      const currentOptions = (tpl.options as string[] | null) ?? null;
+      if (currentType !== "checkbox") continue;
+      if (currentOptions && currentOptions.length > 0) continue;
+      const desired = getDefaultEntryFor(tpl.orderType, tpl.label);
+      if (!desired) continue;
+      await db
+        .update(workOrderChecklistTemplatesTable)
+        .set({
+          itemType: desired.itemType,
+          options: desired.options ?? null,
+        })
+        .where(
+          and(
+            eq(workOrderChecklistTemplatesTable.id, tpl.id),
+            eq(workOrderChecklistTemplatesTable.tenantId, tenantId),
+            eq(workOrderChecklistTemplatesTable.orderType, tpl.orderType),
+            eq(workOrderChecklistTemplatesTable.itemType, "checkbox"),
+          ),
+        );
+    }
+
+    // 2) Upgrade matching items in checklists of orders that are still open.
+    // Scoped by (workOrder.type, label) so custom order types are never touched.
+    const openItems = await db
+      .select({
+        id: workOrderChecklistItemsTable.id,
+        label: workOrderChecklistItemsTable.label,
+        itemType: workOrderChecklistItemsTable.itemType,
+        options: workOrderChecklistItemsTable.options,
+        answer: workOrderChecklistItemsTable.answer,
+        photoUrl: workOrderChecklistItemsTable.photoUrl,
+        isCompleted: workOrderChecklistItemsTable.isCompleted,
+        orderType: workOrdersTable.type,
+      })
+      .from(workOrderChecklistItemsTable)
+      .innerJoin(workOrdersTable, eq(workOrdersTable.id, workOrderChecklistItemsTable.workOrderId))
+      .where(
+        and(
+          eq(workOrderChecklistItemsTable.tenantId, tenantId),
+          eq(workOrdersTable.tenantId, tenantId),
+          ne(workOrdersTable.status, "completada"),
+          ne(workOrdersTable.status, "cancelada"),
+        ),
+      );
+    for (const it of openItems) {
+      const currentType = it.itemType ?? "checkbox";
+      const currentOptions = (it.options as string[] | null) ?? null;
+      if (currentType !== "checkbox") continue;
+      if (currentOptions && currentOptions.length > 0) continue;
+      if (it.answer) continue;
+      if (it.photoUrl) continue;
+      if (it.isCompleted) continue;
+      const desired = getDefaultEntryFor(it.orderType, it.label);
+      if (!desired) continue;
+      await db
+        .update(workOrderChecklistItemsTable)
+        .set({
+          itemType: desired.itemType,
+          options: desired.options ?? null,
+        })
+        .where(
+          and(
+            eq(workOrderChecklistItemsTable.id, it.id),
+            eq(workOrderChecklistItemsTable.tenantId, tenantId),
+            eq(workOrderChecklistItemsTable.itemType, "checkbox"),
+          ),
+        );
+    }
+  }
+
+  async function ensureChecklistDefaultsUpgraded(tenantId: string): Promise<void> {
+    const existing = checklistDefaultsUpgrades.get(tenantId);
+    if (existing) {
+      // Either still running or resolved — both cases: await it.
+      return existing;
+    }
+    const promise = (async () => {
+      try {
+        await runChecklistDefaultsUpgrade(tenantId);
+      } catch (err) {
+        // Migration is best-effort; remove the cached promise so the next
+        // caller can retry. Never throw to callers — request handling must
+        // continue even if the upgrade fails.
+        console.error("[checklist defaults] upgrade failed for tenant", tenantId, err);
+        checklistDefaultsUpgrades.delete(tenantId);
+      }
+    })();
+    checklistDefaultsUpgrades.set(tenantId, promise);
+    return promise;
+  }
+
   async function getChecklistItemsForTenant(tenantId: string, type: string): Promise<ChecklistItemSeed[]> {
+    await ensureChecklistDefaultsUpgraded(tenantId);
     const isInitialized = await storage.isChecklistTypeInitialized(tenantId, type);
     if (isInitialized) {
       const templates = await storage.getChecklistTemplatesByType(tenantId, type);
@@ -10206,65 +10380,32 @@ export async function registerRoutes(
         options: (t.options as string[] | null) ?? null,
       }));
     }
-    const defaults = getDefaultChecklist(type);
+    const defaults = getDefaultChecklistEntries(type);
     if (defaults.length > 0) {
       await storage.createChecklistTemplates(
-        defaults.map((label, idx) => ({ tenantId, orderType: type, label, sortOrder: idx, isActive: true, requiresPhoto: false, itemType: "checkbox", options: null }))
+        defaults.map((entry, idx) => ({
+          tenantId,
+          orderType: type,
+          label: entry.label,
+          sortOrder: idx,
+          isActive: true,
+          requiresPhoto: false,
+          itemType: entry.itemType,
+          options: entry.options ?? null,
+        })),
       );
     }
     await storage.markChecklistTypeInitialized(tenantId, type);
-    return defaults.map((label) => ({ label, requiresPhoto: false, itemType: "checkbox", options: null }));
+    return defaults.map((entry) => ({
+      label: entry.label,
+      requiresPhoto: false,
+      itemType: entry.itemType,
+      options: entry.options ?? null,
+    }));
   }
 
   function getDefaultChecklist(type: string): string[] {
-    const checklists: Record<string, string[]> = {
-      abastecimiento: [
-        "Verificar niveles de inventario actuales",
-        "Retirar productos vencidos o dañados",
-        "Cargar productos según planograma",
-        "Verificar fechas de vencimiento",
-        "Limpiar bandejas y dispensadores",
-        "Verificar precios configurados",
-        "Registrar conteo de monedas/billetes",
-        "Tomar foto de la máquina abastecida",
-      ],
-      tecnico: [
-        "Diagnosticar falla reportada",
-        "Verificar conexión eléctrica",
-        "Revisar sistema de refrigeración",
-        "Probar mecanismo de dispensado",
-        "Verificar aceptador de monedas/billetes",
-        "Verificar sistema de pago cashless",
-        "Limpiar componentes internos",
-        "Realizar prueba de funcionamiento completa",
-      ],
-      mantenimiento_preventivo: [
-        "Limpieza general exterior e interior",
-        "Verificar y limpiar condensador",
-        "Revisar sellos y empaques",
-        "Lubricar mecanismos móviles",
-        "Verificar temperatura de refrigeración",
-        "Inspeccionar cableado eléctrico",
-        "Actualizar software/firmware si aplica",
-      ],
-      instalacion: [
-        "Verificar punto de instalación (electricidad, espacio)",
-        "Posicionar y nivelar máquina",
-        "Conectar a fuente de energía",
-        "Configurar parámetros iniciales",
-        "Cargar inventario inicial",
-        "Realizar pruebas de dispensado",
-        "Capacitar al personal del establecimiento",
-      ],
-      retiro: [
-        "Retirar todo el inventario restante",
-        "Recolectar efectivo pendiente",
-        "Desconectar de fuente de energía",
-        "Documentar estado de la máquina",
-        "Coordinar transporte de retiro",
-      ],
-    };
-    return checklists[type] || [];
+    return getDefaultChecklistEntries(type).map((e) => e.label);
   }
 
   function calculateSlaDeadline(priority: string, config?: { criticalHours: number | null; highHours: number | null; mediumHours: number | null; lowHours: number | null }): Date {
@@ -10415,14 +10556,24 @@ export async function registerRoutes(
     try {
       const tenantId = req.user!.tenantId!;
       await ensureWorkOrderTypesSeed(tenantId);
+      await ensureChecklistDefaultsUpgraded(tenantId);
       const allTypes = await storage.getWorkOrderTypes(tenantId, true);
       for (const wot of allTypes) {
         const isInitialized = await storage.isChecklistTypeInitialized(tenantId, wot.key);
         if (!isInitialized) {
-          const items = getDefaultChecklist(wot.key);
-          if (items.length > 0) {
+          const entries = getDefaultChecklistEntries(wot.key);
+          if (entries.length > 0) {
             await storage.createChecklistTemplates(
-              items.map((label, idx) => ({ tenantId, orderType: wot.key, label, sortOrder: idx, isActive: true }))
+              entries.map((entry, idx) => ({
+                tenantId,
+                orderType: wot.key,
+                label: entry.label,
+                sortOrder: idx,
+                isActive: true,
+                requiresPhoto: false,
+                itemType: entry.itemType,
+                options: entry.options ?? null,
+              })),
             );
           }
           await storage.markChecklistTypeInitialized(tenantId, wot.key);
@@ -10775,6 +10926,7 @@ export async function registerRoutes(
       if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.userId) {
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
+      await ensureChecklistDefaultsUpgraded(tenantId);
       const items = await storage.getChecklistItems(order.id);
       res.json(items);
     } catch (error) {
