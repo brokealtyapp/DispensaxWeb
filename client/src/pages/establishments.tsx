@@ -754,6 +754,18 @@ function ActiveEstablishmentDetail({
     },
   });
 
+  const { data: linkedViewer } = useQuery<any>({
+    queryKey: ["/api/establishments", establishment.id, "viewer"],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest("GET", `/api/establishments/${establishment.id}/viewer`);
+        return await res.json();
+      } catch {
+        return null;
+      }
+    },
+  });
+
   const contractForm = useForm<ContractFormValues>({
     resolver: zodResolver(contractFormSchema),
     defaultValues: {
@@ -995,6 +1007,48 @@ function ActiveEstablishmentDetail({
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Eye className="h-4 w-4" /> Visor del Establecimiento
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {linkedViewer ? (
+            <div className="space-y-2 text-sm" data-testid="section-linked-viewer">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium" data-testid="text-viewer-username">
+                    {linkedViewer.user?.username}
+                  </span>
+                  {linkedViewer.user?.email && (
+                    <span className="text-muted-foreground">— {linkedViewer.user.email}</span>
+                  )}
+                </div>
+                <Link href="/visores-establecimiento">
+                  <Button variant="outline" size="sm" data-testid="button-go-to-viewer">
+                    Ver visor
+                  </Button>
+                </Link>
+              </div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <TrendingUp className="h-4 w-4" />
+                Comisión por defecto: {linkedViewer.defaultCommissionPercent || "5.00"}%
+              </div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Building2 className="h-4 w-4" />
+                Máquinas asignadas: {linkedViewer.assignments?.length || 0}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2 flex-wrap text-sm">
+              <p className="text-muted-foreground">No hay visor asignado a este establecimiento.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="machines">
         <TabsList>
@@ -1342,15 +1396,18 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
 
   useEffect(() => {
     if (inviteEstablishment) {
+      const preselected = machines
+        .filter(m => m.locationId && m.locationId === inviteEstablishment.convertedToLocationId)
+        .map(m => m.id);
       inviteForm.reset({
         email: inviteEstablishment.contactEmail || "",
         contactName: inviteEstablishment.contactName || "",
         phone: inviteEstablishment.contactPhone || "",
         commissionPercent: inviteEstablishment.commissionPercent || "5.00",
-        machineIds: [],
+        machineIds: preselected,
       });
     }
-  }, [inviteEstablishment]);
+  }, [inviteEstablishment, machines]);
 
   const inviteMutation = useMutation({
     mutationFn: async (data: { email: string; contactName: string; phone: string; commissionPercent: string; machineIds: string[] }) => {
@@ -1451,9 +1508,15 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
                     <Badge variant="secondary" className="bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400">Sin contrato</Badge>
                   )}
                   {viewerByEstablishment.has(est.id) ? (
-                    <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
-                      <Eye className="h-3 w-3 mr-1" /> Visor: {viewerByEstablishment.get(est.id)?.user?.username || "asignado"}
-                    </Badge>
+                    <Link
+                      href="/visores-establecimiento"
+                      onClick={(e: any) => e.stopPropagation()}
+                      data-testid={`link-viewer-${est.id}`}
+                    >
+                      <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 cursor-pointer hover-elevate">
+                        <Eye className="h-3 w-3 mr-1" /> Visor: {viewerByEstablishment.get(est.id)?.user?.username || "asignado"}
+                      </Badge>
+                    </Link>
                   ) : canCreate && (
                     <Button
                       size="sm"

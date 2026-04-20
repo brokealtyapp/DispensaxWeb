@@ -2438,6 +2438,10 @@ export const establishmentViewersRelations = relations(establishmentViewers, ({ 
     fields: [establishmentViewers.userId],
     references: [users.id],
   }),
+  establishment: one(establishments, {
+    fields: [establishmentViewers.establishmentId],
+    references: [establishments.id],
+  }),
   machineAssignments: many(machineViewerAssignments),
 }));
 
