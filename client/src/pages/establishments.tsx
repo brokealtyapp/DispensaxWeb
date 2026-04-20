@@ -1594,7 +1594,7 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
                 onClick={() => setWithoutViewerOnly(v => !v)}
                 data-testid="button-toggle-without-viewer"
               >
-                {withoutViewerOnly ? "Ver todos" : "Ver sin visor"}
+                {withoutViewerOnly ? "Ver todos" : "Sin visor asignado"}
               </Button>
             )}
           </CardContent>
