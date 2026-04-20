@@ -8843,6 +8843,99 @@ export async function registerRoutes(
     }
   });
 
+  // Transfer viewer to a different establishment
+  app.post("/api/establishment-viewers/:id/transfer", authenticateJWT, authorizeAction("establishment_viewers", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const viewer = await storage.getEstablishmentViewer(req.params.id);
+      if (!viewer) {
+        return res.status(404).json({ error: "Visor no encontrado" });
+      }
+
+      if (!verifyTenantOwnership(viewer.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+        return res.status(403).json({ error: "No tienes acceso a este visor" });
+      }
+
+      const transferSchema = z.object({
+        establishmentId: z.string().min(1, "Establecimiento destino requerido"),
+      });
+      const { establishmentId } = transferSchema.parse(req.body);
+
+      if (viewer.establishmentId === establishmentId) {
+        return res.status(400).json({ error: "El visor ya está asignado a este establecimiento" });
+      }
+
+      const targetEst = await storage.getEstablishment(establishmentId);
+      if (!targetEst || targetEst.tenantId !== viewer.tenantId) {
+        return res.status(404).json({ error: "Establecimiento destino no encontrado" });
+      }
+
+      // Check uniqueness: no other active viewer linked to target establishment
+      const allViewers = await storage.getEstablishmentViewers(viewer.tenantId);
+      const conflict = allViewers.find(v => v.id !== viewer.id && v.establishmentId === establishmentId && v.isActive);
+      if (conflict) {
+        return res.status(409).json({ error: "El establecimiento destino ya tiene un visor activo asignado" });
+      }
+
+      // Update viewer linkage and name
+      const updated = await storage.updateEstablishmentViewer(viewer.id, {
+        establishmentId,
+        establishmentName: targetEst.name,
+      });
+
+      // Reassign machines installed in the new establishment
+      const targetLocationId = targetEst.convertedToLocationId;
+      const newMachineIds: string[] = [];
+      if (targetLocationId) {
+        const allMachines = await storage.getMachines(viewer.tenantId, {});
+        for (const m of allMachines) {
+          if (m.locationId === targetLocationId) newMachineIds.push(m.id);
+        }
+      }
+
+      const existingAssignments = await storage.getMachineViewerAssignments(viewer.id);
+      const existingMachineIds = existingAssignments.map(a => a.machineId);
+
+      // Deactivate assignments not in the new establishment
+      for (const a of existingAssignments) {
+        if (!newMachineIds.includes(a.machineId)) {
+          await storage.deleteMachineViewerAssignment(a.id);
+        }
+      }
+
+      // Add new assignments for machines in the new establishment
+      const commissionPercent = viewer.defaultCommissionPercent || "5.00";
+      const addedAssignments = [];
+      for (const machineId of newMachineIds) {
+        if (!existingMachineIds.includes(machineId)) {
+          const assignment = await storage.createMachineViewerAssignment({
+            tenantId: viewer.tenantId,
+            viewerId: viewer.id,
+            machineId,
+            commissionPercent,
+            isActive: true,
+          });
+          addedAssignments.push(assignment);
+        }
+      }
+
+      res.json({
+        viewer: updated,
+        reassignedMachines: newMachineIds.length,
+        addedAssignments: addedAssignments.length,
+        removedAssignments: existingAssignments.filter(a => !newMachineIds.includes(a.machineId)).length,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      if (isUniqueViolation(error)) {
+        return res.status(409).json({ error: "El establecimiento destino ya tiene un visor activo asignado" });
+      }
+      console.error("Error transferring viewer:", error);
+      res.status(500).json({ error: "Error al transferir visor" });
+    }
+  });
+
   // ==================== VIEWER INVITE FLOW ====================
 
   // Create viewer invite

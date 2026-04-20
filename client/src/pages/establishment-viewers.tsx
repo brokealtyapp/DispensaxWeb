@@ -62,6 +62,7 @@ import {
   Percent,
   UserPlus,
   X,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -141,6 +142,8 @@ export default function EstablishmentViewersPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferEstablishmentId, setTransferEstablishmentId] = useState<string>("");
   const [selectedViewer, setSelectedViewer] = useState<EstablishmentViewer | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [selectedMachines, setSelectedMachines] = useState<string[]>([]);
@@ -151,6 +154,10 @@ export default function EstablishmentViewersPage() {
 
   const { data: machines = [] } = useQuery<Machine[]>({
     queryKey: ["/api/machines"],
+  });
+
+  const { data: establishments = [] } = useQuery<Array<{ id: string; name: string; city?: string | null }>>({
+    queryKey: ["/api/establishments"],
   });
 
   const inviteForm = useForm<InviteFormData>({
@@ -262,6 +269,47 @@ export default function EstablishmentViewersPage() {
     },
   });
 
+  const transferMutation = useMutation({
+    mutationFn: async ({ viewerId, establishmentId }: { viewerId: string; establishmentId: string }) => {
+      return apiRequest("POST", `/api/establishment-viewers/${viewerId}/transfer`, { establishmentId });
+    },
+    onSuccess: async (res) => {
+      type TransferResponse = {
+        reassignedMachines?: number;
+        addedAssignments?: number;
+        removedAssignments?: number;
+      };
+      let data: TransferResponse = {};
+      try {
+        data = (await res.json()) as TransferResponse;
+      } catch {
+        data = {};
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/establishment-viewers"] });
+      setTransferOpen(false);
+      setTransferEstablishmentId("");
+      setSelectedViewer(null);
+      const added = data.addedAssignments ?? 0;
+      const removed = data.removedAssignments ?? 0;
+      const parts: string[] = [];
+      if (added > 0) parts.push(`${added} máquina(s) asignada(s)`);
+      if (removed > 0) parts.push(`${removed} desasignada(s)`);
+      toast({
+        title: "Visor transferido",
+        description: parts.length > 0
+          ? parts.join(", ") + " según el nuevo establecimiento."
+          : "Sin cambios en las máquinas asignadas.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error al transferir visor",
+        description: error.message || "Intenta nuevamente",
+        variant: "destructive",
+      });
+    },
+  });
+
   const unassignMutation = useMutation({
     mutationFn: async ({ viewerId, assignmentId }: { viewerId: string; assignmentId: string }) => {
       return apiRequest("DELETE", `/api/establishment-viewers/${viewerId}/assignments/${assignmentId}`);
@@ -350,6 +398,18 @@ export default function EstablishmentViewersPage() {
     setSelectedViewer(viewer);
     setSelectedMachines([]);
     setAssignOpen(true);
+  };
+
+  const handleOpenTransfer = (viewer: EstablishmentViewer) => {
+    setSelectedViewer(viewer);
+    setTransferEstablishmentId("");
+    setTransferOpen(true);
+  };
+
+  const handleTransferConfirm = () => {
+    if (selectedViewer && transferEstablishmentId) {
+      transferMutation.mutate({ viewerId: selectedViewer.id, establishmentId: transferEstablishmentId });
+    }
   };
 
   const handleInviteSubmit = (data: InviteFormData) => {
@@ -550,6 +610,18 @@ export default function EstablishmentViewersPage() {
                                 data-testid={`button-assign-${viewer.id}`}
                               >
                                 <Box className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenTransfer(viewer);
+                                }}
+                                data-testid={`button-transfer-${viewer.id}`}
+                                title="Cambiar establecimiento"
+                              >
+                                <ArrowRightLeft className="h-4 w-4" />
                               </Button>
                               <Button
                                 variant="ghost"
@@ -952,6 +1024,46 @@ export default function EstablishmentViewersPage() {
               data-testid="button-submit-assign"
             >
               {assignMutation.isPending ? "Asignando..." : `Asignar (${selectedMachines.length})`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cambiar Establecimiento</DialogTitle>
+            <DialogDescription>
+              Transfiere el visor {selectedViewer?.establishmentName} a otro establecimiento. Las máquinas instaladas en el nuevo establecimiento se reasignarán automáticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <label className="text-sm font-medium">Establecimiento destino</label>
+            <Select value={transferEstablishmentId} onValueChange={setTransferEstablishmentId}>
+              <SelectTrigger data-testid="select-transfer-establishment">
+                <SelectValue placeholder="Selecciona un establecimiento" />
+              </SelectTrigger>
+              <SelectContent>
+                {establishments
+                  .filter(e => e.id !== selectedViewer?.establishmentId)
+                  .map(e => (
+                    <SelectItem key={e.id} value={e.id} data-testid={`option-transfer-${e.id}`}>
+                      {e.name}{e.city ? ` — ${e.city}` : ""}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setTransferOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleTransferConfirm}
+              disabled={!transferEstablishmentId || transferMutation.isPending}
+              data-testid="button-confirm-transfer"
+            >
+              {transferMutation.isPending ? "Transfiriendo..." : "Transferir"}
             </Button>
           </DialogFooter>
         </DialogContent>
