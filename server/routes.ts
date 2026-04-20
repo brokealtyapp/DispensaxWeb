@@ -9572,7 +9572,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Establecimiento no encontrado" });
       }
       const viewers = await storage.getEstablishmentViewers(tenantId);
-      const viewer = viewers.find(v => v.establishmentId === req.params.id && v.isActive) || null;
+      const viewer = viewers.find(v => v.establishmentId === req.params.id) || null;
       if (!viewer) return res.json(null);
       const user = await storage.getUser(viewer.userId);
       const assignments = await storage.getMachineViewerAssignments(viewer.id);
