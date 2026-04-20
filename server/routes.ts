@@ -9461,10 +9461,18 @@ export async function registerRoutes(
       if (!viewer) return res.json(null);
       const user = await storage.getUser(viewer.userId);
       const assignments = await storage.getMachineViewerAssignments(viewer.id);
+      const enrichedAssignments = await Promise.all(assignments.map(async (a) => {
+        const machine = await storage.getMachine(a.machineId);
+        return {
+          ...a,
+          machine: machine ? { id: machine.id, code: machine.code, name: machine.name } : null,
+        };
+      }));
       res.json({
         ...viewer,
         user: user ? { id: user.id, username: user.username, email: user.email, fullName: user.fullName } : null,
-        assignmentCount: assignments.length,
+        assignments: enrichedAssignments,
+        assignmentCount: enrichedAssignments.length,
       });
     } catch (error) {
       console.error("Error getting viewer for establishment:", error);

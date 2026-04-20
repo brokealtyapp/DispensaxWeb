@@ -1434,9 +1434,12 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
     },
   });
 
-  const machinesForEstablishment = inviteEstablishment
-    ? machines.filter(m => m.locationId && m.locationId === inviteEstablishment.convertedToLocationId)
-    : [];
+  const machinesForEstablishment = inviteEstablishment ? machines : [];
+  const preselectedMachineIds = new Set(
+    inviteEstablishment?.convertedToLocationId
+      ? machines.filter(m => m.locationId === inviteEstablishment.convertedToLocationId).map(m => m.id)
+      : []
+  );
 
   if (selectedActive) {
     return (
@@ -1600,9 +1603,14 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
               )} />
               <div>
                 <p className="text-sm font-medium mb-2">Máquinas a Asignar *</p>
+                {preselectedMachineIds.size > 0 && (
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Las máquinas instaladas en este establecimiento están pre-seleccionadas.
+                  </p>
+                )}
                 {machinesForEstablishment.length === 0 ? (
                   <p className="text-sm text-muted-foreground border rounded-md p-3">
-                    No hay máquinas instaladas en este establecimiento.
+                    No hay máquinas disponibles en el sistema.
                   </p>
                 ) : (
                   <div className="space-y-2 border rounded-md p-3 max-h-60 overflow-y-auto">
@@ -1610,6 +1618,7 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
                       <>
                         {machinesForEstablishment.map((m) => {
                           const checked = field.value?.includes(m.id);
+                          const isPreselected = preselectedMachineIds.has(m.id);
                           return (
                             <label key={m.id} className="flex items-center gap-2 text-sm cursor-pointer">
                               <input
@@ -1625,6 +1634,11 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
                               />
                               <span className="font-medium">{m.code}</span>
                               <span className="text-muted-foreground">— {m.name}</span>
+                              {isPreselected && (
+                                <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 text-xs">
+                                  En este establecimiento
+                                </Badge>
+                              )}
                             </label>
                           );
                         })}
