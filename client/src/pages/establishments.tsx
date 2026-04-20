@@ -1334,6 +1334,7 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
   const [selectedActive, setSelectedActive] = useState<ActiveEstablishment | null>(null);
   const [inviteEstablishment, setInviteEstablishment] = useState<ActiveEstablishment | null>(null);
   const [scrollViewerToken, setScrollViewerToken] = useState<number | undefined>(undefined);
+  const [withoutViewerOnly, setWithoutViewerOnly] = useState(false);
   const search = useSearch();
   const targetEstablishmentId = new URLSearchParams(search).get("establishmentId");
 
@@ -1559,8 +1560,47 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
     );
   }
 
+  const totalActive = activeEstablishments.length;
+  const withViewerCount = activeEstablishments.filter(e => viewerByEstablishment.has(e.id)).length;
+  const withoutViewerCount = totalActive - withViewerCount;
+  const visibleEstablishments = withoutViewerOnly
+    ? activeEstablishments.filter(e => !viewerByEstablishment.has(e.id))
+    : activeEstablishments;
+
   return (
     <div className="space-y-4">
+      {totalActive > 0 && (
+        <Card data-testid="card-viewer-coverage">
+          <CardContent className="p-4 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-md bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                <Eye className="h-5 w-5 text-purple-700 dark:text-purple-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium" data-testid="text-viewer-coverage">
+                  {withViewerCount} de {totalActive} establecimientos activos tienen visor asignado
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {withoutViewerCount > 0
+                    ? `${withoutViewerCount} pendiente${withoutViewerCount !== 1 ? "s" : ""} de invitación`
+                    : "Cobertura completa"}
+                </p>
+              </div>
+            </div>
+            {withoutViewerCount > 0 && (
+              <Button
+                size="sm"
+                variant={withoutViewerOnly ? "default" : "outline"}
+                onClick={() => setWithoutViewerOnly(v => !v)}
+                data-testid="button-toggle-without-viewer"
+              >
+                {withoutViewerOnly ? "Ver todos" : "Ver sin visor"}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -1587,8 +1627,14 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
 
       {isLoading && <p className="text-sm text-muted-foreground">Cargando...</p>}
 
+      {withoutViewerOnly && visibleEstablishments.length === 0 && totalActive > 0 && (
+        <p className="text-sm text-muted-foreground text-center py-6" data-testid="text-no-pending">
+          Todos los establecimientos activos ya tienen un visor asignado.
+        </p>
+      )}
+
       <div className="space-y-2">
-        {activeEstablishments.map((est) => (
+        {visibleEstablishments.map((est) => (
           <Card
             key={est.id}
             className="cursor-pointer hover-elevate"

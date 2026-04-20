@@ -460,8 +460,11 @@ export default function EstablishmentViewersPage() {
     <div className="p-6 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">Visores de Establecimiento</h1>
-          <p className="text-muted-foreground">Gestiona los usuarios externos que pueden ver las ventas de sus máquinas</p>
+          <h1 className="text-2xl font-bold" data-testid="text-page-title">Directorio de Visores</h1>
+          <p className="text-muted-foreground">
+            Vista global de todos los visores de la cartera. Para invitar, editar o asignar máquinas
+            a un visor, abre el detalle del establecimiento desde la columna "Vinculado a".
+          </p>
         </div>
         <Button onClick={handleOpenInvite} data-testid="button-invite-viewer">
           <UserPlus className="h-4 w-4 mr-2" />
