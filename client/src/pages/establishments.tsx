@@ -766,18 +766,6 @@ function ActiveEstablishmentDetail({
     },
   });
 
-  const { data: linkedViewer } = useQuery<any>({
-    queryKey: ["/api/establishments", establishment.id, "viewer"],
-    queryFn: async () => {
-      try {
-        const res = await apiRequest("GET", `/api/establishments/${establishment.id}/viewer`);
-        return await res.json();
-      } catch {
-        return null;
-      }
-    },
-  });
-
   const contractForm = useForm<ContractFormValues>({
     resolver: zodResolver(contractFormSchema),
     defaultValues: {
