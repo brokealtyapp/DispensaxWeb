@@ -114,6 +114,7 @@ import {
   slaStatusEnum,
   type WorkOrderType,
   changeFunds as changeFundsTable,
+  tenantInvites,
 } from "@shared/schema";
 import { z, ZodError } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
@@ -8600,55 +8601,67 @@ export async function registerRoutes(
         return res.status(400).json({ error: "El nombre de usuario ya existe" });
       }
       
-      // Create user with visor_establecimiento role
+      // Pre-validate machine ownership before transaction
+      const validMachineIds: string[] = [];
+      for (const machineId of data.machineIds) {
+        const machine = await storage.getMachine(machineId);
+        if (machine && machine.tenantId === tenantId) {
+          validMachineIds.push(machineId);
+        }
+      }
+
+      // Create user, viewer and assignments atomically
       const hashedPassword = await bcrypt.hash(data.password, 10);
-      const user = await storage.createUser({
-        username: data.username,
-        password: hashedPassword,
-        email: data.email || null,
-        fullName: data.fullName || data.establishmentName,
-        phone: data.phone || null,
-        role: "visor_establecimiento",
-        tenantId: tenantId,
-        isActive: true
-      });
-      
-      // Create establishment viewer (with cleanup on race condition)
-      let viewer;
+      let result: {
+        user: typeof users.$inferSelect;
+        viewer: typeof establishmentViewers.$inferSelect;
+        assignments: (typeof machineViewerAssignments.$inferSelect)[];
+      };
       try {
-        viewer = await storage.createEstablishmentViewer({
-          tenantId: tenantId,
-          userId: user.id,
-          establishmentId: data.establishmentId || null,
-          establishmentName: data.establishmentName,
-          defaultCommissionPercent: data.defaultCommissionPercent,
-          notes: data.notes || null,
-          isActive: true
+        result = await db.transaction(async (tx) => {
+          const [createdUser] = await tx.insert(users).values({
+            username: data.username,
+            password: hashedPassword,
+            email: data.email || null,
+            fullName: data.fullName || data.establishmentName,
+            phone: data.phone || null,
+            role: "visor_establecimiento",
+            tenantId: tenantId,
+            isActive: true
+          }).returning();
+
+          const [createdViewer] = await tx.insert(establishmentViewers).values({
+            tenantId: tenantId,
+            userId: createdUser.id,
+            establishmentId: data.establishmentId || null,
+            establishmentName: data.establishmentName,
+            defaultCommissionPercent: data.defaultCommissionPercent,
+            notes: data.notes || null,
+            isActive: true
+          }).returning();
+
+          const createdAssignments: (typeof machineViewerAssignments.$inferSelect)[] = [];
+          for (const machineId of validMachineIds) {
+            const [assignment] = await tx.insert(machineViewerAssignments).values({
+              tenantId: tenantId,
+              viewerId: createdViewer.id,
+              machineId: machineId,
+              commissionPercent: data.defaultCommissionPercent,
+              isActive: true
+            }).returning();
+            createdAssignments.push(assignment);
+          }
+
+          return { user: createdUser, viewer: createdViewer, assignments: createdAssignments };
         });
-      } catch (err: any) {
-        try { await db.delete(users).where(eq(users.id, user.id)); } catch {}
-        if (err?.code === '23505') {
+      } catch (err) {
+        if (isUniqueViolation(err)) {
           return res.status(409).json({ error: "Este establecimiento ya tiene un visor activo asignado" });
         }
         throw err;
       }
-      
-      // Create machine assignments if provided
-      const assignments = [];
-      for (const machineId of data.machineIds) {
-        const machine = await storage.getMachine(machineId);
-        if (machine && machine.tenantId === tenantId) {
-          const assignment = await storage.createMachineViewerAssignment({
-            tenantId: tenantId,
-            viewerId: viewer.id,
-            machineId: machineId,
-            commissionPercent: data.defaultCommissionPercent,
-            isActive: true
-          });
-          assignments.push(assignment);
-        }
-      }
-      
+
+      const { user, viewer, assignments } = result;
       res.status(201).json({
         ...viewer,
         user: { id: user.id, username: user.username, email: user.email, fullName: user.fullName },
@@ -8979,51 +8992,57 @@ export async function registerRoutes(
         }
       }
       
-      // Create user
+      // Create user, viewer, assignments, and mark invite accepted atomically
       const hashedPassword = await bcrypt.hash(data.password, 10);
-      const user = await storage.createUser({
-        username: data.username,
-        password: hashedPassword,
-        email: invite.email,
-        fullName: data.fullName || metadata.establishmentName,
-        role: "visor_establecimiento",
-        tenantId: invite.tenantId,
-        isActive: true
-      });
-      
-      // Create establishment viewer (with cleanup if unique constraint fails due to race)
-      let viewer;
+      let acceptResult: {
+        user: typeof users.$inferSelect;
+        viewer: typeof establishmentViewers.$inferSelect;
+      };
       try {
-        viewer = await storage.createEstablishmentViewer({
-          tenantId: invite.tenantId,
-          userId: user.id,
-          establishmentId: metadata.establishmentId || null,
-          establishmentName: metadata.establishmentName,
-          defaultCommissionPercent: metadata.commissionPercent,
-          isActive: true
+        acceptResult = await db.transaction(async (tx) => {
+          const [createdUser] = await tx.insert(users).values({
+            username: data.username,
+            password: hashedPassword,
+            email: invite.email,
+            fullName: data.fullName || metadata.establishmentName,
+            role: "visor_establecimiento",
+            tenantId: invite.tenantId,
+            isActive: true
+          }).returning();
+
+          const [createdViewer] = await tx.insert(establishmentViewers).values({
+            tenantId: invite.tenantId,
+            userId: createdUser.id,
+            establishmentId: metadata.establishmentId || null,
+            establishmentName: metadata.establishmentName,
+            defaultCommissionPercent: metadata.commissionPercent,
+            isActive: true
+          }).returning();
+
+          for (const machineId of metadata.machineIds) {
+            await tx.insert(machineViewerAssignments).values({
+              tenantId: invite.tenantId,
+              viewerId: createdViewer.id,
+              machineId: machineId,
+              commissionPercent: metadata.commissionPercent,
+              isActive: true
+            });
+          }
+
+          await tx.update(tenantInvites)
+            .set({ acceptedAt: new Date() })
+            .where(eq(tenantInvites.id, invite.id));
+
+          return { user: createdUser, viewer: createdViewer };
         });
-      } catch (err: any) {
-        // Cleanup orphaned user on race condition / unique violation
-        try { await db.delete(users).where(eq(users.id, user.id)); } catch {}
-        if (err?.code === '23505') {
+      } catch (err) {
+        if (isUniqueViolation(err)) {
           return res.status(409).json({ error: "Este establecimiento ya tiene un visor activo asignado" });
         }
         throw err;
       }
-      
-      // Create machine assignments
-      for (const machineId of metadata.machineIds) {
-        await storage.createMachineViewerAssignment({
-          tenantId: invite.tenantId,
-          viewerId: viewer.id,
-          machineId: machineId,
-          commissionPercent: metadata.commissionPercent,
-          isActive: true
-        });
-      }
-      
-      // Mark invite as accepted
-      await storage.markTenantInviteAccepted(invite.id);
+
+      const { user, viewer } = acceptResult;
       
       res.json({
         success: true,
