@@ -10369,7 +10369,11 @@ export async function registerRoutes(
   }
 
   // Per-tenant in-flight migration promises so concurrent callers await the
-  // same run instead of racing past it.
+  // same run instead of racing past it. Entries are removed as soon as the
+  // run finishes (success or failure), so a new request after that point
+  // will re-run the migration. This is intentional: tenant template/item
+  // data can change at any time (admin edits, new orders), and the upgrade
+  // is cheap and idempotent.
   const checklistDefaultsUpgrades = new Map<string, Promise<void>>();
 
   async function runChecklistDefaultsUpgrade(tenantId: string): Promise<void> {
@@ -10457,22 +10461,23 @@ export async function registerRoutes(
   }
 
   async function ensureChecklistDefaultsUpgraded(tenantId: string): Promise<void> {
+    // If a run is already in flight for this tenant, await it instead of
+    // starting a duplicate one.
     const existing = checklistDefaultsUpgrades.get(tenantId);
-    if (existing) {
-      // Either still running or resolved — both cases: await it.
-      return existing;
-    }
+    if (existing) return existing;
     const promise = (async () => {
       try {
         await runChecklistDefaultsUpgrade(tenantId);
       } catch (err) {
-        // Migration is best-effort; remove the cached promise so the next
-        // caller can retry. Never throw to callers — request handling must
-        // continue even if the upgrade fails.
+        // Migration is best-effort; never throw to callers — request
+        // handling must continue even if the upgrade fails.
         console.error("[checklist defaults] upgrade failed for tenant", tenantId, err);
-        checklistDefaultsUpgrades.delete(tenantId);
       }
-    })();
+    })().finally(() => {
+      // Always release the in-flight slot so the next request will re-check
+      // (template/order data may have changed since the previous run).
+      checklistDefaultsUpgrades.delete(tenantId);
+    });
     checklistDefaultsUpgrades.set(tenantId, promise);
     return promise;
   }
