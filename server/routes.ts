@@ -10269,82 +10269,87 @@ export async function registerRoutes(
   const checklistDefaultsUpgrades = new Map<string, Promise<void>>();
 
   async function runChecklistDefaultsUpgrade(tenantId: string): Promise<void> {
-    // 1) Upgrade matching templates still on the legacy default ("checkbox" + no options),
-    // scoped by both tenantId and orderType.
-    const templates = await db
-      .select()
-      .from(workOrderChecklistTemplatesTable)
-      .where(eq(workOrderChecklistTemplatesTable.tenantId, tenantId));
-    for (const tpl of templates) {
-      const currentType = tpl.itemType ?? "checkbox";
-      const currentOptions = (tpl.options as string[] | null) ?? null;
-      if (currentType !== "checkbox") continue;
-      if (currentOptions && currentOptions.length > 0) continue;
-      const desired = getDefaultEntryFor(tpl.orderType, tpl.label);
-      if (!desired) continue;
-      await db
-        .update(workOrderChecklistTemplatesTable)
-        .set({
-          itemType: desired.itemType,
-          options: desired.options ?? null,
-        })
-        .where(
-          and(
-            eq(workOrderChecklistTemplatesTable.id, tpl.id),
-            eq(workOrderChecklistTemplatesTable.tenantId, tenantId),
-            eq(workOrderChecklistTemplatesTable.orderType, tpl.orderType),
-            eq(workOrderChecklistTemplatesTable.itemType, "checkbox"),
-          ),
-        );
-    }
+    // Wrap the whole upgrade in a single transaction per tenant so partial
+    // failures roll back instead of leaving templates/items in mixed state.
+    await db.transaction(async (tx) => {
+      // 1) Upgrade matching templates still on the legacy default
+      // ("checkbox" + no options), scoped by both tenantId and orderType.
+      const templates = await tx
+        .select()
+        .from(workOrderChecklistTemplatesTable)
+        .where(eq(workOrderChecklistTemplatesTable.tenantId, tenantId));
+      for (const tpl of templates) {
+        const currentType = tpl.itemType ?? "checkbox";
+        const currentOptions = (tpl.options as string[] | null) ?? null;
+        if (currentType !== "checkbox") continue;
+        if (currentOptions && currentOptions.length > 0) continue;
+        const desired = getDefaultEntryFor(tpl.orderType, tpl.label);
+        if (!desired) continue;
+        await tx
+          .update(workOrderChecklistTemplatesTable)
+          .set({
+            itemType: desired.itemType,
+            options: desired.options ?? null,
+          })
+          .where(
+            and(
+              eq(workOrderChecklistTemplatesTable.id, tpl.id),
+              eq(workOrderChecklistTemplatesTable.tenantId, tenantId),
+              eq(workOrderChecklistTemplatesTable.orderType, tpl.orderType),
+              eq(workOrderChecklistTemplatesTable.itemType, "checkbox"),
+            ),
+          );
+      }
 
-    // 2) Upgrade matching items in checklists of orders that are still open.
-    // Scoped by (workOrder.type, label) so custom order types are never touched.
-    const openItems = await db
-      .select({
-        id: workOrderChecklistItemsTable.id,
-        label: workOrderChecklistItemsTable.label,
-        itemType: workOrderChecklistItemsTable.itemType,
-        options: workOrderChecklistItemsTable.options,
-        answer: workOrderChecklistItemsTable.answer,
-        photoUrl: workOrderChecklistItemsTable.photoUrl,
-        isCompleted: workOrderChecklistItemsTable.isCompleted,
-        orderType: workOrdersTable.type,
-      })
-      .from(workOrderChecklistItemsTable)
-      .innerJoin(workOrdersTable, eq(workOrdersTable.id, workOrderChecklistItemsTable.workOrderId))
-      .where(
-        and(
-          eq(workOrderChecklistItemsTable.tenantId, tenantId),
-          eq(workOrdersTable.tenantId, tenantId),
-          ne(workOrdersTable.status, "completada"),
-          ne(workOrdersTable.status, "cancelada"),
-        ),
-      );
-    for (const it of openItems) {
-      const currentType = it.itemType ?? "checkbox";
-      const currentOptions = (it.options as string[] | null) ?? null;
-      if (currentType !== "checkbox") continue;
-      if (currentOptions && currentOptions.length > 0) continue;
-      if (it.answer) continue;
-      if (it.photoUrl) continue;
-      if (it.isCompleted) continue;
-      const desired = getDefaultEntryFor(it.orderType, it.label);
-      if (!desired) continue;
-      await db
-        .update(workOrderChecklistItemsTable)
-        .set({
-          itemType: desired.itemType,
-          options: desired.options ?? null,
+      // 2) Upgrade matching items in checklists of orders that are still
+      // open. Scoped by (workOrder.type, label) so custom order types are
+      // never touched.
+      const openItems = await tx
+        .select({
+          id: workOrderChecklistItemsTable.id,
+          label: workOrderChecklistItemsTable.label,
+          itemType: workOrderChecklistItemsTable.itemType,
+          options: workOrderChecklistItemsTable.options,
+          answer: workOrderChecklistItemsTable.answer,
+          photoUrl: workOrderChecklistItemsTable.photoUrl,
+          isCompleted: workOrderChecklistItemsTable.isCompleted,
+          orderType: workOrdersTable.type,
         })
+        .from(workOrderChecklistItemsTable)
+        .innerJoin(workOrdersTable, eq(workOrdersTable.id, workOrderChecklistItemsTable.workOrderId))
         .where(
           and(
-            eq(workOrderChecklistItemsTable.id, it.id),
             eq(workOrderChecklistItemsTable.tenantId, tenantId),
-            eq(workOrderChecklistItemsTable.itemType, "checkbox"),
+            eq(workOrdersTable.tenantId, tenantId),
+            ne(workOrdersTable.status, "completada"),
+            ne(workOrdersTable.status, "cancelada"),
           ),
         );
-    }
+      for (const it of openItems) {
+        const currentType = it.itemType ?? "checkbox";
+        const currentOptions = (it.options as string[] | null) ?? null;
+        if (currentType !== "checkbox") continue;
+        if (currentOptions && currentOptions.length > 0) continue;
+        if (it.answer) continue;
+        if (it.photoUrl) continue;
+        if (it.isCompleted) continue;
+        const desired = getDefaultEntryFor(it.orderType, it.label);
+        if (!desired) continue;
+        await tx
+          .update(workOrderChecklistItemsTable)
+          .set({
+            itemType: desired.itemType,
+            options: desired.options ?? null,
+          })
+          .where(
+            and(
+              eq(workOrderChecklistItemsTable.id, it.id),
+              eq(workOrderChecklistItemsTable.tenantId, tenantId),
+              eq(workOrderChecklistItemsTable.itemType, "checkbox"),
+            ),
+          );
+      }
+    });
   }
 
   async function ensureChecklistDefaultsUpgraded(tenantId: string): Promise<void> {
