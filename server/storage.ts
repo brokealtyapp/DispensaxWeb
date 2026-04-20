@@ -6751,6 +6751,17 @@ export class DatabaseStorage implements IStorage {
     return viewer;
   }
 
+  async getEstablishmentViewerByEstablishmentId(tenantId: string, establishmentId: string): Promise<EstablishmentViewer | undefined> {
+    const [viewer] = await db.select().from(establishmentViewers)
+      .where(and(
+        eq(establishmentViewers.tenantId, tenantId),
+        eq(establishmentViewers.establishmentId, establishmentId),
+      ))
+      .orderBy(desc(establishmentViewers.createdAt))
+      .limit(1);
+    return viewer;
+  }
+
   async createEstablishmentViewer(data: InsertEstablishmentViewer): Promise<EstablishmentViewer> {
     const [viewer] = await db.insert(establishmentViewers).values(data).returning();
     return viewer;
