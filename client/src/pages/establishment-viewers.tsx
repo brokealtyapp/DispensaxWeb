@@ -466,10 +466,6 @@ export default function EstablishmentViewersPage() {
             a un visor, abre el detalle del establecimiento desde la columna "Vinculado a".
           </p>
         </div>
-        <Button onClick={handleOpenInvite} data-testid="button-invite-viewer">
-          <UserPlus className="h-4 w-4 mr-2" />
-          Invitar Visor
-        </Button>
       </div>
 
       <Card>
@@ -602,53 +598,20 @@ export default function EstablishmentViewersPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-1">
+                            {viewer.isActive && (
                               <Button
-                                variant="ghost"
-                                size="icon"
+                                variant="outline"
+                                size="sm"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleOpenAssign(viewer);
+                                  updateMutation.mutate({ id: viewer.id, data: { isActive: false } });
                                 }}
-                                data-testid={`button-assign-${viewer.id}`}
+                                disabled={updateMutation.isPending}
+                                data-testid={`button-deactivate-${viewer.id}`}
                               >
-                                <Box className="h-4 w-4" />
+                                Desactivar
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenTransfer(viewer);
-                                }}
-                                data-testid={`button-transfer-${viewer.id}`}
-                                title="Cambiar establecimiento"
-                              >
-                                <ArrowRightLeft className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenEdit(viewer);
-                                }}
-                                data-testid={`button-edit-${viewer.id}`}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenDelete(viewer);
-                                }}
-                                data-testid={`button-delete-${viewer.id}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                            )}
                           </TableCell>
                         </TableRow>
                         <CollapsibleContent asChild>
@@ -657,15 +620,6 @@ export default function EstablishmentViewersPage() {
                               <div className="space-y-3">
                                 <div className="flex items-center justify-between">
                                   <h4 className="font-medium text-sm">Máquinas Asignadas</h4>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleOpenAssign(viewer)}
-                                    data-testid={`button-add-machine-${viewer.id}`}
-                                  >
-                                    <Plus className="h-3 w-3 mr-1" />
-                                    Agregar Máquina
-                                  </Button>
                                 </div>
                                 {viewer.assignments && viewer.assignments.length > 0 ? (
                                   <div className="grid gap-2">
@@ -689,14 +643,6 @@ export default function EstablishmentViewersPage() {
                                           <Badge variant="outline">
                                             {assignment.commissionPercent}% comisión
                                           </Badge>
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => handleUnassign(viewer.id, assignment.id)}
-                                            data-testid={`button-unassign-${assignment.id}`}
-                                          >
-                                            <X className="h-3 w-3" />
-                                          </Button>
                                         </div>
                                       </div>
                                     ))}
