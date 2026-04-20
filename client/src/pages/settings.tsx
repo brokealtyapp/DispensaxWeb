@@ -158,6 +158,7 @@ export function SettingsPage() {
     notifyLowStock: boolean;
     notifyMaintenanceDue: boolean;
     lowStockThreshold: number;
+    includeViewerLinkInContractEmail: boolean;
   }>({
     queryKey: ["/api/settings/notifications"],
     enabled: isAdmin,
@@ -169,6 +170,7 @@ export function SettingsPage() {
     lowStock: localStorage.getItem("notif_low_stock") !== "false",
     machineAlerts: localStorage.getItem("notif_machine_alerts") !== "false",
     reports: localStorage.getItem("notif_reports") === "true",
+    includeViewerLinkInContractEmail: true,
   });
 
   useEffect(() => {
@@ -177,6 +179,7 @@ export function SettingsPage() {
         ...prev,
         lowStock: notifData.notifyLowStock,
         machineAlerts: notifData.notifyMaintenanceDue,
+        includeViewerLinkInContractEmail: notifData.includeViewerLinkInContractEmail ?? true,
       }));
     }
   }, [notifData, isAdmin]);
@@ -256,7 +259,7 @@ export function SettingsPage() {
   });
 
   const updateNotificationsMutation = useMutation({
-    mutationFn: async (data: { notifyLowStock: boolean; notifyMaintenanceDue: boolean }) => {
+    mutationFn: async (data: { notifyLowStock: boolean; notifyMaintenanceDue: boolean; includeViewerLinkInContractEmail: boolean }) => {
       const res = await apiRequest("PATCH", "/api/settings/notifications", data);
       return res.json();
     },
@@ -552,6 +555,7 @@ export function SettingsPage() {
       updateNotificationsMutation.mutate({
         notifyLowStock: notifications.lowStock,
         notifyMaintenanceDue: notifications.machineAlerts,
+        includeViewerLinkInContractEmail: notifications.includeViewerLinkInContractEmail,
       });
     } else {
       // Persist to localStorage for non-admin users
@@ -784,6 +788,26 @@ export function SettingsPage() {
                         data-testid="switch-machine-alerts"
                       />
                     </div>
+                    {isAdmin && (
+                      <>
+                        <Separator />
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <Label>Incluir enlace del visor en correos de contrato</Label>
+                            <p className="text-sm text-muted-foreground">
+                              Al enviar un correo de contrato, agregar el enlace de invitación pendiente del visor del establecimiento (si existe).
+                            </p>
+                          </div>
+                          <Switch
+                            checked={notifications.includeViewerLinkInContractEmail}
+                            onCheckedChange={(checked) =>
+                              setNotifications({ ...notifications, includeViewerLinkInContractEmail: checked })
+                            }
+                            data-testid="switch-include-viewer-link-contract"
+                          />
+                        </div>
+                      </>
+                    )}
                     <Separator />
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">

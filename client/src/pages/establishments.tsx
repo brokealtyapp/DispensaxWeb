@@ -43,8 +43,9 @@ import {
   Pencil,
   ExternalLink,
   UserPlus,
+  Send,
 } from "lucide-react";
-import { Link, useSearch } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -260,6 +261,13 @@ function EstablishmentDetail({
       queryClient.invalidateQueries({ queryKey: ["/api/establishments"] });
       onStageChange();
       toast({ title: "Establecimiento convertido a ubicación activa" });
+      if (establishment.contactEmail && canCreate) {
+        setTimeout(() => {
+          if (confirm(`Establecimiento convertido.\n\n¿Enviar invitación de visor a ${establishment.contactEmail} ahora?\n(Podrás ajustar las máquinas asignadas en el siguiente paso.)`)) {
+            window.location.href = `/establecimientos?tab=activos&establishmentId=${establishment.id}&inviteViewer=1`;
+          }
+        }, 300);
+      }
     },
     onError: () => toast({ title: "Error al convertir", variant: "destructive" }),
   });
@@ -745,6 +753,42 @@ function ActiveEstablishmentDetail({
     },
   });
 
+  const { data: viewerForEst, isFetched: viewerForEstFetched } = useQuery<{ id: string } | null>({
+    queryKey: ["/api/establishments", establishment.id, "viewer"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/establishments/${establishment.id}/viewer`);
+      return res.json();
+    },
+  });
+
+  const sendContractEmailMutation = useMutation({
+    mutationFn: async (contractId: string) => {
+      return apiRequest("POST", `/api/establishments/${establishment.id}/contracts/${contractId}/send-email`);
+    },
+    onSuccess: async (res: any) => {
+      const data = await res.json();
+      toast({
+        title: "Correo enviado",
+        description: data?.includedViewerLink
+          ? "Se incluyó el enlace de acceso al panel del propietario."
+          : "El contrato fue notificado al contacto.",
+      });
+    },
+    onError: (err: any) => {
+      let msg = err?.message || "Intenta nuevamente";
+      const match = typeof msg === "string" ? msg.match(/^\d+:\s*(.+)$/) : null;
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          if (parsed?.error) msg = parsed.error;
+        } catch {
+          msg = match[1];
+        }
+      }
+      toast({ title: "Error al enviar correo", description: msg, variant: "destructive" });
+    },
+  });
+
   const { data: contracts = [], isLoading: loadingContracts } = useQuery<EstablishmentContract[]>({
     queryKey: ["/api/establishments", establishment.id, "contracts"],
     queryFn: async () => {
@@ -791,6 +835,13 @@ function ActiveEstablishmentDetail({
       contractForm.reset();
       setShowContractForm(false);
       toast({ title: "Contrato creado" });
+      if (viewerForEstFetched && viewerForEst === null && establishment.contactEmail && canCreate) {
+        setTimeout(() => {
+          if (confirm(`Este establecimiento aún no tiene visor.\n\n¿Enviar invitación de visor a ${establishment.contactEmail} ahora?`)) {
+            onInviteRequested(establishment);
+          }
+        }, 300);
+      }
     },
     onError: () => toast({ title: "Error al crear contrato", variant: "destructive" }),
   });
@@ -1150,6 +1201,18 @@ function ActiveEstablishmentDetail({
                         <Pencil className="h-4 w-4" />
                       </Button>
                     )}
+                    {canEdit && establishment.contactEmail && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => sendContractEmailMutation.mutate(contract.id)}
+                        disabled={sendContractEmailMutation.isPending}
+                        data-testid={`button-send-contract-email-${contract.id}`}
+                      >
+                        <Send className="h-4 w-4 mr-1" />
+                        Enviar correo
+                      </Button>
+                    )}
                     {canEdit && contract.status === "activo" && (
                       <Button variant="ghost" size="sm" onClick={() => {
                         contractForm.reset({
@@ -1336,7 +1399,10 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
   const [scrollViewerToken, setScrollViewerToken] = useState<number | undefined>(undefined);
   const [withoutViewerOnly, setWithoutViewerOnly] = useState(false);
   const search = useSearch();
+  const [, setLocation] = useLocation();
   const targetEstablishmentId = new URLSearchParams(search).get("establishmentId");
+  const inviteViewerOnLoad = new URLSearchParams(search).get("inviteViewer") === "1";
+  const inviteViewerConsumedRef = useRef(false);
 
   const { data: activeEstablishments = [], isLoading } = useQuery<ActiveEstablishment[]>({
     queryKey: ["/api/establishments/active", { search: searchActive, contractStatus: contractStatusFilter }],
@@ -1425,6 +1491,25 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
       if (found) setSelectedActive(found);
     }
   }, [targetEstablishmentId, activeEstablishments]);
+
+  useEffect(() => {
+    if (
+      inviteViewerOnLoad &&
+      !inviteViewerConsumedRef.current &&
+      targetEstablishmentId &&
+      activeEstablishments.length > 0
+    ) {
+      const found = activeEstablishments.find(e => e.id === targetEstablishmentId);
+      if (found && !viewerByEstablishment.get(found.id)) {
+        inviteViewerConsumedRef.current = true;
+        setInviteEstablishment(found);
+        const params = new URLSearchParams(search);
+        params.delete("inviteViewer");
+        const qs = params.toString();
+        setLocation(`/establecimientos${qs ? `?${qs}` : ""}`, { replace: true });
+      }
+    }
+  }, [inviteViewerOnLoad, targetEstablishmentId, activeEstablishments, search, setLocation]);
 
   const machinesForEstablishment = inviteEstablishment ? machines : [];
   const preselectedMachineIds = new Set(
@@ -2335,7 +2420,13 @@ export function EstablishmentsPage() {
   const canEdit = can("establishments", "edit");
   const canDelete = can("establishments", "delete");
   const canApprove = can("establishments", "approve");
-  const [mainTab, setMainTab] = useState("en-proceso");
+  const pageSearch = useSearch();
+  const initialTab = new URLSearchParams(pageSearch).get("tab") === "activos" ? "activos" : "en-proceso";
+  const [mainTab, setMainTab] = useState(initialTab);
+  useEffect(() => {
+    const t = new URLSearchParams(pageSearch).get("tab");
+    if (t === "activos" || t === "en-proceso") setMainTab(t);
+  }, [pageSearch]);
   const [search, setSearch] = useState("");
   const [filterStage, setFilterStage] = useState<string>("");
   const [filterPriority, setFilterPriority] = useState<string>("");

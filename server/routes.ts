@@ -4081,6 +4081,7 @@ export async function registerRoutes(
         notifyLowStock: settings?.notifyLowStock ?? true,
         notifyMaintenanceDue: settings?.notifyMaintenanceDue ?? true,
         lowStockThreshold: settings?.lowStockThreshold ?? 5,
+        includeViewerLinkInContractEmail: settings?.includeViewerLinkInContractEmail ?? true,
       });
     } catch (error) {
       console.error("Error getting notification settings:", error);
@@ -4098,6 +4099,7 @@ export async function registerRoutes(
         notifyLowStock: z.boolean().optional(),
         notifyMaintenanceDue: z.boolean().optional(),
         lowStockThreshold: z.number().int().min(0).max(1000).optional(),
+        includeViewerLinkInContractEmail: z.boolean().optional(),
       });
 
       const data = notificationsSchema.parse(req.body);
@@ -4113,6 +4115,7 @@ export async function registerRoutes(
           notifyLowStock: data.notifyLowStock ?? true,
           notifyMaintenanceDue: data.notifyMaintenanceDue ?? true,
           lowStockThreshold: data.lowStockThreshold ?? 5,
+          includeViewerLinkInContractEmail: data.includeViewerLinkInContractEmail ?? true,
         }).returning();
         result = inserted;
       } else {
@@ -4120,6 +4123,7 @@ export async function registerRoutes(
         if (data.notifyLowStock !== undefined) updateValues.notifyLowStock = data.notifyLowStock;
         if (data.notifyMaintenanceDue !== undefined) updateValues.notifyMaintenanceDue = data.notifyMaintenanceDue;
         if (data.lowStockThreshold !== undefined) updateValues.lowStockThreshold = data.lowStockThreshold;
+        if (data.includeViewerLinkInContractEmail !== undefined) updateValues.includeViewerLinkInContractEmail = data.includeViewerLinkInContractEmail;
         const [updated] = await db.update(tenantSettings)
           .set(updateValues)
           .where(eq(tenantSettings.tenantId, req.user.tenantId))
@@ -4131,6 +4135,7 @@ export async function registerRoutes(
         notifyLowStock: result.notifyLowStock ?? true,
         notifyMaintenanceDue: result.notifyMaintenanceDue ?? true,
         lowStockThreshold: result.lowStockThreshold ?? 5,
+        includeViewerLinkInContractEmail: result.includeViewerLinkInContractEmail ?? true,
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -10044,6 +10049,63 @@ export async function registerRoutes(
       }
       console.error("Error creating contract:", error);
       res.status(500).json({ error: "Error al crear contrato" });
+    }
+  });
+
+  app.post("/api/establishments/:id/contracts/:contractId/send-email", authenticateJWT, requireTenant, authorizeAction("establishments", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const est = await storage.getEstablishment(req.params.id);
+      if (!est || est.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const contract = await storage.getEstablishmentContract(req.params.contractId);
+      if (!contract || contract.tenantId !== tenantId || contract.establishmentId !== req.params.id) {
+        return res.status(404).json({ error: "Contrato no encontrado" });
+      }
+      if (!est.contactEmail) {
+        return res.status(400).json({ error: "El establecimiento no tiene email de contacto" });
+      }
+
+      const [settings] = await db.select().from(tenantSettings).where(eq(tenantSettings.tenantId, tenantId));
+      const includeViewerLink = settings?.includeViewerLinkInContractEmail ?? true;
+
+      let viewerInviteToken: string | null = null;
+      if (includeViewerLink) {
+        const existingViewer = await storage.getEstablishmentViewerByEstablishmentId(tenantId, req.params.id);
+        if (!existingViewer) {
+          const invites = await db.select().from(tenantInvites)
+            .where(and(eq(tenantInvites.tenantId, tenantId), eq(tenantInvites.role, "visor_establecimiento")))
+            .orderBy(desc(tenantInvites.createdAt));
+          const now = new Date();
+          const pending = invites.find(inv => {
+            if (inv.acceptedAt) return false;
+            if (inv.expiresAt && inv.expiresAt < now) return false;
+            const meta = inv.metadata as { establishmentId?: string | null } | null;
+            return meta?.establishmentId === req.params.id;
+          });
+          if (pending) viewerInviteToken = pending.token;
+        }
+      }
+
+      const { sendContractNotificationEmail } = await import("./email");
+      const sent = await sendContractNotificationEmail({
+        email: est.contactEmail,
+        contactName: est.contactName,
+        establishmentName: est.name,
+        contractDate: contract.contractDate,
+        agreementType: contract.agreementType,
+        commissionTerms: contract.commissionTerms,
+        conditions: contract.conditions,
+        startDate: contract.startDate,
+        endDate: contract.endDate,
+        viewerInviteToken,
+      });
+      if (!sent) return res.status(500).json({ error: "No se pudo enviar el correo" });
+      res.json({ ok: true, includedViewerLink: !!viewerInviteToken });
+    } catch (error) {
+      console.error("Error sending contract email:", error);
+      res.status(500).json({ error: "Error al enviar correo del contrato" });
     }
   });
 

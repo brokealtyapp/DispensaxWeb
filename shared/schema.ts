@@ -124,6 +124,7 @@ export const tenantSettings = pgTable("tenant_settings", {
   notifyLowStock: boolean("notify_low_stock").default(true),
   notifyMaintenanceDue: boolean("notify_maintenance_due").default(true),
   lowStockThreshold: integer("low_stock_threshold").default(5),
+  includeViewerLinkInContractEmail: boolean("include_viewer_link_in_contract_email").default(true),
   settings: jsonb("settings"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
