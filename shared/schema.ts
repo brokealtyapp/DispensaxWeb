@@ -2384,6 +2384,7 @@ export const establishmentViewers = pgTable("establishment_viewers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
+  establishmentId: varchar("establishment_id").references(() => establishments.id),
   establishmentName: text("establishment_name").notNull(),
   contactName: text("contact_name"),
   contactPhone: text("contact_phone"),
@@ -2393,7 +2394,11 @@ export const establishmentViewers = pgTable("establishment_viewers", {
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (t) => [
+  uniqueIndex("uq_establishment_viewer_active_per_establishment")
+    .on(t.establishmentId)
+    .where(sql`establishment_id IS NOT NULL AND is_active = true`),
+]);
 
 export const insertEstablishmentViewerSchema = createInsertSchema(establishmentViewers).omit({
   id: true,

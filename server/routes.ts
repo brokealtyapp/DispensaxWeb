@@ -8478,7 +8478,7 @@ export async function registerRoutes(
       
       const viewers = await storage.getEstablishmentViewers(tenantId);
       
-      // Enrich with user details and assignments
+      // Enrich with user details, assignments and linked establishment
       const enrichedViewers = await Promise.all(viewers.map(async (viewer) => {
         const user = await storage.getUser(viewer.userId);
         const assignments = await storage.getMachineViewerAssignments(viewer.id);
@@ -8491,11 +8491,20 @@ export async function registerRoutes(
             machine: machine ? { id: machine.id, code: machine.code, name: machine.name, location: machine.location } : null
           };
         }));
+
+        let establishment = null;
+        if (viewer.establishmentId) {
+          const est = await storage.getEstablishment(viewer.establishmentId);
+          if (est && est.tenantId === viewer.tenantId) {
+            establishment = { id: est.id, name: est.name, address: est.address, city: est.city };
+          }
+        }
         
         return {
           ...viewer,
           user: user ? { id: user.id, username: user.username, email: user.email, fullName: user.fullName } : null,
-          assignments: assignmentsWithMachines
+          assignments: assignmentsWithMachines,
+          establishment,
         };
       }));
       
@@ -8528,11 +8537,20 @@ export async function registerRoutes(
           machine: machine ? { id: machine.id, code: machine.code, name: machine.name, location: machine.location } : null
         };
       }));
+
+      let establishment = null;
+      if (viewer.establishmentId) {
+        const est = await storage.getEstablishment(viewer.establishmentId);
+        if (est && est.tenantId === viewer.tenantId) {
+          establishment = { id: est.id, name: est.name, address: est.address, city: est.city };
+        }
+      }
       
       res.json({
         ...viewer,
         user: user ? { id: user.id, username: user.username, email: user.email, fullName: user.fullName } : null,
-        assignments: assignmentsWithMachines
+        assignments: assignmentsWithMachines,
+        establishment,
       });
     } catch (error) {
       console.error("Error getting establishment viewer:", error);
@@ -8557,10 +8575,24 @@ export async function registerRoutes(
         phone: z.string().optional(),
         defaultCommissionPercent: z.string().optional().default("5.00"),
         notes: z.string().optional(),
-        machineIds: z.array(z.string()).optional().default([])
+        machineIds: z.array(z.string()).optional().default([]),
+        establishmentId: z.string().optional(),
       });
       
       const data = createViewerSchema.parse(req.body);
+
+      // If linking to an existing establishment, validate ownership and uniqueness
+      if (data.establishmentId) {
+        const est = await storage.getEstablishment(data.establishmentId);
+        if (!est || est.tenantId !== tenantId) {
+          return res.status(400).json({ error: "Establecimiento no encontrado" });
+        }
+        const existingViewers = await storage.getEstablishmentViewers(tenantId);
+        const conflict = existingViewers.find(v => v.establishmentId === data.establishmentId && v.isActive);
+        if (conflict) {
+          return res.status(409).json({ error: "Este establecimiento ya tiene un visor activo asignado" });
+        }
+      }
       
       // Check if username already exists
       const existingUser = await storage.getUserByUsername(data.username);
@@ -8581,15 +8613,25 @@ export async function registerRoutes(
         isActive: true
       });
       
-      // Create establishment viewer
-      const viewer = await storage.createEstablishmentViewer({
-        tenantId: tenantId,
-        userId: user.id,
-        establishmentName: data.establishmentName,
-        defaultCommissionPercent: data.defaultCommissionPercent,
-        notes: data.notes || null,
-        isActive: true
-      });
+      // Create establishment viewer (with cleanup on race condition)
+      let viewer;
+      try {
+        viewer = await storage.createEstablishmentViewer({
+          tenantId: tenantId,
+          userId: user.id,
+          establishmentId: data.establishmentId || null,
+          establishmentName: data.establishmentName,
+          defaultCommissionPercent: data.defaultCommissionPercent,
+          notes: data.notes || null,
+          isActive: true
+        });
+      } catch (err: any) {
+        try { await db.delete(users).where(eq(users.id, user.id)); } catch {}
+        if (err?.code === '23505') {
+          return res.status(409).json({ error: "Este establecimiento ya tiene un visor activo asignado" });
+        }
+        throw err;
+      }
       
       // Create machine assignments if provided
       const assignments = [];
@@ -8804,10 +8846,24 @@ export async function registerRoutes(
         contactName: z.string().optional(),
         phone: z.string().optional(),
         machineIds: z.array(z.string()).min(1, "Debe asignar al menos una máquina"),
-        commissionPercent: z.string().optional().default("5.00")
+        commissionPercent: z.string().optional().default("5.00"),
+        establishmentId: z.string().optional(),
       });
       
       const data = inviteSchema.parse(req.body);
+
+      // If linking to an existing establishment, validate ownership and uniqueness
+      if (data.establishmentId) {
+        const est = await storage.getEstablishment(data.establishmentId);
+        if (!est || est.tenantId !== tenantId) {
+          return res.status(400).json({ error: "Establecimiento no encontrado" });
+        }
+        const existingViewers = await storage.getEstablishmentViewers(tenantId);
+        const conflict = existingViewers.find(v => v.establishmentId === data.establishmentId && v.isActive);
+        if (conflict) {
+          return res.status(409).json({ error: "Este establecimiento ya tiene un visor activo asignado" });
+        }
+      }
       
       // Verify all machines belong to this tenant
       for (const machineId of data.machineIds) {
@@ -8837,7 +8893,8 @@ export async function registerRoutes(
           contactName: data.contactName || "",
           phone: data.phone || "",
           machineIds: data.machineIds,
-          commissionPercent: data.commissionPercent
+          commissionPercent: data.commissionPercent,
+          establishmentId: data.establishmentId || null,
         },
         expiresAt: expiresAt
       });
@@ -8901,10 +8958,25 @@ export async function registerRoutes(
         phone?: string;
         machineIds: string[];
         commissionPercent: string;
+        establishmentId?: string | null;
       } | null;
       
       if (!metadata || metadata.viewerType !== "establishment") {
         return res.status(400).json({ error: "Datos de invitación inválidos" });
+      }
+
+      // Re-validate establishment belongs to tenant (defense in depth)
+      if (metadata.establishmentId) {
+        const est = await storage.getEstablishment(metadata.establishmentId);
+        if (!est || est.tenantId !== invite.tenantId) {
+          return res.status(400).json({ error: "Establecimiento no válido para este tenant" });
+        }
+        // Re-validate uniqueness in case another viewer was created in the meantime
+        const existingViewers = await storage.getEstablishmentViewers(invite.tenantId);
+        const conflict = existingViewers.find(v => v.establishmentId === metadata.establishmentId && v.isActive);
+        if (conflict) {
+          return res.status(409).json({ error: "Este establecimiento ya tiene un visor activo asignado" });
+        }
       }
       
       // Create user
@@ -8919,14 +8991,25 @@ export async function registerRoutes(
         isActive: true
       });
       
-      // Create establishment viewer
-      const viewer = await storage.createEstablishmentViewer({
-        tenantId: invite.tenantId,
-        userId: user.id,
-        establishmentName: metadata.establishmentName,
-        defaultCommissionPercent: metadata.commissionPercent,
-        isActive: true
-      });
+      // Create establishment viewer (with cleanup if unique constraint fails due to race)
+      let viewer;
+      try {
+        viewer = await storage.createEstablishmentViewer({
+          tenantId: invite.tenantId,
+          userId: user.id,
+          establishmentId: metadata.establishmentId || null,
+          establishmentName: metadata.establishmentName,
+          defaultCommissionPercent: metadata.commissionPercent,
+          isActive: true
+        });
+      } catch (err: any) {
+        // Cleanup orphaned user on race condition / unique violation
+        try { await db.delete(users).where(eq(users.id, user.id)); } catch {}
+        if (err?.code === '23505') {
+          return res.status(409).json({ error: "Este establecimiento ya tiene un visor activo asignado" });
+        }
+        throw err;
+      }
       
       // Create machine assignments
       for (const machineId of metadata.machineIds) {
@@ -9363,6 +9446,29 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting active establishments:", error);
       res.status(500).json({ error: "Error al obtener establecimientos activos" });
+    }
+  });
+
+  app.get("/api/establishments/:id/viewer", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const est = await storage.getEstablishment(req.params.id);
+      if (!est || est.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const viewers = await storage.getEstablishmentViewers(tenantId);
+      const viewer = viewers.find(v => v.establishmentId === req.params.id && v.isActive) || null;
+      if (!viewer) return res.json(null);
+      const user = await storage.getUser(viewer.userId);
+      const assignments = await storage.getMachineViewerAssignments(viewer.id);
+      res.json({
+        ...viewer,
+        user: user ? { id: user.id, username: user.username, email: user.email, fullName: user.fullName } : null,
+        assignmentCount: assignments.length,
+      });
+    } catch (error) {
+      console.error("Error getting viewer for establishment:", error);
+      res.status(500).json({ error: "Error al obtener visor del establecimiento" });
     }
   });
 

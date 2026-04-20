@@ -89,6 +89,7 @@ interface MachineAssignment {
 interface EstablishmentViewer {
   id: string;
   userId: string;
+  establishmentId?: string | null;
   establishmentName: string;
   contactName?: string | null;
   contactPhone?: string | null;
@@ -97,6 +98,12 @@ interface EstablishmentViewer {
   isActive: boolean;
   createdAt: string;
   assignments?: MachineAssignment[];
+  establishment?: {
+    id: string;
+    name: string;
+    address?: string | null;
+    city?: string | null;
+  } | null;
   user?: {
     id: string;
     fullName: string;
@@ -440,6 +447,7 @@ export default function EstablishmentViewersPage() {
                 <TableRow>
                   <TableHead className="w-8"></TableHead>
                   <TableHead>Establecimiento</TableHead>
+                  <TableHead>Vinculado a</TableHead>
                   <TableHead>Contacto</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead className="text-center">Máquinas</TableHead>
@@ -487,6 +495,21 @@ export default function EstablishmentViewersPage() {
                               <Building2 className="h-4 w-4 text-muted-foreground" />
                               <span className="font-medium">{viewer.establishmentName}</span>
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            {viewer.establishment ? (
+                              <a
+                                href={`/establecimientos?establishmentId=${viewer.establishment.id}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-primary hover:underline text-sm inline-flex items-center gap-1"
+                                data-testid={`link-establishment-${viewer.id}`}
+                              >
+                                <Building2 className="h-3 w-3" />
+                                {viewer.establishment.name}
+                              </a>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Sin vincular</span>
+                            )}
                           </TableCell>
                           <TableCell>{viewer.contactName}</TableCell>
                           <TableCell>
