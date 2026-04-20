@@ -44,7 +44,7 @@ import {
   ExternalLink,
   UserPlus,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -1364,6 +1364,8 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
   const [contractStatusFilter, setContractStatusFilter] = useState<string>("");
   const [selectedActive, setSelectedActive] = useState<ActiveEstablishment | null>(null);
   const [inviteEstablishment, setInviteEstablishment] = useState<ActiveEstablishment | null>(null);
+  const search = useSearch();
+  const targetEstablishmentId = new URLSearchParams(search).get("establishmentId");
 
   const { data: activeEstablishments = [], isLoading } = useQuery<ActiveEstablishment[]>({
     queryKey: ["/api/establishments/active", { search: searchActive, contractStatus: contractStatusFilter }],
@@ -1427,12 +1429,27 @@ function ActiveEstablishmentsTab({ canEdit, canCreate }: { canEdit: boolean; can
       setInviteEstablishment(null);
       toast({ title: "Invitación enviada al visor" });
     },
-    onError: async (err: any) => {
-      let msg = "Intenta nuevamente";
-      try { msg = (await err?.response?.json())?.error || err?.message || msg; } catch {}
+    onError: (err: any) => {
+      let msg = err?.message || "Intenta nuevamente";
+      const match = typeof msg === "string" ? msg.match(/^\d+:\s*(.+)$/) : null;
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          if (parsed?.error) msg = parsed.error;
+        } catch {
+          msg = match[1];
+        }
+      }
       toast({ title: "Error al invitar visor", description: msg, variant: "destructive" });
     },
   });
+
+  useEffect(() => {
+    if (targetEstablishmentId && activeEstablishments.length > 0 && !selectedActive) {
+      const found = activeEstablishments.find(e => e.id === targetEstablishmentId);
+      if (found) setSelectedActive(found);
+    }
+  }, [targetEstablishmentId, activeEstablishments]);
 
   const machinesForEstablishment = inviteEstablishment ? machines : [];
   const preselectedMachineIds = new Set(

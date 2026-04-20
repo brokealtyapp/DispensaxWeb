@@ -459,7 +459,7 @@ export default function EstablishmentViewersPage() {
               <TableBody>
                 {paginatedViewers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                       {searchQuery || statusFilter !== "all" 
                         ? "No se encontraron visores con los filtros aplicados"
                         : "No hay visores registrados. Invita al primero."
@@ -578,7 +578,7 @@ export default function EstablishmentViewersPage() {
                         </TableRow>
                         <CollapsibleContent asChild>
                           <TableRow className="bg-muted/30">
-                            <TableCell colSpan={8} className="p-4">
+                            <TableCell colSpan={9} className="p-4">
                               <div className="space-y-3">
                                 <div className="flex items-center justify-between">
                                   <h4 className="font-medium text-sm">Máquinas Asignadas</h4>
