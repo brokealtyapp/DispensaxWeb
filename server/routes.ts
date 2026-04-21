@@ -8506,15 +8506,19 @@ export async function registerRoutes(
         }));
 
         let establishment = null;
+        let effectiveName = viewer.establishmentName;
         if (viewer.establishmentId) {
           const est = await storage.getEstablishment(viewer.establishmentId);
           if (est && est.tenantId === viewer.tenantId) {
             establishment = { id: est.id, name: est.name, address: est.address, city: est.city };
+            effectiveName = est.name;
           }
         }
         
         return {
           ...viewer,
+          establishmentName: effectiveName,
+          rawEstablishmentName: viewer.establishmentName,
           user: user ? { id: user.id, username: user.username, email: user.email, fullName: user.fullName } : null,
           assignments: assignmentsWithMachines,
           establishment,
@@ -8552,15 +8556,19 @@ export async function registerRoutes(
       }));
 
       let establishment = null;
+      let effectiveName = viewer.establishmentName;
       if (viewer.establishmentId) {
         const est = await storage.getEstablishment(viewer.establishmentId);
         if (est && est.tenantId === viewer.tenantId) {
           establishment = { id: est.id, name: est.name, address: est.address, city: est.city };
+          effectiveName = est.name;
         }
       }
       
       res.json({
         ...viewer,
+        establishmentName: effectiveName,
+        rawEstablishmentName: viewer.establishmentName,
         user: user ? { id: user.id, username: user.username, email: user.email, fullName: user.fullName } : null,
         assignments: assignmentsWithMachines,
         establishment,
@@ -8605,6 +8613,8 @@ export async function registerRoutes(
         if (conflict) {
           return res.status(409).json({ error: "Este establecimiento ya tiene un visor activo asignado" });
         }
+        // Source of truth: cuando hay vínculo, el nombre lo dicta el establecimiento
+        data.establishmentName = est.name;
       }
       
       // Check if username already exists
@@ -8710,6 +8720,15 @@ export async function registerRoutes(
       });
       
       const data = updateViewerSchema.parse(req.body);
+
+      // Source of truth: si el visor está vinculado a un establecimiento,
+      // su nombre lo dicta el establecimiento. Ignorar cualquier override manual.
+      if (viewer.establishmentId) {
+        const est = await storage.getEstablishment(viewer.establishmentId);
+        if (est && est.tenantId === viewer.tenantId) {
+          data.establishmentName = est.name;
+        }
+      }
       
       const updated = await storage.updateEstablishmentViewer(req.params.id, data);
       res.json(updated);
@@ -9161,11 +9180,24 @@ export async function registerRoutes(
             isActive: true
           }).returning();
 
+          // Source of truth: si hay vínculo, el nombre lo dicta el establecimiento
+          let viewerEstablishmentName = metadata.establishmentName;
+          if (metadata.establishmentId) {
+            const [linkedEst] = await tx
+              .select({ name: establishmentsTable.name })
+              .from(establishmentsTable)
+              .where(eq(establishmentsTable.id, metadata.establishmentId))
+              .limit(1);
+            if (linkedEst) {
+              viewerEstablishmentName = linkedEst.name;
+            }
+          }
+
           const [createdViewer] = await tx.insert(establishmentViewers).values({
             tenantId: invite.tenantId,
             userId: createdUser.id,
             establishmentId: metadata.establishmentId || null,
-            establishmentName: metadata.establishmentName,
+            establishmentName: viewerEstablishmentName,
             defaultCommissionPercent: metadata.commissionPercent,
             isActive: true
           }).returning();
@@ -9244,10 +9276,19 @@ export async function registerRoutes(
         };
       }));
       
+      let effectiveName = viewer.establishmentName;
+      if (viewer.establishmentId) {
+        const est = await storage.getEstablishment(viewer.establishmentId);
+        if (est && est.tenantId === viewer.tenantId) {
+          effectiveName = est.name;
+        }
+      }
+
       res.json({
         viewer: {
           id: viewer.id,
-          establishmentName: viewer.establishmentName,
+          establishmentName: effectiveName,
+          rawEstablishmentName: viewer.establishmentName,
           defaultCommissionPercent: viewer.defaultCommissionPercent
         },
         machines: machinesWithDetails.filter(m => m.machine !== null)
@@ -9329,10 +9370,19 @@ export async function registerRoutes(
         };
       }));
       
+      let effectiveSummaryName = viewer.establishmentName;
+      if (viewer.establishmentId) {
+        const est = await storage.getEstablishment(viewer.establishmentId);
+        if (est && est.tenantId === viewer.tenantId) {
+          effectiveSummaryName = est.name;
+        }
+      }
+
       res.json({
         viewer: {
           id: viewer.id,
-          establishmentName: viewer.establishmentName
+          establishmentName: effectiveSummaryName,
+          rawEstablishmentName: viewer.establishmentName
         },
         dateRange: {
           startDate: startDate?.toISOString(),
@@ -9639,6 +9689,8 @@ export async function registerRoutes(
       }));
       res.json({
         ...viewer,
+        establishmentName: est.name,
+        rawEstablishmentName: viewer.establishmentName,
         user: user ? { id: user.id, username: user.username, email: user.email, fullName: user.fullName } : null,
         assignments: enrichedAssignments,
         assignmentCount: enrichedAssignments.length,
