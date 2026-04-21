@@ -134,8 +134,25 @@ async function upsertLocation(seed: EstablishmentSeed): Promise<string> {
       and(eq(locations.tenantId, TENANT_ID), eq(locations.name, seed.locationName)),
     );
   if (existing[0]) {
+    const loc = existing[0];
+    const needsFix =
+      loc.city !== seed.city ||
+      loc.zone !== seed.zone ||
+      loc.contactName !== seed.contactName ||
+      loc.contactPhone !== seed.contactPhone;
+    if (needsFix) {
+      await db
+        .update(locations)
+        .set({
+          city: seed.city,
+          zone: seed.zone,
+          contactName: seed.contactName,
+          contactPhone: seed.contactPhone,
+        })
+        .where(eq(locations.id, loc.id));
+    }
     counters.locationsSkipped++;
-    return existing[0].id;
+    return loc.id;
   }
   const [created] = await db
     .insert(locations)
@@ -199,8 +216,25 @@ async function upsertMachines(seed: EstablishmentSeed, locationId: string) {
       .from(machines)
       .where(and(eq(machines.tenantId, TENANT_ID), eq(machines.name, m.name)));
     if (existing[0]) {
+      const machine = existing[0];
+      const needsFix =
+        machine.locationId !== locationId ||
+        machine.zone !== seed.zone ||
+        machine.type !== m.type ||
+        machine.isActive !== true;
+      if (needsFix) {
+        await db
+          .update(machines)
+          .set({
+            locationId,
+            zone: seed.zone,
+            type: m.type,
+            isActive: true,
+          })
+          .where(eq(machines.id, machine.id));
+      }
       counters.machinesSkipped++;
-      created.push(existing[0].id);
+      created.push(machine.id);
       continue;
     }
     const [row] = await db
@@ -286,13 +320,23 @@ async function upsertPendingInvite(
       ),
     )
     .orderBy(desc(tenantInvites.createdAt));
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7);
   if (existing[0]) {
+    // Si la invitación pendiente existe pero ya expiró, rotamos token y
+    // expiresAt para que el estado "Invitación pendiente" siga válido en
+    // la UI tras re-runs lejanos en el tiempo.
+    if (existing[0].expiresAt && new Date(existing[0].expiresAt) <= new Date()) {
+      const newToken = crypto.randomBytes(32).toString("hex");
+      await db
+        .update(tenantInvites)
+        .set({ token: newToken, expiresAt })
+        .where(eq(tenantInvites.id, existing[0].id));
+    }
     counters.invitesSkipped++;
     return existing[0].id;
   }
   const token = crypto.randomBytes(32).toString("hex");
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
   const [row] = await db
     .insert(tenantInvites)
     .values({
@@ -405,7 +449,7 @@ async function upsertAssignments(
 async function fixOrphanDemoViewer() {
   // Visor "Establecimiento Demo" (sin establishment_id) -> desactivar para
   // que no aparezca como huérfano en /visores.
-  const result = await db
+  const updated = await db
     .update(establishmentViewers)
     .set({ isActive: false, updatedAt: new Date() })
     .where(
@@ -415,10 +459,9 @@ async function fixOrphanDemoViewer() {
         sql`establishment_id IS NULL`,
         eq(establishmentViewers.isActive, true),
       ),
-    );
-  // Drizzle pg returns rowCount in the result for neon-serverless
-  const affected = (result as unknown as { rowCount?: number }).rowCount ?? 0;
-  counters.orphansFixed += affected;
+    )
+    .returning({ id: establishmentViewers.id });
+  counters.orphansFixed += updated.length;
 }
 
 async function main() {
