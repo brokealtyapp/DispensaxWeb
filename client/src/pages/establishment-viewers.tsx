@@ -156,10 +156,21 @@ export default function EstablishmentViewersPage() {
     queryKey: ["/api/machines"],
   });
 
-  const { data: establishments = [] } = useQuery<Array<{ id: string; name: string; city?: string | null }>>({
+  type EstablishmentOption = { id: string; name: string; city?: string | null };
+  type EstablishmentsResponse =
+    | EstablishmentOption[]
+    | { data?: EstablishmentOption[] };
+  const { data: establishments = [] } = useQuery<
+    EstablishmentsResponse,
+    Error,
+    EstablishmentOption[]
+  >({
     queryKey: ["/api/establishments"],
-    select: (data: any) =>
-      Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [],
+    select: (raw) => {
+      if (Array.isArray(raw)) return raw;
+      if (raw && Array.isArray(raw.data)) return raw.data;
+      return [];
+    },
   });
 
   const inviteForm = useForm<InviteFormData>({
