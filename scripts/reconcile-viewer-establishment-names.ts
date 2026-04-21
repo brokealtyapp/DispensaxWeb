@@ -1,22 +1,34 @@
 import { db } from "../server/db";
-import { sql } from "drizzle-orm";
+import { establishmentViewers, establishments } from "../shared/schema";
+import { and, eq, ne, sql } from "drizzle-orm";
+
+interface ReconciledRow {
+  id: string;
+  tenantId: string;
+  establishmentName: string;
+}
 
 async function main() {
-  const result = await db.execute(sql`
-    UPDATE establishment_viewers v
-    SET establishment_name = e.name
-    FROM establishments e
-    WHERE v.establishment_id = e.id
-      AND v.tenant_id = e.tenant_id
-      AND v.establishment_name IS DISTINCT FROM e.name
-    RETURNING v.id, v.tenant_id, v.establishment_name
-  `);
-  const rows = (result as any).rows ?? result;
-  console.log(`Reconciled ${Array.isArray(rows) ? rows.length : 0} viewer rows`);
-  if (Array.isArray(rows)) {
-    for (const r of rows) {
-      console.log(`  - viewer ${r.id} (tenant ${r.tenant_id}) -> "${r.establishment_name}"`);
-    }
+  const updated: ReconciledRow[] = await db
+    .update(establishmentViewers)
+    .set({ establishmentName: establishments.name })
+    .from(establishments)
+    .where(
+      and(
+        eq(establishmentViewers.establishmentId, establishments.id),
+        eq(establishmentViewers.tenantId, establishments.tenantId),
+        ne(establishmentViewers.establishmentName, establishments.name),
+      ),
+    )
+    .returning({
+      id: establishmentViewers.id,
+      tenantId: establishmentViewers.tenantId,
+      establishmentName: establishmentViewers.establishmentName,
+    });
+
+  console.log(`Reconciled ${updated.length} viewer rows`);
+  for (const row of updated) {
+    console.log(`  - viewer ${row.id} (tenant ${row.tenantId}) -> "${row.establishmentName}"`);
   }
   process.exit(0);
 }
