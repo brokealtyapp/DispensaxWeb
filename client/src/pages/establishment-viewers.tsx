@@ -93,6 +93,7 @@ interface EstablishmentViewer {
   userId: string;
   establishmentId?: string | null;
   establishmentName: string;
+  rawEstablishmentName?: string;
   contactName?: string | null;
   contactPhone?: string | null;
   contactEmail?: string | null;
