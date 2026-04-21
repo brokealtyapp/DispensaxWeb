@@ -159,13 +159,16 @@ function PriorityBadge({ priority }: { priority: string }) {
   return <Badge variant="secondary" className={c.className}>{c.label}</Badge>;
 }
 
+const NEUTRAL_STAGE_COLOR = "hsl(var(--muted-foreground))";
+
 function StageBadge({ stage }: { stage: EstablishmentStageInfo | null }) {
   if (!stage) return null;
+  const color = stage.color ?? NEUTRAL_STAGE_COLOR;
   return (
     <Badge
       variant="secondary"
       className="border"
-      style={{ borderColor: stage.color, color: stage.color }}
+      style={{ borderColor: color, color }}
     >
       {stage.name}
     </Badge>
@@ -397,7 +400,7 @@ function EstablishmentDetail({
                     ? "bg-muted text-muted-foreground"
                     : "bg-muted/50 text-muted-foreground/60"
                 }`}
-                style={isCurrent ? { backgroundColor: s.color } : undefined}
+                style={isCurrent ? { backgroundColor: s.color ?? NEUTRAL_STAGE_COLOR } : undefined}
                 onClick={() => canEdit && !isConverted && stageMoveMutation.mutate(s.id)}
                 disabled={!canEdit || isConverted || stageMoveMutation.isPending}
                 data-testid={`button-stage-${s.name.toLowerCase().replace(/\s+/g, "-")}`}
@@ -2798,7 +2801,7 @@ export function EstablishmentsPage() {
                   <div key={stage.id} className="min-w-[280px] max-w-[320px] flex-shrink-0">
                     <div className="flex items-center justify-between gap-2 mb-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color }} />
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color ?? NEUTRAL_STAGE_COLOR }} />
                         <h3 className="text-sm font-semibold">{stage.name}</h3>
                       </div>
                       <Badge variant="secondary" className="text-xs">{items.length}</Badge>
@@ -2946,7 +2949,7 @@ export function EstablishmentsPage() {
 
       <SimpleModal open={!!editingEstablishment} onClose={() => setEditingEstablishment(null)} title="Editar Establecimiento" description="Modifica los datos del establecimiento seleccionado.">
         <Form {...editForm}>
-          <form onSubmit={editForm.handleSubmit((data) => updateMutation.mutate({ id: editingEstablishment?.id, data }))} className="flex flex-col min-h-0 flex-1" data-testid="modal-edit-establishment">
+          <form onSubmit={editForm.handleSubmit((data) => editingEstablishment && updateMutation.mutate({ id: editingEstablishment.id, data }))} className="flex flex-col min-h-0 flex-1" data-testid="modal-edit-establishment">
             <div className="flex-1 min-h-0 overflow-y-auto">
               <EstablishmentFormFields form={editForm} isEdit stages={stages} adminUsers={adminUsers} />
             </div>
