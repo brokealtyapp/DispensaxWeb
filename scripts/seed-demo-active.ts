@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
-import { eq, and, sql } from "drizzle-orm";
+import crypto from "crypto";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { db, pool } from "../server/db";
 import {
   establishments,
@@ -8,6 +9,7 @@ import {
   users,
   establishmentViewers,
   machineViewerAssignments,
+  tenantInvites,
 } from "../shared/schema";
 
 const TENANT_ID = "717d5e1f-7a58-42f6-b4cc-95cb58c2270f";
@@ -31,6 +33,12 @@ type EstablishmentSeed = {
     phone: string;
     commissionPercent: string;
     machineCount: number;
+  };
+  pendingInvite?: {
+    email: string;
+    contactName: string;
+    phone: string;
+    commissionPercent: string;
   };
 };
 
@@ -89,7 +97,14 @@ const SEEDS: EstablishmentSeed[] = [
     contactPhone: "+1 809-555-0303",
     commissionPercent: "6.00",
     machines: [{ name: "Mixta - Cafetería Universitaria", type: "mixta" }],
-    // Sin viewer a propósito (para mostrar el filtro "Sin visor asignado")
+    // Sin viewer activo a propósito; en su lugar se crea una invitación
+    // pendiente (tenant_invites) para mostrar ese estado en la UI.
+    pendingInvite: {
+      email: "pendiente.cafe@demo.dispensax.com",
+      contactName: "Pedro Martínez",
+      phone: "+1 809-555-0303",
+      commissionPercent: "6.00",
+    },
   },
 ];
 
@@ -106,6 +121,8 @@ const counters = {
   viewersSkipped: 0,
   assignmentsCreated: 0,
   assignmentsSkipped: 0,
+  invitesCreated: 0,
+  invitesSkipped: 0,
   orphansFixed: 0,
 };
 
@@ -210,8 +227,27 @@ async function upsertUser(viewer: NonNullable<EstablishmentSeed["viewer"]>) {
     .from(users)
     .where(eq(users.username, viewer.username));
   if (existing[0]) {
+    const u = existing[0];
+    const needsFix =
+      u.role !== VIEWER_ROLE ||
+      u.isActive !== true ||
+      u.email !== viewer.email ||
+      u.tenantId !== TENANT_ID ||
+      u.fullName !== viewer.fullName;
+    if (needsFix) {
+      await db
+        .update(users)
+        .set({
+          role: VIEWER_ROLE,
+          isActive: true,
+          email: viewer.email,
+          tenantId: TENANT_ID,
+          fullName: viewer.fullName,
+        })
+        .where(eq(users.id, u.id));
+    }
     counters.usersSkipped++;
-    return existing[0].id;
+    return u.id;
   }
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
   const [row] = await db
@@ -227,6 +263,56 @@ async function upsertUser(viewer: NonNullable<EstablishmentSeed["viewer"]>) {
     })
     .returning();
   counters.usersCreated++;
+  return row.id;
+}
+
+async function upsertPendingInvite(
+  seed: EstablishmentSeed,
+  establishmentId: string,
+  machineIds: string[],
+) {
+  const invite = seed.pendingInvite!;
+  // Idempotencia: buscar invitación pendiente (sin acceptedAt) para
+  // este establishment_id en metadata.
+  const existing = await db
+    .select()
+    .from(tenantInvites)
+    .where(
+      and(
+        eq(tenantInvites.tenantId, TENANT_ID),
+        eq(tenantInvites.role, VIEWER_ROLE),
+        sql`accepted_at IS NULL`,
+        sql`metadata->>'establishmentId' = ${establishmentId}`,
+      ),
+    )
+    .orderBy(desc(tenantInvites.createdAt));
+  if (existing[0]) {
+    counters.invitesSkipped++;
+    return existing[0].id;
+  }
+  const token = crypto.randomBytes(32).toString("hex");
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7);
+  const [row] = await db
+    .insert(tenantInvites)
+    .values({
+      tenantId: TENANT_ID,
+      email: invite.email,
+      role: VIEWER_ROLE,
+      token,
+      expiresAt,
+      metadata: {
+        viewerType: "establishment",
+        establishmentName: seed.locationName,
+        contactName: invite.contactName,
+        phone: invite.phone,
+        machineIds,
+        commissionPercent: invite.commissionPercent,
+        establishmentId,
+      },
+    })
+    .returning();
+  counters.invitesCreated++;
   return row.id;
 }
 
@@ -354,6 +440,10 @@ async function main() {
       const viewerId = await upsertViewer(seed, establishmentId, userId);
       const assignTo = machineIds.slice(0, seed.viewer.machineCount);
       await upsertAssignments(viewerId, assignTo, seed.viewer.commissionPercent);
+    }
+
+    if (seed.pendingInvite) {
+      await upsertPendingInvite(seed, establishmentId, machineIds);
     }
   }
 
