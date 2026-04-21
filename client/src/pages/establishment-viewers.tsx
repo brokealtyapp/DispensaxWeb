@@ -158,6 +158,8 @@ export default function EstablishmentViewersPage() {
 
   const { data: establishments = [] } = useQuery<Array<{ id: string; name: string; city?: string | null }>>({
     queryKey: ["/api/establishments"],
+    select: (data: any) =>
+      Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [],
   });
 
   const inviteForm = useForm<InviteFormData>({
