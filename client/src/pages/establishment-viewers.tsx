@@ -63,6 +63,7 @@ import {
   UserPlus,
   X,
   ArrowRightLeft,
+  Copy,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -139,6 +140,7 @@ export default function EstablishmentViewersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteResult, setInviteResult] = useState<{ url: string; email: string } | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
@@ -198,7 +200,7 @@ export default function EstablishmentViewersPage() {
 
   const inviteMutation = useMutation({
     mutationFn: async (data: InviteFormData) => {
-      return apiRequest("POST", "/api/viewer-invites", {
+      const res = await apiRequest("POST", "/api/viewer-invites", {
         email: data.email,
         establishmentName: data.establishmentName,
         contactName: data.contactName,
@@ -206,12 +208,18 @@ export default function EstablishmentViewersPage() {
         machineIds: data.machineIds,
         commissionPercent: String(data.commissionPercent),
       });
+      return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/establishment-viewers"] });
       setInviteOpen(false);
       inviteForm.reset();
-      toast({ title: "Invitación enviada exitosamente" });
+      const fullUrl = `${window.location.origin}${result.inviteUrl}`;
+      if (result.emailSent) {
+        toast({ title: "Invitación enviada por correo", description: `Enviada a ${result.email}` });
+      } else {
+        setInviteResult({ url: fullUrl, email: result.email });
+      }
     },
     onError: (error: any) => {
       toast({ 
@@ -1048,6 +1056,51 @@ export default function EstablishmentViewersPage() {
             >
               {deleteMutation.isPending ? "Eliminando..." : "Eliminar"}
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!inviteResult} onOpenChange={(o) => { if (!o) setInviteResult(null); }}>
+        <AlertDialogContent data-testid="dialog-invite-link">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Invitación creada</AlertDialogTitle>
+            <AlertDialogDescription>
+              No se pudo enviar el correo automáticamente (SMTP no configurado o falló). Comparte este enlace manualmente con el visor.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {inviteResult && (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Mail className="h-4 w-4" />
+                <span>Destinatario: <span className="font-medium text-foreground">{inviteResult.email}</span></span>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium">Enlace de invitación</p>
+                <div className="flex items-center gap-2">
+                  <Input value={inviteResult.url} readOnly onFocus={(e) => e.currentTarget.select()} data-testid="input-invite-link-viewers" />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(inviteResult.url);
+                        toast({ title: "Enlace copiado" });
+                      } catch {
+                        toast({ title: "No se pudo copiar", variant: "destructive" });
+                      }
+                    }}
+                    data-testid="button-copy-invite-link-viewers"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">El enlace es válido por 7 días.</p>
+              </div>
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setInviteResult(null)} data-testid="button-close-invite-link-viewers">Cerrar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

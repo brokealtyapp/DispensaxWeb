@@ -29,6 +29,7 @@ import { TasksTodayPage } from "@/pages/tasks-today";
 import { MyTasksPage } from "@/pages/my-tasks";
 import { CalendarPage } from "@/pages/calendar";
 import { ResetPasswordPage } from "@/pages/reset-password";
+import { InviteAcceptPage } from "@/pages/invite-accept";
 import { SupervisorPage } from "@/pages/supervisor";
 import { SupervisorsPage } from "@/pages/supervisors";
 import UsersPage from "@/pages/users";
@@ -375,6 +376,7 @@ function Router() {
       <Route path="/auth" component={AuthRoute} />
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/signup" component={TenantSignupPage} />
+      <Route path="/invite/:token" component={InviteAcceptPage} />
       <Route>
         <ProtectedRoutes />
       </Route>

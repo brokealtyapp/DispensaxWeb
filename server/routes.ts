@@ -9016,10 +9016,30 @@ export async function registerRoutes(
         },
         expiresAt: expiresAt
       });
-      
+
+      const { sendViewerInviteEmail, isEmailConfigured } = await import("./email");
+      let emailSent = false;
+      if (isEmailConfigured()) {
+        try {
+          const inviter = await storage.getUser(req.user!.userId);
+          emailSent = await sendViewerInviteEmail({
+            email: data.email,
+            token: token,
+            establishmentName: data.establishmentName,
+            contactName: data.contactName || null,
+            invitedByName: inviter?.fullName || inviter?.username || null,
+            expiresAt: expiresAt,
+          });
+        } catch (e) {
+          console.error("Error sending viewer invite email:", e);
+          emailSent = false;
+        }
+      }
+
       res.status(201).json({
         ...invite,
-        inviteUrl: `/invite/${token}`
+        inviteUrl: `/invite/${token}`,
+        emailSent,
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -9027,6 +9047,32 @@ export async function registerRoutes(
       }
       console.error("Error creating viewer invite:", error);
       res.status(500).json({ error: "Error al crear invitación" });
+    }
+  });
+
+  // Public preview of viewer invite (no auth)
+  app.get("/api/viewer-invites/:token/preview", async (req: Request, res: Response) => {
+    try {
+      const invite = await storage.getTenantInviteByToken(req.params.token);
+      if (!invite || invite.role !== "visor_establecimiento") {
+        return res.status(404).json({ status: "not_found", error: "Invitación no encontrada" });
+      }
+      const meta = (invite.metadata || {}) as { establishmentName?: string };
+      const base = {
+        email: invite.email,
+        establishmentName: meta.establishmentName || "",
+        expiresAt: invite.expiresAt,
+      };
+      if (invite.acceptedAt) {
+        return res.json({ ...base, status: "accepted" });
+      }
+      if (invite.expiresAt && new Date() > invite.expiresAt) {
+        return res.json({ ...base, status: "expired" });
+      }
+      return res.json({ ...base, status: "valid" });
+    } catch (error) {
+      console.error("Error previewing viewer invite:", error);
+      res.status(500).json({ status: "error", error: "Error al obtener invitación" });
     }
   });
 

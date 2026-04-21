@@ -44,6 +44,8 @@ import {
   ExternalLink,
   UserPlus,
   Send,
+  Copy,
+  Link2,
 } from "lucide-react";
 import { Link, useSearch, useLocation } from "wouter";
 import { format } from "date-fns";
@@ -1396,6 +1398,7 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
   const [contractStatusFilter, setContractStatusFilter] = useState<string>("");
   const [selectedActive, setSelectedActive] = useState<ActiveEstablishment | null>(null);
   const [inviteEstablishment, setInviteEstablishment] = useState<ActiveEstablishment | null>(null);
+  const [inviteResult, setInviteResult] = useState<{ url: string; email: string; emailSent: boolean } | null>(null);
   const [scrollViewerToken, setScrollViewerToken] = useState<number | undefined>(undefined);
   const [withoutViewerOnly, setWithoutViewerOnly] = useState(false);
   const search = useSearch();
@@ -1451,7 +1454,7 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
   const inviteMutation = useMutation({
     mutationFn: async (data: { email: string; contactName: string; phone: string; commissionPercent: string; machineIds: string[] }) => {
       if (!inviteEstablishment) throw new Error("No establishment");
-      return apiRequest("POST", "/api/viewer-invites", {
+      const res = await apiRequest("POST", "/api/viewer-invites", {
         email: data.email,
         establishmentName: inviteEstablishment.name,
         contactName: data.contactName,
@@ -1460,15 +1463,22 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
         machineIds: data.machineIds,
         establishmentId: inviteEstablishment.id,
       });
+      return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/establishment-viewers"] });
       if (inviteEstablishment) {
         queryClient.invalidateQueries({ queryKey: ["/api/establishments", inviteEstablishment.id, "viewer-invite"] });
         queryClient.invalidateQueries({ queryKey: ["/api/establishments", inviteEstablishment.id, "viewer"] });
       }
+      const fullUrl = `${window.location.origin}${result.inviteUrl}`;
+      const emailSent = !!result.emailSent;
       setInviteEstablishment(null);
-      toast({ title: "Invitación enviada al visor" });
+      if (emailSent) {
+        toast({ title: "Invitación enviada por correo", description: `Se envió a ${result.email}` });
+      } else {
+        setInviteResult({ url: fullUrl, email: result.email, emailSent: false });
+      }
     },
     onError: (err: any) => {
       let msg = err?.message || "Intenta nuevamente";
@@ -1626,6 +1636,52 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
     </SimpleModal>
   );
 
+  const inviteLinkModal = (
+    <SimpleModal
+      open={!!inviteResult}
+      onClose={() => setInviteResult(null)}
+      title="Invitación creada"
+      description="El correo automático no se envió (SMTP no configurado o falló). Comparte este enlace manualmente con el visor."
+    >
+      <div className="space-y-3 text-sm" data-testid="modal-invite-link">
+        {inviteResult && (
+          <>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Mail className="h-4 w-4" />
+              <span>Destinatario: <span className="font-medium text-foreground">{inviteResult.email}</span></span>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium">Enlace de invitación</p>
+              <div className="flex items-center gap-2">
+                <Input value={inviteResult.url} readOnly onFocus={(e) => e.currentTarget.select()} data-testid="input-invite-link" />
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(inviteResult.url);
+                      toast({ title: "Enlace copiado" });
+                    } catch {
+                      toast({ title: "No se pudo copiar", variant: "destructive" });
+                    }
+                  }}
+                  data-testid="button-copy-invite-link"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">El enlace es válido por 7 días.</p>
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={() => setInviteResult(null)} data-testid="button-close-invite-link">Cerrar</Button>
+            </div>
+          </>
+        )}
+      </div>
+    </SimpleModal>
+  );
+
   if (selectedActive) {
     return (
       <>
@@ -1641,6 +1697,7 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
           />
         </div>
         {inviteModal}
+        {inviteLinkModal}
       </>
     );
   }
@@ -1790,6 +1847,7 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
       )}
 
       {inviteModal}
+        {inviteLinkModal}
     </div>
   );
 }
@@ -2048,6 +2106,7 @@ function LinkedViewerSection({
   const [editValues, setEditValues] = useState({ contactName: "", contactPhone: "", defaultCommissionPercent: "5.00" });
   const [machinesToAdd, setMachinesToAdd] = useState<string[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [resendResult, setResendResult] = useState<{ url: string; email: string } | null>(null);
 
   const { data: linkedViewer } = useQuery<LinkedViewerData | null>({
     queryKey: ["/api/establishments", establishment.id, "viewer"],
@@ -2135,7 +2194,7 @@ function LinkedViewerSection({
     mutationFn: async () => {
       if (!pendingInvite) throw new Error("Sin invitación");
       const meta = pendingInvite.metadata || {};
-      return apiRequest("POST", "/api/viewer-invites", {
+      const res = await apiRequest("POST", "/api/viewer-invites", {
         email: pendingInvite.email,
         establishmentName: meta.establishmentName || establishment.name,
         contactName: meta.contactName || "",
@@ -2144,10 +2203,16 @@ function LinkedViewerSection({
         machineIds: meta.machineIds || [],
         establishmentId: establishment.id,
       });
+      return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (result: any) => {
       invalidateAll();
-      toast({ title: "Invitación reenviada" });
+      const fullUrl = `${window.location.origin}${result.inviteUrl}`;
+      if (result.emailSent) {
+        toast({ title: "Invitación reenviada por correo", description: `Enviada a ${result.email}` });
+      } else {
+        setResendResult({ url: fullUrl, email: result.email });
+      }
     },
     onError: (err: any) => toast({ title: "Error al reenviar", description: parseApiError(err, "Intenta nuevamente"), variant: "destructive" }),
   });
@@ -2360,6 +2425,48 @@ function LinkedViewerSection({
             </div>
           )}
         </CardContent>
+        <SimpleModal
+          open={!!resendResult}
+          onClose={() => setResendResult(null)}
+          title="Invitación reenviada"
+          description="No se pudo enviar el correo automáticamente. Comparte este enlace manualmente con el visor."
+        >
+          <div className="space-y-3 text-sm" data-testid="modal-resend-link">
+            {resendResult && (
+              <>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Mail className="h-4 w-4" />
+                  <span>Destinatario: <span className="font-medium text-foreground">{resendResult.email}</span></span>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium">Enlace de invitación</p>
+                  <div className="flex items-center gap-2">
+                    <Input value={resendResult.url} readOnly onFocus={(e) => e.currentTarget.select()} data-testid="input-resend-link" />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(resendResult.url);
+                          toast({ title: "Enlace copiado" });
+                        } catch {
+                          toast({ title: "No se pudo copiar", variant: "destructive" });
+                        }
+                      }}
+                      data-testid="button-copy-resend-link"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={() => setResendResult(null)} data-testid="button-close-resend-link">Cerrar</Button>
+                </div>
+              </>
+            )}
+          </div>
+        </SimpleModal>
       </Card>
     );
   }

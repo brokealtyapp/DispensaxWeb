@@ -109,6 +109,76 @@ export function isEmailConfigured(): boolean {
   return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD);
 }
 
+interface ViewerInviteEmailParams {
+  email: string;
+  token: string;
+  establishmentName: string;
+  contactName?: string | null;
+  invitedByName?: string | null;
+  expiresAt?: Date | null;
+}
+
+export async function sendViewerInviteEmail(params: ViewerInviteEmailParams): Promise<boolean> {
+  const baseUrl = process.env.APP_URL || "http://localhost:5000";
+  const inviteUrl = `${baseUrl}/invite/${params.token}`;
+  const expiresStr = params.expiresAt
+    ? new Date(params.expiresAt).toLocaleDateString("es-DO", { timeZone: "America/Santo_Domingo" })
+    : null;
+
+  const mailOptions = {
+    from: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER,
+    to: params.email,
+    subject: `Invitación al panel de ${params.establishmentName} - Dispensax`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"></head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #E84545 0%, #d63939 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+          <h1 style="color: white; margin: 0; font-size: 28px;">Dispensax</h1>
+          <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0;">Panel del Establecimiento</p>
+        </div>
+        <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none;">
+          <h2 style="margin-top: 0;">Hola${params.contactName ? ` ${params.contactName}` : ""},</h2>
+          <p>${params.invitedByName ? `${params.invitedByName} le ha invitado` : "Le hemos invitado"} a acceder al panel de <strong>${params.establishmentName}</strong> en Dispensax.</p>
+          <p>Desde su panel podrá ver en tiempo real las ventas y comisiones de las máquinas instaladas en su establecimiento.</p>
+          <p>Para activar su acceso y crear su contraseña, haga clic en el siguiente botón:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${inviteUrl}" style="background-color: #E84545; color: white; padding: 14px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+              Activar mi acceso
+            </a>
+          </div>
+          ${expiresStr ? `<p style="color: #666; font-size: 14px;">Este enlace expira el <strong>${expiresStr}</strong>.</p>` : ""}
+          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
+          <p style="color: #999; font-size: 12px; margin-bottom: 0;">
+            Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
+            <a href="${inviteUrl}" style="color: #E84545; word-break: break-all;">${inviteUrl}</a>
+          </p>
+        </div>
+        <div style="background: #f5f5f5; padding: 20px; text-align: center; border-radius: 0 0 10px 10px; border: 1px solid #e0e0e0; border-top: none;">
+          <p style="color: #999; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Dispensax</p>
+        </div>
+      </body>
+      </html>
+    `,
+    text: `Hola${params.contactName ? ` ${params.contactName}` : ""},\n\n${params.invitedByName ? `${params.invitedByName} le ha invitado` : "Le hemos invitado"} a acceder al panel de ${params.establishmentName} en Dispensax.\n\nActive su acceso aquí:\n${inviteUrl}\n${expiresStr ? `\nEste enlace expira el ${expiresStr}.\n` : ""}\nDispensax`,
+  };
+
+  try {
+    if (!isEmailConfigured()) {
+      console.log("SMTP not configured. Viewer invite email would be sent to:", params.email);
+      console.log("Invite URL:", inviteUrl);
+      return false;
+    }
+    await transporter.sendMail(mailOptions);
+    console.log("Viewer invite email sent to:", params.email);
+    return true;
+  } catch (error) {
+    console.error("Error sending viewer invite email:", error);
+    return false;
+  }
+}
+
 interface ContractEmailParams {
   email: string;
   contactName?: string | null;
