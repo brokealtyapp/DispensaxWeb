@@ -3054,6 +3054,10 @@ export async function registerRoutes(
       }).refine(
         (d) => (d.fromTrayNumber === null) === (d.fromLaneNumber === null),
         { message: "Bandeja y carril origen deben informarse juntos" }
+      ).refine(
+        (d) => d.fromTrayNumber === null || d.fromLaneNumber === null ||
+          !(d.fromTrayNumber === d.toTrayNumber && d.fromLaneNumber === d.toLaneNumber),
+        { message: "Origen y destino no pueden ser iguales" }
       );
       const data = bodySchema.parse(req.body);
 

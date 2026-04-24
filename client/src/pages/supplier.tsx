@@ -1898,7 +1898,11 @@ export function SupplierPage() {
                           className="flex flex-wrap items-center gap-2 p-2 rounded-md bg-muted/30"
                           data-testid={`lane-change-row-${change.id}`}
                         >
-                          <Badge variant="outline">B{change.fromTrayNumber}-C{change.fromLaneNumber}</Badge>
+                          <Badge variant="outline">
+                            {change.fromTrayNumber != null && change.fromLaneNumber != null
+                              ? `B${change.fromTrayNumber}-C${change.fromLaneNumber}`
+                              : "Nuevo"}
+                          </Badge>
                           <ChevronRight className="h-3 w-3 text-muted-foreground" />
                           <Badge variant="secondary">B{change.toTrayNumber}-C{change.toLaneNumber}</Badge>
                           <span className="text-sm">{change.product?.name || change.productId}</span>
