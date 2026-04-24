@@ -915,17 +915,19 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Máquina no encontrada" });
       }
       
-      const data = insertMachineSchema.partial().parse(req.body);
-      // Prevent tenantId modification (security)
-      delete (data as any).tenantId;
+      const parsed = insertMachineSchema.partial().parse(req.body);
+      // Prevent tenantId modification (security): omit tenantId del payload
+      const { tenantId: _tenantId, ...rest } = parsed;
+      const data: Partial<typeof parsed> & { refillModeOverride?: "standard" | "manual" | null } = rest;
 
       // Validar refillModeOverride como enum opcional
-      if (data.refillModeOverride !== undefined && data.refillModeOverride !== null && data.refillModeOverride !== "") {
-        if (data.refillModeOverride !== "standard" && data.refillModeOverride !== "manual") {
+      const override = data.refillModeOverride;
+      if (override !== undefined && override !== null && override !== "") {
+        if (override !== "standard" && override !== "manual") {
           return res.status(400).json({ error: "refillModeOverride debe ser 'standard', 'manual' o nulo" });
         }
-      } else if (data.refillModeOverride === "" || data.refillModeOverride === null) {
-        (data as any).refillModeOverride = null;
+      } else if (override === "" || override === null) {
+        data.refillModeOverride = null;
       }
 
       const machine = await storage.updateMachine(req.params.id, data);

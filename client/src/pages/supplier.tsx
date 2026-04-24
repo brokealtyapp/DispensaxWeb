@@ -1043,7 +1043,7 @@ export function SupplierPage() {
         maxCapacity,
         standardQuantity,
         suggestedQuantity: sugg?.suggestedQuantity ?? 0,
-        vehicleAvailable: sugg?.vehicleAvailable ?? 0,
+        vehicleAvailable: sugg?.vehicleAvailable,
       };
     });
     setProductsToLoad(initialProducts);
