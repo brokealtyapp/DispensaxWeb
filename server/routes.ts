@@ -22,6 +22,7 @@ import {
   type AuthenticatedRequest 
 } from "./auth";
 import { authorizeAction, checkPermission } from "./permissions";
+import { authorizeRoles } from "./auth";
 import {
   getDefaultChecklistEntries,
   ensureChecklistDefaultsUpgraded,
@@ -12266,12 +12267,15 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/reconciliation/cross/:cashCollectionId", authenticateJWT, authorizeAction("machine_sales", "view"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/reconciliation/cross/:cashCollectionId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
       if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
       const result = await storage.getReconciliationCross(tenantId, req.params.cashCollectionId);
       if (!result) return res.status(404).json({ error: "Recolección no encontrada" });
+      if (req.user!.role === "abastecedor" && result.cashCollection?.userId !== req.user!.id) {
+        return res.status(403).json({ error: "Solo puedes ver la conciliación de tus propias recolecciones" });
+      }
       res.json(result);
     } catch (error: any) {
       console.error("Error reconciliation cross:", error);
@@ -12279,12 +12283,22 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/reconciliation/cross/:cashCollectionId/export", authenticateJWT, authorizeAction("machine_sales", "view"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/reconciliation/cross/:cashCollectionId/export", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
       if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+      const format = String(req.query.format ?? "csv").toLowerCase();
+      if (format !== "csv" && format !== "pdf") {
+        return res.status(400).json({ error: "Formato inválido. Usa csv o pdf." });
+      }
+      if (format === "pdf") {
+        return res.status(501).json({ error: "Exportación PDF aún no soportada. Usa format=csv." });
+      }
       const data = await storage.getReconciliationCross(tenantId, req.params.cashCollectionId);
       if (!data) return res.status(404).json({ error: "Recolección no encontrada" });
+      if (req.user!.role === "abastecedor" && data.cashCollection?.userId !== req.user!.id) {
+        return res.status(403).json({ error: "Solo puedes exportar la conciliación de tus propias recolecciones" });
+      }
 
       const lines: string[] = [];
       lines.push("Reporte de Conciliación Cruzada");

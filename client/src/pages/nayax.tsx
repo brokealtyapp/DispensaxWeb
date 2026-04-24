@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip as RTooltip, CartesianGrid, Legend } from "recharts";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -752,6 +753,23 @@ interface BillingByMachineResponse {
   rows: BillingByMachineRow[];
 }
 
+interface BillingSummaryPoint {
+  bucket: string;
+  totalAmount: number;
+  totalCash: number;
+  totalCard: number;
+  txCount: number;
+}
+
+interface BillingSummaryResponse {
+  period: string;
+  from: string;
+  to: string;
+  bucket: string;
+  series: BillingSummaryPoint[];
+  totals: { totalAmount: number; totalCash: number; totalCard: number; txCount: number };
+}
+
 const PERIOD_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "live", label: "En vivo" },
   { value: "day", label: "Día" },
@@ -775,6 +793,17 @@ function BillingTab() {
     queryFn: async () => {
       const res = await fetch(`/api/billing/by-machine?period=${period}`, { credentials: "include" });
       if (!res.ok) throw new Error("Error al cargar facturación");
+      return res.json();
+    },
+    refetchInterval: period === "live" ? 10000 : false,
+  });
+
+  const summaryPeriod = period === "live" ? "day" : period;
+  const { data: summary, isLoading: summaryLoading } = useQuery<BillingSummaryResponse>({
+    queryKey: ["/api/billing/summary", summaryPeriod],
+    queryFn: async () => {
+      const res = await fetch(`/api/billing/summary?period=${summaryPeriod}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error al cargar resumen");
       return res.json();
     },
     refetchInterval: period === "live" ? 10000 : false,
@@ -886,6 +915,60 @@ function BillingTab() {
           </CardContent>
         </Card>
       </div>
+
+      <Card data-testid="card-billing-trend">
+        <CardHeader>
+          <CardTitle className="text-base">Tendencia de facturación</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            {summary ? `Bucket: ${summary.bucket} · ${summary.series.length} puntos` : "Cargando..."}
+          </p>
+        </CardHeader>
+        <CardContent>
+          {summaryLoading ? (
+            <div className="flex items-center justify-center h-48">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : !summary || summary.series.length === 0 ? (
+            <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
+              Sin datos en el periodo seleccionado.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={260}>
+              <AreaChart data={summary.series} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="g-cash" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.7} />
+                    <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0.05} />
+                  </linearGradient>
+                  <linearGradient id="g-card" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--chart-2))" stopOpacity={0.7} />
+                    <stop offset="95%" stopColor="hsl(var(--chart-2))" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis
+                  dataKey="bucket"
+                  tickFormatter={(v: string) => {
+                    const d = new Date(v);
+                    return summary.bucket === "hour"
+                      ? d.toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" })
+                      : d.toLocaleDateString("es-DO", { day: "2-digit", month: "2-digit" });
+                  }}
+                  className="text-xs"
+                />
+                <YAxis tickFormatter={(v: number) => `RD$${(v / 1000).toFixed(0)}k`} className="text-xs" />
+                <RTooltip
+                  formatter={(value: number, name: string) => [formatRD(value), name]}
+                  labelFormatter={(label: string) => new Date(label).toLocaleString("es-DO")}
+                />
+                <Legend />
+                <Area type="monotone" dataKey="totalCash" name="Efectivo" stroke="hsl(var(--chart-1))" fill="url(#g-cash)" />
+                <Area type="monotone" dataKey="totalCard" name="Tarjeta" stroke="hsl(var(--chart-2))" fill="url(#g-card)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
 
       {isLoading ? (
         <div className="flex items-center justify-center h-32">

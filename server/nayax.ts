@@ -213,7 +213,7 @@ export async function syncNayaxSalesForTenant(tenantId: string): Promise<{
           quantity: typeof s.Quantity === "number" ? s.Quantity : 1,
           settlementDate,
           authorizationDate: parseDate(s.AuthorizationDateTimeGMT),
-          raw: s as any,
+          raw: s as Record<string, unknown>,
         });
       }
 
