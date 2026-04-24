@@ -1574,28 +1574,20 @@ export function MachineDetailPage() {
                                   Asignar SKU a B{tray}-C{lane}
                                 </p>
                                 <div className="space-y-1 max-h-64 overflow-y-auto">
-                                  {item && (
-                                    <>
-                                      <PlanogramCellInlineEditor
-                                        machineId={machineId!}
-                                        productId={item.productId}
-                                        currentMaxCapacity={
-                                          (machine.inventory ?? []).find(
-                                            (x: { productId: string }) => x.productId === item.productId,
-                                          )?.maxCapacity ?? 1
-                                        }
-                                        currentStandardQuantity={
-                                          (machine.inventory ?? []).find(
-                                            (x: { productId: string }) => x.productId === item.productId,
-                                          )?.standardQuantity ?? null
-                                        }
-                                        currentMinLevel={
-                                          (machine.inventory ?? []).find(
-                                            (x: { productId: string }) => x.productId === item.productId,
-                                          )?.minLevel ?? 0
-                                        }
-                                        cellKey={`${tray}-${lane}`}
-                                      />
+                                  {item && (() => {
+                                    const row = inventoryItems.find((x) => x.productId === item.productId) as
+                                      | (InventoryCell & { maxCapacity?: number; minLevel?: number; standardQuantity?: number | null })
+                                      | undefined;
+                                    return (
+                                      <>
+                                        <PlanogramCellInlineEditor
+                                          machineId={machineId!}
+                                          productId={item.productId}
+                                          currentMaxCapacity={row?.maxCapacity ?? 1}
+                                          currentStandardQuantity={row?.standardQuantity ?? null}
+                                          currentMinLevel={row?.minLevel ?? 0}
+                                          cellKey={`${tray}-${lane}`}
+                                        />
                                       <Button
                                         variant="ghost"
                                         size="sm"
@@ -1612,8 +1604,9 @@ export function MachineDetailPage() {
                                         <XCircle className="h-3 w-3 mr-2" />
                                         Vaciar posición
                                       </Button>
-                                    </>
-                                  )}
+                                      </>
+                                    );
+                                  })()}
                                   {inventoryItems.map((inv) => {
                                     const isHere = inv.trayNumber === tray && inv.laneNumber === lane;
                                     return (
