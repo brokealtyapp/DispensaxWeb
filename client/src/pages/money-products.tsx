@@ -65,8 +65,8 @@ interface LaneChangeWithJoins {
   id: string;
   machineId: string;
   productId: string;
-  fromTrayNumber: number;
-  fromLaneNumber: number;
+  fromTrayNumber: number | null;
+  fromLaneNumber: number | null;
   toTrayNumber: number;
   toLaneNumber: number;
   notes: string | null;
@@ -140,7 +140,11 @@ function PendingLaneChangesPanel() {
                         data-testid={`row-lane-change-${change.id}`}
                       >
                         <div className="flex items-center gap-2">
-                          <Badge variant="outline">B{change.fromTrayNumber}-C{change.fromLaneNumber}</Badge>
+                          <Badge variant="outline">
+                            {change.fromTrayNumber != null && change.fromLaneNumber != null
+                              ? `B${change.fromTrayNumber}-C${change.fromLaneNumber}`
+                              : "Nuevo"}
+                          </Badge>
                           <span className="text-muted-foreground">→</span>
                           <Badge variant="secondary">B{change.toTrayNumber}-C{change.toLaneNumber}</Badge>
                         </div>
