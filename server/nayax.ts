@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { eq, and } from "drizzle-orm";
-import { nayaxConfig } from "@shared/schema";
+import { eq, and, sql } from "drizzle-orm";
+import { nayaxConfig, machines, nayaxTransactions, type InsertNayaxTransaction } from "@shared/schema";
 
 const LYNX_BASE_URL = "https://lynx.nayax.com/operational/api/v1";
 
@@ -124,6 +124,127 @@ export async function testNayaxConnection(token: string): Promise<{ success: boo
   } catch (error: any) {
     return { success: false, error: error.message };
   }
+}
+
+export type PaymentCategory = "cash" | "card" | "other";
+
+export function categorizePaymentMethod(method: string | null | undefined): PaymentCategory {
+  if (!method) return "other";
+  const normalized = method.toLowerCase();
+  if (
+    normalized.includes("cash") ||
+    normalized.includes("coin") ||
+    normalized.includes("bill") ||
+    normalized.includes("efectivo") ||
+    normalized.includes("currency") ||
+    normalized.includes("mdb")
+  ) {
+    return "cash";
+  }
+  if (
+    normalized.includes("card") ||
+    normalized.includes("credit") ||
+    normalized.includes("debit") ||
+    normalized.includes("emv") ||
+    normalized.includes("nfc") ||
+    normalized.includes("contactless") ||
+    normalized.includes("apple pay") ||
+    normalized.includes("google pay") ||
+    normalized.includes("wallet")
+  ) {
+    return "card";
+  }
+  return "other";
+}
+
+function parseDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export async function syncNayaxSalesForTenant(tenantId: string): Promise<{
+  machinesProcessed: number;
+  transactionsUpserted: number;
+  errors: Array<{ machineId: string; error: string }>;
+}> {
+  const token = await getNayaxToken(tenantId);
+  if (!token) {
+    return { machinesProcessed: 0, transactionsUpserted: 0, errors: [{ machineId: "config", error: "No hay token de Nayax configurado" }] };
+  }
+
+  const linked = await db
+    .select({
+      id: machines.id,
+      tenantId: machines.tenantId,
+      nayaxMachineId: machines.nayaxMachineId,
+    })
+    .from(machines)
+    .where(and(eq(machines.tenantId, tenantId), sql`${machines.nayaxMachineId} IS NOT NULL`));
+
+  let upserted = 0;
+  const errors: Array<{ machineId: string; error: string }> = [];
+
+  for (const m of linked) {
+    if (!m.nayaxMachineId) continue;
+    try {
+      const sales = await getNayaxMachineLastSales(token, m.nayaxMachineId);
+      if (!Array.isArray(sales) || sales.length === 0) continue;
+
+      const rows: InsertNayaxTransaction[] = [];
+      for (const s of sales) {
+        const settlementDate = parseDate(s.SettlementDateTimeGMT) ?? parseDate(s.AuthorizationDateTimeGMT);
+        if (!settlementDate) continue;
+        const transactionId = String(s.TransactionID ?? s.PaymentServiceTransactionID ?? "").trim();
+        if (!transactionId) continue;
+        rows.push({
+          tenantId,
+          machineId: m.id,
+          nayaxMachineId: m.nayaxMachineId,
+          transactionId,
+          paymentServiceTransactionId: s.PaymentServiceTransactionID || null,
+          paymentMethod: s.PaymentMethod || null,
+          paymentCategory: categorizePaymentMethod(s.PaymentMethod),
+          cardBrand: s.CardBrand || null,
+          currencyCode: s.CurrencyCode || "DOP",
+          settlementValue: String(s.SettlementValue ?? s.AuthorizationValue ?? 0),
+          authorizationValue: s.AuthorizationValue != null ? String(s.AuthorizationValue) : null,
+          productName: s.ProductName || null,
+          quantity: typeof s.Quantity === "number" ? s.Quantity : 1,
+          settlementDate,
+          authorizationDate: parseDate(s.AuthorizationDateTimeGMT),
+          raw: s as any,
+        });
+      }
+
+      if (rows.length === 0) continue;
+
+      const result = await db
+        .insert(nayaxTransactions)
+        .values(rows)
+        .onConflictDoUpdate({
+          target: [nayaxTransactions.tenantId, nayaxTransactions.transactionId],
+          set: {
+            paymentMethod: sql`EXCLUDED.payment_method`,
+            paymentCategory: sql`EXCLUDED.payment_category`,
+            cardBrand: sql`EXCLUDED.card_brand`,
+            settlementValue: sql`EXCLUDED.settlement_value`,
+            authorizationValue: sql`EXCLUDED.authorization_value`,
+            productName: sql`EXCLUDED.product_name`,
+            quantity: sql`EXCLUDED.quantity`,
+            settlementDate: sql`EXCLUDED.settlement_date`,
+            authorizationDate: sql`EXCLUDED.authorization_date`,
+            raw: sql`EXCLUDED.raw`,
+            syncedAt: new Date(),
+          },
+        });
+      upserted += rows.length;
+    } catch (err: any) {
+      errors.push({ machineId: m.id, error: err?.message || String(err) });
+    }
+  }
+
+  return { machinesProcessed: linked.length, transactionsUpserted: upserted, errors };
 }
 
 export interface LaneChangeNayaxPayload {

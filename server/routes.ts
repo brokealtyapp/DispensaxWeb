@@ -125,7 +125,7 @@ import {
   type TrayAudit,
 } from "@shared/schema";
 import { z, ZodError } from "zod";
-import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection, enqueueLaneChangeForNayax } from "./nayax";
+import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection, enqueueLaneChangeForNayax, syncNayaxSalesForTenant, categorizePaymentMethod } from "./nayax";
 
 // =====================
 // DATABASE ERROR HELPERS
@@ -12140,6 +12140,192 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating SLA statuses:", error);
       res.status(500).json({ error: "Error al actualizar estados SLA" });
+    }
+  });
+
+  // ==================== BILLING + RECONCILIACIÓN CRUZADA ====================
+
+  function resolveBillingRange(period: string): { from: Date; to: Date; bucket: "hour" | "day" | "week" | "month" } {
+    const now = new Date();
+    const to = now;
+    let from: Date;
+    let bucket: "hour" | "day" | "week" | "month" = "day";
+    switch (period) {
+      case "live":
+      case "day":
+        from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        bucket = "hour";
+        break;
+      case "week":
+        from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        bucket = "day";
+        break;
+      case "month":
+        from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        bucket = "day";
+        break;
+      case "year":
+        from = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        bucket = "month";
+        break;
+      default:
+        from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        bucket = "hour";
+    }
+    return { from, to, bucket };
+  }
+
+  app.post("/api/nayax/sync-sales", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+      const result = await syncNayaxSalesForTenant(tenantId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error sync nayax sales:", error);
+      res.status(500).json({ error: error?.message || "Error al sincronizar ventas Nayax" });
+    }
+  });
+
+  app.get("/api/billing/by-machine", authenticateJWT, authorizeAction("machine_sales", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+      const period = (req.query.period as string) || "day";
+
+      if (period === "live") {
+        const token = await getNayaxToken(tenantId);
+        const linked = await db
+          .select({ id: machines.id, name: machines.name, code: machines.code, nayaxMachineId: machines.nayaxMachineId })
+          .from(machines)
+          .where(and(eq(machines.tenantId, tenantId), sql`${machines.nayaxMachineId} IS NOT NULL`));
+        const rows = await Promise.all(linked.map(async (m) => {
+          let totalAmount = 0, totalCash = 0, totalCard = 0, totalOther = 0, txCount = 0, cashTxCount = 0, cardTxCount = 0, quantity = 0;
+          if (token && m.nayaxMachineId) {
+            try {
+              const sales = await getNayaxMachineLastSales(token, m.nayaxMachineId);
+              if (Array.isArray(sales)) {
+                for (const s of sales) {
+                  const v = Number(s.SettlementValue ?? s.AuthorizationValue ?? 0);
+                  const cat = categorizePaymentMethod(s.PaymentMethod);
+                  totalAmount += v;
+                  txCount += 1;
+                  quantity += typeof s.Quantity === "number" ? s.Quantity : 1;
+                  if (cat === "cash") { totalCash += v; cashTxCount += 1; }
+                  else if (cat === "card") { totalCard += v; cardTxCount += 1; }
+                  else totalOther += v;
+                }
+              }
+            } catch (err) {
+              console.warn(`Live sales fetch failed for machine ${m.id}:`, err);
+            }
+          }
+          return {
+            machineId: m.id,
+            machineName: m.name,
+            machineCode: m.code,
+            nayaxMachineId: m.nayaxMachineId,
+            totalAmount: totalAmount.toFixed(2),
+            totalCash: totalCash.toFixed(2),
+            totalCard: totalCard.toFixed(2),
+            totalOther: totalOther.toFixed(2),
+            txCount, cashTxCount, cardTxCount, quantity,
+          };
+        }));
+        rows.sort((a, b) => Number(b.totalAmount) - Number(a.totalAmount));
+        return res.json({ period, rows });
+      }
+
+      const { from, to } = resolveBillingRange(period);
+      const rows = await storage.getBillingByMachine(tenantId, from, to);
+      res.json({ period, from: from.toISOString(), to: to.toISOString(), rows });
+    } catch (error: any) {
+      console.error("Error billing by machine:", error);
+      res.status(500).json({ error: error?.message || "Error al obtener facturación por máquina" });
+    }
+  });
+
+  app.get("/api/billing/summary", authenticateJWT, authorizeAction("machine_sales", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+      const period = (req.query.period as string) || "day";
+      const { from, to, bucket } = resolveBillingRange(period);
+      const series = await storage.getBillingTimeSeries(tenantId, from, to, bucket);
+      const totals = series.reduce((acc, r) => {
+        acc.totalAmount += Number(r.totalAmount);
+        acc.totalCash += Number(r.totalCash);
+        acc.totalCard += Number(r.totalCard);
+        acc.txCount += r.txCount;
+        return acc;
+      }, { totalAmount: 0, totalCash: 0, totalCard: 0, txCount: 0 });
+      res.json({ period, from: from.toISOString(), to: to.toISOString(), bucket, series, totals });
+    } catch (error: any) {
+      console.error("Error billing summary:", error);
+      res.status(500).json({ error: error?.message || "Error al obtener resumen de facturación" });
+    }
+  });
+
+  app.get("/api/reconciliation/cross/:cashCollectionId", authenticateJWT, authorizeAction("machine_sales", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+      const result = await storage.getReconciliationCross(tenantId, req.params.cashCollectionId);
+      if (!result) return res.status(404).json({ error: "Recolección no encontrada" });
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error reconciliation cross:", error);
+      res.status(500).json({ error: error?.message || "Error al obtener cuadre cruzado" });
+    }
+  });
+
+  app.get("/api/reconciliation/cross/:cashCollectionId/export", authenticateJWT, authorizeAction("machine_sales", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+      const data = await storage.getReconciliationCross(tenantId, req.params.cashCollectionId);
+      if (!data) return res.status(404).json({ error: "Recolección no encontrada" });
+
+      const lines: string[] = [];
+      lines.push("Reporte de Conciliación Cruzada");
+      lines.push(`Máquina,${data.machine?.name ?? ""}${data.machine?.code ? ` (${data.machine.code})` : ""}`);
+      lines.push(`Recolección,${data.cashCollection.id}`);
+      lines.push(`Rango,${new Date(data.rangeStart).toISOString()},${new Date(data.rangeEnd).toISOString()}`);
+      lines.push("");
+      lines.push("Resumen Financiero");
+      lines.push("Concepto,Monto RD$");
+      lines.push(`Fondo inicial de cambio,${Number(data.changeFund?.totalAmount ?? 0).toFixed(2)}`);
+      lines.push(`Ventas Nayax (Total),${data.nayaxSummary.totalAmount.toFixed(2)}`);
+      lines.push(`  - Efectivo,${data.nayaxSummary.totalCash.toFixed(2)}`);
+      lines.push(`  - Tarjeta,${data.nayaxSummary.totalCard.toFixed(2)}`);
+      lines.push(`  - Otros,${data.nayaxSummary.totalOther.toFixed(2)}`);
+      lines.push(`Billetes a almacén,${data.billsToWarehouse.toFixed(2)}`);
+      lines.push(`Efectivo físico contado (máquina),${data.physicalCashTotal.toFixed(2)}`);
+      lines.push(`Ingreso real,${data.realIncome.toFixed(2)}`);
+      lines.push(`Efectivo restante esperado,${data.expectedRemainingCash.toFixed(2)}`);
+      lines.push(`Diferencia (físico - esperado),${data.cashDifference.toFixed(2)}`);
+      lines.push(`Cuadre OK,${data.cashOk ? "Sí" : "No"}`);
+      lines.push("");
+      if (data.unitDiscrepancy) {
+        lines.push("Discrepancia Unidades");
+        lines.push("Concepto,Cantidad");
+        lines.push(`Unidades vendidas Nayax,${data.unitDiscrepancy.nayaxUnits}`);
+        lines.push(`Posiciones vacías reportadas,${data.unitDiscrepancy.emptyLanes}`);
+        lines.push(`Delta (vacías - vendidas),${data.unitDiscrepancy.deltaUnits}`);
+        lines.push("");
+      }
+      lines.push("Desglose por Denominación");
+      lines.push("Tipo de conteo,Denominación,Tipo,Cantidad,Subtotal RD$");
+      for (const d of data.physicalDenominations) {
+        lines.push(`${d.countType},${d.denomination},${d.denominationType},${d.quantity},${Number(d.subtotal).toFixed(2)}`);
+      }
+      const csv = "\uFEFF" + lines.join("\n");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="conciliacion-${data.cashCollection.id}.csv"`);
+      res.send(csv);
+    } catch (error: any) {
+      console.error("Error export reconciliation:", error);
+      res.status(500).json({ error: error?.message || "Error al exportar reporte" });
     }
   });
 

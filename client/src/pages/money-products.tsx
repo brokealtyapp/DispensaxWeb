@@ -40,6 +40,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
 const cashMovementFormSchema = z.object({
@@ -1273,6 +1274,8 @@ export function MoneyProductsPage() {
                 )}
               </CardContent>
             </Card>
+
+            <CrossReconciliationPanel cashCollections={cashCollections ?? []} />
           </TabsContent>
 
           <TabsContent value="lane-changes" className="mt-4" data-testid="tab-content-lane-changes">
@@ -1667,5 +1670,239 @@ export function MoneyProductsPage() {
         </Dialog>
       </div>
     </ScrollArea>
+  );
+}
+
+interface CrossReconciliationData {
+  cashCollection: { id: string; createdAt: string };
+  machine: { id: string; name: string | null; code: string | null } | null;
+  serviceRecord: { id: string; startTime: string | null; endTime: string | null } | null;
+  rangeStart: string;
+  rangeEnd: string;
+  changeFund: { totalAmount: string; status: string } | null;
+  nayaxSummary: {
+    totalAmount: number;
+    totalCash: number;
+    totalCard: number;
+    totalOther: number;
+    txCount: number;
+    unitsSold: number;
+  };
+  physicalDenominations: Array<{
+    countType: string;
+    denomination: string;
+    denominationType: string;
+    quantity: number;
+    subtotal: string;
+  }>;
+  physicalCashTotal: number;
+  billsToWarehouse: number;
+  trayAudit: { trayCount: number; emptyPositionsTotal: number } | null;
+  realIncome: number;
+  expectedRemainingCash: number;
+  physicalRemainingCash: number;
+  cashDifference: number;
+  cashOk: boolean;
+  unitDiscrepancy: { nayaxUnits: number; emptyLanes: number; deltaUnits: number } | null;
+}
+
+function CrossReconciliationPanel({ cashCollections }: { cashCollections: any[] }) {
+  const { toast } = useToast();
+  const [selectedId, setSelectedId] = useState<string>("");
+
+  const { data, isLoading, error } = useQuery<CrossReconciliationData>({
+    queryKey: ["/api/reconciliation/cross", selectedId],
+    queryFn: async () => {
+      const res = await fetch(`/api/reconciliation/cross/${selectedId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error al obtener cuadre");
+      return res.json();
+    },
+    enabled: !!selectedId,
+  });
+
+  const formatRD = (n: number | string) => {
+    const v = Number(n);
+    return `RD$ ${v.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const handleExport = async () => {
+    if (!selectedId) return;
+    try {
+      const res = await fetch(`/api/reconciliation/cross/${selectedId}/export`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error al exportar");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `conciliacion-${selectedId}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+  };
+
+  return (
+    <Card className="mt-4">
+      <CardHeader>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <CardTitle data-testid="title-cross-reconciliation">Cuadre Cruzado por Recolección</CardTitle>
+            <CardDescription>
+              Cruza fondo inicial, ventas Nayax (efectivo + tarjeta), billetes a almacén, conteo físico y carriles vacíos.
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Select value={selectedId} onValueChange={setSelectedId}>
+              <SelectTrigger className="w-72" data-testid="select-cross-collection">
+                <SelectValue placeholder="Selecciona una recolección" />
+              </SelectTrigger>
+              <SelectContent>
+                {cashCollections.map((c: any) => (
+                  <SelectItem key={c.id} value={c.id} data-testid={`option-cross-${c.id}`}>
+                    {(c.machineName || c.machine?.name || "Máquina")} —{" "}
+                    {c.createdAt ? new Date(c.createdAt).toLocaleDateString("es-DO") : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              onClick={handleExport}
+              disabled={!selectedId || !data}
+              data-testid="button-export-cross"
+            >
+              Exportar CSV
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {!selectedId ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <p>Selecciona una recolección para ver el cuadre cruzado.</p>
+          </div>
+        ) : isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : error ? (
+          <div className="text-center py-8 text-red-600">No se pudo cargar el cuadre.</div>
+        ) : data ? (
+          <div className="space-y-6">
+            {!data.cashOk && (
+              <div className="border rounded-md p-3 bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800 flex items-start gap-2" data-testid="alert-cash-mismatch">
+                <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-semibold text-red-700 dark:text-red-300">Descuadre detectado</p>
+                  <p className="text-red-600 dark:text-red-400">
+                    Diferencia de {formatRD(Math.abs(data.cashDifference))} entre efectivo físico y esperado.
+                  </p>
+                </div>
+              </div>
+            )}
+            {data.unitDiscrepancy && data.unitDiscrepancy.deltaUnits !== 0 && (
+              <div className="border rounded-md p-3 bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 flex items-start gap-2" data-testid="alert-unit-mismatch">
+                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-semibold text-amber-700 dark:text-amber-300">Discrepancia de unidades</p>
+                  <p className="text-amber-700 dark:text-amber-400">
+                    Vendidas Nayax: {data.unitDiscrepancy.nayaxUnits} · Carriles vacíos:{" "}
+                    {data.unitDiscrepancy.emptyLanes} · Delta: {data.unitDiscrepancy.deltaUnits}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="p-3 border rounded-md" data-testid="stat-cross-fund">
+                <p className="text-xs text-muted-foreground">Fondo inicial</p>
+                <p className="text-lg font-bold">{formatRD(data.changeFund?.totalAmount ?? 0)}</p>
+              </div>
+              <div className="p-3 border rounded-md" data-testid="stat-cross-real-income">
+                <p className="text-xs text-muted-foreground">Ingreso real (Nayax)</p>
+                <p className="text-lg font-bold">{formatRD(data.realIncome)}</p>
+                <p className="text-xs text-muted-foreground">{data.nayaxSummary.txCount} trans.</p>
+              </div>
+              <div className="p-3 border rounded-md" data-testid="stat-cross-warehouse">
+                <p className="text-xs text-muted-foreground">Billetes a almacén</p>
+                <p className="text-lg font-bold">{formatRD(data.billsToWarehouse)}</p>
+              </div>
+              <div className="p-3 border rounded-md" data-testid="stat-cross-physical">
+                <p className="text-xs text-muted-foreground">Físico contado</p>
+                <p className="text-lg font-bold">{formatRD(data.physicalCashTotal)}</p>
+              </div>
+              <div className="p-3 border rounded-md" data-testid="stat-cross-cash">
+                <p className="text-xs text-muted-foreground">Efectivo (Nayax)</p>
+                <p className="text-lg font-bold">{formatRD(data.nayaxSummary.totalCash)}</p>
+              </div>
+              <div className="p-3 border rounded-md" data-testid="stat-cross-card">
+                <p className="text-xs text-muted-foreground">Tarjeta (Nayax)</p>
+                <p className="text-lg font-bold">{formatRD(data.nayaxSummary.totalCard)}</p>
+              </div>
+              <div className="p-3 border rounded-md" data-testid="stat-cross-expected">
+                <p className="text-xs text-muted-foreground">Esperado restante</p>
+                <p className="text-lg font-bold">{formatRD(data.expectedRemainingCash)}</p>
+              </div>
+              <div
+                className={`p-3 border rounded-md ${
+                  data.cashOk
+                    ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800"
+                    : "bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800"
+                }`}
+                data-testid="stat-cross-difference"
+              >
+                <p className="text-xs text-muted-foreground">Diferencia</p>
+                <p className={`text-lg font-bold ${data.cashOk ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"}`}>
+                  {formatRD(data.cashDifference)}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-md bg-muted p-3 text-sm space-y-1">
+              <p className="font-medium">Fórmula de cuadre</p>
+              <p className="font-mono text-xs">
+                Fondo ({formatRD(data.changeFund?.totalAmount ?? 0)}) + Efectivo Nayax (
+                {formatRD(data.nayaxSummary.totalCash)}) − Billetes a almacén ({formatRD(data.billsToWarehouse)}) ={" "}
+                {formatRD(data.expectedRemainingCash)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Rango analizado: {new Date(data.rangeStart).toLocaleString("es-DO")} →{" "}
+                {new Date(data.rangeEnd).toLocaleString("es-DO")}
+              </p>
+            </div>
+
+            {data.physicalDenominations.length > 0 && (
+              <div className="border rounded-md overflow-x-auto">
+                <Table data-testid="table-cross-denominations">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Conteo</TableHead>
+                      <TableHead>Denominación</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead className="text-right">Cantidad</TableHead>
+                      <TableHead className="text-right">Subtotal</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.physicalDenominations.map((d, idx) => (
+                      <TableRow key={`${d.countType}-${d.denomination}-${idx}`}>
+                        <TableCell className="capitalize">{d.countType}</TableCell>
+                        <TableCell>RD$ {d.denomination}</TableCell>
+                        <TableCell className="capitalize">{d.denominationType}</TableCell>
+                        <TableCell className="text-right">{d.quantity}</TableCell>
+                        <TableCell className="text-right">{formatRD(d.subtotal)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }

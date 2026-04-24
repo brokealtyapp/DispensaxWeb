@@ -511,6 +511,42 @@ export const insertMachineSaleSchema = createInsertSchema(machineSales).omit({
 export type InsertMachineSale = z.infer<typeof insertMachineSaleSchema>;
 export type MachineSale = typeof machineSales.$inferSelect;
 
+export const paymentCategoryEnum = pgEnum("payment_category", ["cash", "card", "other"]);
+
+export const nayaxTransactions = pgTable("nayax_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  machineId: varchar("machine_id").references(() => machines.id).notNull(),
+  nayaxMachineId: integer("nayax_machine_id").notNull(),
+  transactionId: text("transaction_id").notNull(),
+  paymentServiceTransactionId: text("payment_service_transaction_id"),
+  paymentMethod: text("payment_method"),
+  paymentCategory: paymentCategoryEnum("payment_category").notNull().default("other"),
+  cardBrand: text("card_brand"),
+  currencyCode: text("currency_code").default("DOP"),
+  settlementValue: decimal("settlement_value", { precision: 10, scale: 2 }).notNull().default("0"),
+  authorizationValue: decimal("authorization_value", { precision: 10, scale: 2 }),
+  productName: text("product_name"),
+  quantity: integer("quantity").default(1),
+  settlementDate: timestamp("settlement_date").notNull(),
+  authorizationDate: timestamp("authorization_date"),
+  raw: jsonb("raw"),
+  syncedAt: timestamp("synced_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_nayax_tx_tenant_txid").on(table.tenantId, table.transactionId),
+  index("idx_nayax_tx_machine_date").on(table.machineId, table.settlementDate),
+  index("idx_nayax_tx_tenant_date").on(table.tenantId, table.settlementDate),
+  index("idx_nayax_tx_category").on(table.tenantId, table.paymentCategory),
+]);
+
+export const insertNayaxTransactionSchema = createInsertSchema(nayaxTransactions).omit({
+  id: true,
+  syncedAt: true,
+});
+
+export type InsertNayaxTransaction = z.infer<typeof insertNayaxTransactionSchema>;
+export type NayaxTransaction = typeof nayaxTransactions.$inferSelect;
+
 export const machinesRelations = relations(machines, ({ one, many }) => ({
   location: one(locations, {
     fields: [machines.locationId],

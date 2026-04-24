@@ -53,6 +53,8 @@ import {
   DollarSign,
   Zap,
   AlertTriangle,
+  Receipt,
+  Banknote,
 } from "lucide-react";
 
 interface NayaxMachine {
@@ -329,6 +331,7 @@ export function NayaxPage() {
               <TabsTrigger value="overview" data-testid="tab-overview">Máquinas Nayax</TabsTrigger>
               <TabsTrigger value="linked" data-testid="tab-linked">Vinculaciones</TabsTrigger>
               <TabsTrigger value="sales" data-testid="tab-sales">Ventas Cashless</TabsTrigger>
+              <TabsTrigger value="billing" data-testid="tab-billing">Facturación</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-4">
@@ -582,6 +585,10 @@ export function NayaxPage() {
                 </div>
               )}
             </TabsContent>
+
+            <TabsContent value="billing" className="space-y-4">
+              <BillingTab />
+            </TabsContent>
           </Tabs>
         </>
       )}
@@ -721,6 +728,218 @@ export function NayaxPage() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+interface BillingByMachineRow {
+  machineId: string;
+  machineName: string | null;
+  machineCode: string | null;
+  nayaxMachineId: number | null;
+  totalAmount: string;
+  totalCash: string;
+  totalCard: string;
+  totalOther: string;
+  txCount: number;
+  cashTxCount: number;
+  cardTxCount: number;
+  quantity: number;
+}
+
+interface BillingByMachineResponse {
+  period: string;
+  rows: BillingByMachineRow[];
+}
+
+const PERIOD_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "live", label: "En vivo" },
+  { value: "day", label: "Día" },
+  { value: "week", label: "Semana" },
+  { value: "month", label: "Mes" },
+  { value: "year", label: "Año" },
+];
+
+function formatRD(value: number | string): string {
+  const n = Number(value);
+  return `RD$ ${n.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function BillingTab() {
+  const { toast } = useToast();
+  const [period, setPeriod] = useState<string>("day");
+
+  const queryKey = ["/api/billing/by-machine", period];
+  const { data, isLoading, refetch, isFetching } = useQuery<BillingByMachineResponse>({
+    queryKey,
+    queryFn: async () => {
+      const res = await fetch(`/api/billing/by-machine?period=${period}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error al cargar facturación");
+      return res.json();
+    },
+    refetchInterval: period === "live" ? 10000 : false,
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/nayax/sync-sales");
+    },
+    onSuccess: async (response: any) => {
+      const result = await (response.json ? response.json() : response);
+      toast({
+        title: "Sincronización completada",
+        description: `${result.transactionsUpserted ?? 0} transacciones procesadas en ${result.machinesProcessed ?? 0} máquinas.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/billing/by-machine"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/billing/summary"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err?.message ?? "No se pudo sincronizar", variant: "destructive" });
+    },
+  });
+
+  const rows = data?.rows ?? [];
+  const totals = rows.reduce((acc, r) => {
+    acc.total += Number(r.totalAmount);
+    acc.cash += Number(r.totalCash);
+    acc.card += Number(r.totalCard);
+    acc.tx += r.txCount;
+    return acc;
+  }, { total: 0, cash: 0, card: 0, tx: 0 });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h3 className="text-lg font-semibold">Facturación por máquina</h3>
+          <p className="text-sm text-muted-foreground">Totales y categorización (efectivo / tarjeta) por periodo.</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-40" data-testid="select-billing-period">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PERIOD_OPTIONS.map(o => (
+                <SelectItem key={o.value} value={o.value} data-testid={`option-period-${o.value}`}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" onClick={() => refetch()} disabled={isFetching} data-testid="button-billing-refresh">
+            <RefreshCw className={`w-4 h-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
+            Actualizar
+          </Button>
+          <Button
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+            data-testid="button-billing-sync"
+          >
+            {syncMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4 mr-2" />
+            )}
+            Sincronizar Nayax
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total</CardTitle>
+            <Receipt className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold" data-testid="text-billing-total">{formatRD(totals.total)}</p>
+            <p className="text-xs text-muted-foreground">{totals.tx} transacciones</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Efectivo</CardTitle>
+            <Banknote className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold" data-testid="text-billing-cash">{formatRD(totals.cash)}</p>
+            <p className="text-xs text-muted-foreground">{totals.total > 0 ? `${((totals.cash / totals.total) * 100).toFixed(1)}%` : "0%"}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Tarjeta</CardTitle>
+            <CreditCard className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold" data-testid="text-billing-card">{formatRD(totals.card)}</p>
+            <p className="text-xs text-muted-foreground">{totals.total > 0 ? `${((totals.card / totals.total) * 100).toFixed(1)}%` : "0%"}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Máquinas activas</CardTitle>
+            <Monitor className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold" data-testid="text-billing-machines">{rows.filter(r => Number(r.totalAmount) > 0).length}</p>
+            <p className="text-xs text-muted-foreground">de {rows.length} vinculadas</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center h-32">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : rows.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            <Receipt className="w-12 h-12 mx-auto mb-2 opacity-50" />
+            <p>No hay datos de facturación para este periodo.</p>
+            <p className="text-sm mt-2">
+              {period === "live"
+                ? "La vista En vivo consulta directo a Nayax. Asegúrate de que las máquinas estén vinculadas."
+                : 'Usa "Sincronizar Nayax" para importar las últimas transacciones.'}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="border rounded-md overflow-x-auto">
+          <Table data-testid="table-billing">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Máquina</TableHead>
+                <TableHead className="text-right">Trans.</TableHead>
+                <TableHead className="text-right">Unidades</TableHead>
+                <TableHead className="text-right">Efectivo</TableHead>
+                <TableHead className="text-right">Tarjeta</TableHead>
+                <TableHead className="text-right">Otros</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.machineId} data-testid={`row-billing-${r.machineId}`}>
+                  <TableCell>
+                    <div className="font-medium" data-testid={`text-machine-${r.machineId}`}>
+                      {r.machineName || `Máquina ${r.nayaxMachineId ?? ""}`}
+                    </div>
+                    {r.machineCode && (
+                      <div className="text-xs text-muted-foreground">{r.machineCode}</div>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">{r.txCount}</TableCell>
+                  <TableCell className="text-right">{r.quantity}</TableCell>
+                  <TableCell className="text-right">{formatRD(r.totalCash)}</TableCell>
+                  <TableCell className="text-right">{formatRD(r.totalCard)}</TableCell>
+                  <TableCell className="text-right">{formatRD(r.totalOther)}</TableCell>
+                  <TableCell className="text-right font-semibold">{formatRD(r.totalAmount)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
     </div>
   );
 }

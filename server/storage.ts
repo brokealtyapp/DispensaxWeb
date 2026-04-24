@@ -64,10 +64,11 @@ import {
   type WorkOrderType, type InsertWorkOrderType,
   type LaneChangeEvent, type InsertLaneChangeEvent,
   type TrayAudit, type InsertTrayAudit,
+  type NayaxTransaction,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
-  laneChangeEvents, trayAudits,
+  laneChangeEvents, trayAudits, nayaxTransactions,
   cashMovements, bankDeposits, productTransfers, shrinkageRecords,
   pettyCashExpenses, pettyCashFund, pettyCashTransactions,
   purchaseOrders, purchaseOrderItems, purchaseReceptions, receptionItems,
@@ -8215,6 +8216,268 @@ export class DatabaseStorage implements IStorage {
   async deleteWorkOrderType(id: string, tenantId: string): Promise<boolean> {
     const result = await db.delete(workOrderTypes).where(and(eq(workOrderTypes.id, id), eq(workOrderTypes.tenantId, tenantId)));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // ==================== BILLING (Nayax Transactions) ====================
+
+  async getBillingByMachine(tenantId: string, fromDate: Date, toDate: Date): Promise<Array<{
+    machineId: string;
+    machineName: string | null;
+    machineCode: string | null;
+    nayaxMachineId: number | null;
+    totalAmount: string;
+    totalCash: string;
+    totalCard: string;
+    totalOther: string;
+    txCount: number;
+    cashTxCount: number;
+    cardTxCount: number;
+    quantity: number;
+  }>> {
+    const rows = await db
+      .select({
+        machineId: nayaxTransactions.machineId,
+        machineName: machines.name,
+        machineCode: machines.code,
+        nayaxMachineId: machines.nayaxMachineId,
+        totalAmount: sql<string>`COALESCE(SUM(${nayaxTransactions.settlementValue}), 0)`,
+        totalCash: sql<string>`COALESCE(SUM(CASE WHEN ${nayaxTransactions.paymentCategory} = 'cash' THEN ${nayaxTransactions.settlementValue} ELSE 0 END), 0)`,
+        totalCard: sql<string>`COALESCE(SUM(CASE WHEN ${nayaxTransactions.paymentCategory} = 'card' THEN ${nayaxTransactions.settlementValue} ELSE 0 END), 0)`,
+        totalOther: sql<string>`COALESCE(SUM(CASE WHEN ${nayaxTransactions.paymentCategory} = 'other' THEN ${nayaxTransactions.settlementValue} ELSE 0 END), 0)`,
+        txCount: sql<number>`COUNT(*)::int`,
+        cashTxCount: sql<number>`COUNT(*) FILTER (WHERE ${nayaxTransactions.paymentCategory} = 'cash')::int`,
+        cardTxCount: sql<number>`COUNT(*) FILTER (WHERE ${nayaxTransactions.paymentCategory} = 'card')::int`,
+        quantity: sql<number>`COALESCE(SUM(${nayaxTransactions.quantity}), 0)::int`,
+      })
+      .from(nayaxTransactions)
+      .leftJoin(machines, eq(machines.id, nayaxTransactions.machineId))
+      .where(and(
+        eq(nayaxTransactions.tenantId, tenantId),
+        gte(nayaxTransactions.settlementDate, fromDate),
+        lte(nayaxTransactions.settlementDate, toDate),
+      ))
+      .groupBy(nayaxTransactions.machineId, machines.name, machines.code, machines.nayaxMachineId)
+      .orderBy(desc(sql`COALESCE(SUM(${nayaxTransactions.settlementValue}), 0)`));
+    return rows;
+  }
+
+  async getBillingTimeSeries(tenantId: string, fromDate: Date, toDate: Date, bucket: "hour" | "day" | "week" | "month"): Promise<Array<{
+    bucket: string;
+    totalAmount: string;
+    totalCash: string;
+    totalCard: string;
+    txCount: number;
+  }>> {
+    const truncExpr = sql.raw(`date_trunc('${bucket}', settlement_date AT TIME ZONE 'America/Santo_Domingo')`);
+    const rows = await db
+      .select({
+        bucket: sql<string>`${truncExpr}::text`,
+        totalAmount: sql<string>`COALESCE(SUM(${nayaxTransactions.settlementValue}), 0)`,
+        totalCash: sql<string>`COALESCE(SUM(CASE WHEN ${nayaxTransactions.paymentCategory} = 'cash' THEN ${nayaxTransactions.settlementValue} ELSE 0 END), 0)`,
+        totalCard: sql<string>`COALESCE(SUM(CASE WHEN ${nayaxTransactions.paymentCategory} = 'card' THEN ${nayaxTransactions.settlementValue} ELSE 0 END), 0)`,
+        txCount: sql<number>`COUNT(*)::int`,
+      })
+      .from(nayaxTransactions)
+      .where(and(
+        eq(nayaxTransactions.tenantId, tenantId),
+        gte(nayaxTransactions.settlementDate, fromDate),
+        lte(nayaxTransactions.settlementDate, toDate),
+      ))
+      .groupBy(truncExpr)
+      .orderBy(truncExpr);
+    return rows;
+  }
+
+  async getNayaxTransactionsForRange(tenantId: string, machineId: string, fromDate: Date, toDate: Date): Promise<NayaxTransaction[]> {
+    return db
+      .select()
+      .from(nayaxTransactions)
+      .where(and(
+        eq(nayaxTransactions.tenantId, tenantId),
+        eq(nayaxTransactions.machineId, machineId),
+        gte(nayaxTransactions.settlementDate, fromDate),
+        lte(nayaxTransactions.settlementDate, toDate),
+      ))
+      .orderBy(desc(nayaxTransactions.settlementDate));
+  }
+
+  async getReconciliationCross(tenantId: string, cashCollectionId: string): Promise<{
+    cashCollection: any;
+    machine: { id: string; name: string | null; code: string | null } | null;
+    serviceRecord: { id: string; startTime: Date | null; endTime: Date | null } | null;
+    rangeStart: Date;
+    rangeEnd: Date;
+    changeFund: { totalAmount: string; status: string } | null;
+    nayaxSummary: {
+      totalAmount: number;
+      totalCash: number;
+      totalCard: number;
+      totalOther: number;
+      txCount: number;
+      unitsSold: number;
+    };
+    physicalDenominations: Array<{
+      countType: string;
+      denomination: string;
+      denominationType: string;
+      quantity: number;
+      subtotal: string;
+    }>;
+    physicalCashTotal: number;
+    billsToWarehouse: number;
+    trayAudit: { trayCount: number; emptyPositionsTotal: number } | null;
+    realIncome: number;
+    expectedRemainingCash: number;
+    physicalRemainingCash: number;
+    cashDifference: number;
+    cashOk: boolean;
+    unitDiscrepancy: { nayaxUnits: number; emptyLanes: number; deltaUnits: number } | null;
+  } | null> {
+    const [collection] = await db.select().from(cashCollections).where(and(
+      eq(cashCollections.id, cashCollectionId),
+      eq(cashCollections.tenantId, tenantId),
+    ));
+    if (!collection) return null;
+
+    const [machine] = await db.select({ id: machines.id, name: machines.name, code: machines.code })
+      .from(machines)
+      .where(and(eq(machines.id, collection.machineId), eq(machines.tenantId, tenantId)));
+
+    let serviceRecord: any = null;
+    if (collection.serviceRecordId) {
+      const [sr] = await db.select({ id: serviceRecords.id, startTime: serviceRecords.startTime, endTime: serviceRecords.endTime })
+        .from(serviceRecords)
+        .where(and(eq(serviceRecords.id, collection.serviceRecordId), eq(serviceRecords.tenantId, tenantId)));
+      serviceRecord = sr ?? null;
+    }
+
+    const rangeEnd = serviceRecord?.endTime ?? collection.createdAt ?? new Date();
+    const rangeStart = serviceRecord?.startTime
+      ?? new Date(new Date(rangeEnd).getTime() - 24 * 60 * 60 * 1000);
+
+    const [fund] = await db.select({
+      totalAmount: changeFunds.totalAmount,
+      status: changeFunds.status,
+    })
+      .from(changeFunds)
+      .where(and(
+        eq(changeFunds.tenantId, tenantId),
+        eq(changeFunds.cashCollectionId, cashCollectionId),
+      ))
+      .limit(1);
+
+    const [nayaxAgg] = await db.select({
+      totalAmount: sql<string>`COALESCE(SUM(${nayaxTransactions.settlementValue}), 0)`,
+      totalCash: sql<string>`COALESCE(SUM(CASE WHEN ${nayaxTransactions.paymentCategory} = 'cash' THEN ${nayaxTransactions.settlementValue} ELSE 0 END), 0)`,
+      totalCard: sql<string>`COALESCE(SUM(CASE WHEN ${nayaxTransactions.paymentCategory} = 'card' THEN ${nayaxTransactions.settlementValue} ELSE 0 END), 0)`,
+      totalOther: sql<string>`COALESCE(SUM(CASE WHEN ${nayaxTransactions.paymentCategory} = 'other' THEN ${nayaxTransactions.settlementValue} ELSE 0 END), 0)`,
+      txCount: sql<number>`COUNT(*)::int`,
+      unitsSold: sql<number>`COALESCE(SUM(${nayaxTransactions.quantity}), 0)::int`,
+    })
+      .from(nayaxTransactions)
+      .where(and(
+        eq(nayaxTransactions.tenantId, tenantId),
+        eq(nayaxTransactions.machineId, collection.machineId),
+        gte(nayaxTransactions.settlementDate, rangeStart),
+        lte(nayaxTransactions.settlementDate, rangeEnd),
+      ));
+
+    const denominations = await db.select({
+      countType: cashDenominationCounts.countType,
+      denomination: cashDenominationCounts.denomination,
+      denominationType: cashDenominationCounts.denominationType,
+      quantity: cashDenominationCounts.quantity,
+      subtotal: cashDenominationCounts.subtotal,
+    })
+      .from(cashDenominationCounts)
+      .where(and(
+        eq(cashDenominationCounts.tenantId, tenantId),
+        eq(cashDenominationCounts.cashCollectionId, cashCollectionId),
+      ));
+
+    const physicalCashTotal = denominations
+      .filter(d => d.countType === "maquina")
+      .reduce((s, d) => s + Number(d.subtotal ?? 0), 0);
+
+    const [billsAgg] = await db.select({
+      total: sql<string>`COALESCE(SUM(${cashMovements.amount}), 0)`,
+    })
+      .from(cashMovements)
+      .where(and(
+        eq(cashMovements.tenantId, tenantId),
+        eq(cashMovements.cashCollectionId, cashCollectionId),
+        eq(cashMovements.type, "entrega_oficina"),
+      ));
+    const billsToWarehouse = Number(billsAgg?.total ?? 0);
+
+    const trays = collection.serviceRecordId ? await db.select({
+      trayNumber: trayAudits.trayNumber,
+      emptyPositions: trayAudits.emptyPositions,
+    })
+      .from(trayAudits)
+      .where(and(
+        eq(trayAudits.tenantId, tenantId),
+        eq(trayAudits.serviceRecordId, collection.serviceRecordId),
+      )) : [];
+
+    const trayAudit = trays.length > 0 ? {
+      trayCount: trays.length,
+      emptyPositionsTotal: trays.reduce((s, t) => s + (t.emptyPositions ?? 0), 0),
+    } : null;
+
+    const fundAmount = Number(fund?.totalAmount ?? 0);
+    const nayaxCash = Number(nayaxAgg?.totalCash ?? 0);
+    const nayaxCard = Number(nayaxAgg?.totalCard ?? 0);
+    const nayaxOther = Number(nayaxAgg?.totalOther ?? 0);
+    const nayaxTotal = Number(nayaxAgg?.totalAmount ?? 0);
+    const realIncome = nayaxTotal;
+    const expectedRemainingCash = fundAmount + nayaxCash - billsToWarehouse;
+    const cashDifference = physicalCashTotal - expectedRemainingCash;
+    const cashOk = Math.abs(cashDifference) < 1;
+
+    let unitDiscrepancy = null;
+    if (trayAudit) {
+      const nayaxUnits = nayaxAgg?.unitsSold ?? 0;
+      const emptyLanes = trayAudit.emptyPositionsTotal;
+      unitDiscrepancy = {
+        nayaxUnits,
+        emptyLanes,
+        deltaUnits: emptyLanes - nayaxUnits,
+      };
+    }
+
+    return {
+      cashCollection: collection,
+      machine: machine ?? null,
+      serviceRecord,
+      rangeStart,
+      rangeEnd,
+      changeFund: fund ?? null,
+      nayaxSummary: {
+        totalAmount: nayaxTotal,
+        totalCash: nayaxCash,
+        totalCard: nayaxCard,
+        totalOther: nayaxOther,
+        txCount: nayaxAgg?.txCount ?? 0,
+        unitsSold: nayaxAgg?.unitsSold ?? 0,
+      },
+      physicalDenominations: denominations.map(d => ({
+        countType: d.countType,
+        denomination: String(d.denomination),
+        denominationType: d.denominationType,
+        quantity: d.quantity,
+        subtotal: String(d.subtotal),
+      })),
+      physicalCashTotal,
+      billsToWarehouse,
+      trayAudit,
+      realIncome,
+      expectedRemainingCash,
+      physicalRemainingCash: physicalCashTotal,
+      cashDifference,
+      cashOk,
+      unitDiscrepancy,
+    };
   }
 }
 
