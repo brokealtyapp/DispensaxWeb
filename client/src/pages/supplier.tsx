@@ -3191,11 +3191,12 @@ export function SupplierPage() {
           {(() => {
             const trayCount = currentStop?.machine?.trayCount ?? 6;
             const lanesPerTray = currentStop?.machine?.lanesPerTray ?? 8;
-            const inventoryList: any[] = currentStop?.machine?.inventory ?? [];
+            type InventoryItem = { productId: string; trayNumber: number | null; laneNumber: number | null; product?: { name?: string } | null };
+            const inventoryList: InventoryItem[] = (currentStop?.machine?.inventory ?? []) as InventoryItem[];
             const fromTrayN = parseInt(laneChangeDraft.fromTray);
             const fromLaneN = parseInt(laneChangeDraft.fromLane);
             const sourceItem = inventoryList.find(
-              (it: any) => it.trayNumber === fromTrayN && it.laneNumber === fromLaneN,
+              (it) => it.trayNumber === fromTrayN && it.laneNumber === fromLaneN,
             );
             return (
               <div className="space-y-4">

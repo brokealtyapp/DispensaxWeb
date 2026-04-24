@@ -1083,9 +1083,11 @@ export function MoneyProductsPage() {
                             </thead>
                             <tbody>
                               {RD_DENOMINATIONS.map((d) => {
-                                const maq = selectedReconciliation.maquina?.find((c: any) => parseFloat(c.denomination) === d.value);
-                                const fondo = selectedReconciliation.fondoCambio?.find((c: any) => parseFloat(c.denomination) === d.value);
-                                const ent = selectedReconciliation.entrega?.find((c: any) => parseFloat(c.denomination) === d.value);
+                                type DenomCount = { denomination: string; quantity: number };
+                                const matchD = (c: DenomCount) => parseFloat(c.denomination) === d.value;
+                                const maq = (selectedReconciliation.maquina as DenomCount[] | undefined)?.find(matchD);
+                                const fondo = (selectedReconciliation.fondoCambio as DenomCount[] | undefined)?.find(matchD);
+                                const ent = (selectedReconciliation.entrega as DenomCount[] | undefined)?.find(matchD);
                                 const maqQty = maq?.quantity || 0;
                                 const fondoQty = fondo?.quantity || 0;
                                 const entQty = ent?.quantity || 0;
@@ -1123,7 +1125,9 @@ export function MoneyProductsPage() {
               </Card>
 
               {selectedCollectionId && (() => {
-                const sel = (cashCollections || []).find((c: any) => c.id === selectedCollectionId);
+                const sel = ((cashCollections ?? []) as Array<{ id: string; serviceRecordId?: string | null }>).find(
+                  (c) => c.id === selectedCollectionId,
+                );
                 const serviceRecordId = sel?.serviceRecordId;
                 if (!serviceRecordId) return null;
                 return <CollectionTrayAuditPanel serviceRecordId={serviceRecordId} />;
