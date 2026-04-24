@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, HttpError } from "./storage";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc, or, inArray, count, ne, SQL } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -3089,8 +3089,9 @@ export async function registerRoutes(
         return res.status(400).json({ error: error.errors });
       }
       console.error("Error creating lane change event:", error);
-      const status = (error as any).statusCode === 409 ? 409 : 400;
-      res.status(status).json({ error: (error as Error).message || "Error al registrar cambio de carril" });
+      const status = error instanceof HttpError ? error.statusCode : 400;
+      const message = error instanceof Error ? error.message : "Error al registrar cambio de carril";
+      res.status(status).json({ error: message });
     }
   });
 

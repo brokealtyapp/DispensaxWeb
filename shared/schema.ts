@@ -1010,6 +1010,7 @@ export const trayAudits = pgTable("tray_audits", {
 }, (table) => [
   index("idx_tray_audits_service").on(table.serviceRecordId),
   index("idx_tray_audits_machine").on(table.machineId),
+  uniqueIndex("uq_tray_audits_service_tray").on(table.serviceRecordId, table.trayNumber),
 ]);
 
 export const insertTrayAuditSchema = createInsertSchema(trayAudits).omit({

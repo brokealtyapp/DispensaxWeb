@@ -818,6 +818,15 @@ export interface IStorage {
   deleteWorkOrderType(id: string, tenantId: string): Promise<boolean>;
 }
 
+export class HttpError extends Error {
+  statusCode: number;
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.name = "HttpError";
+    this.statusCode = statusCode;
+  }
+}
+
 export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -1250,11 +1259,10 @@ export class DatabaseStorage implements IStorage {
         occupied.productId !== payload.productId &&
         occupied.productId !== payload.previousProductId
       ) {
-        const err: any = new Error(
+        throw new HttpError(
+          409,
           `Posición destino B${payload.toTrayNumber}-C${payload.toLaneNumber} ya está ocupada. Indica el cambio explícitamente o elige otra posición.`
         );
-        err.statusCode = 409;
-        throw err;
       }
       // Caso swap explícito: liberamos la posición del producto previo en el destino.
       if (occupied && occupied.productId === payload.previousProductId) {
@@ -1352,7 +1360,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTrayAudit(payload: InsertTrayAudit): Promise<TrayAudit> {
-    const [audit] = await db.insert(trayAudits).values(payload).returning();
+    const [audit] = await db
+      .insert(trayAudits)
+      .values(payload)
+      .onConflictDoUpdate({
+        target: [trayAudits.serviceRecordId, trayAudits.trayNumber],
+        set: {
+          emptyPositions: payload.emptyPositions,
+          totalLanes: payload.totalLanes,
+          notes: payload.notes,
+          userId: payload.userId,
+        },
+      })
+      .returning();
     return audit;
   }
 

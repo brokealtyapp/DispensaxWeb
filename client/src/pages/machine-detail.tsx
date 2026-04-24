@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,6 +60,7 @@ import {
   Banknote,
   Copy,
   Settings as SettingsIcon,
+  Grid3x3,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -1510,7 +1512,124 @@ export function MachineDetailPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="inventario" className="mt-4">
+        <TabsContent value="inventario" className="mt-4 space-y-4">
+          {canEditLayout && machine?.inventory && (
+            <Card data-testid="card-planogram-grid-editor">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Grid3x3 className="h-5 w-5" />
+                  Editor de Planograma
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Click en una celda para asignar o cambiar el SKU de esa posición ({machine.trayCount ?? 6} bandejas × {machine.lanesPerTray ?? 8} carriles).
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(() => {
+                  const trayCount = machine.trayCount ?? 6;
+                  const lanesPerTray = machine.lanesPerTray ?? 8;
+                  const lookup = new Map<string, any>();
+                  (machine.inventory as any[]).forEach((it: any) => {
+                    if (it.trayNumber != null && it.laneNumber != null) {
+                      lookup.set(`${it.trayNumber}-${it.laneNumber}`, it);
+                    }
+                  });
+                  return Array.from({ length: trayCount }, (_, i) => i + 1).map((tray) => (
+                    <div key={tray} className="space-y-1" data-testid={`grid-editor-tray-${tray}`}>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">Bandeja {tray}</Badge>
+                        <span className="text-xs text-muted-foreground">{lanesPerTray} carriles</span>
+                      </div>
+                      <div
+                        className="grid gap-1"
+                        style={{ gridTemplateColumns: `repeat(${Math.min(lanesPerTray, 8)}, minmax(0, 1fr))` }}
+                      >
+                        {Array.from({ length: lanesPerTray }, (_, j) => j + 1).map((lane) => {
+                          const item = lookup.get(`${tray}-${lane}`);
+                          return (
+                            <Popover key={lane}>
+                              <PopoverTrigger asChild>
+                                <button
+                                  type="button"
+                                  className={`p-2 rounded-md border text-xs flex flex-col items-center justify-center min-h-14 text-center hover-elevate active-elevate-2 ${
+                                    item ? "bg-card" : "bg-muted/40 border-dashed"
+                                  }`}
+                                  data-testid={`grid-cell-${tray}-${lane}`}
+                                  title={item?.product?.name || "Vacío"}
+                                >
+                                  <span className="font-mono text-[10px] text-muted-foreground">
+                                    B{tray}-C{lane}
+                                  </span>
+                                  <span className="truncate w-full">
+                                    {item?.product?.name || (
+                                      <span className="text-muted-foreground italic">Vacío</span>
+                                    )}
+                                  </span>
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-64 p-2" data-testid={`popover-cell-${tray}-${lane}`}>
+                                <p className="text-xs font-medium mb-2">
+                                  Asignar SKU a B{tray}-C{lane}
+                                </p>
+                                <div className="space-y-1 max-h-64 overflow-y-auto">
+                                  {item && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="w-full justify-start text-xs"
+                                      onClick={() => {
+                                        updatePositionMutation.mutate({
+                                          productId: item.productId,
+                                          trayNumber: null,
+                                          laneNumber: null,
+                                        });
+                                      }}
+                                      data-testid={`button-clear-cell-${tray}-${lane}`}
+                                    >
+                                      <XCircle className="h-3 w-3 mr-2" />
+                                      Vaciar posición
+                                    </Button>
+                                  )}
+                                  {(machine.inventory as any[]).map((inv: any) => {
+                                    const isHere = inv.trayNumber === tray && inv.laneNumber === lane;
+                                    return (
+                                      <Button
+                                        key={inv.id}
+                                        variant={isHere ? "secondary" : "ghost"}
+                                        size="sm"
+                                        className="w-full justify-start text-xs"
+                                        disabled={isHere || updatePositionMutation.isPending}
+                                        onClick={() => {
+                                          updatePositionMutation.mutate({
+                                            productId: inv.productId,
+                                            trayNumber: tray,
+                                            laneNumber: lane,
+                                          });
+                                        }}
+                                        data-testid={`button-assign-${inv.productId}-${tray}-${lane}`}
+                                      >
+                                        <span className="truncate">{inv.product?.name || "Producto"}</span>
+                                        {inv.trayNumber && inv.laneNumber && !isHere && (
+                                          <Badge variant="outline" className="ml-auto text-[10px]">
+                                            B{inv.trayNumber}-C{inv.laneNumber}
+                                          </Badge>
+                                        )}
+                                      </Button>
+                                    );
+                                  })}
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
               <div className="flex flex-col gap-1">
