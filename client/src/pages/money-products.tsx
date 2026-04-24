@@ -256,6 +256,102 @@ function RecentTrayAuditsPanel() {
   );
 }
 
+function CollectionTrayAuditPanel({ machineId }: { machineId: string }) {
+  const { data: audits = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/tray-audits/recent", { machineId }],
+    enabled: !!machineId,
+  });
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Auditoría de Bandejas (último servicio)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const grouped = audits.reduce<Record<string, any[]>>((acc, audit) => {
+    const key = `${audit.serviceRecordId}|${audit.machineId}`;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(audit);
+    return acc;
+  }, {});
+  const groups = Object.entries(grouped).sort(([, a], [, b]) => {
+    const maxA = Math.max(...a.map((x) => new Date(x.createdAt).getTime()));
+    const maxB = Math.max(...b.map((x) => new Date(x.createdAt).getTime()));
+    return maxB - maxA;
+  });
+  const lastGroup = groups[0];
+
+  return (
+    <Card data-testid="card-collection-tray-audit">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Package className="h-5 w-5" />
+          Auditoría de Bandejas (último servicio)
+        </CardTitle>
+        <CardDescription>
+          Posiciones vacías reportadas por el abastecedor en el servicio más reciente de esta máquina.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!lastGroup ? (
+          <div className="text-center py-6 text-muted-foreground" data-testid="empty-state-collection-tray-audit">
+            <p className="text-sm">No hay auditoría de bandejas registrada para esta máquina</p>
+          </div>
+        ) : (() => {
+          const items = lastGroup[1];
+          const first = items[0];
+          const totalEmpty = items.reduce((sum, it) => sum + (it.emptyPositions ?? 0), 0);
+          const totalLanes = items.reduce((sum, it) => sum + (it.totalLanes ?? 0), 0);
+          return (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">{first.userName}</Badge>
+                <span className="text-xs text-muted-foreground">{formatDateTime(first.createdAt)}</span>
+                <Badge variant="secondary" className="ml-auto">
+                  {totalEmpty}/{totalLanes} carriles vacíos
+                </Badge>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {items
+                  .sort((a, b) => (a.trayNumber ?? 0) - (b.trayNumber ?? 0))
+                  .map((it) => (
+                    <Badge
+                      key={it.id}
+                      variant={it.emptyPositions > 0 ? "destructive" : "outline"}
+                      data-testid={`badge-collection-tray-audit-${it.id}`}
+                    >
+                      B{it.trayNumber}: {it.emptyPositions}/{it.totalLanes}
+                    </Badge>
+                  ))}
+              </div>
+              {items.some((it) => it.notes) && (
+                <div className="space-y-1">
+                  {items
+                    .filter((it) => it.notes)
+                    .map((it) => (
+                      <p key={`note-${it.id}`} className="text-xs text-muted-foreground italic">
+                        B{it.trayNumber}: “{it.notes}”
+                      </p>
+                    ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function MoneyProductsPage() {
   const { toast } = useToast();
   const { canCreate } = usePermissions();
@@ -991,6 +1087,13 @@ export function MoneyProductsPage() {
                   )}
                 </CardContent>
               </Card>
+
+              {selectedCollectionId && (() => {
+                const sel = (cashCollections || []).find((c: any) => c.id === selectedCollectionId);
+                const machineId = sel?.machineId;
+                if (!machineId) return null;
+                return <CollectionTrayAuditPanel machineId={machineId} />;
+              })()}
             </div>
           </TabsContent>
 

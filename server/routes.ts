@@ -1433,7 +1433,7 @@ export async function registerRoutes(
 
       const layoutSchema = z.object({
         trayCount: z.number().int().min(1).max(20),
-        lanesPerTray: z.number().int().min(1).max(30),
+        lanesPerTray: z.number().int().min(1).max(20),
       });
       const data = layoutSchema.parse(req.body);
 
@@ -3188,7 +3188,8 @@ export async function registerRoutes(
       const tenantId = req.user?.tenantId;
       if (!tenantId) return res.status(401).json({ error: "No autenticado" });
       const limit = Math.min(parseInt(String(req.query.limit ?? "50"), 10) || 50, 200);
-      const audits = await storage.getRecentTrayAudits(tenantId, limit);
+      const machineId = typeof req.query.machineId === "string" ? req.query.machineId : undefined;
+      const audits = await storage.getRecentTrayAudits(tenantId, limit, machineId);
       res.json(audits);
     } catch (error) {
       console.error("Error fetching recent tray audits:", error);

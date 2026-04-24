@@ -218,7 +218,7 @@ export interface IStorage {
   getPendingLaneChangeEvents(tenantId: string, opts?: { machineId?: string; limit?: number }): Promise<any[]>;
   createTrayAudit(payload: InsertTrayAudit): Promise<TrayAudit>;
   getTrayAuditsForService(serviceRecordId: string, tenantId: string): Promise<TrayAudit[]>;
-  getRecentTrayAudits(tenantId: string, limit?: number): Promise<any[]>;
+  getRecentTrayAudits(tenantId: string, limit?: number, machineId?: string): Promise<any[]>;
   getRefillSuggestion(machineId: string, supplierUserId: string): Promise<{
     effectiveMode: "standard" | "manual";
     globalDefault: "standard" | "manual";
@@ -1275,7 +1275,9 @@ export class DatabaseStorage implements IStorage {
           ));
       }
 
-      // Asignar la nueva posición al producto entrante (si existe en el inventario)
+      // Asignar la nueva posición al producto entrante. Si el producto no existe aún
+      // en machine_inventory de esta máquina, lo creamos con cantidad 0 para garantizar
+      // que el planograma quede persistido independientemente del estado previo.
       const [target] = await tx.select().from(machineInventory)
         .where(and(
           eq(machineInventory.machineId, payload.machineId),
@@ -1289,6 +1291,15 @@ export class DatabaseStorage implements IStorage {
             lastUpdated: new Date(),
           })
           .where(eq(machineInventory.id, target.id));
+      } else {
+        await tx.insert(machineInventory).values({
+          tenantId: payload.tenantId,
+          machineId: payload.machineId,
+          productId: payload.productId,
+          currentQuantity: 0,
+          trayNumber: payload.toTrayNumber,
+          laneNumber: payload.toLaneNumber,
+        });
       }
 
       const [event] = await tx.insert(laneChangeEvents).values(payload).returning();
@@ -1354,7 +1365,9 @@ export class DatabaseStorage implements IStorage {
       .orderBy(trayAudits.trayNumber);
   }
 
-  async getRecentTrayAudits(tenantId: string, limit: number = 50): Promise<any[]> {
+  async getRecentTrayAudits(tenantId: string, limit: number = 50, machineId?: string): Promise<any[]> {
+    const conds = [eq(trayAudits.tenantId, tenantId)];
+    if (machineId) conds.push(eq(trayAudits.machineId, machineId));
     const rows = await db.select({
       audit: trayAudits,
       machineName: machines.name,
@@ -1364,7 +1377,7 @@ export class DatabaseStorage implements IStorage {
       .from(trayAudits)
       .leftJoin(machines, eq(machines.id, trayAudits.machineId))
       .leftJoin(users, eq(users.id, trayAudits.userId))
-      .where(eq(trayAudits.tenantId, tenantId))
+      .where(and(...conds))
       .orderBy(desc(trayAudits.createdAt))
       .limit(limit);
 
