@@ -1480,6 +1480,111 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/planograms", authenticateJWT, authorizeAction("machines", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const data = await storage.getTenantPlanograms(tenantId);
+
+      // Si supervisor, filtrar máquinas por zona asignada (igual que /api/machines)
+      if (req.user?.role === "supervisor") {
+        const fullUser = await storage.getUser(req.user.userId);
+        if (fullUser?.assignedZone) {
+          const allowedMachines = data.machines.filter(m => m.zone === fullUser.assignedZone);
+          const allowedIds = new Set(allowedMachines.map(m => m.id));
+          res.json({
+            machines: allowedMachines,
+            products: data.products,
+            entries: data.entries.filter(e => allowedIds.has(e.machineId)),
+          });
+          return;
+        }
+      }
+
+      res.json(data);
+    } catch (error) {
+      console.error("Error getting planograms:", error);
+      res.status(500).json({ error: "Error al obtener planogramas" });
+    }
+  });
+
+  app.post("/api/planograms/bulk", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const bulkSchema = z.object({
+        productId: z.string().min(1),
+        machineIds: z.array(z.string().min(1)).min(1, "Debes seleccionar al menos una máquina"),
+        maxCapacity: z.number().int().min(1).optional(),
+        minLevel: z.number().int().min(0).optional(),
+        standardQuantity: z.number().int().min(0).nullable().optional(),
+      }).refine(
+        (data) =>
+          data.maxCapacity !== undefined ||
+          data.minLevel !== undefined ||
+          data.standardQuantity !== undefined,
+        { message: "Debes especificar al menos un valor a aplicar" }
+      ).refine(
+        (data) =>
+          data.standardQuantity === undefined ||
+          data.standardQuantity === null ||
+          data.maxCapacity === undefined ||
+          data.standardQuantity <= data.maxCapacity,
+        { message: "La carga estándar no puede ser mayor a la capacidad máxima", path: ["standardQuantity"] }
+      );
+
+      const data = bulkSchema.parse(req.body);
+
+      // Si supervisor, restringir a máquinas de su zona
+      let allowedMachineIds = data.machineIds;
+      if (req.user?.role === "supervisor") {
+        const fullUser = await storage.getUser(req.user.userId);
+        if (fullUser?.assignedZone) {
+          const allMachines = await storage.getMachinesEnriched(tenantId, { zone: fullUser.assignedZone });
+          const zoneIds = new Set(allMachines.map(m => m.id));
+          allowedMachineIds = data.machineIds.filter(id => zoneIds.has(id));
+          if (allowedMachineIds.length === 0) {
+            return res.status(403).json({ error: "Ninguna máquina seleccionada pertenece a tu zona" });
+          }
+        }
+      }
+
+      const result = await storage.bulkUpdateMachineInventoryConfig(
+        tenantId,
+        data.productId,
+        allowedMachineIds,
+        {
+          maxCapacity: data.maxCapacity,
+          minLevel: data.minLevel,
+          standardQuantity: data.standardQuantity,
+        }
+      );
+
+      const adjustedSuffix = result.adjusted.length > 0
+        ? `. Carga estándar ajustada en ${result.adjusted.length} máquina(s) por capacidad máxima menor`
+        : "";
+      res.json({
+        message: `Planograma aplicado: ${result.updated} actualizada(s), ${result.created} creada(s)${result.skipped > 0 ? `, ${result.skipped} omitida(s)` : ""}${adjustedSuffix}`,
+        ...result,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      if (error instanceof Error && error.message === "PRODUCT_NOT_FOUND") {
+        return res.status(404).json({ error: "Producto no encontrado" });
+      }
+      console.error("Error applying bulk planogram:", error);
+      res.status(500).json({ error: "Error al aplicar planograma" });
+    }
+  });
+
   app.get("/api/machines/:id/alerts", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyMachineTenant(req.params.id, req, res)) return;

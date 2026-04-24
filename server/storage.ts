@@ -211,6 +211,22 @@ export interface IStorage {
   updateMachineInventory(machineId: string, productId: string, quantity: number): Promise<MachineInventory | undefined>;
   updateMachineInventoryConfig(machineId: string, productId: string, config: { maxCapacity?: number; minLevel?: number; standardQuantity?: number | null }): Promise<MachineInventory | undefined>;
   setMachineInventory(inventory: InsertMachineInventory): Promise<MachineInventory>;
+  getTenantPlanograms(tenantId: string): Promise<{
+    machines: Array<{ id: string; name: string; code: string | null; zone: string | null }>;
+    products: Array<{ id: string; name: string; code: string | null; category: string | null }>;
+    entries: Array<{ machineId: string; productId: string; currentQuantity: number; maxCapacity: number; minLevel: number; standardQuantity: number | null }>;
+  }>;
+  bulkUpdateMachineInventoryConfig(
+    tenantId: string,
+    productId: string,
+    machineIds: string[],
+    config: { maxCapacity?: number; minLevel?: number; standardQuantity?: number | null }
+  ): Promise<{
+    updated: number;
+    created: number;
+    skipped: number;
+    adjusted: Array<{ machineId: string; requestedStandard: number; appliedStandard: number; maxCapacity: number }>;
+  }>;
   copyPlanogramFromMachine(sourceMachineId: string, targetMachineId: string, tenantId: string): Promise<{ copied: number; skipped: number }>;
   updateMachineLayout(machineId: string, tenantId: string, layout: { trayCount: number; lanesPerTray: number }): Promise<Machine | undefined>;
   assignInventoryPosition(machineId: string, productId: string, tenantId: string, position: { trayNumber: number | null; laneNumber: number | null }): Promise<MachineInventory | undefined>;
@@ -1095,6 +1111,164 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(machineInventory.machineId, machineId), eq(machineInventory.productId, productId)))
       .returning();
     return updated;
+  }
+
+  async getTenantPlanograms(tenantId: string): Promise<{
+    machines: Array<{ id: string; name: string; code: string | null; zone: string | null }>;
+    products: Array<{ id: string; name: string; code: string | null; category: string | null }>;
+    entries: Array<{ machineId: string; productId: string; currentQuantity: number; maxCapacity: number; minLevel: number; standardQuantity: number | null }>;
+  }> {
+    const machineRows = await db
+      .select({
+        id: machines.id,
+        name: machines.name,
+        code: machines.code,
+        zone: machines.zone,
+      })
+      .from(machines)
+      .where(and(eq(machines.tenantId, tenantId), eq(machines.isActive, true)))
+      .orderBy(asc(machines.name));
+
+    if (machineRows.length === 0) {
+      return { machines: [], products: [], entries: [] };
+    }
+
+    const machineIds = machineRows.map(m => m.id);
+
+    const inventoryRows = await db
+      .select({
+        machineId: machineInventory.machineId,
+        productId: machineInventory.productId,
+        currentQuantity: machineInventory.currentQuantity,
+        maxCapacity: machineInventory.maxCapacity,
+        minLevel: machineInventory.minLevel,
+        standardQuantity: machineInventory.standardQuantity,
+      })
+      .from(machineInventory)
+      .where(and(
+        eq(machineInventory.tenantId, tenantId),
+        inArray(machineInventory.machineId, machineIds),
+      ));
+
+    const productRows = await db
+      .select({
+        id: products.id,
+        name: products.name,
+        code: products.code,
+        category: products.category,
+      })
+      .from(products)
+      .where(and(eq(products.tenantId, tenantId), eq(products.isActive, true)))
+      .orderBy(asc(products.name));
+
+    return {
+      machines: machineRows.map(m => ({ ...m })),
+      products: productRows.map(p => ({ ...p })),
+      entries: inventoryRows.map(r => ({
+        machineId: r.machineId,
+        productId: r.productId,
+        currentQuantity: r.currentQuantity ?? 0,
+        maxCapacity: r.maxCapacity ?? 20,
+        minLevel: r.minLevel ?? 5,
+        standardQuantity: r.standardQuantity,
+      })),
+    };
+  }
+
+  async bulkUpdateMachineInventoryConfig(
+    tenantId: string,
+    productId: string,
+    machineIds: string[],
+    config: { maxCapacity?: number; minLevel?: number; standardQuantity?: number | null }
+  ): Promise<{
+    updated: number;
+    created: number;
+    skipped: number;
+    adjusted: Array<{ machineId: string; requestedStandard: number; appliedStandard: number; maxCapacity: number }>;
+  }> {
+    if (machineIds.length === 0) {
+      return { updated: 0, created: 0, skipped: 0, adjusted: [] };
+    }
+
+    return db.transaction(async (tx) => {
+      // Verify ownership of all target machines
+      const ownedMachines = await tx
+        .select({ id: machines.id })
+        .from(machines)
+        .where(and(
+          eq(machines.tenantId, tenantId),
+          inArray(machines.id, machineIds),
+        ));
+      const ownedIds = new Set(ownedMachines.map(m => m.id));
+
+      // Verify product belongs to tenant
+      const [product] = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(and(eq(products.id, productId), eq(products.tenantId, tenantId)));
+      if (!product) {
+        throw new Error("PRODUCT_NOT_FOUND");
+      }
+
+      let updated = 0;
+      let created = 0;
+      let skipped = 0;
+      const adjusted: Array<{ machineId: string; requestedStandard: number; appliedStandard: number; maxCapacity: number }> = [];
+
+      for (const machineId of machineIds) {
+        if (!ownedIds.has(machineId)) {
+          skipped++;
+          continue;
+        }
+
+        const [existing] = await tx
+          .select()
+          .from(machineInventory)
+          .where(and(
+            eq(machineInventory.machineId, machineId),
+            eq(machineInventory.productId, productId),
+          ));
+
+        if (existing) {
+          const effectiveMax = config.maxCapacity ?? existing.maxCapacity ?? 20;
+          let effectiveStd: number | null | undefined = config.standardQuantity;
+          if (effectiveStd !== undefined && effectiveStd !== null && effectiveStd > effectiveMax) {
+            adjusted.push({ machineId, requestedStandard: effectiveStd, appliedStandard: effectiveMax, maxCapacity: effectiveMax });
+            effectiveStd = effectiveMax;
+          }
+
+          const updateData: Record<string, unknown> = { lastUpdated: new Date() };
+          if (config.maxCapacity !== undefined) updateData.maxCapacity = config.maxCapacity;
+          if (config.minLevel !== undefined) updateData.minLevel = config.minLevel;
+          if (config.standardQuantity !== undefined) updateData.standardQuantity = effectiveStd;
+
+          await tx.update(machineInventory)
+            .set(updateData)
+            .where(eq(machineInventory.id, existing.id));
+          updated++;
+        } else {
+          const maxCapacity = config.maxCapacity ?? 20;
+          let standardQuantity: number | null = config.standardQuantity ?? null;
+          if (standardQuantity !== null && standardQuantity > maxCapacity) {
+            adjusted.push({ machineId, requestedStandard: standardQuantity, appliedStandard: maxCapacity, maxCapacity });
+            standardQuantity = maxCapacity;
+          }
+
+          await tx.insert(machineInventory).values({
+            tenantId,
+            machineId,
+            productId,
+            currentQuantity: 0,
+            maxCapacity,
+            minLevel: config.minLevel ?? 5,
+            standardQuantity,
+          });
+          created++;
+        }
+      }
+
+      return { updated, created, skipped, adjusted };
+    });
   }
 
   async copyPlanogramFromMachine(

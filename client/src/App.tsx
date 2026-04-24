@@ -13,6 +13,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { AuthPage } from "@/pages/auth";
 import { DashboardPage } from "@/pages/dashboard";
 import { MachinesPage } from "@/pages/machines";
+import { PlanogramsPage } from "@/pages/planograms";
 import { MachineDetailPage } from "@/pages/machine-detail";
 import { SupplierPage } from "@/pages/supplier";
 import { WarehousePage } from "@/pages/warehouse";
@@ -306,6 +307,7 @@ function TenantLayout() {
               <Route path="/contabilidad-panel">{() => <ProtectedRoute path="/contabilidad-panel" component={ContabilidadPanelPage} />}</Route>
               <Route path="/maquinas">{() => <ProtectedRoute path="/maquinas" component={MachinesPage} />}</Route>
               <Route path="/maquinas/:id">{() => <ProtectedRoute path="/maquinas" component={MachineDetailPage} />}</Route>
+              <Route path="/planogramas">{() => <ProtectedRoute path="/planogramas" component={PlanogramsPage} />}</Route>
               <Route path="/tareas">{() => <ProtectedRoute path="/tareas" component={TasksTodayPage} />}</Route>
               <Route path="/todas-tareas">{() => <ProtectedRoute path="/todas-tareas" component={TasksPage} />}</Route>
               <Route path="/mis-tareas">{() => <ProtectedRoute path="/mis-tareas" component={MyTasksPage} />}</Route>
