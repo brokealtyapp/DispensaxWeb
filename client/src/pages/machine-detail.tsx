@@ -295,10 +295,13 @@ export function MachineDetailPage() {
   const updateMachineMutation = useMutation({
     mutationFn: async (data: MachineEditFormData) => {
       // El servidor espera null cuando no hay override; el form usa "default" como sentinel
-      const payload: any = { ...data };
-      if (payload.refillModeOverride === "default") {
-        payload.refillModeOverride = null;
-      }
+      const { refillModeOverride, ...rest } = data;
+      const payload: Omit<MachineEditFormData, "refillModeOverride"> & {
+        refillModeOverride: "standard" | "manual" | null;
+      } = {
+        ...rest,
+        refillModeOverride: refillModeOverride === "default" ? null : refillModeOverride,
+      };
       const response = await apiRequest("PATCH", `/api/machines/${machineId}`, payload);
       return response.json();
     },
@@ -1552,7 +1555,7 @@ export function MachineDetailPage() {
                         size="icon"
                         variant="ghost"
                         className="h-8 w-8"
-                        onClick={() => setPlanogramItem(item as any)}
+                        onClick={() => setPlanogramItem(item)}
                         data-testid={`button-planogram-${item.id}`}
                         title="Configurar planograma"
                       >

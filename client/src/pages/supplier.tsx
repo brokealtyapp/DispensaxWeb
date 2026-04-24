@@ -170,16 +170,25 @@ interface ProductToLoad {
 
 type RefillMode = "standard" | "manual";
 
+interface RefillWarning {
+  productId: string;
+  productName: string;
+  currentQuantity: number;
+  maxCapacity: number;
+  reason: "no_standard_configured";
+}
+
 interface RefillSuggestionResponse {
   effectiveMode: RefillMode;
   globalDefault: RefillMode;
   override: RefillMode | null;
+  warnings?: RefillWarning[];
   items: Array<{
     productId: string;
     productName: string;
     currentQuantity: number;
     maxCapacity: number;
-    standardQuantity: number | null;
+    standardQuantity: number;
     targetQuantity: number;
     suggestedQuantity: number;
     vehicleAvailable: number;
@@ -1021,7 +1030,7 @@ export function SupplierPage() {
 
     const initialProducts: ProductToLoad[] = (products || []).map(p => {
       const sugg = itemsBySource.find((i) => i.productId === p.id);
-      const invItem = machineInv.find((i: any) => i.productId === p.id);
+      const invItem = machineInv.find((i: { productId: string; currentQuantity?: number; maxCapacity?: number }) => i.productId === p.id);
       const currentInMachine = sugg?.currentQuantity ?? invItem?.currentQuantity ?? 0;
       const maxCapacity = sugg?.maxCapacity ?? invItem?.maxCapacity ?? 20;
       const standardQuantity = sugg?.standardQuantity ?? null;
@@ -1048,8 +1057,10 @@ export function SupplierPage() {
     })));
   };
 
-  const resetToZero = () => {
-    setProductsToLoad(prev => prev.map(p => ({ ...p, quantity: 0 })));
+  // Cambia el modo del diálogo sin destruir las cantidades capturadas.
+  // El operador puede alternar entre estándar y manual sin perder su trabajo.
+  const switchLoadMode = (mode: RefillMode) => {
+    setLoadDialogMode(mode);
   };
 
   const updateProductQuantity = (productId: string, delta: number) => {
@@ -2593,10 +2604,7 @@ export function SupplierPage() {
                       type="button"
                       size="sm"
                       variant="ghost"
-                      onClick={() => {
-                        setLoadDialogMode("manual");
-                        resetToZero();
-                      }}
+                      onClick={() => switchLoadMode("manual")}
                       data-testid="button-switch-manual"
                     >
                       Cambiar a manual
@@ -2607,10 +2615,7 @@ export function SupplierPage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={() => {
-                      setLoadDialogMode("standard");
-                      applyStandardSuggestion();
-                    }}
+                    onClick={() => switchLoadMode("standard")}
                     data-testid="button-switch-standard"
                   >
                     Volver a sugerencia estándar
@@ -2620,9 +2625,38 @@ export function SupplierPage() {
             </div>
           )}
 
+          {refillSuggestionData?.warnings && refillSuggestionData.warnings.length > 0 && (
+            <div
+              className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-700 dark:bg-amber-950"
+              data-testid="panel-refill-warnings"
+            >
+              <p className="font-medium text-amber-800 dark:text-amber-200 mb-1">
+                Productos sin estándar configurado ({refillSuggestionData.warnings.length})
+              </p>
+              <ul className="space-y-0.5 text-amber-700 dark:text-amber-300">
+                {refillSuggestionData.warnings.map((w) => (
+                  <li
+                    key={w.productId}
+                    data-testid={`warning-no-standard-${w.productId}`}
+                  >
+                    {w.productName} — En máquina: {w.currentQuantity}/{w.maxCapacity}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-amber-700 dark:text-amber-300">
+                Configura el planograma para incluirlos en la sugerencia automática.
+              </p>
+            </div>
+          )}
+
           <ScrollArea className="flex-1 pr-4">
             <div className="space-y-3">
-              {productsToLoad.map((product) => {
+              {productsToLoad
+                .filter(product =>
+                  // En modo estándar excluimos SKUs sin standard configurado
+                  loadDialogMode !== "standard" || typeof product.standardQuantity === "number"
+                )
+                .map((product) => {
                 const remaining = Math.max(0, product.maxCapacity - product.currentInMachine);
                 const showStandard = loadDialogMode === "standard" && typeof product.standardQuantity === "number";
                 const standardTarget = typeof product.standardQuantity === "number" ? product.standardQuantity : null;

@@ -1334,7 +1334,7 @@ export async function registerRoutes(
         }
       }
 
-      let inventory: any;
+      let inventory: Awaited<ReturnType<typeof storage.updateMachineInventory>>;
 
       if (newQuantity !== undefined) {
         inventory = await storage.updateMachineInventory(

@@ -217,10 +217,17 @@ export interface IStorage {
       productName: string;
       currentQuantity: number;
       maxCapacity: number;
-      standardQuantity: number | null;
+      standardQuantity: number;
       targetQuantity: number;
       suggestedQuantity: number;
       vehicleAvailable: number;
+    }>;
+    warnings: Array<{
+      productId: string;
+      productName: string;
+      currentQuantity: number;
+      maxCapacity: number;
+      reason: "no_standard_configured";
     }>;
   }>;
   
@@ -1042,7 +1049,13 @@ export class DatabaseStorage implements IStorage {
       return updated;
     }
     
-    const [newInventory] = await db.insert(machineInventory).values(inventory).returning();
+    // Por defecto, la carga estándar se inicializa igual a la capacidad máxima
+    // para que el modo estándar funcione fuera-de-la-caja en planogramas nuevos.
+    const insertValues: InsertMachineInventory = {
+      ...inventory,
+      standardQuantity: inventory.standardQuantity ?? inventory.maxCapacity ?? 20,
+    };
+    const [newInventory] = await db.insert(machineInventory).values(insertValues).returning();
     return newInventory;
   }
 
@@ -1127,15 +1140,22 @@ export class DatabaseStorage implements IStorage {
       productName: string;
       currentQuantity: number;
       maxCapacity: number;
-      standardQuantity: number | null;
+      standardQuantity: number;
       targetQuantity: number;
       suggestedQuantity: number;
       vehicleAvailable: number;
     }>;
+    warnings: Array<{
+      productId: string;
+      productName: string;
+      currentQuantity: number;
+      maxCapacity: number;
+      reason: "no_standard_configured";
+    }>;
   }> {
     const machine = await this.getMachine(machineId);
     if (!machine) {
-      return { effectiveMode: "manual", globalDefault: "manual", override: null, items: [] };
+      return { effectiveMode: "manual", globalDefault: "manual", override: null, items: [], warnings: [] };
     }
 
     let globalDefault: "standard" | "manual" = "manual";
@@ -1162,27 +1182,62 @@ export class DatabaseStorage implements IStorage {
       vehicleByProduct.set(v.productId, (vehicleByProduct.get(v.productId) || 0) + (v.quantity || 0));
     }
 
-    const items = machineInv.map((inv) => {
+    const items: Array<{
+      productId: string;
+      productName: string;
+      currentQuantity: number;
+      maxCapacity: number;
+      standardQuantity: number;
+      targetQuantity: number;
+      suggestedQuantity: number;
+      vehicleAvailable: number;
+    }> = [];
+    const warnings: Array<{
+      productId: string;
+      productName: string;
+      currentQuantity: number;
+      maxCapacity: number;
+      reason: "no_standard_configured";
+    }> = [];
+
+    for (const inv of machineInv) {
       const current = inv.currentQuantity || 0;
       const max = inv.maxCapacity || 20;
       const standardRaw = inv.standardQuantity;
-      const target = Math.min(standardRaw ?? max, max);
-      const need = Math.max(0, target - current);
+
+      // SKUs sin estándar configurado se excluyen de la sugerencia.
+      // Si además tienen stock en máquina, generan una advertencia para
+      // que el operador configure el planograma cuanto antes.
+      if (typeof standardRaw !== "number") {
+        if (current > 0) {
+          warnings.push({
+            productId: inv.productId,
+            productName: inv.product?.name || "",
+            currentQuantity: current,
+            maxCapacity: max,
+            reason: "no_standard_configured",
+          });
+        }
+        continue;
+      }
+
+      const standard = Math.min(standardRaw, max);
+      const need = Math.max(0, standard - current);
       const available = vehicleByProduct.get(inv.productId) || 0;
       const suggested = Math.min(need, available);
-      return {
+      items.push({
         productId: inv.productId,
         productName: inv.product?.name || "",
         currentQuantity: current,
         maxCapacity: max,
-        standardQuantity: typeof standardRaw === "number" ? standardRaw : null,
-        targetQuantity: target,
+        standardQuantity: standard,
+        targetQuantity: standard,
         suggestedQuantity: suggested,
         vehicleAvailable: available,
-      };
-    });
+      });
+    }
 
-    return { effectiveMode, globalDefault, override, items };
+    return { effectiveMode, globalDefault, override, items, warnings };
   }
 
   async getMachineAlerts(machineId?: string, resolved?: boolean, limit: number = 50): Promise<MachineAlert[]> {
