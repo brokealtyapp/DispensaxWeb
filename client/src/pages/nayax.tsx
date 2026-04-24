@@ -910,14 +910,18 @@ function BillingTab() {
           <CardTitle className="text-base">Tendencia de facturación</CardTitle>
           <p className="text-xs text-muted-foreground">
             {period === "live"
-              ? "Vista del día actual (transacciones persistidas). Los KPI y la tabla de arriba sí muestran datos en vivo."
+              ? "El gráfico de tendencia está disponible para periodos persistidos (Día/Semana/Mes/Año). En modo En vivo los KPIs y la tabla se refrescan cada 10s desde Nayax."
               : summary
                 ? `Bucket: ${summary.bucket} · ${summary.series.length} puntos`
                 : "Cargando..."}
           </p>
         </CardHeader>
         <CardContent>
-          {summaryLoading ? (
+          {period === "live" ? (
+            <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
+              Selecciona Día, Semana, Mes o Año para ver la tendencia.
+            </div>
+          ) : summaryLoading ? (
             <div className="flex items-center justify-center h-48">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>

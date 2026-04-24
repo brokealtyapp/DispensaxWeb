@@ -12291,7 +12291,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Formato inválido. Usa csv o pdf." });
       }
       if (format === "pdf") {
-        return res.status(501).json({ error: "Exportación PDF aún no soportada. Usa format=csv." });
+        return res.status(501).json({ error: "Exportación PDF deferida para próxima entrega. Esta versión solo soporta CSV (format=csv)." });
       }
       const data = await storage.getReconciliationCross(tenantId, req.params.cashCollectionId);
       if (!data) return res.status(404).json({ error: "Recolección no encontrada" });
