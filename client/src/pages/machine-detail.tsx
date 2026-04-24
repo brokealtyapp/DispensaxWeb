@@ -1575,22 +1575,44 @@ export function MachineDetailPage() {
                                 </p>
                                 <div className="space-y-1 max-h-64 overflow-y-auto">
                                   {item && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="w-full justify-start text-xs"
-                                      onClick={() => {
-                                        updatePositionMutation.mutate({
-                                          productId: item.productId,
-                                          trayNumber: null,
-                                          laneNumber: null,
-                                        });
-                                      }}
-                                      data-testid={`button-clear-cell-${tray}-${lane}`}
-                                    >
-                                      <XCircle className="h-3 w-3 mr-2" />
-                                      Vaciar posición
-                                    </Button>
+                                    <>
+                                      <PlanogramCellInlineEditor
+                                        machineId={machineId!}
+                                        productId={item.productId}
+                                        currentMaxCapacity={
+                                          (machine.inventory ?? []).find(
+                                            (x: { productId: string }) => x.productId === item.productId,
+                                          )?.maxCapacity ?? 1
+                                        }
+                                        currentStandardQuantity={
+                                          (machine.inventory ?? []).find(
+                                            (x: { productId: string }) => x.productId === item.productId,
+                                          )?.standardQuantity ?? null
+                                        }
+                                        currentMinLevel={
+                                          (machine.inventory ?? []).find(
+                                            (x: { productId: string }) => x.productId === item.productId,
+                                          )?.minLevel ?? 0
+                                        }
+                                        cellKey={`${tray}-${lane}`}
+                                      />
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="w-full justify-start text-xs"
+                                        onClick={() => {
+                                          updatePositionMutation.mutate({
+                                            productId: item.productId,
+                                            trayNumber: null,
+                                            laneNumber: null,
+                                          });
+                                        }}
+                                        data-testid={`button-clear-cell-${tray}-${lane}`}
+                                      >
+                                        <XCircle className="h-3 w-3 mr-2" />
+                                        Vaciar posición
+                                      </Button>
+                                    </>
                                   )}
                                   {inventoryItems.map((inv) => {
                                     const isHere = inv.trayNumber === tray && inv.laneNumber === lane;
@@ -2204,6 +2226,93 @@ export function MachineDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function PlanogramCellInlineEditor({
+  machineId,
+  productId,
+  currentMaxCapacity,
+  currentStandardQuantity,
+  currentMinLevel,
+  cellKey,
+}: {
+  machineId: string;
+  productId: string;
+  currentMaxCapacity: number;
+  currentStandardQuantity: number | null;
+  currentMinLevel: number;
+  cellKey: string;
+}) {
+  const { toast } = useToast();
+  const [maxCapacity, setMaxCapacity] = useState<string>(String(currentMaxCapacity));
+  const [standardQuantity, setStandardQuantity] = useState<string>(
+    currentStandardQuantity == null ? "" : String(currentStandardQuantity),
+  );
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const cap = parseInt(maxCapacity, 10);
+      const std = standardQuantity === "" ? null : parseInt(standardQuantity, 10);
+      if (!Number.isInteger(cap) || cap < 1) {
+        throw new Error("Capacidad inválida");
+      }
+      if (std !== null && (!Number.isInteger(std) || std < 0 || std > cap)) {
+        throw new Error("Estándar inválido");
+      }
+      const response = await apiRequest("PATCH", `/api/machines/${machineId}/inventory/${productId}`, {
+        maxCapacity: cap,
+        minLevel: currentMinLevel,
+        standardQuantity: std,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
+      toast({ title: "Valores guardados" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="rounded-md border p-2 mb-2 space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[10px] text-muted-foreground">Capacidad</label>
+          <Input
+            type="number"
+            min={1}
+            value={maxCapacity}
+            onChange={(e) => setMaxCapacity(e.target.value)}
+            className="h-8 text-xs"
+            data-testid={`input-cell-capacity-${cellKey}`}
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-muted-foreground">Estándar</label>
+          <Input
+            type="number"
+            min={0}
+            value={standardQuantity}
+            onChange={(e) => setStandardQuantity(e.target.value)}
+            className="h-8 text-xs"
+            placeholder="—"
+            data-testid={`input-cell-standard-${cellKey}`}
+          />
+        </div>
+      </div>
+      <Button
+        size="sm"
+        className="w-full"
+        onClick={() => mutation.mutate()}
+        disabled={mutation.isPending}
+        data-testid={`button-save-cell-values-${cellKey}`}
+      >
+        {mutation.isPending ? "Guardando..." : "Guardar valores"}
+      </Button>
     </div>
   );
 }

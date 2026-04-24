@@ -96,7 +96,7 @@ function PendingLaneChangesPanel() {
     );
   }
 
-  const grouped = laneChanges.reduce<Record<string, any[]>>((acc, change) => {
+  const grouped = laneChanges.reduce<Record<string, LaneChangeWithJoins[]>>((acc, change) => {
     const key = `${change.machineId}|${change.machineName ?? "Máquina"}`;
     if (!acc[key]) acc[key] = [];
     acc[key].push(change);
@@ -191,7 +191,7 @@ function RecentTrayAuditsPanel() {
     );
   }
 
-  const grouped = audits.reduce<Record<string, any[]>>((acc, audit) => {
+  const grouped = audits.reduce<Record<string, TrayAuditWithJoins[]>>((acc, audit) => {
     const key = `${audit.serviceRecordId}|${audit.machineId}`;
     if (!acc[key]) acc[key] = [];
     acc[key].push(audit);
@@ -307,7 +307,7 @@ function CollectionTrayAuditPanel({ serviceRecordId }: { serviceRecordId: string
     );
   }
 
-  const grouped = audits.reduce<Record<string, any[]>>((acc, audit) => {
+  const grouped = audits.reduce<Record<string, TrayAuditWithJoins[]>>((acc, audit) => {
     const key = `${audit.serviceRecordId}|${audit.machineId}`;
     if (!acc[key]) acc[key] = [];
     acc[key].push(audit);
