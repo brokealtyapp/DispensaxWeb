@@ -22,7 +22,6 @@ import {
   type AuthenticatedRequest 
 } from "./auth";
 import { authorizeAction, checkPermission } from "./permissions";
-import { authorizeRoles } from "./auth";
 import {
   getDefaultChecklistEntries,
   ensureChecklistDefaultsUpgraded,
