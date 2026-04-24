@@ -1712,11 +1712,6 @@ function CrossReconciliationPanel({ cashCollections }: { cashCollections: any[] 
 
   const { data, isLoading, error } = useQuery<CrossReconciliationData>({
     queryKey: ["/api/reconciliation/cross", selectedId],
-    queryFn: async () => {
-      const res = await fetch(`/api/reconciliation/cross/${selectedId}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Error al obtener cuadre");
-      return res.json();
-    },
     enabled: !!selectedId,
   });
 
@@ -1728,8 +1723,7 @@ function CrossReconciliationPanel({ cashCollections }: { cashCollections: any[] 
   const handleExport = async () => {
     if (!selectedId) return;
     try {
-      const res = await fetch(`/api/reconciliation/cross/${selectedId}/export`, { credentials: "include" });
-      if (!res.ok) throw new Error("Error al exportar");
+      const res = await apiRequest("GET", `/api/reconciliation/cross/${selectedId}/export?format=csv`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

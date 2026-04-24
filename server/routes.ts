@@ -12272,7 +12272,7 @@ export async function registerRoutes(
       if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
       const result = await storage.getReconciliationCross(tenantId, req.params.cashCollectionId);
       if (!result) return res.status(404).json({ error: "Recolección no encontrada" });
-      if (req.user!.role === "abastecedor" && result.cashCollection?.userId !== req.user!.id) {
+      if (req.user!.role === "abastecedor" && result.cashCollection?.userId !== req.user!.userId) {
         return res.status(403).json({ error: "Solo puedes ver la conciliación de tus propias recolecciones" });
       }
       res.json(result);
@@ -12295,7 +12295,7 @@ export async function registerRoutes(
       }
       const data = await storage.getReconciliationCross(tenantId, req.params.cashCollectionId);
       if (!data) return res.status(404).json({ error: "Recolección no encontrada" });
-      if (req.user!.role === "abastecedor" && data.cashCollection?.userId !== req.user!.id) {
+      if (req.user!.role === "abastecedor" && data.cashCollection?.userId !== req.user!.userId) {
         return res.status(403).json({ error: "Solo puedes exportar la conciliación de tus propias recolecciones" });
       }
 

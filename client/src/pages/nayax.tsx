@@ -787,25 +787,14 @@ function BillingTab() {
   const { toast } = useToast();
   const [period, setPeriod] = useState<string>("day");
 
-  const queryKey = ["/api/billing/by-machine", period];
   const { data, isLoading, refetch, isFetching } = useQuery<BillingByMachineResponse>({
-    queryKey,
-    queryFn: async () => {
-      const res = await fetch(`/api/billing/by-machine?period=${period}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Error al cargar facturación");
-      return res.json();
-    },
+    queryKey: ["/api/billing/by-machine", { period }],
     refetchInterval: period === "live" ? 10000 : false,
   });
 
   const summaryPeriod = period === "live" ? "day" : period;
   const { data: summary, isLoading: summaryLoading } = useQuery<BillingSummaryResponse>({
-    queryKey: ["/api/billing/summary", summaryPeriod],
-    queryFn: async () => {
-      const res = await fetch(`/api/billing/summary?period=${summaryPeriod}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Error al cargar resumen");
-      return res.json();
-    },
+    queryKey: ["/api/billing/summary", { period: summaryPeriod }],
     refetchInterval: period === "live" ? 10000 : false,
   });
 

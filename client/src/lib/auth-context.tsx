@@ -297,7 +297,7 @@ export function canAccessRoute(role: UserRole, route: string, isSuperAdmin?: boo
   
   const almacenRoutes = ["/almacen", "/almacen-panel", "/compras", "/tareas", "/calendario", "/configuracion", "/productos"];
   
-  const contabilidadRoutes = ["/contabilidad", "/contabilidad-panel", "/caja-chica", "/dinero-productos", "/tareas", "/calendario", "/configuracion"];
+  const contabilidadRoutes = ["/contabilidad", "/contabilidad-panel", "/caja-chica", "/dinero-productos", "/nayax", "/tareas", "/calendario", "/configuracion"];
   
   const rhRoutes = ["/rh", "/tareas", "/mis-tareas", "/calendario", "/configuracion"];
 
