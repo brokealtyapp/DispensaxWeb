@@ -130,8 +130,8 @@ export interface LaneChangeNayaxPayload {
   id: string;
   tenantId: string;
   machineId: string;
-  fromTrayNumber: number;
-  fromLaneNumber: number;
+  fromTrayNumber: number | null;
+  fromLaneNumber: number | null;
   toTrayNumber: number;
   toLaneNumber: number;
   productId: string;
