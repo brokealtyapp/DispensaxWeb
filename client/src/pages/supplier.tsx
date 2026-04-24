@@ -110,6 +110,8 @@ interface MachineDetails {
   location?: MachineLocation;
   inventory?: any[];
   alerts?: any[];
+  trayCount?: number;
+  lanesPerTray?: number;
   salesSummary?: {
     totalSales: number;
     totalRevenue: number;
@@ -246,6 +248,17 @@ export function SupplierPage() {
   const [fuelType, setFuelType] = useState("gasolina_regular");
   const [productsToLoad, setProductsToLoad] = useState<ProductToLoad[]>([]);
   const [loadDialogMode, setLoadDialogMode] = useState<RefillMode>("manual");
+  // Auditoría de bandejas y cambios de carril (#96)
+  const [trayAuditDrafts, setTrayAuditDrafts] = useState<Record<number, { emptyPositions: string; notes: string }>>({});
+  const [isLaneChangeDialogOpen, setIsLaneChangeDialogOpen] = useState(false);
+  const [laneChangeDraft, setLaneChangeDraft] = useState<{
+    fromTray: string;
+    fromLane: string;
+    toTray: string;
+    toLane: string;
+    productId: string;
+    notes: string;
+  }>({ fromTray: "", fromLane: "", toTray: "", toLane: "", productId: "", notes: "" });
   const [refillSuggestionData, setRefillSuggestionData] = useState<RefillSuggestionResponse | null>(null);
   const [expandedStop, setExpandedStop] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -555,6 +568,57 @@ export function SupplierPage() {
     onError: () => {
       toast({ title: "Error", description: "No se pudo finalizar el servicio", variant: "destructive" });
       setIsSignatureDialogOpen(false);
+    },
+  });
+
+  // Queries y mutaciones para auditoría de bandejas y cambios de carril (#96)
+  const { data: trayAudits = [] } = useQuery<any[]>({
+    queryKey: ["/api/supplier/services", activeServiceId, "tray-audit"],
+    enabled: !!activeServiceId && isServiceActive,
+  });
+
+  const { data: laneChanges = [] } = useQuery<any[]>({
+    queryKey: ["/api/supplier/services", activeServiceId, "lane-changes"],
+    enabled: !!activeServiceId && isServiceActive,
+  });
+
+  const createTrayAuditMutation = useMutation({
+    mutationFn: async (data: { trayNumber: number; emptyPositions: number; totalLanes: number; notes?: string }) => {
+      const res = await apiRequest("POST", `/api/supplier/services/${activeServiceId}/tray-audit`, data);
+      return res.json();
+    },
+    onSuccess: (_d, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/services", activeServiceId, "tray-audit"] });
+      setTrayAuditDrafts((prev) => ({ ...prev, [vars.trayNumber]: { emptyPositions: "", notes: "" } }));
+      toast({ title: "Auditoría guardada", description: `Bandeja ${vars.trayNumber}: ${vars.emptyPositions} carriles vacíos` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "No se pudo guardar la auditoría", variant: "destructive" });
+    },
+  });
+
+  const createLaneChangeMutation = useMutation({
+    mutationFn: async (data: {
+      fromTrayNumber: number;
+      fromLaneNumber: number;
+      toTrayNumber: number;
+      toLaneNumber: number;
+      productId: string;
+      previousProductId?: string | null;
+      notes?: string;
+    }) => {
+      const res = await apiRequest("POST", `/api/supplier/services/${activeServiceId}/lane-changes`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/services", activeServiceId, "lane-changes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/machines", currentStop?.machine?.id, "inventory"] });
+      setIsLaneChangeDialogOpen(false);
+      setLaneChangeDraft({ fromTray: "", fromLane: "", toTray: "", toLane: "", productId: "", notes: "" });
+      toast({ title: "Cambio de carril registrado", description: "Quedó pendiente de sincronización con Nayax" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "No se pudo registrar el cambio de carril", variant: "destructive" });
     },
   });
 
@@ -1629,6 +1693,146 @@ export function SupplierPage() {
                     )}
                   </CardContent>
                 </Card>
+
+                {/* Auditoría de bandejas (#96) */}
+                <Card data-testid="card-tray-audit">
+                  <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <ClipboardCheck className="h-5 w-5" />
+                        Auditoría de Bandejas
+                      </CardTitle>
+                      <CardDescription>
+                        Registra cuántos carriles vacíos hay por bandeja antes de cerrar el servicio.
+                      </CardDescription>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsLaneChangeDialogOpen(true)}
+                      data-testid="button-open-lane-change"
+                    >
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      Cambiar carril
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {Array.from({ length: currentStop.machine?.trayCount ?? 6 }, (_, i) => i + 1).map((trayNumber) => {
+                      const totalLanes = currentStop.machine?.lanesPerTray ?? 8;
+                      const draft = trayAuditDrafts[trayNumber] ?? { emptyPositions: "", notes: "" };
+                      const lastAudit = trayAudits.find((a) => a.trayNumber === trayNumber);
+                      return (
+                        <div
+                          key={trayNumber}
+                          className="flex flex-col md:flex-row md:items-center gap-2 p-3 rounded-lg bg-muted/30"
+                          data-testid={`tray-audit-row-${trayNumber}`}
+                        >
+                          <div className="flex items-center gap-2 md:w-48">
+                            <Badge variant="secondary">Bandeja {trayNumber}</Badge>
+                            <span className="text-xs text-muted-foreground">
+                              {totalLanes} carriles
+                            </span>
+                            {lastAudit && (
+                              <Badge variant="outline" className="text-xs" data-testid={`text-last-audit-${trayNumber}`}>
+                                Último: {lastAudit.emptyPositions} vacíos
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex flex-1 gap-2">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={totalLanes}
+                              placeholder="Carriles vacíos"
+                              value={draft.emptyPositions}
+                              onChange={(e) =>
+                                setTrayAuditDrafts((prev) => ({
+                                  ...prev,
+                                  [trayNumber]: { ...draft, emptyPositions: e.target.value },
+                                }))
+                              }
+                              className="w-32"
+                              data-testid={`input-empty-positions-${trayNumber}`}
+                            />
+                            <Input
+                              placeholder="Nota opcional"
+                              value={draft.notes}
+                              onChange={(e) =>
+                                setTrayAuditDrafts((prev) => ({
+                                  ...prev,
+                                  [trayNumber]: { ...draft, notes: e.target.value },
+                                }))
+                              }
+                              data-testid={`input-audit-notes-${trayNumber}`}
+                            />
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                const empty = parseInt(draft.emptyPositions);
+                                if (Number.isNaN(empty) || empty < 0 || empty > totalLanes) {
+                                  toast({
+                                    title: "Valor inválido",
+                                    description: `Ingresa entre 0 y ${totalLanes} carriles vacíos`,
+                                    variant: "destructive",
+                                  });
+                                  return;
+                                }
+                                createTrayAuditMutation.mutate({
+                                  trayNumber,
+                                  emptyPositions: empty,
+                                  totalLanes,
+                                  notes: draft.notes || undefined,
+                                });
+                              }}
+                              disabled={createTrayAuditMutation.isPending || !draft.emptyPositions}
+                              data-testid={`button-save-audit-${trayNumber}`}
+                            >
+                              Guardar
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+
+                {/* Cambios de carril pendientes (#96) */}
+                {laneChanges.length > 0 && (
+                  <Card data-testid="card-lane-changes">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <RotateCcw className="h-5 w-5" />
+                        Cambios de Carril en este Servicio
+                      </CardTitle>
+                      <CardDescription>
+                        Quedarán pendientes de sincronización con Nayax tras cerrar el servicio.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {laneChanges.map((change) => (
+                        <div
+                          key={change.id}
+                          className="flex flex-wrap items-center gap-2 p-2 rounded-md bg-muted/30"
+                          data-testid={`lane-change-row-${change.id}`}
+                        >
+                          <Badge variant="outline">B{change.fromTrayNumber}-C{change.fromLaneNumber}</Badge>
+                          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                          <Badge variant="secondary">B{change.toTrayNumber}-C{change.toLaneNumber}</Badge>
+                          <span className="text-sm">{change.product?.name || change.productId}</span>
+                          <Badge
+                            variant={change.syncStatus === "synced" ? "default" : "outline"}
+                            className="ml-auto text-xs"
+                          >
+                            {change.syncStatus === "pending" && "Pendiente Nayax"}
+                            {change.syncStatus === "synced" && "Sincronizado"}
+                            {change.syncStatus === "failed" && "Falló sync"}
+                            {change.syncStatus === "skipped" && "Omitido"}
+                          </Badge>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
               </div>
 
               {/* Acciones del servicio */}
@@ -2892,7 +3096,181 @@ export function SupplierPage() {
         </DialogContent>
       </Dialog>
 
-      {/* DIALOGO: Resumen del Servicio */}
+      {/* Diálogo de Cambio de Carril (#96) */}
+      <Dialog open={isLaneChangeDialogOpen} onOpenChange={setIsLaneChangeDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Registrar Cambio de Carril</DialogTitle>
+            <DialogDescription>
+              Mueve un producto de su posición original a otra. El cambio quedará pendiente de sincronizar con Nayax.
+            </DialogDescription>
+          </DialogHeader>
+          {(() => {
+            const trayCount = currentStop?.machine?.trayCount ?? 6;
+            const lanesPerTray = currentStop?.machine?.lanesPerTray ?? 8;
+            const inventoryList: any[] = currentStop?.machine?.inventory ?? [];
+            const fromTrayN = parseInt(laneChangeDraft.fromTray);
+            const fromLaneN = parseInt(laneChangeDraft.fromLane);
+            const sourceItem = inventoryList.find(
+              (it: any) => it.trayNumber === fromTrayN && it.laneNumber === fromLaneN,
+            );
+            return (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label>Bandeja origen</Label>
+                    <Select
+                      value={laneChangeDraft.fromTray}
+                      onValueChange={(v) => setLaneChangeDraft((p) => ({ ...p, fromTray: v }))}
+                    >
+                      <SelectTrigger data-testid="select-lane-change-from-tray">
+                        <SelectValue placeholder="Bandeja" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: trayCount }, (_, i) => i + 1).map((n) => (
+                          <SelectItem key={n} value={String(n)}>Bandeja {n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Carril origen</Label>
+                    <Select
+                      value={laneChangeDraft.fromLane}
+                      onValueChange={(v) => setLaneChangeDraft((p) => ({ ...p, fromLane: v }))}
+                    >
+                      <SelectTrigger data-testid="select-lane-change-from-lane">
+                        <SelectValue placeholder="Carril" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: lanesPerTray }, (_, i) => i + 1).map((n) => (
+                          <SelectItem key={n} value={String(n)}>Carril {n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {sourceItem && (
+                  <p className="text-xs text-muted-foreground" data-testid="text-source-product">
+                    Producto actual en origen: <span className="font-medium">{sourceItem.product?.name || "—"}</span>
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label>Bandeja destino</Label>
+                    <Select
+                      value={laneChangeDraft.toTray}
+                      onValueChange={(v) => setLaneChangeDraft((p) => ({ ...p, toTray: v }))}
+                    >
+                      <SelectTrigger data-testid="select-lane-change-to-tray">
+                        <SelectValue placeholder="Bandeja" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: trayCount }, (_, i) => i + 1).map((n) => (
+                          <SelectItem key={n} value={String(n)}>Bandeja {n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Carril destino</Label>
+                    <Select
+                      value={laneChangeDraft.toLane}
+                      onValueChange={(v) => setLaneChangeDraft((p) => ({ ...p, toLane: v }))}
+                    >
+                      <SelectTrigger data-testid="select-lane-change-to-lane">
+                        <SelectValue placeholder="Carril" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: lanesPerTray }, (_, i) => i + 1).map((n) => (
+                          <SelectItem key={n} value={String(n)}>Carril {n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <Label>Producto a colocar</Label>
+                  <Select
+                    value={laneChangeDraft.productId}
+                    onValueChange={(v) => setLaneChangeDraft((p) => ({ ...p, productId: v }))}
+                  >
+                    <SelectTrigger data-testid="select-lane-change-product">
+                      <SelectValue placeholder={sourceItem ? `Mantener: ${sourceItem.product?.name}` : "Selecciona producto"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(supplierInventory ?? []).map((inv: any) => (
+                        <SelectItem key={inv.productId} value={inv.productId}>
+                          {inv.product?.name || inv.productId}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Notas (opcional)</Label>
+                  <Textarea
+                    value={laneChangeDraft.notes}
+                    onChange={(e) => setLaneChangeDraft((p) => ({ ...p, notes: e.target.value }))}
+                    placeholder="Razón del cambio, etc."
+                    data-testid="textarea-lane-change-notes"
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsLaneChangeDialogOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      const fromTray = parseInt(laneChangeDraft.fromTray);
+                      const fromLane = parseInt(laneChangeDraft.fromLane);
+                      const toTray = parseInt(laneChangeDraft.toTray);
+                      const toLane = parseInt(laneChangeDraft.toLane);
+                      const productId = laneChangeDraft.productId || sourceItem?.productId;
+                      if (
+                        Number.isNaN(fromTray) ||
+                        Number.isNaN(fromLane) ||
+                        Number.isNaN(toTray) ||
+                        Number.isNaN(toLane) ||
+                        !productId
+                      ) {
+                        toast({
+                          title: "Datos incompletos",
+                          description: "Completa origen, destino y producto",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      if (fromTray === toTray && fromLane === toLane) {
+                        toast({
+                          title: "Posición inválida",
+                          description: "Origen y destino no pueden ser iguales",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      createLaneChangeMutation.mutate({
+                        fromTrayNumber: fromTray,
+                        fromLaneNumber: fromLane,
+                        toTrayNumber: toTray,
+                        toLaneNumber: toLane,
+                        productId,
+                        previousProductId: sourceItem?.productId ?? null,
+                        notes: laneChangeDraft.notes || undefined,
+                      });
+                    }}
+                    disabled={createLaneChangeMutation.isPending}
+                    data-testid="button-confirm-lane-change"
+                  >
+                    {createLaneChangeMutation.isPending ? "Registrando..." : "Registrar cambio"}
+                  </Button>
+                </DialogFooter>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>

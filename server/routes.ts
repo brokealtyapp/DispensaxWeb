@@ -1424,6 +1424,61 @@ export async function registerRoutes(
     }
   });
 
+  // Layout de bandejas/carriles por máquina (configuración admin)
+  app.patch("/api/machines/:id/layout", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!await verifyMachineTenant(req.params.id, req, res)) return;
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.status(401).json({ error: "No autenticado" });
+
+      const layoutSchema = z.object({
+        trayCount: z.number().int().min(1).max(20),
+        lanesPerTray: z.number().int().min(1).max(30),
+      });
+      const data = layoutSchema.parse(req.body);
+
+      const updated = await storage.updateMachineLayout(req.params.id, tenantId, data);
+      if (!updated) return res.status(404).json({ error: "Máquina no encontrada" });
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error updating layout:", error);
+      res.status(500).json({ error: (error as Error).message || "Error al actualizar layout" });
+    }
+  });
+
+  // Asignar posición (bandeja/carril) a un SKU del planograma de la máquina
+  app.patch("/api/machines/:id/inventory/:productId/position", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!await verifyMachineTenant(req.params.id, req, res)) return;
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.status(401).json({ error: "No autenticado" });
+
+      const positionSchema = z.object({
+        trayNumber: z.number().int().min(1).nullable(),
+        laneNumber: z.number().int().min(1).nullable(),
+      });
+      const data = positionSchema.parse(req.body);
+
+      const updated = await storage.assignInventoryPosition(
+        req.params.id,
+        req.params.productId,
+        tenantId,
+        data,
+      );
+      if (!updated) return res.status(404).json({ error: "Inventario no encontrado" });
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error assigning position:", error);
+      res.status(400).json({ error: (error as Error).message || "Error al asignar posición" });
+    }
+  });
+
   app.get("/api/machines/:id/alerts", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyMachineTenant(req.params.id, req, res)) return;
@@ -2953,6 +3008,176 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting service products:", error);
       res.status(500).json({ error: "Error al obtener productos del servicio" });
+    }
+  });
+
+  // ========= Cambios de carril y auditoría de bandejas (Tarea #96) =========
+  // Helper local: valida que el servicio existe y que el usuario tiene acceso
+  async function ensureServiceAccess(req: AuthenticatedRequest, res: Response, serviceId: string) {
+    const service = await storage.getServiceRecord(serviceId);
+    if (!service) {
+      res.status(404).json({ error: "Servicio no encontrado" });
+      return null;
+    }
+    const tenantId = req.user?.tenantId;
+    if (!tenantId || (service.tenantId !== tenantId && !req.user?.isSuperAdmin)) {
+      res.status(404).json({ error: "Servicio no encontrado" });
+      return null;
+    }
+    if (req.user?.role === "abastecedor" && service.userId !== req.user.userId) {
+      res.status(403).json({ error: "No tienes permiso sobre este servicio" });
+      return null;
+    }
+    return service;
+  }
+
+  // Registrar un cambio de carril (con cola pendiente para Nayax)
+  app.post("/api/supplier/services/:id/lane-changes", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const service = await ensureServiceAccess(req, res, req.params.id);
+      if (!service) return;
+
+      const bodySchema = z.object({
+        fromTrayNumber: z.number().int().min(1).nullable(),
+        fromLaneNumber: z.number().int().min(1).nullable(),
+        toTrayNumber: z.number().int().min(1),
+        toLaneNumber: z.number().int().min(1),
+        productId: z.string().min(1),
+        previousProductId: z.string().min(1).nullable().optional(),
+        notes: z.string().optional(),
+      }).refine(
+        (d) => (d.fromTrayNumber === null) === (d.fromLaneNumber === null),
+        { message: "Bandeja y carril origen deben informarse juntos" }
+      );
+      const data = bodySchema.parse(req.body);
+
+      // Validar que productId/previousProductId pertenezcan al mismo tenant del servicio
+      const productIdsToCheck = Array.from(
+        new Set([data.productId, data.previousProductId].filter((v): v is string => !!v))
+      );
+      for (const pid of productIdsToCheck) {
+        const product = await storage.getProduct(pid);
+        if (!product || product.tenantId !== service.tenantId) {
+          return res.status(400).json({ error: `Producto no válido para este tenant: ${pid}` });
+        }
+      }
+
+      const event = await storage.createLaneChangeEvent({
+        tenantId: service.tenantId,
+        serviceRecordId: service.id,
+        machineId: service.machineId,
+        userId: req.user!.userId,
+        fromTrayNumber: data.fromTrayNumber,
+        fromLaneNumber: data.fromLaneNumber,
+        toTrayNumber: data.toTrayNumber,
+        toLaneNumber: data.toLaneNumber,
+        productId: data.productId,
+        previousProductId: data.previousProductId ?? null,
+        notes: data.notes ?? null,
+        syncStatus: "pending",
+        syncError: null,
+      });
+
+      // TODO Nayax: encolar `event` para sincronizar el planograma con Lynx API.
+      // El sync real lo hará un worker que lea filas con syncStatus='pending'
+      // y actualice el planograma vía POST /machines/{id}/planogram.
+      // Por ahora, solo registramos la fila como pendiente (no-op).
+
+      res.status(201).json(event);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating lane change event:", error);
+      res.status(400).json({ error: (error as Error).message || "Error al registrar cambio de carril" });
+    }
+  });
+
+  app.get("/api/supplier/services/:id/lane-changes", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const service = await ensureServiceAccess(req, res, req.params.id);
+      if (!service) return;
+      const events = await storage.getLaneChangeEventsForService(service.id, service.tenantId);
+      res.json(events);
+    } catch (error) {
+      console.error("Error fetching lane change events:", error);
+      res.status(500).json({ error: "Error al obtener cambios de carril" });
+    }
+  });
+
+  // Auditoría de bandejas (carriles vacíos por bandeja)
+  app.post("/api/supplier/services/:id/tray-audit", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const service = await ensureServiceAccess(req, res, req.params.id);
+      if (!service) return;
+
+      const machine = await storage.getMachine(service.machineId);
+      if (!machine) return res.status(404).json({ error: "Máquina no encontrada" });
+      const trayCount = machine.trayCount ?? 6;
+      const lanesPerTray = machine.lanesPerTray ?? 8;
+
+      const itemSchema = z.object({
+        trayNumber: z.number().int().min(1).max(trayCount),
+        emptyPositions: z.number().int().min(0).max(lanesPerTray),
+        notes: z.string().optional().nullable(),
+      });
+      // Acepta tanto payload unitario {trayNumber, emptyPositions, notes?} como batch {items: [...]}
+      const parsed = z
+        .union([
+          z.object({ items: z.array(itemSchema).min(1) }),
+          itemSchema,
+        ])
+        .parse(req.body);
+      const items = "items" in parsed ? parsed.items : [parsed];
+
+      const created: any[] = [];
+      for (const item of items) {
+        const audit = await storage.createTrayAudit({
+          tenantId: service.tenantId,
+          serviceRecordId: service.id,
+          machineId: service.machineId,
+          userId: req.user!.userId,
+          trayNumber: item.trayNumber,
+          emptyPositions: item.emptyPositions,
+          totalLanes: lanesPerTray,
+          notes: item.notes ?? null,
+        });
+        created.push(audit);
+      }
+
+      res.status(201).json(created);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating tray audit:", error);
+      res.status(400).json({ error: (error as Error).message || "Error al guardar auditoría" });
+    }
+  });
+
+  app.get("/api/supplier/services/:id/tray-audit", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const service = await ensureServiceAccess(req, res, req.params.id);
+      if (!service) return;
+      const audits = await storage.getTrayAuditsForService(service.id, service.tenantId);
+      res.json(audits);
+    } catch (error) {
+      console.error("Error fetching tray audits:", error);
+      res.status(500).json({ error: "Error al obtener auditorías" });
+    }
+  });
+
+  // Cola Nayax: cambios de carril pendientes de sincronizar (admin/supervisor)
+  app.get("/api/lane-changes/pending", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.status(401).json({ error: "No autenticado" });
+      const machineId = typeof req.query.machineId === "string" ? req.query.machineId : undefined;
+      const events = await storage.getPendingLaneChangeEvents(tenantId, { machineId });
+      res.json(events);
+    } catch (error) {
+      console.error("Error fetching pending lane changes:", error);
+      res.status(500).json({ error: "Error al obtener cola pendiente" });
     }
   });
 

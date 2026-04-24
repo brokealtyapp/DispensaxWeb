@@ -86,9 +86,31 @@ async function backfillStandardQuantity() {
   }
 }
 
+// Backfill idempotente: inicializa tray_count y lanes_per_tray para máquinas existentes.
+// Tarea #96: cada máquina necesita un layout para registrar cambios de carril
+// y auditorías de bandejas; si las columnas fueron añadidas tras `db:push`,
+// las filas viejas quedan en NULL.
+async function backfillMachineLayout() {
+  try {
+    const result = await db.execute(sql`
+      UPDATE machines
+      SET tray_count = COALESCE(tray_count, 6),
+          lanes_per_tray = COALESCE(lanes_per_tray, 8)
+      WHERE tray_count IS NULL OR lanes_per_tray IS NULL
+    `);
+    const affected = (result as { rowCount?: number }).rowCount ?? 0;
+    if (affected > 0) {
+      log(`[backfill] layout (tray_count/lanes_per_tray) inicializado en ${affected} máquinas`);
+    }
+  } catch (err) {
+    log(`[backfill] error inicializando layout de máquinas: ${(err as Error).message}`);
+  }
+}
+
 (async () => {
   startCacheUpdater();
   await backfillStandardQuantity();
+  await backfillMachineLayout();
 
   await registerRoutes(httpServer, app);
 

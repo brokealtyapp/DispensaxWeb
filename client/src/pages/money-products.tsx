@@ -25,7 +25,8 @@ import {
   Loader2,
   Eye,
   Wallet,
-  UserCheck
+  UserCheck,
+  RotateCcw
 } from "lucide-react";
 import { RD_DENOMINATIONS } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -59,6 +60,101 @@ const shrinkageFormSchema = z.object({
 
 type CashMovementFormData = z.infer<typeof cashMovementFormSchema>;
 type ShrinkageFormData = z.infer<typeof shrinkageFormSchema>;
+
+function PendingLaneChangesPanel() {
+  const { data: laneChanges = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/lane-changes/pending"],
+  });
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Cambios de Carril Pendientes (Nayax)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const grouped = laneChanges.reduce<Record<string, any[]>>((acc, change) => {
+    const key = `${change.machineId}|${change.machineName ?? "Máquina"}`;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(change);
+    return acc;
+  }, {});
+  const groups = Object.entries(grouped);
+
+  return (
+    <Card data-testid="card-pending-lane-changes">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <RotateCcw className="h-5 w-5" />
+          Cambios de Carril Pendientes (Nayax)
+        </CardTitle>
+        <CardDescription>
+          Cambios registrados por abastecedores que aún no se han sincronizado con Nayax.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {groups.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground" data-testid="empty-state-lane-changes">
+            <RotateCcw className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>No hay cambios de carril pendientes</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {groups.map(([key, changes]) => {
+              const [machineId, machineName] = key.split("|");
+              return (
+                <div key={machineId} className="space-y-2" data-testid={`group-machine-${machineId}`}>
+                  <div className="flex items-center gap-2">
+                    <Package className="h-4 w-4 text-muted-foreground" />
+                    <h4 className="font-medium">{machineName}</h4>
+                    <Badge variant="outline">{changes.length} cambios</Badge>
+                  </div>
+                  <div className="space-y-2">
+                    {changes.map((change) => (
+                      <div
+                        key={change.id}
+                        className="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-muted/30"
+                        data-testid={`row-lane-change-${change.id}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">B{change.fromTrayNumber}-C{change.fromLaneNumber}</Badge>
+                          <span className="text-muted-foreground">→</span>
+                          <Badge variant="secondary">B{change.toTrayNumber}-C{change.toLaneNumber}</Badge>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {change.productName ?? change.productId}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {change.userName ?? "Abastecedor"} · {formatDateTime(change.createdAt)}
+                          </p>
+                        </div>
+                        {change.notes && (
+                          <p className="text-xs text-muted-foreground italic max-w-xs truncate">
+                            “{change.notes}”
+                          </p>
+                        )}
+                        <Badge variant="outline" className="text-xs">Pendiente</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export function MoneyProductsPage() {
   const { toast } = useToast();
@@ -431,7 +527,7 @@ export function MoneyProductsPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-6" data-testid="tabs-money-products">
+          <TabsList className="grid w-full grid-cols-7" data-testid="tabs-money-products">
             <TabsTrigger value="cash" data-testid="tab-trigger-cash">
               <DollarSign className="h-4 w-4 mr-2" />
               Efectivo
@@ -455,6 +551,10 @@ export function MoneyProductsPage() {
             <TabsTrigger value="reconciliation" data-testid="tab-trigger-reconciliation">
               <CheckCircle2 className="h-4 w-4 mr-2" />
               Conciliación
+            </TabsTrigger>
+            <TabsTrigger value="lane-changes" data-testid="tab-trigger-lane-changes">
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Cambios Nayax
             </TabsTrigger>
           </TabsList>
 
@@ -932,6 +1032,10 @@ export function MoneyProductsPage() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="lane-changes" className="mt-4" data-testid="tab-content-lane-changes">
+            <PendingLaneChangesPanel />
           </TabsContent>
         </Tabs>
 

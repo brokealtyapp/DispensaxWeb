@@ -70,6 +70,7 @@ import { useState, useEffect } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { usePermissions } from "@/hooks/use-permissions";
 import type { Machine, Location, MachineInventory, MachineAlert, MachineVisit, Product, MachineTypeOption } from "@shared/schema";
 
 const statusLabels: Record<string, string> = {
@@ -145,6 +146,13 @@ const planogramSchema = z.object({
 
 type PlanogramFormData = z.infer<typeof planogramSchema>;
 
+const layoutSchema = z.object({
+  trayCount: z.number().int().min(1, "Debe haber al menos 1 bandeja").max(20, "Máximo 20 bandejas"),
+  lanesPerTray: z.number().int().min(1, "Debe haber al menos 1 carril").max(20, "Máximo 20 carriles por bandeja"),
+});
+
+type LayoutFormData = z.infer<typeof layoutSchema>;
+
 const serviceSchema = z.object({
   visitType: z.string().default("abastecimiento"),
   notes: z.string().optional(),
@@ -182,6 +190,8 @@ export function MachineDetailPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { canEdit } = usePermissions();
+  const canEditLayout = canEdit("machines");
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isInventoryDialogOpen, setIsInventoryDialogOpen] = useState(false);
@@ -190,6 +200,10 @@ export function MachineDetailPage() {
   const [planogramItem, setPlanogramItem] = useState<(MachineInventory & { product: Product }) | null>(null);
   const [isCopyPlanogramOpen, setIsCopyPlanogramOpen] = useState(false);
   const [copySourceMachineId, setCopySourceMachineId] = useState<string>("");
+  const [isLayoutDialogOpen, setIsLayoutDialogOpen] = useState(false);
+  const [editingPositionId, setEditingPositionId] = useState<string | null>(null);
+  const [positionTray, setPositionTray] = useState<string>("");
+  const [positionLane, setPositionLane] = useState<string>("");
   
   const searchParams = new URLSearchParams(searchString);
   const tabFromUrl = searchParams.get("tab");
@@ -399,6 +413,40 @@ export function MachineDetailPage() {
     enabled: isCopyPlanogramOpen,
   });
 
+  // Mutación para actualizar el layout de bandejas/carriles
+  const updateLayoutMutation = useMutation({
+    mutationFn: async (data: LayoutFormData) => {
+      const response = await apiRequest("PATCH", `/api/machines/${machineId}/layout`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
+      setIsLayoutDialogOpen(false);
+      toast({ title: "Layout actualizado", description: "Las bandejas y carriles se guardaron correctamente" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "No se pudo actualizar el layout", variant: "destructive" });
+    },
+  });
+
+  // Mutación para asignar posición (bandeja/carril) a un producto
+  const updatePositionMutation = useMutation({
+    mutationFn: async ({ productId, trayNumber, laneNumber }: { productId: string; trayNumber: number | null; laneNumber: number | null }) => {
+      const response = await apiRequest("PATCH", `/api/machines/${machineId}/inventory/${productId}/position`, { trayNumber, laneNumber });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
+      setEditingPositionId(null);
+      setPositionTray("");
+      setPositionLane("");
+      toast({ title: "Posición actualizada", description: "El carril del producto se guardó correctamente" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "No se pudo asignar la posición", variant: "destructive" });
+    },
+  });
+
   const alertForm = useForm<AlertFormData>({
     resolver: zodResolver(alertSchema),
     defaultValues: {
@@ -451,6 +499,23 @@ export function MachineDetailPage() {
       });
     }
   }, [planogramItem]);
+
+  const layoutForm = useForm<LayoutFormData>({
+    resolver: zodResolver(layoutSchema),
+    defaultValues: {
+      trayCount: 6,
+      lanesPerTray: 8,
+    },
+  });
+
+  useEffect(() => {
+    if (isLayoutDialogOpen && machine) {
+      layoutForm.reset({
+        trayCount: machine.trayCount ?? 6,
+        lanesPerTray: machine.lanesPerTray ?? 8,
+      });
+    }
+  }, [isLayoutDialogOpen, machine]);
 
   const productLoadForm = useForm<ProductLoadFormData>({
     resolver: zodResolver(productLoadSchema),
@@ -1457,6 +1522,20 @@ export function MachineDetailPage() {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" data-testid="badge-machine-layout">
+                  Layout: {machine?.trayCount ?? 6} bandejas × {machine?.lanesPerTray ?? 8} carriles
+                </Badge>
+                {canEditLayout && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsLayoutDialogOpen(true)}
+                    data-testid="button-edit-layout"
+                  >
+                    <SettingsIcon className="h-4 w-4 mr-2" />
+                    Configurar Layout
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -1490,6 +1569,90 @@ export function MachineDetailPage() {
                             <> • Estándar: <span className="font-medium">{item.standardQuantity}</span></>
                           )}
                         </p>
+                        {editingPositionId === item.productId ? (
+                          <div className="flex items-center gap-2 mt-2">
+                            <Select value={positionTray} onValueChange={setPositionTray}>
+                              <SelectTrigger className="w-32 h-8" data-testid={`select-tray-${item.id}`}>
+                                <SelectValue placeholder="Bandeja" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Sin asignar</SelectItem>
+                                {Array.from({ length: machine?.trayCount ?? 6 }, (_, i) => i + 1).map(n => (
+                                  <SelectItem key={n} value={String(n)}>Bandeja {n}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Select value={positionLane} onValueChange={setPositionLane} disabled={positionTray === "none" || !positionTray}>
+                              <SelectTrigger className="w-28 h-8" data-testid={`select-lane-${item.id}`}>
+                                <SelectValue placeholder="Carril" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">—</SelectItem>
+                                {Array.from({ length: machine?.lanesPerTray ?? 8 }, (_, i) => i + 1).map(n => (
+                                  <SelectItem key={n} value={String(n)}>Carril {n}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              onClick={() => {
+                                const tray = positionTray && positionTray !== "none" ? parseInt(positionTray) : null;
+                                const lane = positionLane && positionLane !== "none" ? parseInt(positionLane) : null;
+                                if ((tray && !lane) || (!tray && lane)) {
+                                  toast({ title: "Posición incompleta", description: "Selecciona bandeja y carril, o ambos como 'Sin asignar'", variant: "destructive" });
+                                  return;
+                                }
+                                updatePositionMutation.mutate({ productId: item.productId, trayNumber: tray, laneNumber: lane });
+                              }}
+                              disabled={updatePositionMutation.isPending}
+                              data-testid={`button-save-position-${item.id}`}
+                            >
+                              <Save className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8"
+                              onClick={() => {
+                                setEditingPositionId(null);
+                                setPositionTray("");
+                                setPositionLane("");
+                              }}
+                              data-testid={`button-cancel-position-${item.id}`}
+                            >
+                              <XCircle className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 mt-1">
+                            {item.trayNumber && item.laneNumber ? (
+                              <Badge variant="secondary" data-testid={`badge-position-${item.id}`}>
+                                B{item.trayNumber}-C{item.laneNumber}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-muted-foreground" data-testid={`badge-position-${item.id}`}>
+                                Sin posición
+                              </Badge>
+                            )}
+                            {canEditLayout && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 px-2 text-xs"
+                                onClick={() => {
+                                  setEditingPositionId(item.productId);
+                                  setPositionTray(item.trayNumber ? String(item.trayNumber) : "none");
+                                  setPositionLane(item.laneNumber ? String(item.laneNumber) : "none");
+                                }}
+                                data-testid={`button-edit-position-${item.id}`}
+                              >
+                                Editar posición
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       </div>
                       {editingInventoryId === item.productId ? (
                         <div className="flex items-center gap-2">
@@ -1807,6 +1970,70 @@ export function MachineDetailPage() {
                   data-testid="button-save-planogram"
                 >
                   {updatePlanogramMutation.isPending ? "Guardando..." : "Guardar"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Configurar Layout (bandejas × carriles) */}
+      <Dialog open={isLayoutDialogOpen} onOpenChange={setIsLayoutDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Configurar Layout</DialogTitle>
+            <DialogDescription>
+              Define cuántas bandejas tiene la máquina y cuántos carriles por bandeja. Si reduces el tamaño, las posiciones de productos fuera de rango se limpiarán.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...layoutForm}>
+            <form onSubmit={layoutForm.handleSubmit((data) => updateLayoutMutation.mutate(data))} className="space-y-4">
+              <FormField
+                control={layoutForm.control}
+                name="trayCount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Bandejas</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={20}
+                        {...field}
+                        onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                        data-testid="input-tray-count"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={layoutForm.control}
+                name="lanesPerTray"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Carriles por bandeja</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={20}
+                        {...field}
+                        onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                        data-testid="input-lanes-per-tray"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsLayoutDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={updateLayoutMutation.isPending} data-testid="button-save-layout">
+                  {updateLayoutMutation.isPending ? "Guardando..." : "Guardar"}
                 </Button>
               </div>
             </form>

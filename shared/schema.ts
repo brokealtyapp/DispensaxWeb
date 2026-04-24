@@ -378,6 +378,8 @@ export const machines = pgTable("machines", {
   nayaxDeviceSerial: text("nayax_device_serial"),
   nayaxLinkedAt: timestamp("nayax_linked_at"),
   refillModeOverride: text("refill_mode_override"),
+  trayCount: integer("tray_count").default(6),
+  lanesPerTray: integer("lanes_per_tray").default(8),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -398,8 +400,15 @@ export const machineInventory = pgTable("machine_inventory", {
   maxCapacity: integer("max_capacity").default(20),
   minLevel: integer("min_level").default(5),
   standardQuantity: integer("standard_quantity"),
+  trayNumber: integer("tray_number"),
+  laneNumber: integer("lane_number"),
   lastUpdated: timestamp("last_updated").defaultNow(),
-});
+}, (table) => [
+  index("idx_machine_inventory_position").on(table.machineId, table.trayNumber, table.laneNumber),
+  uniqueIndex("uq_machine_inventory_assigned_position")
+    .on(table.machineId, table.trayNumber, table.laneNumber)
+    .where(sql`${table.trayNumber} IS NOT NULL AND ${table.laneNumber} IS NOT NULL`),
+]);
 
 export const insertMachineInventorySchema = createInsertSchema(machineInventory).omit({
   id: true,
@@ -947,6 +956,69 @@ export const insertProductLoadSchema = createInsertSchema(productLoads).omit({
 
 export type InsertProductLoad = z.infer<typeof insertProductLoadSchema>;
 export type ProductLoad = typeof productLoads.$inferSelect;
+
+export const laneChangeSyncStatusEnum = pgEnum("lane_change_sync_status", [
+  "pending",
+  "synced",
+  "failed",
+  "skipped",
+]);
+
+export const laneChangeEvents = pgTable("lane_change_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  serviceRecordId: varchar("service_record_id").references(() => serviceRecords.id),
+  machineId: varchar("machine_id").references(() => machines.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  fromTrayNumber: integer("from_tray_number"),
+  fromLaneNumber: integer("from_lane_number"),
+  toTrayNumber: integer("to_tray_number").notNull(),
+  toLaneNumber: integer("to_lane_number").notNull(),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  previousProductId: varchar("previous_product_id").references(() => products.id),
+  notes: text("notes"),
+  syncStatus: laneChangeSyncStatusEnum("sync_status").notNull().default("pending"),
+  syncError: text("sync_error"),
+  syncedAt: timestamp("synced_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_lane_change_events_tenant_status").on(table.tenantId, table.syncStatus),
+  index("idx_lane_change_events_machine").on(table.machineId),
+  index("idx_lane_change_events_service").on(table.serviceRecordId),
+]);
+
+export const insertLaneChangeEventSchema = createInsertSchema(laneChangeEvents).omit({
+  id: true,
+  createdAt: true,
+  syncedAt: true,
+});
+
+export type InsertLaneChangeEvent = z.infer<typeof insertLaneChangeEventSchema>;
+export type LaneChangeEvent = typeof laneChangeEvents.$inferSelect;
+
+export const trayAudits = pgTable("tray_audits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  serviceRecordId: varchar("service_record_id").references(() => serviceRecords.id).notNull(),
+  machineId: varchar("machine_id").references(() => machines.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  trayNumber: integer("tray_number").notNull(),
+  emptyPositions: integer("empty_positions").notNull().default(0),
+  totalLanes: integer("total_lanes").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_tray_audits_service").on(table.serviceRecordId),
+  index("idx_tray_audits_machine").on(table.machineId),
+]);
+
+export const insertTrayAuditSchema = createInsertSchema(trayAudits).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTrayAudit = z.infer<typeof insertTrayAuditSchema>;
+export type TrayAudit = typeof trayAudits.$inferSelect;
 
 export const issueTypeEnum = pgEnum("issue_type", [
   "falla_tecnica",

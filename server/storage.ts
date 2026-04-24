@@ -62,9 +62,12 @@ import {
   type CashDenominationCount, type InsertCashDenominationCount,
   type ChangeFund, type InsertChangeFund,
   type WorkOrderType, type InsertWorkOrderType,
+  type LaneChangeEvent, type InsertLaneChangeEvent,
+  type TrayAudit, type InsertTrayAudit,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
   routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
+  laneChangeEvents, trayAudits,
   cashMovements, bankDeposits, productTransfers, shrinkageRecords,
   pettyCashExpenses, pettyCashFund, pettyCashTransactions,
   purchaseOrders, purchaseOrderItems, purchaseReceptions, receptionItems,
@@ -208,6 +211,13 @@ export interface IStorage {
   updateMachineInventoryConfig(machineId: string, productId: string, config: { maxCapacity?: number; minLevel?: number; standardQuantity?: number | null }): Promise<MachineInventory | undefined>;
   setMachineInventory(inventory: InsertMachineInventory): Promise<MachineInventory>;
   copyPlanogramFromMachine(sourceMachineId: string, targetMachineId: string, tenantId: string): Promise<{ copied: number; skipped: number }>;
+  updateMachineLayout(machineId: string, tenantId: string, layout: { trayCount: number; lanesPerTray: number }): Promise<Machine | undefined>;
+  assignInventoryPosition(machineId: string, productId: string, tenantId: string, position: { trayNumber: number | null; laneNumber: number | null }): Promise<MachineInventory | undefined>;
+  createLaneChangeEvent(payload: InsertLaneChangeEvent): Promise<LaneChangeEvent>;
+  getLaneChangeEventsForService(serviceRecordId: string, tenantId: string): Promise<LaneChangeEvent[]>;
+  getPendingLaneChangeEvents(tenantId: string, opts?: { machineId?: string; limit?: number }): Promise<any[]>;
+  createTrayAudit(payload: InsertTrayAudit): Promise<TrayAudit>;
+  getTrayAuditsForService(serviceRecordId: string, tenantId: string): Promise<TrayAudit[]>;
   getRefillSuggestion(machineId: string, supplierUserId: string): Promise<{
     effectiveMode: "standard" | "manual";
     globalDefault: "standard" | "manual";
@@ -1126,6 +1136,208 @@ export class DatabaseStorage implements IStorage {
 
       return { copied, skipped };
     });
+  }
+
+  async updateMachineLayout(
+    machineId: string,
+    tenantId: string,
+    layout: { trayCount: number; lanesPerTray: number }
+  ): Promise<Machine | undefined> {
+    return db.transaction(async (tx) => {
+      const [machine] = await tx.select().from(machines)
+        .where(and(eq(machines.id, machineId), eq(machines.tenantId, tenantId)));
+      if (!machine) return undefined;
+
+      // Si reducimos el layout, las posiciones fuera de rango se ponen en NULL para evitar
+      // posiciones huérfanas. NO borramos el inventario en sí.
+      await tx.update(machineInventory)
+        .set({ trayNumber: null, laneNumber: null })
+        .where(and(
+          eq(machineInventory.machineId, machineId),
+          sql`(${machineInventory.trayNumber} > ${layout.trayCount} OR ${machineInventory.laneNumber} > ${layout.lanesPerTray})`
+        ));
+
+      const [updated] = await tx.update(machines)
+        .set({ trayCount: layout.trayCount, lanesPerTray: layout.lanesPerTray })
+        .where(and(eq(machines.id, machineId), eq(machines.tenantId, tenantId)))
+        .returning();
+      return updated;
+    });
+  }
+
+  async assignInventoryPosition(
+    machineId: string,
+    productId: string,
+    tenantId: string,
+    position: { trayNumber: number | null; laneNumber: number | null }
+  ): Promise<MachineInventory | undefined> {
+    return db.transaction(async (tx) => {
+      const [machine] = await tx.select().from(machines)
+        .where(and(eq(machines.id, machineId), eq(machines.tenantId, tenantId)));
+      if (!machine) return undefined;
+
+      const trayCount = machine.trayCount ?? 6;
+      const lanesPerTray = machine.lanesPerTray ?? 8;
+
+      const tray = position.trayNumber;
+      const lane = position.laneNumber;
+
+      // Ambos deben ser null o ambos non-null
+      if ((tray === null) !== (lane === null)) {
+        throw new Error("Bandeja y carril deben asignarse juntos");
+      }
+
+      if (tray !== null && lane !== null) {
+        if (tray < 1 || tray > trayCount) {
+          throw new Error(`Bandeja fuera de rango (1-${trayCount})`);
+        }
+        if (lane < 1 || lane > lanesPerTray) {
+          throw new Error(`Carril fuera de rango (1-${lanesPerTray})`);
+        }
+
+        // Verificar que la posición destino no esté ocupada por otro producto
+        const [occupied] = await tx.select().from(machineInventory)
+          .where(and(
+            eq(machineInventory.machineId, machineId),
+            eq(machineInventory.trayNumber, tray),
+            eq(machineInventory.laneNumber, lane),
+          ));
+        if (occupied && occupied.productId !== productId) {
+          throw new Error(`Posición ${tray}-${lane} ya ocupada por otro producto`);
+        }
+      }
+
+      const [updated] = await tx.update(machineInventory)
+        .set({ trayNumber: tray, laneNumber: lane, lastUpdated: new Date() })
+        .where(and(
+          eq(machineInventory.machineId, machineId),
+          eq(machineInventory.productId, productId),
+          eq(machineInventory.tenantId, tenantId),
+        ))
+        .returning();
+      return updated;
+    });
+  }
+
+  async createLaneChangeEvent(payload: InsertLaneChangeEvent): Promise<LaneChangeEvent> {
+    return db.transaction(async (tx) => {
+      const [machine] = await tx.select().from(machines)
+        .where(and(eq(machines.id, payload.machineId), eq(machines.tenantId, payload.tenantId)));
+      if (!machine) throw new Error("Máquina no encontrada");
+
+      const trayCount = machine.trayCount ?? 6;
+      const lanesPerTray = machine.lanesPerTray ?? 8;
+
+      if (payload.toTrayNumber < 1 || payload.toTrayNumber > trayCount) {
+        throw new Error(`Bandeja destino fuera de rango (1-${trayCount})`);
+      }
+      if (payload.toLaneNumber < 1 || payload.toLaneNumber > lanesPerTray) {
+        throw new Error(`Carril destino fuera de rango (1-${lanesPerTray})`);
+      }
+
+      // Si el destino ya está ocupado por un producto distinto al nuevo, marcamos a ese
+      // producto sin posición (el cambio reasigna físicamente el carril)
+      const [occupied] = await tx.select().from(machineInventory)
+        .where(and(
+          eq(machineInventory.machineId, payload.machineId),
+          eq(machineInventory.trayNumber, payload.toTrayNumber),
+          eq(machineInventory.laneNumber, payload.toLaneNumber),
+        ));
+      if (occupied && occupied.productId !== payload.productId) {
+        await tx.update(machineInventory)
+          .set({ trayNumber: null, laneNumber: null, lastUpdated: new Date() })
+          .where(eq(machineInventory.id, occupied.id));
+      }
+
+      // Si el origen estaba asignado al producto previo, lo limpiamos.
+      if (payload.fromTrayNumber != null && payload.fromLaneNumber != null && payload.previousProductId) {
+        await tx.update(machineInventory)
+          .set({ trayNumber: null, laneNumber: null, lastUpdated: new Date() })
+          .where(and(
+            eq(machineInventory.machineId, payload.machineId),
+            eq(machineInventory.productId, payload.previousProductId),
+            eq(machineInventory.trayNumber, payload.fromTrayNumber),
+            eq(machineInventory.laneNumber, payload.fromLaneNumber),
+          ));
+      }
+
+      // Asignar la nueva posición al producto entrante (si existe en el inventario)
+      const [target] = await tx.select().from(machineInventory)
+        .where(and(
+          eq(machineInventory.machineId, payload.machineId),
+          eq(machineInventory.productId, payload.productId),
+        ));
+      if (target) {
+        await tx.update(machineInventory)
+          .set({
+            trayNumber: payload.toTrayNumber,
+            laneNumber: payload.toLaneNumber,
+            lastUpdated: new Date(),
+          })
+          .where(eq(machineInventory.id, target.id));
+      }
+
+      const [event] = await tx.insert(laneChangeEvents).values(payload).returning();
+      return event;
+    });
+  }
+
+  async getLaneChangeEventsForService(serviceRecordId: string, tenantId: string): Promise<LaneChangeEvent[]> {
+    return db.select().from(laneChangeEvents)
+      .where(and(
+        eq(laneChangeEvents.serviceRecordId, serviceRecordId),
+        eq(laneChangeEvents.tenantId, tenantId),
+      ))
+      .orderBy(desc(laneChangeEvents.createdAt));
+  }
+
+  async getPendingLaneChangeEvents(
+    tenantId: string,
+    opts?: { machineId?: string; limit?: number }
+  ): Promise<any[]> {
+    const conditions = [
+      eq(laneChangeEvents.tenantId, tenantId),
+      eq(laneChangeEvents.syncStatus, "pending"),
+    ];
+    if (opts?.machineId) conditions.push(eq(laneChangeEvents.machineId, opts.machineId));
+
+    const limit = opts?.limit ?? 100;
+    const rows = await db.select({
+      event: laneChangeEvents,
+      machineName: machines.name,
+      machineCode: machines.code,
+      productName: products.name,
+      userName: users.fullName,
+    })
+      .from(laneChangeEvents)
+      .leftJoin(machines, eq(machines.id, laneChangeEvents.machineId))
+      .leftJoin(products, eq(products.id, laneChangeEvents.productId))
+      .leftJoin(users, eq(users.id, laneChangeEvents.userId))
+      .where(and(...conditions))
+      .orderBy(desc(laneChangeEvents.createdAt))
+      .limit(limit);
+
+    return rows.map((r) => ({
+      ...r.event,
+      machineName: r.machineName,
+      machineCode: r.machineCode,
+      productName: r.productName,
+      userName: r.userName,
+    }));
+  }
+
+  async createTrayAudit(payload: InsertTrayAudit): Promise<TrayAudit> {
+    const [audit] = await db.insert(trayAudits).values(payload).returning();
+    return audit;
+  }
+
+  async getTrayAuditsForService(serviceRecordId: string, tenantId: string): Promise<TrayAudit[]> {
+    return db.select().from(trayAudits)
+      .where(and(
+        eq(trayAudits.serviceRecordId, serviceRecordId),
+        eq(trayAudits.tenantId, tenantId),
+      ))
+      .orderBy(trayAudits.trayNumber);
   }
 
   async getRefillSuggestion(
