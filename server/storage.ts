@@ -84,7 +84,8 @@ import {
   type SubscriptionPlan, type InsertSubscriptionPlan,
   type TenantSubscription, type InsertTenantSubscription,
   type TenantSettings, type InsertTenantSettings,
-  type SuperAdminAuditLog, type InsertSuperAdminAuditLog
+  type SuperAdminAuditLog, type InsertSuperAdminAuditLog,
+  type LaneChangeEventWithJoins, type TrayAuditWithJoins,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc, or, inArray, count, isNull, SQL } from "drizzle-orm";
@@ -215,10 +216,10 @@ export interface IStorage {
   assignInventoryPosition(machineId: string, productId: string, tenantId: string, position: { trayNumber: number | null; laneNumber: number | null }): Promise<MachineInventory | undefined>;
   createLaneChangeEvent(payload: InsertLaneChangeEvent): Promise<LaneChangeEvent>;
   getLaneChangeEventsForService(serviceRecordId: string, tenantId: string): Promise<LaneChangeEvent[]>;
-  getPendingLaneChangeEvents(tenantId: string, opts?: { machineId?: string; limit?: number }): Promise<any[]>;
+  getPendingLaneChangeEvents(tenantId: string, opts?: { machineId?: string; limit?: number }): Promise<LaneChangeEventWithJoins[]>;
   createTrayAudit(payload: InsertTrayAudit): Promise<TrayAudit>;
   getTrayAuditsForService(serviceRecordId: string, tenantId: string): Promise<TrayAudit[]>;
-  getRecentTrayAudits(tenantId: string, limit?: number, machineId?: string): Promise<any[]>;
+  getRecentTrayAudits(tenantId: string, limit?: number, machineId?: string): Promise<TrayAuditWithJoins[]>;
   getRefillSuggestion(machineId: string, supplierUserId: string): Promise<{
     effectiveMode: "standard" | "manual";
     globalDefault: "standard" | "manual";
@@ -1327,7 +1328,7 @@ export class DatabaseStorage implements IStorage {
   async getPendingLaneChangeEvents(
     tenantId: string,
     opts?: { machineId?: string; limit?: number }
-  ): Promise<any[]> {
+  ): Promise<LaneChangeEventWithJoins[]> {
     const conditions = [
       eq(laneChangeEvents.tenantId, tenantId),
       eq(laneChangeEvents.syncStatus, "pending"),
@@ -1385,7 +1386,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(trayAudits.trayNumber);
   }
 
-  async getRecentTrayAudits(tenantId: string, limit: number = 50, machineId?: string): Promise<any[]> {
+  async getRecentTrayAudits(tenantId: string, limit: number = 50, machineId?: string): Promise<TrayAuditWithJoins[]> {
     const conds = [eq(trayAudits.tenantId, tenantId)];
     if (machineId) conds.push(eq(trayAudits.machineId, machineId));
     const rows = await db.select({

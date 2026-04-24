@@ -571,13 +571,34 @@ export function SupplierPage() {
     },
   });
 
-  // Queries y mutaciones para auditoría de bandejas y cambios de carril (#96)
-  const { data: trayAudits = [] } = useQuery<any[]>({
+  // Queries y mutaciones para auditoría de bandejas y cambios de carril
+  type TrayAuditRow = {
+    id: string;
+    trayNumber: number;
+    emptyPositions: number;
+    totalLanes: number;
+    notes: string | null;
+    createdAt: string;
+  };
+  type LaneChangeRow = {
+    id: string;
+    fromTrayNumber: number | null;
+    fromLaneNumber: number | null;
+    toTrayNumber: number;
+    toLaneNumber: number;
+    productId: string;
+    previousProductId: string | null;
+    notes: string | null;
+    createdAt: string;
+    syncStatus: "pending" | "synced" | "failed" | "skipped";
+    product?: { name?: string } | null;
+  };
+  const { data: trayAudits = [] } = useQuery<TrayAuditRow[]>({
     queryKey: ["/api/supplier/services", activeServiceId, "tray-audit"],
     enabled: !!activeServiceId && isServiceActive,
   });
 
-  const { data: laneChanges = [] } = useQuery<any[]>({
+  const { data: laneChanges = [] } = useQuery<LaneChangeRow[]>({
     queryKey: ["/api/supplier/services", activeServiceId, "lane-changes"],
     enabled: !!activeServiceId && isServiceActive,
   });

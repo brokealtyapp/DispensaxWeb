@@ -122,6 +122,7 @@ import {
   workOrders as workOrdersTable,
   workOrderChecklistItems as workOrderChecklistItemsTable,
   workOrderChecklistTemplates as workOrderChecklistTemplatesTable,
+  type TrayAudit,
 } from "@shared/schema";
 import { z, ZodError } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection, enqueueLaneChangeForNayax } from "./nayax";
@@ -3140,7 +3141,7 @@ export async function registerRoutes(
         .parse(req.body);
       const items = "items" in parsed ? parsed.items : [parsed];
 
-      const created: any[] = [];
+      const created: TrayAudit[] = [];
       for (const item of items) {
         const audit = await storage.createTrayAudit({
           tenantId: service.tenantId,

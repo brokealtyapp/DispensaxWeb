@@ -1021,6 +1021,19 @@ export const insertTrayAuditSchema = createInsertSchema(trayAudits).omit({
 export type InsertTrayAudit = z.infer<typeof insertTrayAuditSchema>;
 export type TrayAudit = typeof trayAudits.$inferSelect;
 
+export type LaneChangeEventWithJoins = LaneChangeEvent & {
+  machineName: string | null;
+  machineCode: string | null;
+  productName: string | null;
+  userName: string | null;
+};
+
+export type TrayAuditWithJoins = TrayAudit & {
+  machineName: string | null;
+  machineCode: string | null;
+  userName: string | null;
+};
+
 export const issueTypeEnum = pgEnum("issue_type", [
   "falla_tecnica",
   "suciedad",
