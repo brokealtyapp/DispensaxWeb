@@ -920,7 +920,11 @@ function BillingTab() {
         <CardHeader>
           <CardTitle className="text-base">Tendencia de facturación</CardTitle>
           <p className="text-xs text-muted-foreground">
-            {summary ? `Bucket: ${summary.bucket} · ${summary.series.length} puntos` : "Cargando..."}
+            {period === "live"
+              ? "Vista del día actual (transacciones persistidas). Los KPI y la tabla de arriba sí muestran datos en vivo."
+              : summary
+                ? `Bucket: ${summary.bucket} · ${summary.series.length} puntos`
+                : "Cargando..."}
           </p>
         </CardHeader>
         <CardContent>

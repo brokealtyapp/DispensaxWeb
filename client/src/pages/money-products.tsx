@@ -1822,9 +1822,9 @@ function CrossReconciliationPanel({ cashCollections }: { cashCollections: any[] 
                 <p className="text-lg font-bold">{formatRD(data.changeFund?.totalAmount ?? 0)}</p>
               </div>
               <div className="p-3 border rounded-md" data-testid="stat-cross-real-income">
-                <p className="text-xs text-muted-foreground">Ingreso real (Nayax)</p>
+                <p className="text-xs text-muted-foreground">Ingreso total Nayax</p>
                 <p className="text-lg font-bold">{formatRD(data.realIncome)}</p>
-                <p className="text-xs text-muted-foreground">{data.nayaxSummary.txCount} trans.</p>
+                <p className="text-xs text-muted-foreground">Efectivo + tarjeta · {data.nayaxSummary.txCount} trans.</p>
               </div>
               <div className="p-3 border rounded-md" data-testid="stat-cross-warehouse">
                 <p className="text-xs text-muted-foreground">Billetes a almacén</p>

@@ -8236,7 +8236,7 @@ export class DatabaseStorage implements IStorage {
   }>> {
     const rows = await db
       .select({
-        machineId: nayaxTransactions.machineId,
+        machineId: machines.id,
         machineName: machines.name,
         machineCode: machines.code,
         nayaxMachineId: machines.nayaxMachineId,
@@ -8244,20 +8244,27 @@ export class DatabaseStorage implements IStorage {
         totalCash: sql<string>`COALESCE(SUM(CASE WHEN ${nayaxTransactions.paymentCategory} = 'cash' THEN ${nayaxTransactions.settlementValue} ELSE 0 END), 0)`,
         totalCard: sql<string>`COALESCE(SUM(CASE WHEN ${nayaxTransactions.paymentCategory} = 'card' THEN ${nayaxTransactions.settlementValue} ELSE 0 END), 0)`,
         totalOther: sql<string>`COALESCE(SUM(CASE WHEN ${nayaxTransactions.paymentCategory} = 'other' THEN ${nayaxTransactions.settlementValue} ELSE 0 END), 0)`,
-        txCount: sql<number>`COUNT(*)::int`,
-        cashTxCount: sql<number>`COUNT(*) FILTER (WHERE ${nayaxTransactions.paymentCategory} = 'cash')::int`,
-        cardTxCount: sql<number>`COUNT(*) FILTER (WHERE ${nayaxTransactions.paymentCategory} = 'card')::int`,
+        txCount: sql<number>`COUNT(${nayaxTransactions.id})::int`,
+        cashTxCount: sql<number>`COUNT(${nayaxTransactions.id}) FILTER (WHERE ${nayaxTransactions.paymentCategory} = 'cash')::int`,
+        cardTxCount: sql<number>`COUNT(${nayaxTransactions.id}) FILTER (WHERE ${nayaxTransactions.paymentCategory} = 'card')::int`,
         quantity: sql<number>`COALESCE(SUM(${nayaxTransactions.quantity}), 0)::int`,
       })
-      .from(nayaxTransactions)
-      .leftJoin(machines, eq(machines.id, nayaxTransactions.machineId))
+      .from(machines)
+      .leftJoin(
+        nayaxTransactions,
+        and(
+          eq(nayaxTransactions.machineId, machines.id),
+          eq(nayaxTransactions.tenantId, tenantId),
+          gte(nayaxTransactions.settlementDate, fromDate),
+          lte(nayaxTransactions.settlementDate, toDate),
+        ),
+      )
       .where(and(
-        eq(nayaxTransactions.tenantId, tenantId),
-        gte(nayaxTransactions.settlementDate, fromDate),
-        lte(nayaxTransactions.settlementDate, toDate),
+        eq(machines.tenantId, tenantId),
+        sql`${machines.nayaxMachineId} IS NOT NULL`,
       ))
-      .groupBy(nayaxTransactions.machineId, machines.name, machines.code, machines.nayaxMachineId)
-      .orderBy(desc(sql`COALESCE(SUM(${nayaxTransactions.settlementValue}), 0)`));
+      .groupBy(machines.id, machines.name, machines.code, machines.nayaxMachineId)
+      .orderBy(desc(sql`COALESCE(SUM(${nayaxTransactions.settlementValue}), 0)`), machines.name);
     return rows;
   }
 
