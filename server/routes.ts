@@ -918,7 +918,16 @@ export async function registerRoutes(
       const data = insertMachineSchema.partial().parse(req.body);
       // Prevent tenantId modification (security)
       delete (data as any).tenantId;
-      
+
+      // Validar refillModeOverride como enum opcional
+      if (data.refillModeOverride !== undefined && data.refillModeOverride !== null && data.refillModeOverride !== "") {
+        if (data.refillModeOverride !== "standard" && data.refillModeOverride !== "manual") {
+          return res.status(400).json({ error: "refillModeOverride debe ser 'standard', 'manual' o nulo" });
+        }
+      } else if (data.refillModeOverride === "" || data.refillModeOverride === null) {
+        (data as any).refillModeOverride = null;
+      }
+
       const machine = await storage.updateMachine(req.params.id, data);
       res.json(machine);
     } catch (error) {
@@ -1302,19 +1311,114 @@ export async function registerRoutes(
   app.patch("/api/machines/:id/inventory/:productId", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyMachineTenant(req.params.id, req, res)) return;
-      
-      const { quantity } = req.body;
-      const inventory = await storage.updateMachineInventory(
-        req.params.id,
-        req.params.productId,
-        quantity
-      );
-      if (!inventory) {
-        return res.status(404).json({ error: "Inventario no encontrado" });
+
+      const inventoryPatchSchema = z.object({
+        currentQuantity: z.number().int().min(0).optional(),
+        quantity: z.number().int().min(0).optional(),
+        maxCapacity: z.number().int().min(1).optional(),
+        minLevel: z.number().int().min(0).optional(),
+        standardQuantity: z.number().int().min(0).nullable().optional(),
+      });
+
+      const data = inventoryPatchSchema.parse(req.body);
+
+      const newQuantity = data.currentQuantity ?? data.quantity;
+
+      // Validar coherencia: standardQuantity ≤ maxCapacity
+      if (data.standardQuantity !== undefined && data.standardQuantity !== null) {
+        const existing = await storage.getMachineInventory(req.params.id);
+        const current = existing.find(i => i.productId === req.params.productId);
+        const effectiveMax = data.maxCapacity ?? current?.maxCapacity ?? 20;
+        if (data.standardQuantity > effectiveMax) {
+          return res.status(400).json({ error: "La carga estándar no puede ser mayor a la capacidad máxima" });
+        }
       }
+
+      let inventory: any;
+
+      if (newQuantity !== undefined) {
+        inventory = await storage.updateMachineInventory(
+          req.params.id,
+          req.params.productId,
+          newQuantity
+        );
+        if (!inventory) {
+          return res.status(404).json({ error: "Inventario no encontrado" });
+        }
+      }
+
+      const hasConfig = data.maxCapacity !== undefined || data.minLevel !== undefined || data.standardQuantity !== undefined;
+      if (hasConfig) {
+        inventory = await storage.updateMachineInventoryConfig(
+          req.params.id,
+          req.params.productId,
+          {
+            maxCapacity: data.maxCapacity,
+            minLevel: data.minLevel,
+            standardQuantity: data.standardQuantity,
+          }
+        );
+        if (!inventory) {
+          return res.status(404).json({ error: "Inventario no encontrado" });
+        }
+      }
+
+      if (!inventory) {
+        return res.status(400).json({ error: "Sin cambios" });
+      }
+
       res.json(inventory);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error updating machine inventory:", error);
       res.status(500).json({ error: "Error al actualizar inventario" });
+    }
+  });
+
+  // Copiar planograma (capacidad/min/estándar) desde otra máquina del mismo tenant
+  app.post("/api/machines/:id/copy-planogram", authenticateJWT, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!await verifyMachineTenant(req.params.id, req, res)) return;
+
+      const bodySchema = z.object({ sourceMachineId: z.string().min(1) });
+      const { sourceMachineId } = bodySchema.parse(req.body);
+
+      if (sourceMachineId === req.params.id) {
+        return res.status(400).json({ error: "La máquina origen y destino deben ser diferentes" });
+      }
+
+      // Verificar tenant del origen
+      const sourceMachine = await storage.getMachine(sourceMachineId);
+      if (!sourceMachine) {
+        return res.status(404).json({ error: "Máquina origen no encontrada" });
+      }
+      if (!verifyTenantOwnership(sourceMachine.tenantId, req.user?.tenantId, req.user?.isSuperAdmin || false)) {
+        return res.status(404).json({ error: "Máquina origen no encontrada" });
+      }
+
+      const targetMachine = await storage.getMachine(req.params.id);
+      if (!targetMachine?.tenantId) {
+        return res.status(404).json({ error: "Máquina destino no encontrada" });
+      }
+
+      const result = await storage.copyPlanogramFromMachine(
+        sourceMachineId,
+        req.params.id,
+        targetMachine.tenantId
+      );
+
+      res.json({
+        message: `Planograma copiado: ${result.copied} producto(s)`,
+        ...result,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error copying planogram:", error);
+      res.status(500).json({ error: "Error al copiar planograma" });
     }
   });
 
@@ -3871,6 +3975,83 @@ export async function registerRoutes(
     }
   });
 
+  // Sugerencia de carga estándar para abastecedor
+  app.get(
+    "/api/supplier/refill-suggestion/:machineId",
+    authenticateJWT,
+    authorizeRoles("admin", "supervisor", "abastecedor"),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        if (!await verifyMachineTenant(req.params.machineId, req, res)) return;
+
+        const machine = await storage.getMachine(req.params.machineId);
+        if (!machine) {
+          return res.status(404).json({ error: "Máquina no encontrada", errorCode: "MACHINE_NOT_FOUND" });
+        }
+
+        const authenticatedUserId = req.user?.userId;
+        if (!authenticatedUserId) {
+          return res.status(401).json({ error: "No autenticado" });
+        }
+
+        const userRole = req.user?.role;
+        const targetSupplierIdRaw = req.query.targetSupplierId;
+        const targetSupplierId = typeof targetSupplierIdRaw === "string" && targetSupplierIdRaw.trim() !== ""
+          ? targetSupplierIdRaw.trim()
+          : null;
+
+        let effectiveUserId = authenticatedUserId;
+        if (targetSupplierId && (userRole === "admin" || userRole === "supervisor")) {
+          const targetUser = await storage.getUser(targetSupplierId);
+          if (!targetUser || targetUser.role !== "abastecedor") {
+            return res.status(400).json({ error: "Usuario objetivo no es abastecedor", errorCode: "INVALID_TARGET_USER" });
+          }
+          if (!req.user?.isSuperAdmin && targetUser.tenantId !== req.user?.tenantId) {
+            return res.status(404).json({ error: "Usuario objetivo no encontrado", errorCode: "INVALID_TARGET_USER" });
+          }
+          effectiveUserId = targetSupplierId;
+        }
+
+        // Validación de zona fail-closed (consistente con load-from-vehicle)
+        if (userRole !== "admin") {
+          if (userRole === "abastecedor") {
+            const user = await storage.getUser(effectiveUserId);
+            if (!user?.assignedZone || !machine.zone || user.assignedZone !== machine.zone) {
+              return res.status(403).json({
+                error: "La máquina no está en su zona asignada.",
+                errorCode: "MACHINE_NOT_IN_ZONE",
+              });
+            }
+          }
+          if (userRole === "supervisor") {
+            const supervisorZone = await getSupervisorZone(req);
+            if (!supervisorZone || !machine.zone || supervisorZone !== machine.zone) {
+              return res.status(403).json({
+                error: "La máquina no está en su zona de supervisión.",
+                errorCode: "MACHINE_NOT_IN_ZONE",
+              });
+            }
+            if (targetSupplierId) {
+              const targetUser = await storage.getUser(targetSupplierId);
+              if (!targetUser?.assignedZone || targetUser.assignedZone !== supervisorZone) {
+                return res.status(403).json({
+                  error: "El abastecedor objetivo no está en su zona de supervisión.",
+                  errorCode: "SUPPLIER_NOT_IN_ZONE",
+                });
+              }
+            }
+          }
+        }
+
+        const suggestion = await storage.getRefillSuggestion(req.params.machineId, effectiveUserId);
+        res.json(suggestion);
+      } catch (error) {
+        console.error("Error getting refill suggestion:", error);
+        res.status(500).json({ error: "Error al obtener sugerencia de carga" });
+      }
+    }
+  );
+
   // Estadísticas del Abastecedor
   app.get("/api/supplier/stats/:userId", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "rh"), authorizeOwnership("userId"), async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -4086,6 +4267,7 @@ export async function registerRoutes(
         notifyMaintenanceDue: settings?.notifyMaintenanceDue ?? true,
         lowStockThreshold: settings?.lowStockThreshold ?? 5,
         includeViewerLinkInContractEmail: settings?.includeViewerLinkInContractEmail ?? true,
+        defaultRefillMode: settings?.defaultRefillMode === "standard" ? "standard" : "manual",
       });
     } catch (error) {
       console.error("Error getting notification settings:", error);
@@ -4104,6 +4286,7 @@ export async function registerRoutes(
         notifyMaintenanceDue: z.boolean().optional(),
         lowStockThreshold: z.number().int().min(0).max(1000).optional(),
         includeViewerLinkInContractEmail: z.boolean().optional(),
+        defaultRefillMode: z.enum(["standard", "manual"]).optional(),
       });
 
       const data = notificationsSchema.parse(req.body);
@@ -4120,6 +4303,7 @@ export async function registerRoutes(
           notifyMaintenanceDue: data.notifyMaintenanceDue ?? true,
           lowStockThreshold: data.lowStockThreshold ?? 5,
           includeViewerLinkInContractEmail: data.includeViewerLinkInContractEmail ?? true,
+          defaultRefillMode: data.defaultRefillMode ?? "manual",
         }).returning();
         result = inserted;
       } else {
@@ -4128,6 +4312,7 @@ export async function registerRoutes(
         if (data.notifyMaintenanceDue !== undefined) updateValues.notifyMaintenanceDue = data.notifyMaintenanceDue;
         if (data.lowStockThreshold !== undefined) updateValues.lowStockThreshold = data.lowStockThreshold;
         if (data.includeViewerLinkInContractEmail !== undefined) updateValues.includeViewerLinkInContractEmail = data.includeViewerLinkInContractEmail;
+        if (data.defaultRefillMode !== undefined) updateValues.defaultRefillMode = data.defaultRefillMode;
         const [updated] = await db.update(tenantSettings)
           .set(updateValues)
           .where(eq(tenantSettings.tenantId, req.user.tenantId))
@@ -4140,6 +4325,7 @@ export async function registerRoutes(
         notifyMaintenanceDue: result.notifyMaintenanceDue ?? true,
         lowStockThreshold: result.lowStockThreshold ?? 5,
         includeViewerLinkInContractEmail: result.includeViewerLinkInContractEmail ?? true,
+        defaultRefillMode: result.defaultRefillMode === "standard" ? "standard" : "manual",
       });
     } catch (error) {
       if (error instanceof z.ZodError) {

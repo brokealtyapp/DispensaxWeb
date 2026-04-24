@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import {
@@ -56,6 +57,8 @@ import {
   Play,
   StopCircle,
   Banknote,
+  Copy,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -116,6 +119,7 @@ const machineEditSchema = z.object({
   zone: z.string().optional(),
   locationId: z.string().optional(),
   notes: z.string().optional(),
+  refillModeOverride: z.enum(["default", "standard", "manual"]).default("default"),
 });
 
 type MachineEditFormData = z.infer<typeof machineEditSchema>;
@@ -125,9 +129,21 @@ const inventorySchema = z.object({
   maxCapacity: z.number().min(1, "La capacidad debe ser mayor a 0"),
   currentQuantity: z.number().min(0, "La cantidad no puede ser negativa"),
   minLevel: z.number().min(0, "El nivel mínimo no puede ser negativo"),
+  standardQuantity: z.number().min(0, "La cantidad estándar no puede ser negativa").optional(),
 });
 
 type InventoryFormData = z.infer<typeof inventorySchema>;
+
+const planogramSchema = z.object({
+  maxCapacity: z.number().int().min(1, "La capacidad debe ser mayor a 0"),
+  minLevel: z.number().int().min(0, "El nivel mínimo no puede ser negativo"),
+  standardQuantity: z.number().int().min(0).nullable(),
+}).refine(
+  (data) => data.standardQuantity === null || data.standardQuantity <= data.maxCapacity,
+  { message: "La carga estándar no puede ser mayor a la capacidad", path: ["standardQuantity"] }
+);
+
+type PlanogramFormData = z.infer<typeof planogramSchema>;
 
 const serviceSchema = z.object({
   visitType: z.string().default("abastecimiento"),
@@ -171,6 +187,9 @@ export function MachineDetailPage() {
   const [isInventoryDialogOpen, setIsInventoryDialogOpen] = useState(false);
   const [editingInventoryId, setEditingInventoryId] = useState<string | null>(null);
   const [editingQuantity, setEditingQuantity] = useState<number>(0);
+  const [planogramItem, setPlanogramItem] = useState<(MachineInventory & { product: Product }) | null>(null);
+  const [isCopyPlanogramOpen, setIsCopyPlanogramOpen] = useState(false);
+  const [copySourceMachineId, setCopySourceMachineId] = useState<string>("");
   
   const searchParams = new URLSearchParams(searchString);
   const tabFromUrl = searchParams.get("tab");
@@ -275,7 +294,12 @@ export function MachineDetailPage() {
 
   const updateMachineMutation = useMutation({
     mutationFn: async (data: MachineEditFormData) => {
-      const response = await apiRequest("PATCH", `/api/machines/${machineId}`, data);
+      // El servidor espera null cuando no hay override; el form usa "default" como sentinel
+      const payload: any = { ...data };
+      if (payload.refillModeOverride === "default") {
+        payload.refillModeOverride = null;
+      }
+      const response = await apiRequest("PATCH", `/api/machines/${machineId}`, payload);
       return response.json();
     },
     onSuccess: () => {
@@ -335,6 +359,43 @@ export function MachineDetailPage() {
     },
   });
 
+  const updatePlanogramMutation = useMutation({
+    mutationFn: async ({ productId, data }: { productId: string; data: PlanogramFormData }) => {
+      const response = await apiRequest("PATCH", `/api/machines/${machineId}/inventory/${productId}`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
+      setPlanogramItem(null);
+      toast({ title: "Planograma actualizado", description: "Los valores se guardaron correctamente" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "No se pudo actualizar el planograma", variant: "destructive" });
+    },
+  });
+
+  const copyPlanogramMutation = useMutation({
+    mutationFn: async (sourceMachineId: string) => {
+      const response = await apiRequest("POST", `/api/machines/${machineId}/copy-planogram`, { sourceMachineId });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
+      setIsCopyPlanogramOpen(false);
+      setCopySourceMachineId("");
+      toast({ title: "Planograma copiado", description: data?.message || "Productos copiados correctamente" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "No se pudo copiar el planograma", variant: "destructive" });
+    },
+  });
+
+  // Otras máquinas del tenant para copiar planograma
+  const { data: otherMachines = [] } = useQuery<Machine[]>({
+    queryKey: ["/api/machines"],
+    enabled: isCopyPlanogramOpen,
+  });
+
   const alertForm = useForm<AlertFormData>({
     resolver: zodResolver(alertSchema),
     defaultValues: {
@@ -353,6 +414,9 @@ export function MachineDetailPage() {
       zone: machine?.zone || "",
       locationId: machine?.locationId || "",
       notes: machine?.notes || "",
+      refillModeOverride: (machine?.refillModeOverride === "standard" || machine?.refillModeOverride === "manual")
+        ? machine.refillModeOverride
+        : "default",
     },
   });
 
@@ -365,6 +429,25 @@ export function MachineDetailPage() {
       minLevel: 5,
     },
   });
+
+  const planogramForm = useForm<PlanogramFormData>({
+    resolver: zodResolver(planogramSchema),
+    defaultValues: {
+      maxCapacity: 20,
+      minLevel: 5,
+      standardQuantity: null,
+    },
+  });
+
+  useEffect(() => {
+    if (planogramItem) {
+      planogramForm.reset({
+        maxCapacity: planogramItem.maxCapacity ?? 20,
+        minLevel: planogramItem.minLevel ?? 5,
+        standardQuantity: planogramItem.standardQuantity ?? null,
+      });
+    }
+  }, [planogramItem]);
 
   const productLoadForm = useForm<ProductLoadFormData>({
     resolver: zodResolver(productLoadSchema),
@@ -468,6 +551,9 @@ export function MachineDetailPage() {
       zone: machine?.zone || "",
       locationId: machine?.locationId || "",
       notes: machine?.notes || "",
+      refillModeOverride: (machine?.refillModeOverride === "standard" || machine?.refillModeOverride === "manual")
+        ? machine.refillModeOverride
+        : "default",
     });
     setIsEditDialogOpen(true);
   };
@@ -827,6 +913,31 @@ export function MachineDetailPage() {
                     <FormControl>
                       <Textarea placeholder="Notas adicionales..." {...field} data-testid="textarea-edit-notes" />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="refillModeOverride"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Modo de carga (override)</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || "default"}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-refill-mode">
+                          <SelectValue placeholder="Usar configuración global" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="default">Usar configuración global</SelectItem>
+                        <SelectItem value="standard">Carga estándar (cantidad fija)</SelectItem>
+                        <SelectItem value="manual">Manual (cantidad libre)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Sobrescribe el modo de carga por defecto solo para esta máquina.
+                    </p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1333,17 +1444,35 @@ export function MachineDetailPage() {
 
         <TabsContent value="inventario" className="mt-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2">
-              <CardTitle>Inventario Actual</CardTitle>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setIsInventoryDialogOpen(true)}
-                data-testid="button-edit-inventory"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Agregar Producto
-              </Button>
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-col gap-1">
+                <CardTitle>Inventario Actual</CardTitle>
+                {(machine?.refillModeOverride === "standard" || machine?.refillModeOverride === "manual") && (
+                  <p className="text-xs text-muted-foreground">
+                    Modo de carga override: <span className="font-medium">{machine.refillModeOverride === "standard" ? "Carga estándar" : "Manual"}</span>
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsCopyPlanogramOpen(true)}
+                  data-testid="button-copy-planogram"
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copiar Planograma
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsInventoryDialogOpen(true)}
+                  data-testid="button-edit-inventory"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Agregar Producto
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {machine.inventory && machine.inventory.length > 0 ? (
@@ -1353,7 +1482,10 @@ export function MachineDetailPage() {
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{item.product?.name || "Producto"}</p>
                         <p className="text-sm text-muted-foreground">
-                          Capacidad: {item.maxCapacity} unidades • Mínimo: {item.minLevel}
+                          Capacidad: {item.maxCapacity} • Mínimo: {item.minLevel}
+                          {typeof item.standardQuantity === "number" && (
+                            <> • Estándar: <span className="font-medium">{item.standardQuantity}</span></>
+                          )}
                         </p>
                       </div>
                       {editingInventoryId === item.productId ? (
@@ -1416,6 +1548,16 @@ export function MachineDetailPage() {
                           Bajo
                         </Badge>
                       )}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        onClick={() => setPlanogramItem(item as any)}
+                        data-testid={`button-planogram-${item.id}`}
+                        title="Configurar planograma"
+                      >
+                        <SettingsIcon className="h-4 w-4" />
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -1570,6 +1712,147 @@ export function MachineDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Diálogo de Configuración de Planograma */}
+      <Dialog open={!!planogramItem} onOpenChange={(open) => !open && setPlanogramItem(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Configurar Planograma</DialogTitle>
+            <DialogDescription>
+              {planogramItem?.product?.name || "Producto"} — Define la capacidad, mínimo y carga estándar.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...planogramForm}>
+            <form
+              onSubmit={planogramForm.handleSubmit((data) => {
+                if (!planogramItem) return;
+                updatePlanogramMutation.mutate({ productId: planogramItem.productId, data });
+              })}
+              className="space-y-4"
+            >
+              <FormField
+                control={planogramForm.control}
+                name="maxCapacity"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Capacidad máxima</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        {...field}
+                        onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                        data-testid="input-planogram-max"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={planogramForm.control}
+                name="minLevel"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nivel mínimo (alerta)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        {...field}
+                        onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                        data-testid="input-planogram-min"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={planogramForm.control}
+                name="standardQuantity"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Carga estándar (opcional)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        placeholder="Dejar vacío para usar capacidad máxima"
+                        value={field.value === null || field.value === undefined ? "" : field.value}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          field.onChange(v === "" ? null : parseInt(v) || 0);
+                        }}
+                        data-testid="input-planogram-standard"
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Cantidad fija sugerida en modo de carga estándar.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setPlanogramItem(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={updatePlanogramMutation.isPending}
+                  data-testid="button-save-planogram"
+                >
+                  {updatePlanogramMutation.isPending ? "Guardando..." : "Guardar"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Copiar Planograma */}
+      <Dialog open={isCopyPlanogramOpen} onOpenChange={setIsCopyPlanogramOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Copiar Planograma</DialogTitle>
+            <DialogDescription>
+              Copia los productos y capacidades de otra máquina. Los productos existentes en esta máquina no se sobrescriben.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Máquina origen</Label>
+              <Select value={copySourceMachineId} onValueChange={setCopySourceMachineId}>
+                <SelectTrigger data-testid="select-copy-source-machine">
+                  <SelectValue placeholder="Selecciona una máquina" />
+                </SelectTrigger>
+                <SelectContent>
+                  {otherMachines
+                    .filter((m) => m.id !== machineId)
+                    .map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.name} {m.code ? `(${m.code})` : ""}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsCopyPlanogramOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => copySourceMachineId && copyPlanogramMutation.mutate(copySourceMachineId)}
+                disabled={!copySourceMachineId || copyPlanogramMutation.isPending}
+                data-testid="button-confirm-copy-planogram"
+              >
+                {copyPlanogramMutation.isPending ? "Copiando..." : "Copiar"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

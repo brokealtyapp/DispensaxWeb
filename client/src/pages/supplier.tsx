@@ -163,6 +163,27 @@ interface ProductToLoad {
   quantity: number;
   currentInMachine: number;
   maxCapacity: number;
+  standardQuantity?: number | null;
+  suggestedQuantity?: number;
+  vehicleAvailable?: number;
+}
+
+type RefillMode = "standard" | "manual";
+
+interface RefillSuggestionResponse {
+  effectiveMode: RefillMode;
+  globalDefault: RefillMode;
+  override: RefillMode | null;
+  items: Array<{
+    productId: string;
+    productName: string;
+    currentQuantity: number;
+    maxCapacity: number;
+    standardQuantity: number | null;
+    targetQuantity: number;
+    suggestedQuantity: number;
+    vehicleAvailable: number;
+  }>;
 }
 
 export function SupplierPage() {
@@ -215,6 +236,8 @@ export function SupplierPage() {
   const [fuelStation, setFuelStation] = useState("");
   const [fuelType, setFuelType] = useState("gasolina_regular");
   const [productsToLoad, setProductsToLoad] = useState<ProductToLoad[]>([]);
+  const [loadDialogMode, setLoadDialogMode] = useState<RefillMode>("manual");
+  const [refillSuggestionData, setRefillSuggestionData] = useState<RefillSuggestionResponse | null>(null);
   const [expandedStop, setExpandedStop] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [signatureData, setSignatureData] = useState<string | null>(null);
@@ -973,20 +996,60 @@ export function SupplierPage() {
     setSignatureData(null);
   };
 
-  const openLoadDialog = () => {
+  const openLoadDialog = async () => {
+    if (!currentStop?.machine?.id) return;
+
+    let suggestion: RefillSuggestionResponse | null = null;
+    try {
+      const targetParam = supplierId ? `?targetSupplierId=${supplierId}` : "";
+      const res = await apiRequest(
+        "GET",
+        `/api/supplier/refill-suggestion/${currentStop.machine.id}${targetParam}`
+      );
+      suggestion = await res.json();
+    } catch (err) {
+      // Si falla, caemos a manual con datos del inventario embebido
+      console.error("Error obteniendo sugerencia de carga", err);
+    }
+
+    setRefillSuggestionData(suggestion);
+    const effectiveMode: RefillMode = suggestion?.effectiveMode || "manual";
+    setLoadDialogMode(effectiveMode);
+
     const machineInv = currentStop?.machine?.inventory || [];
+    const itemsBySource = suggestion?.items || [];
+
     const initialProducts: ProductToLoad[] = (products || []).map(p => {
+      const sugg = itemsBySource.find((i) => i.productId === p.id);
       const invItem = machineInv.find((i: any) => i.productId === p.id);
+      const currentInMachine = sugg?.currentQuantity ?? invItem?.currentQuantity ?? 0;
+      const maxCapacity = sugg?.maxCapacity ?? invItem?.maxCapacity ?? 20;
+      const standardQuantity = sugg?.standardQuantity ?? null;
+      const suggested = effectiveMode === "standard" ? (sugg?.suggestedQuantity ?? 0) : 0;
       return {
         productId: p.id,
         name: p.name,
-        quantity: 0,
-        currentInMachine: invItem?.currentQuantity || 0,
-        maxCapacity: invItem?.maxCapacity || 20,
+        quantity: suggested,
+        currentInMachine,
+        maxCapacity,
+        standardQuantity,
+        suggestedQuantity: sugg?.suggestedQuantity ?? 0,
+        vehicleAvailable: sugg?.vehicleAvailable ?? 0,
       };
     });
     setProductsToLoad(initialProducts);
     setIsLoadDialogOpen(true);
+  };
+
+  const applyStandardSuggestion = () => {
+    setProductsToLoad(prev => prev.map(p => ({
+      ...p,
+      quantity: Math.max(0, Math.min(p.maxCapacity - p.currentInMachine, p.suggestedQuantity ?? 0)),
+    })));
+  };
+
+  const resetToZero = () => {
+    setProductsToLoad(prev => prev.map(p => ({ ...p, quantity: 0 })));
   };
 
   const updateProductQuantity = (productId: string, delta: number) => {
@@ -2491,53 +2554,133 @@ export function SupplierPage() {
 
       {/* DIALOGO: Cargar Productos */}
       <Dialog open={isLoadDialogOpen} onOpenChange={setIsLoadDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
               Cargar Productos
             </DialogTitle>
             <DialogDescription>
-              Selecciona los productos y cantidades a cargar en la máquina
+              {loadDialogMode === "standard"
+                ? "Modo carga estándar: confirma la sugerencia o ajusta diferencias por faltantes."
+                : "Modo manual: selecciona los productos y cantidades a cargar en la máquina."}
             </DialogDescription>
           </DialogHeader>
+
+          {refillSuggestionData && (
+            <div className="flex items-center justify-between gap-3 px-1 py-2 rounded-md bg-muted/40 border">
+              <div className="flex items-center gap-2 text-xs">
+                <Badge variant={loadDialogMode === "standard" ? "default" : "secondary"} data-testid="badge-refill-mode">
+                  {loadDialogMode === "standard" ? "Carga estándar" : "Manual"}
+                </Badge>
+                {refillSuggestionData.override && (
+                  <span className="text-muted-foreground">Override de máquina</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {loadDialogMode === "standard" ? (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={applyStandardSuggestion}
+                      data-testid="button-apply-standard"
+                    >
+                      Restaurar sugerencia
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setLoadDialogMode("manual");
+                        resetToZero();
+                      }}
+                      data-testid="button-switch-manual"
+                    >
+                      Cambiar a manual
+                    </Button>
+                  </>
+                ) : refillSuggestionData.effectiveMode === "standard" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setLoadDialogMode("standard");
+                      applyStandardSuggestion();
+                    }}
+                    data-testid="button-switch-standard"
+                  >
+                    Volver a sugerencia estándar
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          )}
+
           <ScrollArea className="flex-1 pr-4">
             <div className="space-y-3">
-              {productsToLoad.map((product) => (
-                <div key={product.productId} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{product.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      En máquina: {product.currentInMachine}/{product.maxCapacity}
-                    </p>
-                    <Progress 
-                      value={(product.currentInMachine / product.maxCapacity) * 100} 
-                      className="h-1.5 mt-1"
-                    />
+              {productsToLoad.map((product) => {
+                const remaining = Math.max(0, product.maxCapacity - product.currentInMachine);
+                const showStandard = loadDialogMode === "standard" && typeof product.standardQuantity === "number";
+                const standardTarget = typeof product.standardQuantity === "number" ? product.standardQuantity : null;
+                const diffFromSuggestion = (product.suggestedQuantity ?? 0) - product.quantity;
+                const surplus = standardTarget !== null
+                  ? Math.max(0, product.currentInMachine - standardTarget)
+                  : 0;
+                return (
+                  <div key={product.productId} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{product.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        En máquina: {product.currentInMachine}/{product.maxCapacity}
+                        {showStandard && (
+                          <> • Estándar: <span className="font-medium">{product.standardQuantity}</span></>
+                        )}
+                      </p>
+                      {loadDialogMode === "standard" && diffFromSuggestion > 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`text-diff-${product.productId}`}>
+                          Faltan {diffFromSuggestion} respecto a la sugerencia
+                        </p>
+                      )}
+                      {loadDialogMode === "standard" && surplus > 0 && (
+                        <p className="text-xs text-blue-600 dark:text-blue-400" data-testid={`text-surplus-${product.productId}`}>
+                          Sobran {surplus} sobre el estándar (no requiere carga)
+                        </p>
+                      )}
+                      <Progress
+                        value={(product.currentInMachine / product.maxCapacity) * 100}
+                        className="h-1.5 mt-1"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => updateProductQuantity(product.productId, -1)}
+                        disabled={product.quantity === 0}
+                        data-testid={`button-decrease-${product.productId}`}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <span className="w-8 text-center font-bold" data-testid={`text-quantity-${product.productId}`}>{product.quantity}</span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => updateProductQuantity(product.productId, 1)}
+                        disabled={product.quantity >= remaining}
+                        data-testid={`button-increase-${product.productId}`}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 ml-4">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => updateProductQuantity(product.productId, -1)}
-                      disabled={product.quantity === 0}
-                    >
-                      <Minus className="h-4 w-4" />
-                    </Button>
-                    <span className="w-8 text-center font-bold">{product.quantity}</span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => updateProductQuantity(product.productId, 1)}
-                      disabled={product.quantity >= product.maxCapacity - product.currentInMachine}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </ScrollArea>
           <DialogFooter className="mt-4">
@@ -2549,13 +2692,13 @@ export function SupplierPage() {
                 <Button variant="outline" onClick={() => setIsLoadDialogOpen(false)} data-testid="button-cancel-load">
                   Cancelar
                 </Button>
-                <Button 
+                <Button
                   onClick={handleLoadProducts}
                   disabled={productsToLoad.every(p => p.quantity === 0) || loadProductsMutation.isPending}
                   data-testid="button-submit-load"
                 >
                   {loadProductsMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                  Confirmar Carga
+                  {loadDialogMode === "standard" ? "Confirmar carga estándar" : "Confirmar Carga"}
                 </Button>
               </div>
             </div>

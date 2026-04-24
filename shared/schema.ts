@@ -125,6 +125,7 @@ export const tenantSettings = pgTable("tenant_settings", {
   notifyMaintenanceDue: boolean("notify_maintenance_due").default(true),
   lowStockThreshold: integer("low_stock_threshold").default(5),
   includeViewerLinkInContractEmail: boolean("include_viewer_link_in_contract_email").default(true),
+  defaultRefillMode: text("default_refill_mode").default("manual"),
   settings: jsonb("settings"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -376,6 +377,7 @@ export const machines = pgTable("machines", {
   nayaxMachineId: integer("nayax_machine_id"),
   nayaxDeviceSerial: text("nayax_device_serial"),
   nayaxLinkedAt: timestamp("nayax_linked_at"),
+  refillModeOverride: text("refill_mode_override"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -395,6 +397,7 @@ export const machineInventory = pgTable("machine_inventory", {
   currentQuantity: integer("current_quantity").default(0),
   maxCapacity: integer("max_capacity").default(20),
   minLevel: integer("min_level").default(5),
+  standardQuantity: integer("standard_quantity"),
   lastUpdated: timestamp("last_updated").defaultNow(),
 });
 

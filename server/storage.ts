@@ -205,7 +205,24 @@ export interface IStorage {
   
   getMachineInventory(machineId: string): Promise<(MachineInventory & { product: Product })[]>;
   updateMachineInventory(machineId: string, productId: string, quantity: number): Promise<MachineInventory | undefined>;
+  updateMachineInventoryConfig(machineId: string, productId: string, config: { maxCapacity?: number; minLevel?: number; standardQuantity?: number | null }): Promise<MachineInventory | undefined>;
   setMachineInventory(inventory: InsertMachineInventory): Promise<MachineInventory>;
+  copyPlanogramFromMachine(sourceMachineId: string, targetMachineId: string, tenantId: string): Promise<{ copied: number; skipped: number }>;
+  getRefillSuggestion(machineId: string, supplierUserId: string): Promise<{
+    effectiveMode: "standard" | "manual";
+    globalDefault: "standard" | "manual";
+    override: "standard" | "manual" | null;
+    items: Array<{
+      productId: string;
+      productName: string;
+      currentQuantity: number;
+      maxCapacity: number;
+      standardQuantity: number | null;
+      targetQuantity: number;
+      suggestedQuantity: number;
+      vehicleAvailable: number;
+    }>;
+  }>;
   
   getMachineAlerts(machineId?: string, resolved?: boolean, limit?: number): Promise<MachineAlert[]>;
   getMachineAlert(id: string): Promise<MachineAlert | undefined>;
@@ -1027,6 +1044,145 @@ export class DatabaseStorage implements IStorage {
     
     const [newInventory] = await db.insert(machineInventory).values(inventory).returning();
     return newInventory;
+  }
+
+  async updateMachineInventoryConfig(
+    machineId: string,
+    productId: string,
+    config: { maxCapacity?: number; minLevel?: number; standardQuantity?: number | null }
+  ): Promise<MachineInventory | undefined> {
+    const updateData: Record<string, unknown> = { lastUpdated: new Date() };
+    if (config.maxCapacity !== undefined) updateData.maxCapacity = config.maxCapacity;
+    if (config.minLevel !== undefined) updateData.minLevel = config.minLevel;
+    if (config.standardQuantity !== undefined) updateData.standardQuantity = config.standardQuantity;
+
+    const [updated] = await db.update(machineInventory)
+      .set(updateData)
+      .where(and(eq(machineInventory.machineId, machineId), eq(machineInventory.productId, productId)))
+      .returning();
+    return updated;
+  }
+
+  async copyPlanogramFromMachine(
+    sourceMachineId: string,
+    targetMachineId: string,
+    tenantId: string
+  ): Promise<{ copied: number; skipped: number }> {
+    return db.transaction(async (tx) => {
+      const sourceRows = await tx.select().from(machineInventory)
+        .where(eq(machineInventory.machineId, sourceMachineId));
+
+      let copied = 0;
+      let skipped = 0;
+
+      for (const row of sourceRows) {
+        const [existing] = await tx.select().from(machineInventory)
+          .where(and(
+            eq(machineInventory.machineId, targetMachineId),
+            eq(machineInventory.productId, row.productId)
+          ));
+
+        if (existing) {
+          // No sobrescribir configuraciones existentes para preservar planogramas ya ajustados
+          skipped++;
+          continue;
+        }
+
+        const maxCapacity = row.maxCapacity ?? 20;
+        // Si standardQuantity excede maxCapacity destino, ajustarla al máximo (defensa-en-profundidad)
+        const standardQuantity = typeof row.standardQuantity === "number"
+          ? Math.min(row.standardQuantity, maxCapacity)
+          : null;
+
+        try {
+          await tx.insert(machineInventory).values({
+            tenantId,
+            machineId: targetMachineId,
+            productId: row.productId,
+            currentQuantity: 0,
+            maxCapacity,
+            minLevel: row.minLevel ?? 5,
+            standardQuantity,
+          });
+          copied++;
+        } catch (err) {
+          console.error("copyPlanogramFromMachine insert failed:", err);
+          skipped++;
+        }
+      }
+
+      return { copied, skipped };
+    });
+  }
+
+  async getRefillSuggestion(
+    machineId: string,
+    supplierUserId: string
+  ): Promise<{
+    effectiveMode: "standard" | "manual";
+    globalDefault: "standard" | "manual";
+    override: "standard" | "manual" | null;
+    items: Array<{
+      productId: string;
+      productName: string;
+      currentQuantity: number;
+      maxCapacity: number;
+      standardQuantity: number | null;
+      targetQuantity: number;
+      suggestedQuantity: number;
+      vehicleAvailable: number;
+    }>;
+  }> {
+    const machine = await this.getMachine(machineId);
+    if (!machine) {
+      return { effectiveMode: "manual", globalDefault: "manual", override: null, items: [] };
+    }
+
+    let globalDefault: "standard" | "manual" = "manual";
+    if (machine.tenantId) {
+      const [settings] = await db.select().from(tenantSettings)
+        .where(eq(tenantSettings.tenantId, machine.tenantId));
+      if (settings?.defaultRefillMode === "standard") {
+        globalDefault = "standard";
+      }
+    }
+
+    const override: "standard" | "manual" | null =
+      machine.refillModeOverride === "standard" || machine.refillModeOverride === "manual"
+        ? machine.refillModeOverride
+        : null;
+
+    const effectiveMode: "standard" | "manual" = override ?? globalDefault;
+
+    const machineInv = await this.getMachineInventory(machineId);
+    const vehicleInv = await this.getVehicleInventoryByUser(supplierUserId);
+
+    const vehicleByProduct = new Map<string, number>();
+    for (const v of vehicleInv) {
+      vehicleByProduct.set(v.productId, (vehicleByProduct.get(v.productId) || 0) + (v.quantity || 0));
+    }
+
+    const items = machineInv.map((inv) => {
+      const current = inv.currentQuantity || 0;
+      const max = inv.maxCapacity || 20;
+      const standardRaw = inv.standardQuantity;
+      const target = Math.min(standardRaw ?? max, max);
+      const need = Math.max(0, target - current);
+      const available = vehicleByProduct.get(inv.productId) || 0;
+      const suggested = Math.min(need, available);
+      return {
+        productId: inv.productId,
+        productName: inv.product?.name || "",
+        currentQuantity: current,
+        maxCapacity: max,
+        standardQuantity: typeof standardRaw === "number" ? standardRaw : null,
+        targetQuantity: target,
+        suggestedQuantity: suggested,
+        vehicleAvailable: available,
+      };
+    });
+
+    return { effectiveMode, globalDefault, override, items };
   }
 
   async getMachineAlerts(machineId?: string, resolved?: boolean, limit: number = 50): Promise<MachineAlert[]> {

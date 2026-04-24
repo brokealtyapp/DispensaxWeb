@@ -159,6 +159,7 @@ export function SettingsPage() {
     notifyMaintenanceDue: boolean;
     lowStockThreshold: number;
     includeViewerLinkInContractEmail: boolean;
+    defaultRefillMode?: "standard" | "manual";
   }>({
     queryKey: ["/api/settings/notifications"],
     enabled: isAdmin,
@@ -259,7 +260,12 @@ export function SettingsPage() {
   });
 
   const updateNotificationsMutation = useMutation({
-    mutationFn: async (data: { notifyLowStock: boolean; notifyMaintenanceDue: boolean; includeViewerLinkInContractEmail: boolean }) => {
+    mutationFn: async (data: {
+      notifyLowStock?: boolean;
+      notifyMaintenanceDue?: boolean;
+      includeViewerLinkInContractEmail?: boolean;
+      defaultRefillMode?: "standard" | "manual";
+    }) => {
       const res = await apiRequest("PATCH", "/api/settings/notifications", data);
       return res.json();
     },
@@ -1008,6 +1014,46 @@ export function SettingsPage() {
                     Guardar Cambios
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle>Operaciones de Abastecimiento</CardTitle>
+                <CardDescription>
+                  Define cómo cargan los abastecedores las máquinas por defecto. Cada máquina puede tener su propio modo (override) en su detalle.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {notifLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Cargando preferencias...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="space-y-2 max-w-md">
+                      <Label htmlFor="defaultRefillMode">Modo de carga por defecto</Label>
+                      <Select
+                        value={notifData?.defaultRefillMode === "standard" ? "standard" : "manual"}
+                        onValueChange={(value: "standard" | "manual") => {
+                          updateNotificationsMutation.mutate({ defaultRefillMode: value });
+                        }}
+                      >
+                        <SelectTrigger id="defaultRefillMode" data-testid="select-default-refill-mode">
+                          <SelectValue placeholder="Selecciona un modo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="manual">Manual (abastecedor elige cantidades)</SelectItem>
+                          <SelectItem value="standard">Carga estándar (cantidad fija por máquina)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        En modo estándar, el sistema sugiere cargar hasta la cantidad fija configurada en cada máquina.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
