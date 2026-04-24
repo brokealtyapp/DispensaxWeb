@@ -1066,11 +1066,49 @@ export function SupplierPage() {
   const updateProductQuantity = (productId: string, delta: number) => {
     setProductsToLoad(prev => prev.map(p => {
       if (p.productId === productId) {
-        const newQty = Math.max(0, Math.min(p.maxCapacity - p.currentInMachine, p.quantity + delta));
+        // Cap por capacidad restante de la máquina Y por stock disponible en el vehículo
+        const machineRoom = Math.max(0, p.maxCapacity - p.currentInMachine);
+        const vehicleCap = typeof p.vehicleAvailable === "number" ? p.vehicleAvailable : machineRoom;
+        const ceiling = Math.min(machineRoom, vehicleCap);
+        const requested = p.quantity + delta;
+        const newQty = Math.max(0, Math.min(ceiling, requested));
+        if (delta > 0 && requested > vehicleCap && vehicleCap < machineRoom) {
+          toast({
+            title: "Stock del vehículo insuficiente",
+            description: `Solo hay ${vehicleCap} unidades de ${p.name} cargadas en el vehículo.`,
+            variant: "destructive",
+          });
+        }
         return { ...p, quantity: newQty };
       }
       return p;
     }));
+  };
+
+  // "Ajustar diferencia" — lleva cada SKU a su standardQuantity (sin pasarse del stock del vehículo).
+  const adjustToStandardDifference = () => {
+    setProductsToLoad(prev => prev.map(p => {
+      if (typeof p.standardQuantity !== "number") return p;
+      const needed = Math.max(0, p.standardQuantity - p.currentInMachine);
+      const machineRoom = Math.max(0, p.maxCapacity - p.currentInMachine);
+      const vehicleCap = typeof p.vehicleAvailable === "number" ? p.vehicleAvailable : needed;
+      const newQty = Math.min(needed, machineRoom, vehicleCap);
+      return { ...p, quantity: newQty };
+    }));
+    const shortages = productsToLoad
+      .filter(p =>
+        typeof p.standardQuantity === "number" &&
+        typeof p.vehicleAvailable === "number" &&
+        Math.max(0, p.standardQuantity - p.currentInMachine) > p.vehicleAvailable
+      )
+      .map(p => p.name);
+    if (shortages.length > 0) {
+      toast({
+        title: "Stock insuficiente para algunos SKUs",
+        description: `${shortages.length} producto(s) no se pueden completar al estándar: ${shortages.slice(0, 3).join(", ")}${shortages.length > 3 ? "…" : ""}`,
+        variant: "destructive",
+      });
+    }
   };
 
   const toggleChecklistItem = (id: string) => {
@@ -2591,6 +2629,15 @@ export function SupplierPage() {
               <div className="flex items-center gap-2">
                 {loadDialogMode === "standard" ? (
                   <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="default"
+                      onClick={adjustToStandardDifference}
+                      data-testid="button-adjust-difference"
+                    >
+                      Ajustar diferencia
+                    </Button>
                     <Button
                       type="button"
                       size="sm"

@@ -5,6 +5,8 @@ import { createServer } from "http";
 import cookieParser from "cookie-parser";
 import { requestTimeout } from "./middleware";
 import { startCacheUpdater } from "./cache";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 
 const app = express();
 const httpServer = createServer(app);
@@ -65,9 +67,29 @@ app.use((req, res, next) => {
   next();
 });
 
+// Backfill idempotente: inicializa standard_quantity para filas existentes.
+// Tarea #92: la "carga estándar" requiere que cada item tenga un objetivo;
+// si la columna fue añadida tras `db:push`, las filas viejas quedan en NULL.
+async function backfillStandardQuantity() {
+  try {
+    const result = await db.execute(sql`
+      UPDATE machine_inventory
+      SET standard_quantity = COALESCE(max_capacity, 20)
+      WHERE standard_quantity IS NULL
+    `);
+    const affected = (result as { rowCount?: number }).rowCount ?? 0;
+    if (affected > 0) {
+      log(`[backfill] standard_quantity inicializado en ${affected} filas`);
+    }
+  } catch (err) {
+    log(`[backfill] error inicializando standard_quantity: ${(err as Error).message}`);
+  }
+}
+
 (async () => {
   startCacheUpdater();
-  
+  await backfillStandardQuantity();
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
