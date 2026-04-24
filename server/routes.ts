@@ -3089,7 +3089,8 @@ export async function registerRoutes(
         return res.status(400).json({ error: error.errors });
       }
       console.error("Error creating lane change event:", error);
-      res.status(400).json({ error: (error as Error).message || "Error al registrar cambio de carril" });
+      const status = (error as any).statusCode === 409 ? 409 : 400;
+      res.status(status).json({ error: (error as Error).message || "Error al registrar cambio de carril" });
     }
   });
 
@@ -3167,8 +3168,8 @@ export async function registerRoutes(
     }
   });
 
-  // Cola Nayax: cambios de carril pendientes de sincronizar (admin/supervisor)
-  app.get("/api/lane-changes/pending", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  // Cola Nayax: cambios de carril pendientes de sincronizar (admin/supervisor/contabilidad)
+  app.get("/api/lane-changes/pending", authenticateJWT, authorizeRoles("admin", "supervisor", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;
       if (!tenantId) return res.status(401).json({ error: "No autenticado" });
@@ -3178,6 +3179,20 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching pending lane changes:", error);
       res.status(500).json({ error: "Error al obtener cola pendiente" });
+    }
+  });
+
+  // Auditorías de bandejas recientes para back-office (admin/supervisor/contabilidad)
+  app.get("/api/tray-audits/recent", authenticateJWT, authorizeRoles("admin", "supervisor", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.status(401).json({ error: "No autenticado" });
+      const limit = Math.min(parseInt(String(req.query.limit ?? "50"), 10) || 50, 200);
+      const audits = await storage.getRecentTrayAudits(tenantId, limit);
+      res.json(audits);
+    } catch (error) {
+      console.error("Error fetching recent tray audits:", error);
+      res.status(500).json({ error: "Error al obtener auditorías recientes" });
     }
   });
 

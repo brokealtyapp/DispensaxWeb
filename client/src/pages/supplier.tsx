@@ -1694,6 +1694,67 @@ export function SupplierPage() {
                   </CardContent>
                 </Card>
 
+                {/* Grid Tray×Lane: planograma actual de la máquina (#96) */}
+                <Card data-testid="card-planogram-grid">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Package className="h-5 w-5" />
+                      Planograma Actual
+                    </CardTitle>
+                    <CardDescription>
+                      Producto esperado en cada bandeja×carril antes de cargar.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {(() => {
+                      const trayCount = currentStop.machine?.trayCount ?? 6;
+                      const lanesPerTray = currentStop.machine?.lanesPerTray ?? 8;
+                      const inv: any[] = currentStop.machine?.inventory ?? [];
+                      const lookup = new Map<string, any>();
+                      inv.forEach((it: any) => {
+                        if (it.trayNumber != null && it.laneNumber != null) {
+                          lookup.set(`${it.trayNumber}-${it.laneNumber}`, it);
+                        }
+                      });
+                      return Array.from({ length: trayCount }, (_, i) => i + 1).map((tray) => (
+                        <div key={tray} className="space-y-1" data-testid={`planogram-tray-${tray}`}>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary">Bandeja {tray}</Badge>
+                            <span className="text-xs text-muted-foreground">{lanesPerTray} carriles</span>
+                          </div>
+                          <div
+                            className="grid gap-1"
+                            style={{ gridTemplateColumns: `repeat(${Math.min(lanesPerTray, 8)}, minmax(0, 1fr))` }}
+                          >
+                            {Array.from({ length: lanesPerTray }, (_, j) => j + 1).map((lane) => {
+                              const item = lookup.get(`${tray}-${lane}`);
+                              return (
+                                <div
+                                  key={lane}
+                                  className={`p-2 rounded-md border text-xs flex flex-col items-center justify-center min-h-14 text-center ${
+                                    item ? "bg-card" : "bg-muted/40 border-dashed"
+                                  }`}
+                                  data-testid={`planogram-cell-${tray}-${lane}`}
+                                  title={item?.product?.name || "Vacío"}
+                                >
+                                  <span className="font-mono text-[10px] text-muted-foreground">
+                                    B{tray}-C{lane}
+                                  </span>
+                                  <span className="truncate w-full">
+                                    {item?.product?.name || (
+                                      <span className="text-muted-foreground italic">Vacío</span>
+                                    )}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                  </CardContent>
+                </Card>
+
                 {/* Auditoría de bandejas (#96) */}
                 <Card data-testid="card-tray-audit">
                   <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">

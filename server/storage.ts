@@ -218,6 +218,7 @@ export interface IStorage {
   getPendingLaneChangeEvents(tenantId: string, opts?: { machineId?: string; limit?: number }): Promise<any[]>;
   createTrayAudit(payload: InsertTrayAudit): Promise<TrayAudit>;
   getTrayAuditsForService(serviceRecordId: string, tenantId: string): Promise<TrayAudit[]>;
+  getRecentTrayAudits(tenantId: string, limit?: number): Promise<any[]>;
   getRefillSuggestion(machineId: string, supplierUserId: string): Promise<{
     effectiveMode: "standard" | "manual";
     globalDefault: "standard" | "manual";
@@ -1235,15 +1236,28 @@ export class DatabaseStorage implements IStorage {
         throw new Error(`Carril destino fuera de rango (1-${lanesPerTray})`);
       }
 
-      // Si el destino ya está ocupado por un producto distinto al nuevo, marcamos a ese
-      // producto sin posición (el cambio reasigna físicamente el carril)
+      // Validar destino: si está ocupado por otro producto que NO es el previousProductId
+      // (es decir, no forma parte del swap explícito), rechazamos para evitar desasignar
+      // silenciosamente un SKU que el abastecedor no mencionó.
       const [occupied] = await tx.select().from(machineInventory)
         .where(and(
           eq(machineInventory.machineId, payload.machineId),
           eq(machineInventory.trayNumber, payload.toTrayNumber),
           eq(machineInventory.laneNumber, payload.toLaneNumber),
         ));
-      if (occupied && occupied.productId !== payload.productId) {
+      if (
+        occupied &&
+        occupied.productId !== payload.productId &&
+        occupied.productId !== payload.previousProductId
+      ) {
+        const err: any = new Error(
+          `Posición destino B${payload.toTrayNumber}-C${payload.toLaneNumber} ya está ocupada. Indica el cambio explícitamente o elige otra posición.`
+        );
+        err.statusCode = 409;
+        throw err;
+      }
+      // Caso swap explícito: liberamos la posición del producto previo en el destino.
+      if (occupied && occupied.productId === payload.previousProductId) {
         await tx.update(machineInventory)
           .set({ trayNumber: null, laneNumber: null, lastUpdated: new Date() })
           .where(eq(machineInventory.id, occupied.id));
@@ -1338,6 +1352,28 @@ export class DatabaseStorage implements IStorage {
         eq(trayAudits.tenantId, tenantId),
       ))
       .orderBy(trayAudits.trayNumber);
+  }
+
+  async getRecentTrayAudits(tenantId: string, limit: number = 50): Promise<any[]> {
+    const rows = await db.select({
+      audit: trayAudits,
+      machineName: machines.name,
+      machineCode: machines.code,
+      userName: users.fullName,
+    })
+      .from(trayAudits)
+      .leftJoin(machines, eq(machines.id, trayAudits.machineId))
+      .leftJoin(users, eq(users.id, trayAudits.userId))
+      .where(eq(trayAudits.tenantId, tenantId))
+      .orderBy(desc(trayAudits.createdAt))
+      .limit(limit);
+
+    return rows.map((r) => ({
+      ...r.audit,
+      machineName: r.machineName,
+      machineCode: r.machineCode,
+      userName: r.userName,
+    }));
   }
 
   async getRefillSuggestion(

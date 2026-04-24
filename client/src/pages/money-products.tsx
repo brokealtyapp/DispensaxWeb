@@ -156,6 +156,106 @@ function PendingLaneChangesPanel() {
   );
 }
 
+function RecentTrayAuditsPanel() {
+  const { data: audits = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/tray-audits/recent"],
+  });
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Auditorías de Bandejas Recientes</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const grouped = audits.reduce<Record<string, any[]>>((acc, audit) => {
+    const key = `${audit.serviceRecordId}|${audit.machineId}`;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(audit);
+    return acc;
+  }, {});
+  const groups = Object.entries(grouped).sort(([, a], [, b]) => {
+    const maxA = Math.max(...a.map((x) => new Date(x.createdAt).getTime()));
+    const maxB = Math.max(...b.map((x) => new Date(x.createdAt).getTime()));
+    return maxB - maxA;
+  });
+
+  return (
+    <Card data-testid="card-recent-tray-audits">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Package className="h-5 w-5" />
+          Auditorías de Bandejas Recientes
+        </CardTitle>
+        <CardDescription>
+          Posiciones vacías reportadas por bandeja durante los últimos servicios.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {groups.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground" data-testid="empty-state-tray-audits">
+            <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>No hay auditorías recientes</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {groups.map(([key, items]) => {
+              const first = items[0];
+              const totalEmpty = items.reduce((sum, it) => sum + (it.emptyPositions ?? 0), 0);
+              const totalLanes = items.reduce((sum, it) => sum + (it.totalLanes ?? 0), 0);
+              return (
+                <div key={key} className="space-y-2 p-3 rounded-lg bg-muted/30" data-testid={`group-tray-audit-${first.serviceRecordId}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{first.machineName}</span>
+                    <Badge variant="outline">{first.userName}</Badge>
+                    <span className="text-xs text-muted-foreground">{formatDateTime(first.createdAt)}</span>
+                    <Badge variant="secondary" className="ml-auto">
+                      {totalEmpty}/{totalLanes} carriles vacíos
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {items
+                      .sort((a, b) => (a.trayNumber ?? 0) - (b.trayNumber ?? 0))
+                      .map((it) => (
+                        <Badge
+                          key={it.id}
+                          variant={it.emptyPositions > 0 ? "destructive" : "outline"}
+                          data-testid={`badge-tray-audit-${it.id}`}
+                        >
+                          B{it.trayNumber}: {it.emptyPositions}/{it.totalLanes}
+                          {it.notes ? " ·" : ""}
+                        </Badge>
+                      ))}
+                  </div>
+                  {items.some((it) => it.notes) && (
+                    <div className="space-y-1">
+                      {items
+                        .filter((it) => it.notes)
+                        .map((it) => (
+                          <p key={`note-${it.id}`} className="text-xs text-muted-foreground italic">
+                            B{it.trayNumber}: “{it.notes}”
+                          </p>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function MoneyProductsPage() {
   const { toast } = useToast();
   const { canCreate } = usePermissions();
@@ -1035,7 +1135,10 @@ export function MoneyProductsPage() {
           </TabsContent>
 
           <TabsContent value="lane-changes" className="mt-4" data-testid="tab-content-lane-changes">
-            <PendingLaneChangesPanel />
+            <div className="space-y-4">
+              <PendingLaneChangesPanel />
+              <RecentTrayAuditsPanel />
+            </div>
           </TabsContent>
         </Tabs>
 
