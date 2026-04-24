@@ -125,3 +125,31 @@ export async function testNayaxConnection(token: string): Promise<{ success: boo
     return { success: false, error: error.message };
   }
 }
+
+export interface LaneChangeNayaxPayload {
+  id: string;
+  tenantId: string;
+  machineId: string;
+  fromTrayNumber: number;
+  fromLaneNumber: number;
+  toTrayNumber: number;
+  toLaneNumber: number;
+  productId: string;
+  previousProductId: string | null;
+}
+
+/**
+ * Stub: encola un cambio de carril para sincronizar con la API de Nayax Lynx.
+ * El registro `lane_change_events` ya guarda `syncStatus="pending"` (cola pendiente
+ * para Nayax). Esta función actualmente es un no-op; será reemplazada por la
+ * llamada real a Lynx (asignación de planograma) en una iteración futura.
+ *
+ * Contrato esperado:
+ *   - Reintentar con backoff exponencial.
+ *   - Marcar el evento como `synced` en éxito o `failed` con `syncError` en error
+ *     terminal a través de `storage.updateLaneChangeSyncStatus` (futuro).
+ */
+export async function enqueueLaneChangeForNayax(_event: LaneChangeNayaxPayload): Promise<void> {
+  // TODO Nayax sync: integrar con Lynx API cuando esté disponible.
+  return;
+}

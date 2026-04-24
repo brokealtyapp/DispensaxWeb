@@ -1709,9 +1709,10 @@ export function SupplierPage() {
                     {(() => {
                       const trayCount = currentStop.machine?.trayCount ?? 6;
                       const lanesPerTray = currentStop.machine?.lanesPerTray ?? 8;
-                      const inv: any[] = currentStop.machine?.inventory ?? [];
-                      const lookup = new Map<string, any>();
-                      inv.forEach((it: any) => {
+                      type InventoryCell = { trayNumber: number | null; laneNumber: number | null; product?: { name?: string } | null };
+                      const inv: InventoryCell[] = (currentStop.machine?.inventory ?? []) as InventoryCell[];
+                      const lookup = new Map<string, InventoryCell>();
+                      inv.forEach((it) => {
                         if (it.trayNumber != null && it.laneNumber != null) {
                           lookup.set(`${it.trayNumber}-${it.laneNumber}`, it);
                         }

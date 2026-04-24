@@ -1528,8 +1528,10 @@ export function MachineDetailPage() {
                 {(() => {
                   const trayCount = machine.trayCount ?? 6;
                   const lanesPerTray = machine.lanesPerTray ?? 8;
-                  const lookup = new Map<string, any>();
-                  (machine.inventory as any[]).forEach((it: any) => {
+                  type InventoryCell = { id: string; productId: string; trayNumber: number | null; laneNumber: number | null; product?: { name?: string } | null };
+                  const inventoryItems: InventoryCell[] = (machine.inventory ?? []) as InventoryCell[];
+                  const lookup = new Map<string, InventoryCell>();
+                  inventoryItems.forEach((it) => {
                     if (it.trayNumber != null && it.laneNumber != null) {
                       lookup.set(`${it.trayNumber}-${it.laneNumber}`, it);
                     }
@@ -1590,7 +1592,7 @@ export function MachineDetailPage() {
                                       Vaciar posición
                                     </Button>
                                   )}
-                                  {(machine.inventory as any[]).map((inv: any) => {
+                                  {inventoryItems.map((inv) => {
                                     const isHere = inv.trayNumber === tray && inv.laneNumber === lane;
                                     return (
                                       <Button

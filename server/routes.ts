@@ -124,7 +124,7 @@ import {
   workOrderChecklistTemplates as workOrderChecklistTemplatesTable,
 } from "@shared/schema";
 import { z, ZodError } from "zod";
-import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection } from "./nayax";
+import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection, enqueueLaneChangeForNayax } from "./nayax";
 
 // =====================
 // DATABASE ERROR HELPERS
@@ -3078,10 +3078,18 @@ export async function registerRoutes(
         syncError: null,
       });
 
-      // TODO Nayax: encolar `event` para sincronizar el planograma con Lynx API.
-      // El sync real lo hará un worker que lea filas con syncStatus='pending'
-      // y actualice el planograma vía POST /machines/{id}/planogram.
-      // Por ahora, solo registramos la fila como pendiente (no-op).
+      // Encola el evento para sincronización futura con Nayax (no-op stub).
+      await enqueueLaneChangeForNayax({
+        id: event.id,
+        tenantId: event.tenantId,
+        machineId: event.machineId,
+        fromTrayNumber: event.fromTrayNumber,
+        fromLaneNumber: event.fromLaneNumber,
+        toTrayNumber: event.toTrayNumber,
+        toLaneNumber: event.toLaneNumber,
+        productId: event.productId,
+        previousProductId: event.previousProductId,
+      });
 
       res.status(201).json(event);
     } catch (error) {
@@ -3180,6 +3188,19 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching pending lane changes:", error);
       res.status(500).json({ error: "Error al obtener cola pendiente" });
+    }
+  });
+
+  // Auditorías de bandejas para un servicio específico (admin/supervisor/contabilidad)
+  app.get("/api/tray-audits/by-service/:serviceRecordId", authenticateJWT, authorizeRoles("admin", "supervisor", "contabilidad"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.status(401).json({ error: "No autenticado" });
+      const audits = await storage.getTrayAuditsForService(req.params.serviceRecordId, tenantId);
+      res.json(audits);
+    } catch (error) {
+      console.error("Error fetching tray audits by service:", error);
+      res.status(500).json({ error: "Error al obtener auditorías del servicio" });
     }
   });
 

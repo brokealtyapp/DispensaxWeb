@@ -61,8 +61,23 @@ const shrinkageFormSchema = z.object({
 type CashMovementFormData = z.infer<typeof cashMovementFormSchema>;
 type ShrinkageFormData = z.infer<typeof shrinkageFormSchema>;
 
+interface LaneChangeWithJoins {
+  id: string;
+  machineId: string;
+  productId: string;
+  fromTrayNumber: number;
+  fromLaneNumber: number;
+  toTrayNumber: number;
+  toLaneNumber: number;
+  notes: string | null;
+  createdAt: string;
+  machineName?: string | null;
+  productName?: string | null;
+  userName?: string | null;
+}
+
 function PendingLaneChangesPanel() {
-  const { data: laneChanges = [], isLoading } = useQuery<any[]>({
+  const { data: laneChanges = [], isLoading } = useQuery<LaneChangeWithJoins[]>({
     queryKey: ["/api/lane-changes/pending"],
   });
 
@@ -157,7 +172,7 @@ function PendingLaneChangesPanel() {
 }
 
 function RecentTrayAuditsPanel() {
-  const { data: audits = [], isLoading } = useQuery<any[]>({
+  const { data: audits = [], isLoading } = useQuery<TrayAuditWithJoins[]>({
     queryKey: ["/api/tray-audits/recent"],
   });
 
@@ -256,10 +271,25 @@ function RecentTrayAuditsPanel() {
   );
 }
 
-function CollectionTrayAuditPanel({ machineId }: { machineId: string }) {
-  const { data: audits = [], isLoading } = useQuery<any[]>({
-    queryKey: ["/api/tray-audits/recent", { machineId }],
-    enabled: !!machineId,
+interface TrayAuditWithJoins {
+  id: string;
+  serviceRecordId: string;
+  machineId: string;
+  userId: string;
+  trayNumber: number;
+  emptyPositions: number;
+  totalLanes: number;
+  notes: string | null;
+  createdAt: string;
+  machineName?: string | null;
+  machineCode?: string | null;
+  userName?: string | null;
+}
+
+function CollectionTrayAuditPanel({ serviceRecordId }: { serviceRecordId: string }) {
+  const { data: audits = [], isLoading } = useQuery<TrayAuditWithJoins[]>({
+    queryKey: ["/api/tray-audits/by-service", serviceRecordId],
+    enabled: !!serviceRecordId,
   });
 
   if (isLoading) {
@@ -1090,9 +1120,9 @@ export function MoneyProductsPage() {
 
               {selectedCollectionId && (() => {
                 const sel = (cashCollections || []).find((c: any) => c.id === selectedCollectionId);
-                const machineId = sel?.machineId;
-                if (!machineId) return null;
-                return <CollectionTrayAuditPanel machineId={machineId} />;
+                const serviceRecordId = sel?.serviceRecordId;
+                if (!serviceRecordId) return null;
+                return <CollectionTrayAuditPanel serviceRecordId={serviceRecordId} />;
               })()}
             </div>
           </TabsContent>
