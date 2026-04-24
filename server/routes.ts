@@ -3038,11 +3038,16 @@ export async function registerRoutes(
       const service = await ensureServiceAccess(req, res, req.params.id);
       if (!service) return;
 
+      const machine = await storage.getMachine(service.machineId);
+      if (!machine) return res.status(404).json({ error: "Máquina no encontrada" });
+      const trayCount = machine.trayCount ?? 6;
+      const lanesPerTray = machine.lanesPerTray ?? 8;
+
       const bodySchema = z.object({
-        fromTrayNumber: z.number().int().min(1).nullable(),
-        fromLaneNumber: z.number().int().min(1).nullable(),
-        toTrayNumber: z.number().int().min(1),
-        toLaneNumber: z.number().int().min(1),
+        fromTrayNumber: z.number().int().min(1).max(trayCount).nullable(),
+        fromLaneNumber: z.number().int().min(1).max(lanesPerTray).nullable(),
+        toTrayNumber: z.number().int().min(1).max(trayCount),
+        toLaneNumber: z.number().int().min(1).max(lanesPerTray),
         productId: z.string().min(1),
         previousProductId: z.string().min(1).nullable().optional(),
         notes: z.string().optional(),
