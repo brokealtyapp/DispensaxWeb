@@ -620,8 +620,8 @@ export function SupplierPage() {
 
   const createLaneChangeMutation = useMutation({
     mutationFn: async (data: {
-      fromTrayNumber: number;
-      fromLaneNumber: number;
+      fromTrayNumber: number | null;
+      fromLaneNumber: number | null;
       toTrayNumber: number;
       toLaneNumber: number;
       productId: string;
@@ -3306,26 +3306,34 @@ export function SupplierPage() {
                   </Button>
                   <Button
                     onClick={() => {
-                      const fromTray = parseInt(laneChangeDraft.fromTray);
-                      const fromLane = parseInt(laneChangeDraft.fromLane);
+                      const fromTrayRaw = laneChangeDraft.fromTray.trim();
+                      const fromLaneRaw = laneChangeDraft.fromLane.trim();
+                      const fromTray = fromTrayRaw === "" ? null : parseInt(fromTrayRaw);
+                      const fromLane = fromLaneRaw === "" ? null : parseInt(fromLaneRaw);
                       const toTray = parseInt(laneChangeDraft.toTray);
                       const toLane = parseInt(laneChangeDraft.toLane);
                       const productId = laneChangeDraft.productId || sourceItem?.productId;
                       if (
-                        Number.isNaN(fromTray) ||
-                        Number.isNaN(fromLane) ||
                         Number.isNaN(toTray) ||
                         Number.isNaN(toLane) ||
                         !productId
                       ) {
                         toast({
                           title: "Datos incompletos",
-                          description: "Completa origen, destino y producto",
+                          description: "Completa destino y producto",
                           variant: "destructive",
                         });
                         return;
                       }
-                      if (fromTray === toTray && fromLane === toLane) {
+                      if ((fromTray === null) !== (fromLane === null)) {
+                        toast({
+                          title: "Origen incompleto",
+                          description: "Bandeja y carril origen deben ir juntos (o ambos vacíos para nueva colocación)",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      if (fromTray !== null && fromLane !== null && fromTray === toTray && fromLane === toLane) {
                         toast({
                           title: "Posición inválida",
                           description: "Origen y destino no pueden ser iguales",
