@@ -10791,15 +10791,19 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Documento no encontrado" });
       }
 
+      // Delete the DB row first; if it fails the file in storage is still
+      // accessible. Then remove the file best-effort. This avoids leaving
+      // listed documents that point to a missing file.
+      await storage.deleteEstablishmentDocument(req.params.docId);
+
       try {
         const { Client } = await import("@replit/object-storage");
         const objClient = new Client({ bucketId: getObjectStorageBucketId() });
         await objClient.delete(doc.fileKey);
       } catch (e) {
-        console.warn("Could not delete file from storage:", e);
+        console.warn("Could not delete file from storage (non-fatal):", e);
       }
 
-      await storage.deleteEstablishmentDocument(req.params.docId);
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting document:", error);

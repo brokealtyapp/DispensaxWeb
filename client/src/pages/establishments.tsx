@@ -236,6 +236,25 @@ function formatFileSize(bytes: number | null | undefined): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function getDownloadErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    const m = err.message.match(/^(\d+):\s*([\s\S]*)$/);
+    if (m) {
+      const code = parseInt(m[1], 10);
+      if (code === 404) return "El archivo ya no existe en el almacenamiento";
+      if (code === 401 || code === 403) return "No tienes permiso para acceder a este archivo";
+      if (code >= 500) return "Error del servidor, intenta de nuevo en unos segundos";
+      try {
+        const body = JSON.parse(m[2]);
+        if (body && typeof body.error === "string") return body.error;
+      } catch { /* not json */ }
+      return `Error ${code}`;
+    }
+    return "Sin conexión o el servidor no respondió";
+  }
+  return "Error desconocido";
+}
+
 function EstablishmentDocumentsSection({
   establishmentId,
   canCreate,
@@ -256,7 +275,18 @@ function EstablishmentDocumentsSection({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0);
   const [confirmDeleteDocId, setConfirmDeleteDocId] = useState<string | null>(null);
+  const [pendingDeleteDocId, setPendingDeleteDocId] = useState<string | null>(null);
+  const [busyDocIds, setBusyDocIds] = useState<Set<string>>(() => new Set());
   const isMountedRef = useRef(true);
+
+  const setDocBusy = (id: string, busy: boolean) => {
+    setBusyDocIds((prev) => {
+      const next = new Set(prev);
+      if (busy) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -290,11 +320,21 @@ function EstablishmentDocumentsSection({
     mutationFn: async (docId: string) => {
       return apiRequest("DELETE", `/api/establishments/${establishmentId}/documents/${docId}`);
     },
+    onMutate: (docId: string) => {
+      setPendingDeleteDocId(docId);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishmentId, "documents"] });
       toast({ title: "Documento eliminado" });
+      setConfirmDeleteDocId(null);
     },
-    onError: () => toast({ title: "Error al eliminar documento", variant: "destructive" }),
+    onError: () => {
+      toast({ title: "Error al eliminar documento", variant: "destructive" });
+      setConfirmDeleteDocId(null);
+    },
+    onSettled: () => {
+      setPendingDeleteDocId(null);
+    },
   });
 
   const startUpload = async (file: File) => {
@@ -398,6 +438,35 @@ function EstablishmentDocumentsSection({
   };
 
   const handleDownload = async (doc: EstablishmentDocument, inline = false) => {
+    if (busyDocIds.has(doc.id)) return;
+
+    let popup: Window | null = null;
+    if (inline) {
+      // Open the tab synchronously inside the user gesture so the browser
+      // doesn't block it as an unsolicited popup.
+      popup = window.open("", "_blank");
+      if (!popup) {
+        toast({
+          title: "El navegador bloqueó la pestaña",
+          description: "Permite ventanas emergentes para este sitio o usa el botón Descargar.",
+          variant: "destructive",
+        });
+        return;
+      }
+      try {
+        popup.document.write(
+          '<!doctype html><html><head><meta charset="utf-8"><title>Cargando documento...</title></head>' +
+            '<body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#666;background:#f7f7f7">' +
+            "Cargando documento..." +
+            "</body></html>",
+        );
+        popup.document.close();
+      } catch {
+        /* ignore: some browsers restrict document.write on about:blank */
+      }
+    }
+
+    setDocBusy(doc.id, true);
     try {
       const res = await apiRequest(
         "GET",
@@ -406,17 +475,33 @@ function EstablishmentDocumentsSection({
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       if (inline) {
-        window.open(url, "_blank", "noopener,noreferrer");
-        setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+        if (popup && !popup.closed) {
+          popup.location.replace(url);
+          setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+        } else {
+          window.URL.revokeObjectURL(url);
+        }
       } else {
         const a = document.createElement("a");
         a.href = url;
         a.download = doc.fileName;
+        a.style.display = "none";
+        document.body.appendChild(a);
         a.click();
-        window.URL.revokeObjectURL(url);
+        a.remove();
+        setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
       }
-    } catch {
-      toast({ title: "Error al descargar", variant: "destructive" });
+    } catch (err) {
+      if (popup && !popup.closed) {
+        try { popup.close(); } catch { /* noop */ }
+      }
+      toast({
+        title: "Error al descargar",
+        description: getDownloadErrorMessage(err),
+        variant: "destructive",
+      });
+    } finally {
+      if (isMountedRef.current) setDocBusy(doc.id, false);
     }
   };
 
@@ -570,31 +655,45 @@ function EstablishmentDocumentsSection({
                   variant="ghost"
                   size="icon"
                   onClick={() => handleDownload(doc, true)}
+                  disabled={busyDocIds.has(doc.id)}
                   aria-label="Ver"
                   data-testid={`button-view-doc-${doc.id}`}
                 >
-                  <Eye className="h-4 w-4" />
+                  {busyDocIds.has(doc.id) ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
                 </Button>
               )}
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => handleDownload(doc)}
+                disabled={busyDocIds.has(doc.id)}
                 aria-label="Descargar"
                 data-testid={`button-download-doc-${doc.id}`}
               >
-                <Download className="h-4 w-4" />
+                {busyDocIds.has(doc.id) ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
               </Button>
               {canDelete && (
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => setConfirmDeleteDocId(doc.id)}
-                  disabled={deleteDocMutation.isPending}
+                  disabled={pendingDeleteDocId !== null}
                   aria-label="Eliminar"
                   data-testid={`button-delete-doc-${doc.id}`}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  {pendingDeleteDocId === doc.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
                 </Button>
               )}
             </div>
@@ -608,7 +707,8 @@ function EstablishmentDocumentsSection({
       <AlertDialog
         open={confirmDeleteDocId !== null}
         onOpenChange={(open) => {
-          if (!open) setConfirmDeleteDocId(null);
+          // Block dismissals (Escape, click outside) while the deletion is in flight
+          if (!open && pendingDeleteDocId === null) setConfirmDeleteDocId(null);
         }}
       >
         <AlertDialogContent data-testid="alert-confirm-delete-doc">
@@ -619,18 +719,32 @@ function EstablishmentDocumentsSection({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-delete-doc">Cancelar</AlertDialogCancel>
+            <AlertDialogCancel
+              disabled={pendingDeleteDocId !== null}
+              data-testid="button-cancel-delete-doc"
+            >
+              Cancelar
+            </AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                if (confirmDeleteDocId) {
+              onClick={(e) => {
+                // Prevent Radix from auto-closing the dialog; we close it from onSuccess/onError.
+                e.preventDefault();
+                if (confirmDeleteDocId && pendingDeleteDocId === null) {
                   deleteDocMutation.mutate(confirmDeleteDocId);
                 }
-                setConfirmDeleteDocId(null);
               }}
+              disabled={pendingDeleteDocId !== null}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-delete-doc"
             >
-              Eliminar
+              {pendingDeleteDocId !== null ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Eliminando...
+                </>
+              ) : (
+                "Eliminar"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
