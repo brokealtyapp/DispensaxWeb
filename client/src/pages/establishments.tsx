@@ -35,6 +35,9 @@ import {
   User,
   ArrowRight,
   FileText,
+  FileImage,
+  FileSpreadsheet,
+  FileType,
   MessageSquare,
   Upload,
   Download,
@@ -56,10 +59,19 @@ import {
   Send,
   Copy,
   Link2,
+  Loader2,
 } from "lucide-react";
 import { Link, useSearch, useLocation } from "wouter";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { Progress } from "@/components/ui/progress";
+import {
+  uploadFileWithProgress,
+  describeUploadError,
+  isAllowedDocumentMime,
+  ALLOWED_DOCUMENT_MIME_TYPES,
+  MAX_DOCUMENT_BYTES,
+} from "@/lib/uploadFile";
 
 const establishmentFormSchema = z.object({
   name: z.string().min(1, "Nombre requerido"),
@@ -198,6 +210,435 @@ function DocumentStatusBadge({ status }: { status: string }) {
   return <Badge variant="secondary" className={`text-xs ${c.className}`}>{c.label}</Badge>;
 }
 
+function getDocumentIcon(mimeType: string | null | undefined) {
+  if (!mimeType) return FileText;
+  if (mimeType.startsWith("image/")) return FileImage;
+  if (mimeType === "application/pdf") return FileType;
+  if (
+    mimeType === "application/vnd.ms-excel" ||
+    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mimeType === "text/csv"
+  ) {
+    return FileSpreadsheet;
+  }
+  return FileText;
+}
+
+function isViewableMime(mimeType: string | null | undefined): boolean {
+  if (!mimeType) return false;
+  return mimeType === "application/pdf" || mimeType.startsWith("image/");
+}
+
+function formatFileSize(bytes: number | null | undefined): string {
+  if (!bytes && bytes !== 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function EstablishmentDocumentsSection({
+  establishmentId,
+  canCreate,
+  canEdit,
+  canDelete,
+}: {
+  establishmentId: string;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+}) {
+  const { toast } = useToast();
+  const [selectedDocType, setSelectedDocType] = useState("contrato");
+  const [uploadingMeta, setUploadingMeta] = useState<{ name: string; size: number } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCounter = useRef(0);
+  const [confirmDeleteDocId, setConfirmDeleteDocId] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+  }, []);
+
+  const { data: documents = [], isLoading: loadingDocs } = useQuery<EstablishmentDocument[]>({
+    queryKey: ["/api/establishments", establishmentId, "documents"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/establishments/${establishmentId}/documents`);
+      return res.json();
+    },
+  });
+
+  const updateDocStatusMutation = useMutation({
+    mutationFn: async ({ docId, status }: { docId: string; status: string }) => {
+      return apiRequest("PATCH", `/api/establishments/${establishmentId}/documents/${docId}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishmentId, "documents"] });
+      toast({ title: "Estado del documento actualizado" });
+    },
+    onError: () => toast({ title: "Error al actualizar estado", variant: "destructive" }),
+  });
+
+  const deleteDocMutation = useMutation({
+    mutationFn: async (docId: string) => {
+      return apiRequest("DELETE", `/api/establishments/${establishmentId}/documents/${docId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishmentId, "documents"] });
+      toast({ title: "Documento eliminado" });
+    },
+    onError: () => toast({ title: "Error al eliminar documento", variant: "destructive" }),
+  });
+
+  const startUpload = async (file: File) => {
+    if (file.size > MAX_DOCUMENT_BYTES) {
+      toast({
+        title: "El archivo supera 10 MB",
+        description: `Tamaño actual: ${formatFileSize(file.size)}`,
+        variant: "destructive",
+      });
+      return;
+    }
+    if (file.type && !isAllowedDocumentMime(file.type)) {
+      toast({
+        title: "Tipo de archivo no permitido",
+        description: "Usa PDF, JPG, PNG, WEBP, Word, Excel, TXT o CSV.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setUploadingMeta({ name: file.name, size: file.size });
+    setUploadProgress(0);
+    try {
+      await uploadFileWithProgress({
+        url: `/api/establishments/${establishmentId}/documents`,
+        file,
+        fields: { documentType: selectedDocType },
+        onProgress: (p) => {
+          if (isMountedRef.current) setUploadProgress(p);
+        },
+        signal: ctrl.signal,
+      });
+      if (!isMountedRef.current) return;
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishmentId, "documents"] });
+      toast({ title: "Documento subido" });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return;
+      }
+      if (!isMountedRef.current) return;
+      toast({
+        title: "Error al subir documento",
+        description: describeUploadError(err),
+        variant: "destructive",
+      });
+    } finally {
+      if (isMountedRef.current) {
+        setUploadingMeta(null);
+        setUploadProgress(0);
+      }
+      if (abortRef.current === ctrl) {
+        abortRef.current = null;
+      }
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      void startUpload(file);
+    }
+    e.target.value = "";
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    dragCounter.current = 0;
+    if (!canCreate || uploadingMeta) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      void startUpload(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!canCreate || uploadingMeta) return;
+    dragCounter.current += 1;
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
+    if (dragCounter.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleCancelUpload = () => {
+    abortRef.current?.abort();
+  };
+
+  const handleDownload = async (doc: EstablishmentDocument, inline = false) => {
+    try {
+      const res = await apiRequest(
+        "GET",
+        `/api/establishments/${establishmentId}/documents/${doc.id}/download${inline ? "?inline=1" : ""}`,
+      );
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      if (inline) {
+        window.open(url, "_blank", "noopener,noreferrer");
+        setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+      } else {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = doc.fileName;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      }
+    } catch {
+      toast({ title: "Error al descargar", variant: "destructive" });
+    }
+  };
+
+  const acceptAttr = ALLOWED_DOCUMENT_MIME_TYPES.join(",");
+
+  return (
+    <div className="space-y-3">
+      {canCreate && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={selectedDocType} onValueChange={setSelectedDocType}>
+              <SelectTrigger className="w-[180px]" data-testid="select-doc-type">
+                <SelectValue placeholder="Tipo de documento" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="contrato">Contrato</SelectItem>
+                <SelectItem value="acuerdo">Acuerdo</SelectItem>
+                <SelectItem value="permiso">Permiso</SelectItem>
+                <SelectItem value="identificacion">Identificación</SelectItem>
+                <SelectItem value="factura">Factura</SelectItem>
+                <SelectItem value="otro">Otro</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onClick={() => {
+              if (!uploadingMeta) fileInputRef.current?.click();
+            }}
+            className={`rounded-md border-2 border-dashed p-6 text-center cursor-pointer transition-colors ${
+              isDragging
+                ? "border-primary bg-primary/5"
+                : "border-border hover-elevate"
+            } ${uploadingMeta ? "pointer-events-none opacity-80" : ""}`}
+            data-testid="dropzone-document"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if ((e.key === "Enter" || e.key === " ") && !uploadingMeta) {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept={acceptAttr}
+              onChange={handleFileInputChange}
+              data-testid="input-file-upload"
+            />
+            {uploadingMeta ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-center gap-2 text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span className="font-medium truncate max-w-[260px]" data-testid="text-uploading-name">
+                    {uploadingMeta.name}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    ({formatFileSize(uploadingMeta.size)})
+                  </span>
+                </div>
+                <Progress value={uploadProgress} className="h-2" data-testid="progress-upload" />
+                <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
+                  <span data-testid="text-upload-progress">{uploadProgress}%</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCancelUpload();
+                    }}
+                    data-testid="button-cancel-upload"
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <Upload className="h-6 w-6 mx-auto text-muted-foreground" />
+                <p className="text-sm font-medium">Arrastra un archivo aquí o haz clic para seleccionar</p>
+                <p className="text-xs text-muted-foreground">
+                  PDF, JPG, PNG, WEBP, Word, Excel, TXT o CSV (máx. 10 MB)
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {loadingDocs && <p className="text-sm text-muted-foreground">Cargando...</p>}
+      {documents.map((doc: EstablishmentDocument) => {
+        const Icon = getDocumentIcon(doc.mimeType);
+        return (
+          <div
+            key={doc.id}
+            className="flex items-center justify-between gap-2 p-3 rounded-md border"
+            data-testid={`row-document-${doc.id}`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate" data-testid={`text-doc-name-${doc.id}`}>
+                  {doc.fileName}
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {doc.documentType && (
+                    <Badge variant="outline" className="text-xs">
+                      {doc.documentType}
+                    </Badge>
+                  )}
+                  <DocumentStatusBadge status={doc.status || "pendiente"} />
+                  <span
+                    className="text-xs text-muted-foreground"
+                    title={doc.createdAt ? format(new Date(doc.createdAt), "dd MMM yyyy HH:mm", { locale: es }) : ""}
+                  >
+                    {doc.uploadedBy?.fullName || ""}
+                    {doc.createdAt ? ` · ${format(new Date(doc.createdAt), "dd MMM yyyy", { locale: es })}` : ""}
+                    {doc.fileSize ? ` · ${formatFileSize(doc.fileSize)}` : ""}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-1 shrink-0 items-center">
+              {canEdit && (
+                <Select
+                  value={doc.status || "pendiente"}
+                  onValueChange={(val) => updateDocStatusMutation.mutate({ docId: doc.id, status: val })}
+                >
+                  <SelectTrigger className="w-[110px] h-8 text-xs" data-testid={`select-doc-status-${doc.id}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pendiente">Pendiente</SelectItem>
+                    <SelectItem value="enviado">Enviado</SelectItem>
+                    <SelectItem value="recibido">Recibido</SelectItem>
+                    <SelectItem value="firmado">Firmado</SelectItem>
+                    <SelectItem value="rechazado">Rechazado</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              {isViewableMime(doc.mimeType) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleDownload(doc, true)}
+                  aria-label="Ver"
+                  data-testid={`button-view-doc-${doc.id}`}
+                >
+                  <Eye className="h-4 w-4" />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleDownload(doc)}
+                aria-label="Descargar"
+                data-testid={`button-download-doc-${doc.id}`}
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+              {canDelete && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setConfirmDeleteDocId(doc.id)}
+                  disabled={deleteDocMutation.isPending}
+                  aria-label="Eliminar"
+                  data-testid={`button-delete-doc-${doc.id}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      {!loadingDocs && documents.length === 0 && (
+        <p className="text-sm text-muted-foreground text-center py-4">Sin documentos aún</p>
+      )}
+
+      <AlertDialog
+        open={confirmDeleteDocId !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDeleteDocId(null);
+        }}
+      >
+        <AlertDialogContent data-testid="alert-confirm-delete-doc">
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar documento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción borra el archivo del almacenamiento y no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-doc">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmDeleteDocId) {
+                  deleteDocMutation.mutate(confirmDeleteDocId);
+                }
+                setConfirmDeleteDocId(null);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete-doc"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
 function EstablishmentDetail({
   establishment,
   stages,
@@ -226,8 +667,6 @@ function EstablishmentDetail({
   const { toast } = useToast();
   const [showFollowupForm, setShowFollowupForm] = useState(false);
   const [editingFollowupId, setEditingFollowupId] = useState<string | null>(null);
-  const [uploadingFile, setUploadingFile] = useState(false);
-  const [selectedDocType, setSelectedDocType] = useState("contrato");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [followupToDelete, setFollowupToDelete] = useState<string | null>(null);
 
@@ -351,69 +790,6 @@ function EstablishmentDetail({
     },
     onError: () => toast({ title: "Error al convertir", variant: "destructive" }),
   });
-
-  const updateDocStatusMutation = useMutation({
-    mutationFn: async ({ docId, status }: { docId: string; status: string }) => {
-      return apiRequest("PATCH", `/api/establishments/${establishment.id}/documents/${docId}`, { status });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "documents"] });
-      toast({ title: "Estado del documento actualizado" });
-    },
-    onError: () => toast({ title: "Error al actualizar estado", variant: "destructive" }),
-  });
-
-  const deleteDocMutation = useMutation({
-    mutationFn: async (docId: string) => {
-      return apiRequest("DELETE", `/api/establishments/${establishment.id}/documents/${docId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "documents"] });
-      toast({ title: "Documento eliminado" });
-    },
-    onError: () => toast({ title: "Error al eliminar documento", variant: "destructive" }),
-  });
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingFile(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("documentType", selectedDocType);
-      const res = await fetch(`/api/establishments/${establishment.id}/documents`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("accessToken") || ""}`,
-        },
-        body: formData,
-      });
-      if (!res.ok) throw new Error("Upload failed");
-      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "documents"] });
-      toast({ title: "Documento subido" });
-    } catch {
-      toast({ title: "Error al subir archivo", variant: "destructive" });
-    } finally {
-      setUploadingFile(false);
-      e.target.value = "";
-    }
-  };
-
-  const handleDownload = async (doc: EstablishmentDocument) => {
-    try {
-      const res = await apiRequest("GET", `/api/establishments/${establishment.id}/documents/${doc.id}/download`);
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = doc.fileName;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch {
-      toast({ title: "Error al descargar", variant: "destructive" });
-    }
-  };
 
   const currentStageIndex = stages.findIndex(s => s.id === establishment.stageId);
   const nextStage = currentStageIndex >= 0 && currentStageIndex < stages.length - 1 ? stages[currentStageIndex + 1] : null;
@@ -713,81 +1089,12 @@ function EstablishmentDetail({
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-3">
-          {canCreate && (
-            <div className="flex items-center justify-end gap-2 flex-wrap">
-              <Select value={selectedDocType} onValueChange={setSelectedDocType}>
-                <SelectTrigger className="w-[180px]" data-testid="select-doc-type">
-                  <SelectValue placeholder="Tipo de documento" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="contrato">Contrato</SelectItem>
-                  <SelectItem value="acuerdo">Acuerdo</SelectItem>
-                  <SelectItem value="permiso">Permiso</SelectItem>
-                  <SelectItem value="identificacion">Identificación</SelectItem>
-                  <SelectItem value="factura">Factura</SelectItem>
-                  <SelectItem value="otro">Otro</SelectItem>
-                </SelectContent>
-              </Select>
-              <label>
-                <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploadingFile} data-testid="input-file-upload" />
-                <Button size="sm" asChild className="cursor-pointer" disabled={uploadingFile}>
-                  <span><Upload className="h-4 w-4 mr-1" /> {uploadingFile ? "Subiendo..." : "Subir Documento"}</span>
-                </Button>
-              </label>
-            </div>
-          )}
-
-          {loadingDocs && <p className="text-sm text-muted-foreground">Cargando...</p>}
-          {documents.map((doc: EstablishmentDocument) => (
-            <div key={doc.id} className="flex items-center justify-between gap-2 p-3 rounded-md border">
-              <div className="flex items-center gap-2 min-w-0">
-                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{doc.fileName}</p>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {doc.documentType && (
-                      <Badge variant="outline" className="text-xs">{doc.documentType}</Badge>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      {doc.uploadedBy?.fullName} - {doc.createdAt ? format(new Date(doc.createdAt), "dd MMM yyyy", { locale: es }) : ""}
-                      {doc.fileSize ? ` - ${(doc.fileSize / 1024).toFixed(0)} KB` : ""}
-                    </p>
-                    <DocumentStatusBadge status={doc.status || "pendiente"} />
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-1 shrink-0 items-center">
-                {canEdit && (
-                  <Select
-                    value={doc.status || "pendiente"}
-                    onValueChange={(val) => updateDocStatusMutation.mutate({ docId: doc.id, status: val })}
-                  >
-                    <SelectTrigger className="w-[110px] h-7 text-xs" data-testid={`select-doc-status-${doc.id}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pendiente">Pendiente</SelectItem>
-                      <SelectItem value="enviado">Enviado</SelectItem>
-                      <SelectItem value="recibido">Recibido</SelectItem>
-                      <SelectItem value="firmado">Firmado</SelectItem>
-                      <SelectItem value="rechazado">Rechazado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-                <Button variant="ghost" size="icon" onClick={() => handleDownload(doc)} data-testid={`button-download-doc-${doc.id}`}>
-                  <Download className="h-4 w-4" />
-                </Button>
-                {canEdit && (
-                  <Button variant="ghost" size="icon" onClick={() => deleteDocMutation.mutate(doc.id)} disabled={deleteDocMutation.isPending} data-testid={`button-delete-doc-${doc.id}`}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          ))}
-          {!loadingDocs && documents.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">Sin documentos aún</p>
-          )}
+          <EstablishmentDocumentsSection
+            establishmentId={establishment.id}
+            canCreate={canCreate}
+            canEdit={canEdit}
+            canDelete={canDelete}
+          />
         </TabsContent>
       </Tabs>
 
@@ -978,6 +1285,14 @@ function ActiveEstablishmentDetail({
     queryKey: ["/api/establishments", establishment.id, "contracts"],
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/establishments/${establishment.id}/contracts`);
+      return res.json();
+    },
+  });
+
+  const { data: activeDocuments = [] } = useQuery<EstablishmentDocument[]>({
+    queryKey: ["/api/establishments", establishment.id, "documents"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/establishments/${establishment.id}/documents`);
       return res.json();
     },
   });
@@ -1263,6 +1578,9 @@ function ActiveEstablishmentDetail({
           <TabsTrigger value="contracts" data-testid="tab-active-contracts">
             <ClipboardList className="h-4 w-4 mr-1" /> Contratos ({contracts.length})
           </TabsTrigger>
+          <TabsTrigger value="documents" data-testid="tab-active-documents">
+            <FileText className="h-4 w-4 mr-1" /> Documentos ({activeDocuments.length})
+          </TabsTrigger>
           <TabsTrigger value="history" data-testid="tab-active-history">
             <Clock className="h-4 w-4 mr-1" /> Historial
           </TabsTrigger>
@@ -1461,6 +1779,15 @@ function ActiveEstablishmentDetail({
           {!loadingContracts && contracts.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-4">Sin contratos registrados</p>
           )}
+        </TabsContent>
+
+        <TabsContent value="documents" className="space-y-3">
+          <EstablishmentDocumentsSection
+            establishmentId={establishment.id}
+            canCreate={canCreate}
+            canEdit={canEdit}
+            canDelete={canDelete}
+          />
         </TabsContent>
 
         <TabsContent value="history" className="space-y-4">

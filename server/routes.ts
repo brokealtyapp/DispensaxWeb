@@ -10488,6 +10488,25 @@ export async function registerRoutes(
       if (!existing || existing.tenantId !== tenantId) {
         return res.status(404).json({ error: "Establecimiento no encontrado" });
       }
+
+      // Best-effort cleanup of Object Storage blobs for this establishment's documents
+      try {
+        const docs = await storage.getEstablishmentDocuments(req.params.id);
+        if (docs.length > 0) {
+          const { Client } = await import("@replit/object-storage");
+          const objClient = new Client();
+          for (const d of docs) {
+            try {
+              await objClient.delete(d.fileKey);
+            } catch (delErr) {
+              console.warn(`Could not delete blob ${d.fileKey} (non-fatal):`, delErr);
+            }
+          }
+        }
+      } catch (cleanupErr) {
+        console.warn("Document blobs cleanup failed (non-fatal):", cleanupErr);
+      }
+
       await storage.deleteEstablishment(req.params.id);
       res.json({ success: true });
     } catch (error) {
@@ -10612,9 +10631,68 @@ export async function registerRoutes(
   });
 
   const multer = (await import("multer")).default;
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+  const ESTABLISHMENT_DOC_MAX_BYTES = 10 * 1024 * 1024;
+  const ALLOWED_ESTABLISHMENT_DOC_MIMES = new Set([
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain",
+    "text/csv",
+  ]);
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: ESTABLISHMENT_DOC_MAX_BYTES },
+    fileFilter: (_req, file, cb) => {
+      if (ALLOWED_ESTABLISHMENT_DOC_MIMES.has(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(Object.assign(new Error("UNSUPPORTED_MEDIA_TYPE"), { code: "UNSUPPORTED_MEDIA_TYPE" }));
+      }
+    },
+  });
 
-  app.post("/api/establishments/:id/documents", authenticateJWT, requireTenant, authorizeAction("establishments", "create"), upload.single("file"), async (req: AuthenticatedRequest, res: Response) => {
+  function sanitizeFileKeySegment(name: string): string {
+    const lastDot = name.lastIndexOf(".");
+    const base = lastDot > 0 ? name.slice(0, lastDot) : name;
+    const ext = lastDot > 0 ? name.slice(lastDot + 1) : "";
+    const slugify = (s: string) =>
+      s
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 80);
+    const safeBase = slugify(base) || "file";
+    const safeExt = slugify(ext).slice(0, 10);
+    return safeExt ? `${safeBase}.${safeExt}` : safeBase;
+  }
+
+  app.post(
+    "/api/establishments/:id/documents",
+    authenticateJWT,
+    requireTenant,
+    authorizeAction("establishments", "create"),
+    (req: AuthenticatedRequest, res: Response, next) => {
+      upload.single("file")(req as Request, res, (err: unknown) => {
+        const multerErr = err as { code?: string } | null;
+        if (multerErr?.code === "LIMIT_FILE_SIZE") {
+          return res.status(413).json({ error: "El archivo supera 10 MB" });
+        }
+        if (multerErr?.code === "UNSUPPORTED_MEDIA_TYPE") {
+          return res.status(415).json({
+            error: "Tipo de archivo no permitido. Usa PDF, JPG, PNG, WEBP, Word, Excel, TXT o CSV.",
+          });
+        }
+        if (err) return next(err);
+        next();
+      });
+    },
+    async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
       const existing = await storage.getEstablishment(req.params.id);
@@ -10629,7 +10707,8 @@ export async function registerRoutes(
 
       const { Client } = await import("@replit/object-storage");
       const objClient = new Client();
-      const fileKey = `.private/${tenantId}/establishments/${req.params.id}/${Date.now()}_${file.originalname}`;
+      const safeName = sanitizeFileKeySegment(file.originalname);
+      const fileKey = `.private/${tenantId}/establishments/${req.params.id}/${Date.now()}_${safeName}`;
 
       await objClient.uploadFromBytes(fileKey, file.buffer);
 
@@ -10662,7 +10741,7 @@ export async function registerRoutes(
       }
       const docs = await storage.getEstablishmentDocuments(req.params.id);
       const doc = docs.find((d) => d.id === req.params.docId);
-      if (!doc) {
+      if (!doc || doc.tenantId !== tenantId || doc.establishmentId !== req.params.id) {
         return res.status(404).json({ error: "Documento no encontrado" });
       }
       const docUpdateSchema = z.object({
@@ -10695,7 +10774,7 @@ export async function registerRoutes(
 
       const docs = await storage.getEstablishmentDocuments(req.params.id);
       const doc = docs.find((d) => d.id === req.params.docId);
-      if (!doc) {
+      if (!doc || doc.tenantId !== tenantId || doc.establishmentId !== req.params.id) {
         return res.status(404).json({ error: "Documento no encontrado" });
       }
 
@@ -10974,7 +11053,7 @@ export async function registerRoutes(
 
       const docs = await storage.getEstablishmentDocuments(req.params.id);
       const doc = docs.find((d) => d.id === req.params.docId);
-      if (!doc) {
+      if (!doc || doc.tenantId !== tenantId || doc.establishmentId !== req.params.id) {
         return res.status(404).json({ error: "Documento no encontrado" });
       }
 
@@ -10986,8 +11065,20 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Archivo no encontrado en almacenamiento" });
       }
 
+      const inline = req.query.inline === "1" || req.query.inline === "true";
+      const disposition = inline ? "inline" : "attachment";
+      const safeAscii = (doc.fileName || "documento")
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^\x20-\x7E]/g, "_")
+        .replace(/"/g, "");
+      const utf8Name = encodeURIComponent(doc.fileName || "documento");
       res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
-      res.setHeader("Content-Disposition", `attachment; filename="${doc.fileName}"`);
+      res.setHeader(
+        "Content-Disposition",
+        `${disposition}; filename="${safeAscii}"; filename*=UTF-8''${utf8Name}`,
+      );
+      res.setHeader("Cache-Control", "private, max-age=300");
       res.send(Buffer.from(result.value));
     } catch (error) {
       console.error("Error downloading document:", error);
