@@ -2808,7 +2808,9 @@ export function EstablishmentsPage() {
     mutationFn: async ({ id, data }: { id: string; data: EstablishmentFormValues }) => {
       const payload: Record<string, string | number | null | undefined> = { ...data };
       if (!payload.contactEmail) delete payload.contactEmail;
-      if (!payload.assignedUserId) payload.assignedUserId = null;
+      if (!payload.assignedUserId) delete payload.assignedUserId;
+      if (!payload.stageId) delete payload.stageId;
+      if (!payload.monthlyEstimatedSales) delete payload.monthlyEstimatedSales;
       if (!payload.nextActionDate) payload.nextActionDate = null;
       if (!payload.nextAction) payload.nextAction = null;
       return apiRequest("PATCH", `/api/establishments/${id}`, payload);
