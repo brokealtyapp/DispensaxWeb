@@ -11096,7 +11096,28 @@ export async function registerRoutes(
         `${disposition}; filename="${safeAscii}"; filename*=UTF-8''${utf8Name}`,
       );
       res.setHeader("Cache-Control", "private, max-age=300");
-      res.send(Buffer.from(result.value));
+      // downloadAsBytes return shape varies between SDK versions:
+      // - older: Buffer
+      // - typed declaration: [Buffer] tuple
+      // Handle both safely. Buffer.from(tuple) would coerce the inner
+      // Buffer to NaN→0, producing a 1-byte response.
+      const raw = result.value as Buffer | [Buffer] | Buffer[];
+      let payload: Buffer | null = null;
+      if (Buffer.isBuffer(raw)) {
+        payload = raw;
+      } else if (Array.isArray(raw) && raw.length > 0) {
+        payload = Buffer.isBuffer(raw[0]) ? raw[0] : Buffer.from(raw[0] as any);
+      }
+      if (!payload || payload.length === 0) {
+        console.error("[doc download] empty payload", {
+          docId: doc.id,
+          fileKey: doc.fileKey,
+          rawIsArray: Array.isArray(raw),
+          rawLen: Array.isArray(raw) ? raw.length : (Buffer.isBuffer(raw) ? raw.length : -1),
+        });
+        return res.status(500).json({ error: "Documento vacío en almacenamiento" });
+      }
+      res.send(payload);
     } catch (error) {
       console.error("Error downloading document:", error);
       res.status(500).json({ error: "Error al descargar documento" });
@@ -11935,7 +11956,19 @@ export async function registerRoutes(
 
       res.setHeader("Content-Type", "image/jpeg");
       res.setHeader("Cache-Control", "private, max-age=3600");
-      res.send(Buffer.from(result.value));
+      // downloadAsBytes return shape varies between SDK versions
+      // (Buffer vs [Buffer] tuple). Handle both safely.
+      const raw = result.value as Buffer | [Buffer] | Buffer[];
+      let payload: Buffer | null = null;
+      if (Buffer.isBuffer(raw)) {
+        payload = raw;
+      } else if (Array.isArray(raw) && raw.length > 0) {
+        payload = Buffer.isBuffer(raw[0]) ? raw[0] : Buffer.from(raw[0] as any);
+      }
+      if (!payload || payload.length === 0) {
+        return res.status(500).json({ error: "Foto vacía en almacenamiento" });
+      }
+      res.send(payload);
     } catch (error) {
       console.error("Error fetching checklist photo:", error);
       res.status(500).json({ error: "Error al obtener foto" });

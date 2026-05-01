@@ -476,8 +476,94 @@ function EstablishmentDocumentsSection({
       const url = window.URL.createObjectURL(blob);
       if (inline) {
         if (popup && !popup.closed) {
-          popup.location.replace(url);
-          setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+          // Render the file inside a controlled HTML wrapper instead of
+          // navigating to the blob URL directly. Chrome's native blob
+          // viewer can mis-render small images and behaves
+          // inconsistently inside Replit preview iframes.
+          //
+          // We build the page shell with document.write and then attach
+          // the media element via DOM APIs — never inject the blob URL
+          // or filename into an inline event handler string.
+          const escapeHtml = (s: string) =>
+            s.replace(/[&<>"']/g, (c) => (
+              { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string
+            ));
+          const safeName = escapeHtml(doc.fileName || "Documento");
+          const fileName = doc.fileName || "Documento";
+          const mime = (doc.mimeType || "").toLowerCase();
+          let revoked = false;
+          const revoke = () => {
+            if (revoked) return;
+            revoked = true;
+            try { window.URL.revokeObjectURL(url); } catch { /* noop */ }
+          };
+          // Belt-and-suspenders: revoke after 5 minutes even if
+          // load/error never fire (e.g., user closed the popup quickly).
+          const revokeTimer = window.setTimeout(revoke, 5 * 60_000);
+          try {
+            popup.document.open();
+            popup.document.write(
+              `<!doctype html><html><head><meta charset="utf-8">` +
+                `<title>${safeName}</title>` +
+                `<style>` +
+                `html,body{margin:0;padding:0;height:100%;background:#1a1a1a;color:#eee;` +
+                `font-family:system-ui,-apple-system,sans-serif}` +
+                `body{display:flex;align-items:center;justify-content:center}` +
+                `img{max-width:100vw;max-height:100vh;object-fit:contain;display:block}` +
+                `iframe{width:100vw;height:100vh;border:0;background:#fff}` +
+                `.fb{text-align:center;padding:24px;line-height:1.6}` +
+                `.fb a{color:#7ab7ff}` +
+                `</style></head><body></body></html>`,
+            );
+            popup.document.close();
+            const pdoc = popup.document;
+            const renderFallback = () => {
+              const div = pdoc.createElement("div");
+              div.className = "fb";
+              div.appendChild(pdoc.createTextNode("No se pudo mostrar el documento. "));
+              div.appendChild(pdoc.createElement("br"));
+              const link = pdoc.createElement("a");
+              link.href = url;
+              link.download = fileName;
+              link.appendChild(pdoc.createTextNode("Descargar archivo"));
+              div.appendChild(link);
+              pdoc.body.replaceChildren(div);
+            };
+            if (mime.startsWith("image/")) {
+              const img = pdoc.createElement("img");
+              img.alt = fileName;
+              img.onload = () => {
+                window.clearTimeout(revokeTimer);
+                window.setTimeout(revoke, 60_000);
+              };
+              img.onerror = renderFallback;
+              img.src = url;
+              pdoc.body.appendChild(img);
+            } else if (mime === "application/pdf") {
+              const iframe = pdoc.createElement("iframe");
+              iframe.title = fileName;
+              iframe.onload = () => {
+                window.clearTimeout(revokeTimer);
+                window.setTimeout(revoke, 5 * 60_000);
+              };
+              iframe.src = url;
+              pdoc.body.appendChild(iframe);
+            } else {
+              const div = pdoc.createElement("div");
+              div.className = "fb";
+              div.appendChild(pdoc.createTextNode("No se puede previsualizar este tipo de archivo. "));
+              div.appendChild(pdoc.createElement("br"));
+              const link = pdoc.createElement("a");
+              link.href = url;
+              link.download = fileName;
+              link.appendChild(pdoc.createTextNode("Descargar archivo"));
+              div.appendChild(link);
+              pdoc.body.appendChild(div);
+            }
+          } catch {
+            // Last-resort fallback: navigate to the raw blob URL.
+            try { popup.location.replace(url); } catch { /* noop */ }
+          }
         } else {
           window.URL.revokeObjectURL(url);
         }

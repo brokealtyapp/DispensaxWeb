@@ -64,3 +64,6 @@ TZ = "America/Santo_Domingo"
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[objectStorage]
+defaultBucketID = "replit-objstore-0f1906c9-957a-430b-a23a-ebfe23ddac27"
