@@ -203,7 +203,8 @@ function EstablishmentDetail({
   stages,
   onClose,
   onStageChange,
-  onEdit,
+  onEditContact,
+  onEditCommercial,
   onDelete,
   canEdit,
   canCreate,
@@ -214,7 +215,8 @@ function EstablishmentDetail({
   stages: EstablishmentStageInfo[];
   onClose: () => void;
   onStageChange: () => void;
-  onEdit: () => void;
+  onEditContact: () => void;
+  onEditCommercial: () => void;
   onDelete?: () => void;
   canEdit: boolean;
   canCreate: boolean;
@@ -504,7 +506,7 @@ function EstablishmentDetail({
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={onEdit}
+                onClick={onEditContact}
                 data-testid="button-edit-contact-info"
               >
                 <Pencil className="h-3 w-3 mr-1" /> Editar
@@ -537,7 +539,7 @@ function EstablishmentDetail({
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={onEdit}
+                onClick={onEditCommercial}
                 data-testid="button-edit-business-data"
               >
                 <Pencil className="h-3 w-3 mr-1" /> Editar
@@ -2035,190 +2037,221 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
 
 type AdminUserInfo = { id: string; fullName: string | null; isActive: boolean; role: string };
 
-function EstablishmentFormFields({ form, isEdit = false, stages, adminUsers }: { form: UseFormReturn<EstablishmentFormValues>; isEdit?: boolean; stages: EstablishmentStageInfo[]; adminUsers: AdminUserInfo[] }) {
+type EstablishmentFormSection = "all" | "contact" | "commercial";
+
+function EstablishmentFormFields({ form, isEdit = false, stages, adminUsers, section = "all" }: { form: UseFormReturn<EstablishmentFormValues>; isEdit?: boolean; stages: EstablishmentStageInfo[]; adminUsers: AdminUserInfo[]; section?: EstablishmentFormSection }) {
+  const showAll = section === "all";
+  const showContact = section === "contact" || showAll;
+  const showCommercial = section === "commercial" || showAll;
   return (
     <div className="space-y-5 pr-1">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FormField control={form.control} name="name" render={({ field }) => (
-          <FormItem className="md:col-span-2">
-            <FormLabel>Nombre del Establecimiento *</FormLabel>
-            <FormControl><Input {...field} data-testid="input-establishment-name" /></FormControl>
-            <FormMessage />
-          </FormItem>
-        )} />
-        <FormField control={form.control} name="businessType" render={({ field }) => (
-          <FormItem>
-            <FormLabel>Tipo de Negocio</FormLabel>
-            <FormControl>
-              <select {...field} value={field.value || "otro"} data-testid="select-business-type" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
-                <option value="colmado">Colmado</option>
-                <option value="supermercado">Supermercado</option>
-                <option value="restaurante">Restaurante</option>
-                <option value="hotel">Hotel</option>
-                <option value="oficina">Oficina</option>
-                <option value="universidad">Universidad</option>
-                <option value="hospital">Hospital</option>
-                <option value="farmacia">Farmacia</option>
-                <option value="gimnasio">Gimnasio</option>
-                <option value="plaza_comercial">Plaza Comercial</option>
-                <option value="estacion_servicio">Estación de Servicio</option>
-                <option value="tienda">Tienda</option>
-                <option value="bar">Bar</option>
-                <option value="club">Club</option>
-                <option value="fabrica">Fábrica</option>
-                <option value="gasolinera">Gasolinera</option>
-                <option value="centro_comercial">Centro Comercial</option>
-                <option value="otro">Otro</option>
-              </select>
-            </FormControl>
-          </FormItem>
-        )} />
-        <FormField control={form.control} name="priority" render={({ field }) => (
-          <FormItem>
-            <FormLabel>Prioridad</FormLabel>
-            <FormControl>
-              <select {...field} value={field.value || "media"} data-testid="select-priority" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
-                <option value="alta">Alta</option>
-                <option value="media">Media</option>
-                <option value="baja">Baja</option>
-              </select>
-            </FormControl>
-          </FormItem>
-        )} />
-      </div>
-
-      <div>
-        <p className="text-sm font-medium text-muted-foreground mb-3">Contacto</p>
+      {(showAll || showCommercial) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FormField control={form.control} name="contactName" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Persona de Contacto</FormLabel>
-              <FormControl><Input {...field} data-testid="input-contact-name" /></FormControl>
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="contactPhone" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Teléfono</FormLabel>
-              <FormControl><Input {...field} data-testid="input-contact-phone" /></FormControl>
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="contactEmail" render={({ field }) => (
-            <FormItem className="md:col-span-2">
-              <FormLabel>Email</FormLabel>
-              <FormControl><Input type="email" {...field} data-testid="input-contact-email" /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
+          {showAll && (
+            <FormField control={form.control} name="name" render={({ field }) => (
+              <FormItem className="md:col-span-2">
+                <FormLabel>Nombre del Establecimiento *</FormLabel>
+                <FormControl><Input {...field} data-testid="input-establishment-name" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+          )}
+          {showCommercial && (
+            <>
+              <FormField control={form.control} name="businessType" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipo de Negocio</FormLabel>
+                  <FormControl>
+                    <select {...field} value={field.value || "otro"} data-testid="select-business-type" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                      <option value="colmado">Colmado</option>
+                      <option value="supermercado">Supermercado</option>
+                      <option value="restaurante">Restaurante</option>
+                      <option value="hotel">Hotel</option>
+                      <option value="oficina">Oficina</option>
+                      <option value="universidad">Universidad</option>
+                      <option value="hospital">Hospital</option>
+                      <option value="farmacia">Farmacia</option>
+                      <option value="gimnasio">Gimnasio</option>
+                      <option value="plaza_comercial">Plaza Comercial</option>
+                      <option value="estacion_servicio">Estación de Servicio</option>
+                      <option value="tienda">Tienda</option>
+                      <option value="bar">Bar</option>
+                      <option value="club">Club</option>
+                      <option value="fabrica">Fábrica</option>
+                      <option value="gasolinera">Gasolinera</option>
+                      <option value="centro_comercial">Centro Comercial</option>
+                      <option value="otro">Otro</option>
+                    </select>
+                  </FormControl>
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="priority" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Prioridad</FormLabel>
+                  <FormControl>
+                    <select {...field} value={field.value || "media"} data-testid="select-priority" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                      <option value="alta">Alta</option>
+                      <option value="media">Media</option>
+                      <option value="baja">Baja</option>
+                    </select>
+                  </FormControl>
+                </FormItem>
+              )} />
+            </>
+          )}
         </div>
-      </div>
+      )}
 
-      <div>
-        <p className="text-sm font-medium text-muted-foreground mb-3">Ubicación</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FormField control={form.control} name="address" render={({ field }) => (
-            <FormItem className="md:col-span-2">
-              <FormLabel>Dirección</FormLabel>
-              <FormControl><Input {...field} data-testid="input-address" /></FormControl>
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="city" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Ciudad</FormLabel>
-              <FormControl><Input {...field} data-testid="input-city" /></FormControl>
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="zone" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Zona</FormLabel>
-              <FormControl><Input {...field} data-testid="input-zone" /></FormControl>
-            </FormItem>
-          )} />
+      {showContact && (
+        <div>
+          <p className="text-sm font-medium text-muted-foreground mb-3">Contacto</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField control={form.control} name="contactName" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Persona de Contacto</FormLabel>
+                <FormControl><Input {...field} data-testid="input-contact-name" /></FormControl>
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="contactPhone" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Teléfono</FormLabel>
+                <FormControl><Input {...field} data-testid="input-contact-phone" /></FormControl>
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="contactEmail" render={({ field }) => (
+              <FormItem className="md:col-span-2">
+                <FormLabel>Email</FormLabel>
+                <FormControl><Input type="email" {...field} data-testid="input-contact-email" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+          </div>
         </div>
-      </div>
+      )}
 
-      <div>
-        <p className="text-sm font-medium text-muted-foreground mb-3">Datos Comerciales</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <FormField control={form.control} name="estimatedMachines" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Máquinas Estimadas</FormLabel>
-              <FormControl><Input type="number" min={1} {...field} data-testid="input-estimated-machines" /></FormControl>
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="monthlyEstimatedSales" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Ventas Mensuales (RD$)</FormLabel>
-              <FormControl><Input type="number" step="0.01" {...field} data-testid="input-monthly-sales" /></FormControl>
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="commissionPercent" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Comisión (%)</FormLabel>
-              <FormControl><Input type="number" step="0.01" {...field} data-testid="input-commission" /></FormControl>
-            </FormItem>
-          )} />
+      {showContact && (
+        <div>
+          <p className="text-sm font-medium text-muted-foreground mb-3">Ubicación</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField control={form.control} name="address" render={({ field }) => (
+              <FormItem className="md:col-span-2">
+                <FormLabel>Dirección</FormLabel>
+                <FormControl><Input {...field} data-testid="input-address" /></FormControl>
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="city" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Ciudad</FormLabel>
+                <FormControl><Input {...field} data-testid="input-city" /></FormControl>
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="zone" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Zona</FormLabel>
+                <FormControl><Input {...field} data-testid="input-zone" /></FormControl>
+              </FormItem>
+            )} />
+          </div>
         </div>
-      </div>
+      )}
 
-      <div>
-        <p className="text-sm font-medium text-muted-foreground mb-3">Seguimiento</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FormField control={form.control} name="nextAction" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Próxima acción</FormLabel>
-              <FormControl>
-                <select {...field} value={field.value || ""} data-testid="select-next-action" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
-                  <option value="">Sin acción</option>
-                  <option value="llamar">Llamar</option>
-                  <option value="visitar">Visitar</option>
-                  <option value="enviar_propuesta">Enviar propuesta</option>
-                  <option value="seguimiento">Seguimiento</option>
-                  <option value="negociar">Negociar</option>
-                  <option value="cerrar">Cerrar</option>
-                </select>
-              </FormControl>
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="nextActionDate" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Fecha próxima gestión</FormLabel>
-              <FormControl><Input type="date" {...field} data-testid="input-next-action-date" /></FormControl>
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="stageId" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Etapa</FormLabel>
-              <FormControl>
-                <select {...field} value={field.value || ""} data-testid="select-stage" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
-                  <option value="">Seleccionar etapa</option>
-                  {stages.map((s: EstablishmentStageInfo) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </FormControl>
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="assignedUserId" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Asignar a</FormLabel>
-              <FormControl>
-                <select {...field} value={field.value || ""} data-testid="select-assigned-user" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
-                  <option value="">Sin asignar</option>
-                  {adminUsers.filter((u) => u.isActive && (u.role === "admin" || u.role === "supervisor")).map((u) => (
-                    <option key={u.id} value={u.id}>{u.fullName}</option>
-                  ))}
-                </select>
-              </FormControl>
-            </FormItem>
-          )} />
-          <FormField control={form.control} name="notes" render={({ field }) => (
-            <FormItem className="md:col-span-2">
-              <FormLabel>Notas</FormLabel>
-              <FormControl><Textarea {...field} data-testid="input-notes" /></FormControl>
-            </FormItem>
-          )} />
+      {showCommercial && (
+        <div>
+          <p className="text-sm font-medium text-muted-foreground mb-3">Datos Comerciales</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <FormField control={form.control} name="estimatedMachines" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Máquinas Estimadas</FormLabel>
+                <FormControl><Input type="number" min={1} {...field} data-testid="input-estimated-machines" /></FormControl>
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="monthlyEstimatedSales" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Ventas Mensuales (RD$)</FormLabel>
+                <FormControl><Input type="number" step="0.01" {...field} data-testid="input-monthly-sales" /></FormControl>
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="commissionPercent" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Comisión (%)</FormLabel>
+                <FormControl><Input type="number" step="0.01" {...field} data-testid="input-commission" /></FormControl>
+              </FormItem>
+            )} />
+          </div>
         </div>
-      </div>
+      )}
+
+      {(showCommercial || showAll) && (
+        <div>
+          <p className="text-sm font-medium text-muted-foreground mb-3">Seguimiento</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {showCommercial && (
+              <>
+                <FormField control={form.control} name="nextAction" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Próxima acción</FormLabel>
+                    <FormControl>
+                      <select {...field} value={field.value || ""} data-testid="select-next-action" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                        <option value="">Sin acción</option>
+                        <option value="llamar">Llamar</option>
+                        <option value="visitar">Visitar</option>
+                        <option value="enviar_propuesta">Enviar propuesta</option>
+                        <option value="seguimiento">Seguimiento</option>
+                        <option value="negociar">Negociar</option>
+                        <option value="cerrar">Cerrar</option>
+                      </select>
+                    </FormControl>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="nextActionDate" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Fecha próxima gestión</FormLabel>
+                    <FormControl><Input type="date" {...field} data-testid="input-next-action-date" /></FormControl>
+                  </FormItem>
+                )} />
+              </>
+            )}
+            {showAll && (
+              <>
+                <FormField control={form.control} name="stageId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Etapa</FormLabel>
+                    <FormControl>
+                      <select {...field} value={field.value || ""} data-testid="select-stage" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                        <option value="">Seleccionar etapa</option>
+                        {stages.map((s: EstablishmentStageInfo) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </FormControl>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="assignedUserId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Asignar a</FormLabel>
+                    <FormControl>
+                      <select {...field} value={field.value || ""} data-testid="select-assigned-user" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                        <option value="">Sin asignar</option>
+                        {adminUsers.filter((u) => u.isActive && (u.role === "admin" || u.role === "supervisor")).map((u) => (
+                          <option key={u.id} value={u.id}>{u.fullName}</option>
+                        ))}
+                      </select>
+                    </FormControl>
+                  </FormItem>
+                )} />
+              </>
+            )}
+            {showCommercial && (
+              <FormField control={form.control} name="notes" render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel>Notas</FormLabel>
+                  <FormControl><Textarea {...field} data-testid="input-notes" /></FormControl>
+                </FormItem>
+              )} />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2722,6 +2755,7 @@ export function EstablishmentsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedEstablishment, setSelectedEstablishment] = useState<EstablishmentWithRelations | null>(null);
   const [editingEstablishment, setEditingEstablishment] = useState<EstablishmentWithRelations | null>(null);
+  const [editingSection, setEditingSection] = useState<EstablishmentFormSection>("all");
   const selectedId = selectedEstablishment?.id ?? null;
 
   const { data: selectedFresh } = useQuery<EstablishmentWithRelations>({
@@ -2837,7 +2871,7 @@ export function EstablishmentsPage() {
     onError: () => toast({ title: "Error al eliminar", variant: "destructive" }),
   });
 
-  const openEditDialog = (est: EstablishmentWithRelations) => {
+  const openEditDialog = (est: EstablishmentWithRelations, section: EstablishmentFormSection = "all") => {
     editForm.reset({
       name: est.name,
       businessType: est.businessType || "otro",
@@ -2859,8 +2893,33 @@ export function EstablishmentsPage() {
       stageId: est.stageId || "",
       assignedUserId: est.assignedUserId || "",
     });
+    setEditingSection(section);
     setEditingEstablishment(est);
   };
+
+  const CONTACT_FIELDS: (keyof EstablishmentFormValues)[] = ["contactName", "contactPhone", "contactEmail", "address", "city", "zone", "gpsCoordinates"];
+  const COMMERCIAL_FIELDS: (keyof EstablishmentFormValues)[] = ["businessType", "priority", "estimatedMachines", "monthlyEstimatedSales", "commissionPercent", "nextAction", "nextActionDate", "notes"];
+
+  const buildSectionPayload = (data: EstablishmentFormValues, section: EstablishmentFormSection): Partial<EstablishmentFormValues> => {
+    if (section === "all") return data;
+    const keys = section === "contact" ? CONTACT_FIELDS : COMMERCIAL_FIELDS;
+    const out: Partial<EstablishmentFormValues> = {};
+    for (const k of keys) {
+      out[k] = data[k] as never;
+    }
+    return out;
+  };
+
+  const editModalTitle = editingSection === "contact"
+    ? "Editar Información de Contacto"
+    : editingSection === "commercial"
+      ? "Editar Datos Comerciales"
+      : "Editar Establecimiento";
+  const editModalDescription = editingSection === "contact"
+    ? "Actualiza el contacto y la ubicación del establecimiento."
+    : editingSection === "commercial"
+      ? "Actualiza los datos comerciales y de seguimiento."
+      : "Modifica los datos del establecimiento seleccionado.";
 
   const groupedByStage = stages.map((stage) => ({
     stage,
@@ -2875,7 +2934,8 @@ export function EstablishmentsPage() {
             establishment={selectedEstablishment}
             stages={stages}
             onClose={() => setSelectedEstablishment(null)}
-            onEdit={() => openEditDialog(selectedEstablishment)}
+            onEditContact={() => openEditDialog(selectedEstablishment, "contact")}
+            onEditCommercial={() => openEditDialog(selectedEstablishment, "commercial")}
             onDelete={() => deleteMutation.mutate(selectedEstablishment.id)}
             canEdit={canEdit}
             canCreate={canCreate}
@@ -2887,11 +2947,11 @@ export function EstablishmentsPage() {
             }}
           />
         </div>
-        <SimpleModal open={!!editingEstablishment} onClose={() => setEditingEstablishment(null)} title="Editar Establecimiento" description="Modifica los datos del establecimiento seleccionado.">
+        <SimpleModal open={!!editingEstablishment} onClose={() => setEditingEstablishment(null)} title={editModalTitle} description={editModalDescription}>
           <Form {...editForm}>
-            <form onSubmit={editForm.handleSubmit((data) => editingEstablishment && updateMutation.mutate({ id: editingEstablishment.id, data }))} className="flex flex-col min-h-0 flex-1" data-testid="modal-edit-establishment">
+            <form onSubmit={editForm.handleSubmit((data) => editingEstablishment && updateMutation.mutate({ id: editingEstablishment.id, data: buildSectionPayload(data, editingSection) as EstablishmentFormValues }))} className="flex flex-col min-h-0 flex-1" data-testid={`modal-edit-establishment-${editingSection}`}>
               <div className="flex-1 min-h-0 overflow-y-auto">
-                <EstablishmentFormFields form={editForm} isEdit stages={stages} adminUsers={adminUsers} />
+                <EstablishmentFormFields form={editForm} isEdit stages={stages} adminUsers={adminUsers} section={editingSection} />
               </div>
               <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-4 flex-shrink-0">
                 <Button type="button" variant="ghost" onClick={() => setEditingEstablishment(null)}>Cancelar</Button>
@@ -3160,11 +3220,11 @@ export function EstablishmentsPage() {
         </Form>
       </SimpleModal>
 
-      <SimpleModal open={!!editingEstablishment} onClose={() => setEditingEstablishment(null)} title="Editar Establecimiento" description="Modifica los datos del establecimiento seleccionado.">
+      <SimpleModal open={!!editingEstablishment} onClose={() => setEditingEstablishment(null)} title={editModalTitle} description={editModalDescription}>
         <Form {...editForm}>
-          <form onSubmit={editForm.handleSubmit((data) => editingEstablishment && updateMutation.mutate({ id: editingEstablishment.id, data }))} className="flex flex-col min-h-0 flex-1" data-testid="modal-edit-establishment">
+          <form onSubmit={editForm.handleSubmit((data) => editingEstablishment && updateMutation.mutate({ id: editingEstablishment.id, data: buildSectionPayload(data, editingSection) as EstablishmentFormValues }))} className="flex flex-col min-h-0 flex-1" data-testid={`modal-edit-establishment-${editingSection}`}>
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <EstablishmentFormFields form={editForm} isEdit stages={stages} adminUsers={adminUsers} />
+              <EstablishmentFormFields form={editForm} isEdit stages={stages} adminUsers={adminUsers} section={editingSection} />
             </div>
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-4 flex-shrink-0">
               <Button type="button" variant="ghost" onClick={() => setEditingEstablishment(null)}>Cancelar</Button>
