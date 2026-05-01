@@ -16,6 +16,16 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Building2,
   Plus,
   Search,
@@ -121,6 +131,7 @@ interface EstablishmentWithRelations {
   convertedAt: string | null;
   isActive: boolean | null;
   createdAt: string | null;
+  updatedAt: string | null;
   stage: EstablishmentStageInfo | null;
   assignedUser: { id: string; fullName: string | null } | null;
 }
@@ -193,6 +204,7 @@ function EstablishmentDetail({
   onClose,
   onStageChange,
   onEdit,
+  onDelete,
   canEdit,
   canCreate,
   canApprove,
@@ -203,6 +215,7 @@ function EstablishmentDetail({
   onClose: () => void;
   onStageChange: () => void;
   onEdit: () => void;
+  onDelete?: () => void;
   canEdit: boolean;
   canCreate: boolean;
   canApprove: boolean;
@@ -213,6 +226,8 @@ function EstablishmentDetail({
   const [editingFollowupId, setEditingFollowupId] = useState<string | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [selectedDocType, setSelectedDocType] = useState("contrato");
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [followupToDelete, setFollowupToDelete] = useState<string | null>(null);
 
   const { data: followups = [], isLoading: loadingFollowups } = useQuery<EstablishmentFollowup[]>({
     queryKey: ["/api/establishments", establishment.id, "followups"],
@@ -438,6 +453,16 @@ function EstablishmentDetail({
               Convertir a Activo
             </Button>
           )}
+          {canDelete && onDelete && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setConfirmDeleteOpen(true)}
+              data-testid="button-delete-establishment"
+            >
+              <Trash2 className="h-4 w-4 mr-1" /> Eliminar
+            </Button>
+          )}
           <Button variant="ghost" size="icon" onClick={onClose} data-testid="button-close-detail">
             <X className="h-4 w-4" />
           </Button>
@@ -656,11 +681,7 @@ function EstablishmentDetail({
                       <Button
                         size="icon"
                         variant="ghost"
-                        onClick={() => {
-                          if (confirm("¿Eliminar este seguimiento?")) {
-                            deleteFollowupMutation.mutate(f.id);
-                          }
-                        }}
+                        onClick={() => setFollowupToDelete(f.id)}
                         disabled={deleteFollowupMutation.isPending}
                         aria-label="Eliminar seguimiento"
                         data-testid={`button-delete-followup-${f.id}`}
@@ -767,6 +788,54 @@ function EstablishmentDetail({
           )}
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent data-testid="alert-confirm-delete-establishment">
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar este establecimiento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará "{establishment.name}" y no se puede deshacer. Se perderán seguimientos y documentos asociados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-establishment">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmDeleteOpen(false);
+                onDelete?.();
+              }}
+              data-testid="button-confirm-delete-establishment"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!followupToDelete} onOpenChange={(open) => !open && setFollowupToDelete(null)}>
+        <AlertDialogContent data-testid="alert-confirm-delete-followup">
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar este seguimiento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará la nota de seguimiento y no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-followup">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (followupToDelete) {
+                  deleteFollowupMutation.mutate(followupToDelete);
+                  setFollowupToDelete(null);
+                }
+              }}
+              data-testid="button-confirm-delete-followup"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -2665,15 +2734,7 @@ export function EstablishmentsPage() {
     if (selectedFresh.id !== selectedId) return;
     setSelectedEstablishment((prev) => {
       if (!prev || prev.id !== selectedFresh.id) return prev;
-      if (
-        prev.stageId === selectedFresh.stageId &&
-        prev.convertedToLocationId === selectedFresh.convertedToLocationId &&
-        prev.stage?.id === selectedFresh.stage?.id &&
-        prev.priority === selectedFresh.priority &&
-        prev.assignedUserId === selectedFresh.assignedUserId
-      ) {
-        return prev;
-      }
+      if (prev.updatedAt === selectedFresh.updatedAt) return prev;
       return { ...prev, ...selectedFresh };
     });
   }, [selectedFresh, selectedId]);
@@ -2799,31 +2860,49 @@ export function EstablishmentsPage() {
     setEditingEstablishment(est);
   };
 
-  if (selectedEstablishment) {
-    return (
-      <div className="p-6 max-w-4xl mx-auto">
-        <EstablishmentDetail
-          establishment={selectedEstablishment}
-          stages={stages}
-          onClose={() => setSelectedEstablishment(null)}
-          onEdit={() => openEditDialog(selectedEstablishment)}
-          canEdit={canEdit}
-          canCreate={canCreate}
-          canApprove={canApprove}
-          canDelete={canDelete}
-          onStageChange={() => {
-            queryClient.invalidateQueries({ queryKey: ["/api/establishments"] });
-            queryClient.invalidateQueries({ queryKey: ["/api/establishments/stats"] });
-          }}
-        />
-      </div>
-    );
-  }
-
   const groupedByStage = stages.map((stage) => ({
     stage,
     items: establishments.filter((e) => e.stageId === stage.id),
   }));
+
+  if (selectedEstablishment) {
+    return (
+      <>
+        <div className="p-6 max-w-4xl mx-auto">
+          <EstablishmentDetail
+            establishment={selectedEstablishment}
+            stages={stages}
+            onClose={() => setSelectedEstablishment(null)}
+            onEdit={() => openEditDialog(selectedEstablishment)}
+            onDelete={() => deleteMutation.mutate(selectedEstablishment.id)}
+            canEdit={canEdit}
+            canCreate={canCreate}
+            canApprove={canApprove}
+            canDelete={canDelete}
+            onStageChange={() => {
+              queryClient.invalidateQueries({ queryKey: ["/api/establishments"] });
+              queryClient.invalidateQueries({ queryKey: ["/api/establishments/stats"] });
+            }}
+          />
+        </div>
+        <SimpleModal open={!!editingEstablishment} onClose={() => setEditingEstablishment(null)} title="Editar Establecimiento" description="Modifica los datos del establecimiento seleccionado.">
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit((data) => editingEstablishment && updateMutation.mutate({ id: editingEstablishment.id, data }))} className="flex flex-col min-h-0 flex-1" data-testid="modal-edit-establishment">
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <EstablishmentFormFields form={editForm} isEdit stages={stages} adminUsers={adminUsers} />
+              </div>
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-4 flex-shrink-0">
+                <Button type="button" variant="ghost" onClick={() => setEditingEstablishment(null)}>Cancelar</Button>
+                <Button type="submit" disabled={updateMutation.isPending} data-testid="button-submit-edit">
+                  {updateMutation.isPending ? "Guardando..." : "Guardar Cambios"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </SimpleModal>
+      </>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
