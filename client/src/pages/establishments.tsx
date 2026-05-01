@@ -2544,6 +2544,30 @@ export function EstablishmentsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedEstablishment, setSelectedEstablishment] = useState<EstablishmentWithRelations | null>(null);
   const [editingEstablishment, setEditingEstablishment] = useState<EstablishmentWithRelations | null>(null);
+  const selectedId = selectedEstablishment?.id ?? null;
+
+  const { data: selectedFresh } = useQuery<EstablishmentWithRelations>({
+    queryKey: ["/api/establishments", selectedId],
+    enabled: !!selectedId,
+  });
+
+  useEffect(() => {
+    if (!selectedFresh || !selectedId) return;
+    if (selectedFresh.id !== selectedId) return;
+    setSelectedEstablishment((prev) => {
+      if (!prev || prev.id !== selectedFresh.id) return prev;
+      if (
+        prev.stageId === selectedFresh.stageId &&
+        prev.convertedToLocationId === selectedFresh.convertedToLocationId &&
+        prev.stage?.id === selectedFresh.stage?.id &&
+        prev.priority === selectedFresh.priority &&
+        prev.assignedUserId === selectedFresh.assignedUserId
+      ) {
+        return prev;
+      }
+      return { ...prev, ...selectedFresh };
+    });
+  }, [selectedFresh, selectedId]);
 
   const { data: stages = [] } = useQuery<EstablishmentStageInfo[]>({
     queryKey: ["/api/establishment-stages"],
@@ -2677,11 +2701,8 @@ export function EstablishmentsPage() {
           canCreate={canCreate}
           canApprove={canApprove}
           onStageChange={() => {
-            queryClient.invalidateQueries({ queryKey: ["/api/establishments"] }).then(() => {
-              const updated = establishments.find((e) => e.id === selectedEstablishment.id);
-              if (updated) setSelectedEstablishment(updated);
-              else setSelectedEstablishment(null);
-            });
+            queryClient.invalidateQueries({ queryKey: ["/api/establishments"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/establishments/stats"] });
           }}
         />
       </div>
