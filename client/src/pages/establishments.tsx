@@ -473,7 +473,6 @@ function EstablishmentDocumentsSection({
         `/api/establishments/${establishmentId}/documents/${doc.id}/download${inline ? "?inline=1" : ""}`,
       );
       const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
       if (inline) {
         if (popup && !popup.closed) {
           // Render the file inside a controlled HTML wrapper instead of
@@ -481,9 +480,15 @@ function EstablishmentDocumentsSection({
           // viewer can mis-render small images and behaves
           // inconsistently inside Replit preview iframes.
           //
-          // We build the page shell with document.write and then attach
-          // the media element via DOM APIs — never inject the blob URL
-          // or filename into an inline event handler string.
+          // CRITICAL: blob URLs are scoped to the document that creates
+          // them. If we used window.URL.createObjectURL(blob) here, the
+          // popup's <img> would fail to load it (the popup is a separate
+          // document). We create the URL via popup.URL so it's resolvable
+          // inside the popup's document.
+          //
+          // We also build the page shell with document.write first, then
+          // attach the media element via DOM APIs — never inject the blob
+          // URL or filename into an inline event handler string.
           const escapeHtml = (s: string) =>
             s.replace(/[&<>"']/g, (c) => (
               { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string
@@ -491,14 +496,25 @@ function EstablishmentDocumentsSection({
           const safeName = escapeHtml(doc.fileName || "Documento");
           const fileName = doc.fileName || "Documento";
           const mime = (doc.mimeType || "").toLowerCase();
+          // popup.URL exists in all evergreen browsers; fall back to the
+          // parent window's URL only as a defensive measure (will likely
+          // hit onerror if it actually triggers, but better than crashing).
+          const popupURL: typeof URL = (popup as any).URL || window.URL;
+          const url = popupURL.createObjectURL(blob);
           let revoked = false;
           const revoke = () => {
             if (revoked) return;
             revoked = true;
-            try { window.URL.revokeObjectURL(url); } catch { /* noop */ }
+            try { popupURL.revokeObjectURL(url); } catch { /* noop */ }
           };
+          // Auto-revoke when the popup is closed/navigated away (the URL
+          // becomes invalid anyway, but releasing the handle is tidy).
+          try {
+            popup.addEventListener("pagehide", revoke, { once: true });
+            popup.addEventListener("beforeunload", revoke, { once: true });
+          } catch { /* noop: cross-origin popup edge case */ }
           // Belt-and-suspenders: revoke after 5 minutes even if
-          // load/error never fire (e.g., user closed the popup quickly).
+          // load/unload never fire (e.g., user leaves the tab open).
           const revokeTimer = window.setTimeout(revoke, 5 * 60_000);
           try {
             popup.document.open();
@@ -534,6 +550,7 @@ function EstablishmentDocumentsSection({
               img.alt = fileName;
               img.onload = () => {
                 window.clearTimeout(revokeTimer);
+                // Image is fully decoded; safe to revoke shortly after.
                 window.setTimeout(revoke, 60_000);
               };
               img.onerror = renderFallback;
@@ -565,9 +582,10 @@ function EstablishmentDocumentsSection({
             try { popup.location.replace(url); } catch { /* noop */ }
           }
         } else {
-          window.URL.revokeObjectURL(url);
+          // Popup didn't survive — nothing to render into.
         }
       } else {
+        const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
         a.download = doc.fileName;
