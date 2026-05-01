@@ -10538,6 +10538,63 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/establishments/:id/followups/:followupId", authenticateJWT, requireTenant, authorizeAction("establishments", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const followup = await storage.getEstablishmentFollowup(req.params.followupId);
+      if (!followup || followup.tenantId !== tenantId || followup.establishmentId !== req.params.id) {
+        return res.status(404).json({ error: "Seguimiento no encontrado" });
+      }
+      const updateSchema = insertEstablishmentFollowupSchema.partial().omit({
+        tenantId: true,
+        establishmentId: true,
+        userId: true,
+      });
+      const body: Record<string, unknown> = { ...req.body };
+      if (body.nextFollowupDate && typeof body.nextFollowupDate === "string") {
+        body.nextFollowupDate = new Date(body.nextFollowupDate as string);
+      } else if (body.nextFollowupDate === "" || body.nextFollowupDate === null) {
+        body.nextFollowupDate = null;
+      }
+      if (body.nextAction === "") body.nextAction = null;
+      const data = updateSchema.parse(body);
+      const updated = await storage.updateEstablishmentFollowup(req.params.followupId, data);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error updating followup:", error);
+      res.status(500).json({ error: "Error al actualizar seguimiento" });
+    }
+  });
+
+  app.delete("/api/establishments/:id/followups/:followupId", authenticateJWT, requireTenant, authorizeAction("establishments", "delete"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      const followup = await storage.getEstablishmentFollowup(req.params.followupId);
+      if (!followup || followup.tenantId !== tenantId || followup.establishmentId !== req.params.id) {
+        return res.status(404).json({ error: "Seguimiento no encontrado" });
+      }
+      const deleted = await storage.deleteEstablishmentFollowup(req.params.followupId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Seguimiento no encontrado" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting followup:", error);
+      res.status(500).json({ error: "Error al eliminar seguimiento" });
+    }
+  });
+
   // Documents (with Object Storage)
   app.get("/api/establishments/:id/documents", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {

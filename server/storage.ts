@@ -776,7 +776,10 @@ export interface IStorage {
   convertEstablishmentToLocation(id: string, tenantId: string): Promise<{ establishment: Establishment; location: Location }>;
 
   getEstablishmentFollowups(establishmentId: string): Promise<Array<EstablishmentFollowup & { user: { id: string; fullName: string | null } | null }>>;
+  getEstablishmentFollowup(id: string): Promise<EstablishmentFollowup | undefined>;
   createEstablishmentFollowup(data: InsertEstablishmentFollowup): Promise<EstablishmentFollowup>;
+  updateEstablishmentFollowup(id: string, data: Partial<InsertEstablishmentFollowup>): Promise<EstablishmentFollowup | undefined>;
+  deleteEstablishmentFollowup(id: string): Promise<boolean>;
 
   getEstablishmentDocuments(establishmentId: string): Promise<Array<EstablishmentDocument & { uploadedBy: { id: string; fullName: string | null } | null }>>;
   createEstablishmentDocument(data: InsertEstablishmentDocument): Promise<EstablishmentDocument>;
@@ -7739,9 +7742,24 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  async getEstablishmentFollowup(id: string): Promise<EstablishmentFollowup | undefined> {
+    const [row] = await db.select().from(establishmentFollowups).where(eq(establishmentFollowups.id, id));
+    return row;
+  }
+
   async createEstablishmentFollowup(data: InsertEstablishmentFollowup): Promise<EstablishmentFollowup> {
     const [created] = await db.insert(establishmentFollowups).values(data).returning();
     return created;
+  }
+
+  async updateEstablishmentFollowup(id: string, data: Partial<InsertEstablishmentFollowup>): Promise<EstablishmentFollowup | undefined> {
+    const [updated] = await db.update(establishmentFollowups).set(data).where(eq(establishmentFollowups.id, id)).returning();
+    return updated;
+  }
+
+  async deleteEstablishmentFollowup(id: string): Promise<boolean> {
+    const result = await db.delete(establishmentFollowups).where(eq(establishmentFollowups.id, id)).returning({ id: establishmentFollowups.id });
+    return result.length > 0;
   }
 
   async getEstablishmentDocuments(establishmentId: string): Promise<Array<EstablishmentDocument & { uploadedBy: { id: string; fullName: string | null } | null }>> {

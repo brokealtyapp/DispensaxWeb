@@ -192,20 +192,25 @@ function EstablishmentDetail({
   stages,
   onClose,
   onStageChange,
+  onEdit,
   canEdit,
   canCreate,
   canApprove,
+  canDelete,
 }: {
   establishment: EstablishmentWithRelations;
   stages: EstablishmentStageInfo[];
   onClose: () => void;
   onStageChange: () => void;
+  onEdit: () => void;
   canEdit: boolean;
   canCreate: boolean;
   canApprove: boolean;
+  canDelete: boolean;
 }) {
   const { toast } = useToast();
   const [showFollowupForm, setShowFollowupForm] = useState(false);
+  const [editingFollowupId, setEditingFollowupId] = useState<string | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [selectedDocType, setSelectedDocType] = useState("contrato");
 
@@ -239,12 +244,65 @@ function EstablishmentDetail({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "followups"] });
-      followupForm.reset();
+      followupForm.reset({ type: "nota", content: "", nextAction: "", nextFollowupDate: "" });
       setShowFollowupForm(false);
       toast({ title: "Seguimiento agregado" });
     },
     onError: () => toast({ title: "Error al crear seguimiento", variant: "destructive" }),
   });
+
+  const updateFollowupMutation = useMutation({
+    mutationFn: async ({ followupId, data }: { followupId: string; data: FollowupFormValues }) => {
+      const payload: Record<string, string | null | undefined> = { ...data };
+      if (!payload.nextFollowupDate) payload.nextFollowupDate = null;
+      if (!payload.nextAction) payload.nextAction = null;
+      return apiRequest("PATCH", `/api/establishments/${establishment.id}/followups/${followupId}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "followups"] });
+      followupForm.reset({ type: "nota", content: "", nextAction: "", nextFollowupDate: "" });
+      setEditingFollowupId(null);
+      setShowFollowupForm(false);
+      toast({ title: "Seguimiento actualizado" });
+    },
+    onError: () => toast({ title: "Error al actualizar seguimiento", variant: "destructive" }),
+  });
+
+  const deleteFollowupMutation = useMutation({
+    mutationFn: async (followupId: string) => {
+      return apiRequest("DELETE", `/api/establishments/${establishment.id}/followups/${followupId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "followups"] });
+      toast({ title: "Seguimiento eliminado" });
+    },
+    onError: () => toast({ title: "Error al eliminar seguimiento", variant: "destructive" }),
+  });
+
+  const startEditFollowup = (f: EstablishmentFollowup) => {
+    setEditingFollowupId(f.id);
+    setShowFollowupForm(true);
+    followupForm.reset({
+      type: f.type || "nota",
+      content: f.content || "",
+      nextAction: f.nextAction || "",
+      nextFollowupDate: f.nextFollowupDate ? new Date(f.nextFollowupDate).toISOString().split("T")[0] : "",
+    });
+  };
+
+  const cancelFollowupForm = () => {
+    setShowFollowupForm(false);
+    setEditingFollowupId(null);
+    followupForm.reset({ type: "nota", content: "", nextAction: "", nextFollowupDate: "" });
+  };
+
+  const handleFollowupSubmit = (data: FollowupFormValues) => {
+    if (editingFollowupId) {
+      updateFollowupMutation.mutate({ followupId: editingFollowupId, data });
+    } else {
+      createFollowupMutation.mutate(data);
+    }
+  };
 
   const stageMoveMutation = useMutation({
     mutationFn: async (stageId: string) => {
@@ -415,8 +473,18 @@ function EstablishmentDetail({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2 space-y-0">
             <CardTitle className="text-sm font-medium">Información de Contacto</CardTitle>
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onEdit}
+                data-testid="button-edit-contact-info"
+              >
+                <Pencil className="h-3 w-3 mr-1" /> Editar
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             {establishment.contactName && (
@@ -438,8 +506,18 @@ function EstablishmentDetail({
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2 space-y-0">
             <CardTitle className="text-sm font-medium">Datos Comerciales</CardTitle>
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onEdit}
+                data-testid="button-edit-business-data"
+              >
+                <Pencil className="h-3 w-3 mr-1" /> Editar
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex items-center gap-2">
@@ -491,9 +569,9 @@ function EstablishmentDetail({
         </TabsList>
 
         <TabsContent value="followups" className="space-y-3">
-          {canCreate && (
+          {canCreate && !showFollowupForm && (
             <div className="flex justify-end">
-              <Button size="sm" onClick={() => setShowFollowupForm(!showFollowupForm)} data-testid="button-add-followup">
+              <Button size="sm" onClick={() => { setEditingFollowupId(null); followupForm.reset({ type: "nota", content: "", nextAction: "", nextFollowupDate: "" }); setShowFollowupForm(true); }} data-testid="button-add-followup">
                 <Plus className="h-4 w-4 mr-1" /> Agregar Seguimiento
               </Button>
             </div>
@@ -503,11 +581,11 @@ function EstablishmentDetail({
             <Card>
               <CardContent className="pt-4">
                 <Form {...followupForm}>
-                  <form onSubmit={followupForm.handleSubmit((data) => createFollowupMutation.mutate(data))} className="space-y-3">
+                  <form onSubmit={followupForm.handleSubmit(handleFollowupSubmit)} className="space-y-3">
                     <FormField control={followupForm.control} name="type" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Tipo</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl><SelectTrigger data-testid="select-followup-type"><SelectValue /></SelectTrigger></FormControl>
                           <SelectContent>
                             <SelectItem value="nota">Nota</SelectItem>
@@ -539,8 +617,10 @@ function EstablishmentDetail({
                       </FormItem>
                     )} />
                     <div className="flex gap-2">
-                      <Button type="submit" size="sm" disabled={createFollowupMutation.isPending} data-testid="button-save-followup">Guardar</Button>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setShowFollowupForm(false)}>Cancelar</Button>
+                      <Button type="submit" size="sm" disabled={createFollowupMutation.isPending || updateFollowupMutation.isPending} data-testid="button-save-followup">
+                        {editingFollowupId ? "Actualizar" : "Guardar"}
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={cancelFollowupForm} data-testid="button-cancel-followup">Cancelar</Button>
                     </div>
                   </form>
                 </Form>
@@ -550,16 +630,45 @@ function EstablishmentDetail({
 
           {loadingFollowups && <p className="text-sm text-muted-foreground">Cargando...</p>}
           {followups.map((f: EstablishmentFollowup) => (
-            <Card key={f.id}>
+            <Card key={f.id} data-testid={`card-followup-${f.id}`}>
               <CardContent className="pt-4 pb-3">
                 <div className="flex items-start justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="text-xs">{f.type}</Badge>
                     <span className="text-xs text-muted-foreground">{f.user?.fullName}</span>
                   </div>
-                  <span className="text-xs text-muted-foreground">
-                    {f.createdAt ? format(new Date(f.createdAt), "dd MMM yyyy HH:mm", { locale: es }) : ""}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {f.createdAt ? format(new Date(f.createdAt), "dd MMM yyyy HH:mm", { locale: es }) : ""}
+                    </span>
+                    {canEdit && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => startEditFollowup(f)}
+                        aria-label="Editar seguimiento"
+                        data-testid={`button-edit-followup-${f.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => {
+                          if (confirm("¿Eliminar este seguimiento?")) {
+                            deleteFollowupMutation.mutate(f.id);
+                          }
+                        }}
+                        disabled={deleteFollowupMutation.isPending}
+                        aria-label="Eliminar seguimiento"
+                        data-testid={`button-delete-followup-${f.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <p className="mt-2 text-sm">{f.content}</p>
                 {f.nextAction && (
@@ -2697,9 +2806,11 @@ export function EstablishmentsPage() {
           establishment={selectedEstablishment}
           stages={stages}
           onClose={() => setSelectedEstablishment(null)}
+          onEdit={() => openEditDialog(selectedEstablishment)}
           canEdit={canEdit}
           canCreate={canCreate}
           canApprove={canApprove}
+          canDelete={canDelete}
           onStageChange={() => {
             queryClient.invalidateQueries({ queryKey: ["/api/establishments"] });
             queryClient.invalidateQueries({ queryKey: ["/api/establishments/stats"] });
