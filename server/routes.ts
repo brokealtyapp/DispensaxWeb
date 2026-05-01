@@ -198,6 +198,19 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000);
 
+class ObjectStorageNotConfiguredError extends Error {
+  constructor() {
+    super("Object Storage no está configurado: DEFAULT_OBJECT_STORAGE_BUCKET_ID ausente");
+    this.name = "ObjectStorageNotConfiguredError";
+  }
+}
+
+function getObjectStorageBucketId(): string {
+  const id = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+  if (!id) throw new ObjectStorageNotConfiguredError();
+  return id;
+}
+
 // Rate limiters for different endpoints
 const publicPlansLimiter = rateLimit({ 
   windowMs: 60 * 1000, // 1 minute
@@ -10494,7 +10507,7 @@ export async function registerRoutes(
         const docs = await storage.getEstablishmentDocuments(req.params.id);
         if (docs.length > 0) {
           const { Client } = await import("@replit/object-storage");
-          const objClient = new Client();
+          const objClient = new Client({ bucketId: getObjectStorageBucketId() });
           for (const d of docs) {
             try {
               await objClient.delete(d.fileKey);
@@ -10706,7 +10719,7 @@ export async function registerRoutes(
       }
 
       const { Client } = await import("@replit/object-storage");
-      const objClient = new Client();
+      const objClient = new Client({ bucketId: getObjectStorageBucketId() });
       const safeName = sanitizeFileKeySegment(file.originalname);
       const fileKey = `.private/${tenantId}/establishments/${req.params.id}/${Date.now()}_${safeName}`;
 
@@ -10780,7 +10793,7 @@ export async function registerRoutes(
 
       try {
         const { Client } = await import("@replit/object-storage");
-        const objClient = new Client();
+        const objClient = new Client({ bucketId: getObjectStorageBucketId() });
         await objClient.delete(doc.fileKey);
       } catch (e) {
         console.warn("Could not delete file from storage:", e);
@@ -11058,7 +11071,7 @@ export async function registerRoutes(
       }
 
       const { Client } = await import("@replit/object-storage");
-      const objClient = new Client();
+      const objClient = new Client({ bucketId: getObjectStorageBucketId() });
       const result = await objClient.downloadAsBytes(doc.fileKey);
       
       if (!result.ok) {
@@ -11863,7 +11876,7 @@ export async function registerRoutes(
       const fileKey = `.private/${tenantId}/checklist-photos/${order.id}/${req.params.itemId}_${timestamp}.jpg`;
 
       const { Client } = await import("@replit/object-storage");
-      const objClient = new Client();
+      const objClient = new Client({ bucketId: getObjectStorageBucketId() });
       await objClient.uploadFromBytes(fileKey, watermarked);
 
       const updated = await storage.updateChecklistItem(req.params.itemId, {
@@ -11884,7 +11897,7 @@ export async function registerRoutes(
       if (isReplace && checklistItem.photoUrl) {
         try {
           const { Client: ObjClientDel } = await import("@replit/object-storage");
-          await new ObjClientDel().delete(checklistItem.photoUrl);
+          await new ObjClientDel({ bucketId: getObjectStorageBucketId() }).delete(checklistItem.photoUrl);
         } catch (deleteErr) {
           console.warn("Error deleting old checklist photo (non-fatal):", deleteErr);
         }
@@ -11912,7 +11925,7 @@ export async function registerRoutes(
       if (!item || !item.photoUrl) return res.status(404).json({ error: "Foto no encontrada" });
 
       const { Client } = await import("@replit/object-storage");
-      const objClient = new Client();
+      const objClient = new Client({ bucketId: getObjectStorageBucketId() });
       const result = await objClient.downloadAsBytes(item.photoUrl);
       if (!result.ok) return res.status(404).json({ error: "Foto no encontrada en storage" });
 
