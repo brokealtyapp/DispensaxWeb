@@ -10,12 +10,26 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+function getPublicBaseUrl(): string {
+  const stripSlash = (u: string) => u.replace(/\/+$/, "");
+  const appUrl = process.env.APP_URL?.trim();
+  if (appUrl) return stripSlash(appUrl);
+  const devDomain = process.env.REPLIT_DEV_DOMAIN?.trim();
+  if (devDomain) return `https://${stripSlash(devDomain)}`;
+  const domains = process.env.REPLIT_DOMAINS?.trim();
+  if (domains) {
+    const first = domains.split(",")[0]?.trim();
+    if (first) return `https://${stripSlash(first)}`;
+  }
+  return "http://localhost:5000";
+}
+
 export async function sendPasswordResetEmail(
   email: string,
   resetToken: string,
   userName: string
 ): Promise<boolean> {
-  const resetUrl = `${process.env.APP_URL || "http://localhost:5000"}/reset-password?token=${resetToken}`;
+  const resetUrl = `${getPublicBaseUrl()}/reset-password?token=${resetToken}`;
   
   const mailOptions = {
     from: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER,
@@ -119,7 +133,7 @@ interface ViewerInviteEmailParams {
 }
 
 export async function sendViewerInviteEmail(params: ViewerInviteEmailParams): Promise<boolean> {
-  const baseUrl = process.env.APP_URL || "http://localhost:5000";
+  const baseUrl = getPublicBaseUrl();
   const inviteUrl = `${baseUrl}/invite/${params.token}`;
   const expiresStr = params.expiresAt
     ? new Date(params.expiresAt).toLocaleDateString("es-DO", { timeZone: "America/Santo_Domingo" })
@@ -193,7 +207,7 @@ interface ContractEmailParams {
 }
 
 export async function sendContractNotificationEmail(params: ContractEmailParams): Promise<boolean> {
-  const baseUrl = process.env.APP_URL || "http://localhost:5000";
+  const baseUrl = getPublicBaseUrl();
   const viewerUrl = params.viewerInviteToken ? `${baseUrl}/invite/${params.viewerInviteToken}` : null;
 
   const fmt = (d?: Date | null) => (d ? new Date(d).toLocaleDateString("es-DO", { timeZone: "America/Santo_Domingo" }) : "—");
