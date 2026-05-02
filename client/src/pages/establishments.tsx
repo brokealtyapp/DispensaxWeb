@@ -65,6 +65,7 @@ import { Link, useSearch, useLocation } from "wouter";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   uploadFileWithProgress,
   describeUploadError,
@@ -1451,15 +1452,106 @@ function ActiveEstablishmentDetail({
     }
   }, [scrollToViewerToken]);
   const { toast } = useToast();
+  const { can } = usePermissions();
+  const canManageMachines = can("machines", "edit");
   const [showContractForm, setShowContractForm] = useState(false);
   const [editingContract, setEditingContract] = useState<EstablishmentContract | null>(null);
   const [renewingContract, setRenewingContract] = useState<EstablishmentContract | null>(null);
+  const [showAssignMachines, setShowAssignMachines] = useState(false);
+  const [selectedMachineIds, setSelectedMachineIds] = useState<Set<string>>(new Set());
+  const [machineSearch, setMachineSearch] = useState("");
+  const [unassigningMachine, setUnassigningMachine] = useState<{ id: string; name: string } | null>(null);
 
   const { data: machinesData = [] } = useQuery<any[]>({
     queryKey: ["/api/establishments", establishment.id, "machines"],
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/establishments/${establishment.id}/machines`);
       return res.json();
+    },
+  });
+
+  const { data: allTenantMachines = [], isLoading: loadingAllMachines } = useQuery<any[]>({
+    queryKey: ["/api/machines"],
+    enabled: showAssignMachines,
+  });
+
+  const unassignedMachines = allTenantMachines.filter((m: any) => !m.locationId);
+  const visibleAssignableMachines = machineSearch.trim()
+    ? unassignedMachines.filter((m: any) => {
+        const q = machineSearch.trim().toLowerCase();
+        return (
+          (m.name || "").toLowerCase().includes(q) ||
+          (m.code || "").toLowerCase().includes(q)
+        );
+      })
+    : unassignedMachines;
+
+  const refreshMachineQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/establishments", establishment.id, "machines"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+  };
+
+  const assignMachinesMutation = useMutation({
+    mutationFn: async (machineIds: string[]) => {
+      if (!establishment.convertedToLocationId) {
+        throw new Error("El establecimiento no tiene una ubicación asociada");
+      }
+      const res = await apiRequest("POST", `/api/establishments/${establishment.id}/machines`, { machineIds });
+      const data: { assignedCount: number; assignedIds: string[]; skippedIds: string[]; skippedReason: string | null } = await res.json();
+      return data;
+    },
+    onSuccess: (data) => {
+      refreshMachineQueries();
+      setShowAssignMachines(false);
+      setSelectedMachineIds(new Set());
+      setMachineSearch("");
+      if (data.assignedCount === 0) {
+        toast({
+          title: "No se asignó ninguna máquina",
+          description: data.skippedReason || "Las máquinas seleccionadas ya no están disponibles.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const baseTitle = data.assignedCount === 1 ? "Máquina asignada" : `${data.assignedCount} máquinas asignadas`;
+      const baseDesc = `Vinculadas a ${establishment.name}`;
+      toast({
+        title: baseTitle,
+        description: data.skippedIds.length > 0
+          ? `${baseDesc}. Se omitieron ${data.skippedIds.length} (ya estaban asignadas).`
+          : baseDesc,
+      });
+    },
+    onError: (err: any) => {
+      // Refrescamos igualmente por si hubo éxito parcial inesperado.
+      refreshMachineQueries();
+      toast({
+        title: "Error al asignar máquinas",
+        description: err?.message || "Intenta nuevamente",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const unassignMachineMutation = useMutation({
+    mutationFn: async (machineId: string) => {
+      await apiRequest("DELETE", `/api/establishments/${establishment.id}/machines/${machineId}`);
+    },
+    onSuccess: () => {
+      refreshMachineQueries();
+      setUnassigningMachine(null);
+      toast({ title: "Máquina desasignada" });
+    },
+    onError: (err: any) => {
+      // Refrescamos siempre — el estado pudo cambiar en el servidor.
+      refreshMachineQueries();
+      setUnassigningMachine(null);
+      toast({
+        title: "Error al desasignar máquina",
+        description: err?.message || "Intenta nuevamente",
+        variant: "destructive",
+      });
     },
   });
 
@@ -1805,42 +1897,90 @@ function ActiveEstablishmentDetail({
         </TabsList>
 
         <TabsContent value="machines" className="space-y-3">
-          {machinesData.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No hay máquinas instaladas en este establecimiento</p>
+          {!establishment.convertedToLocationId ? (
+            <Card>
+              <CardContent className="p-4 flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium">Este establecimiento aún no tiene ubicación operativa</p>
+                  <p className="text-muted-foreground mt-1">
+                    Para asignar máquinas, primero debe convertirse a ubicación desde el pipeline (pestaña <strong>En Proceso</strong>).
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           ) : (
-            <div className="space-y-2">
-              {machinesData.map((machine: any) => (
-                <Card key={machine.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between gap-4 flex-wrap">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
-                        <div className="min-w-0">
-                          <p className="font-medium truncate" data-testid={`text-machine-name-${machine.id}`}>{machine.name}</p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {machine.serialNumber || "Sin serial"} - {machine.machineType || "Sin tipo"}
-                          </p>
+            <>
+              {canManageMachines && (
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setSelectedMachineIds(new Set());
+                      setMachineSearch("");
+                      setShowAssignMachines(true);
+                    }}
+                    data-testid="button-open-assign-machines"
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> Asignar Máquina
+                  </Button>
+                </div>
+              )}
+
+              {machinesData.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8" data-testid="text-no-machines">
+                  No hay máquinas instaladas en este establecimiento
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {machinesData.map((machine: any) => (
+                    <Card key={machine.id}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
+                            <div className="min-w-0">
+                              <p className="font-medium truncate" data-testid={`text-machine-name-${machine.id}`}>{machine.name}</p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {machine.code || "Sin código"} - {machine.type || "Sin tipo"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className={
+                              machine.status === "operando" || machine.status === "active" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
+                              machine.status === "mantenimiento" || machine.status === "maintenance" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
+                              "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400"
+                            }>
+                              {machine.status === "operando" || machine.status === "active" ? "Activa" :
+                                machine.status === "mantenimiento" || machine.status === "maintenance" ? "Mantenimiento" :
+                                machine.status || "N/A"}
+                            </Badge>
+                            <Link href={`/maquinas/${machine.id}`}>
+                              <Button variant="ghost" size="icon" data-testid={`button-view-machine-${machine.id}`}>
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
+                            </Link>
+                            {canManageMachines && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive"
+                                onClick={() => setUnassigningMachine({ id: machine.id, name: machine.name })}
+                                data-testid={`button-unassign-machine-${machine.id}`}
+                                title="Quitar del establecimiento"
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className={
-                          machine.status === "active" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                          machine.status === "maintenance" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
-                          "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400"
-                        }>
-                          {machine.status === "active" ? "Activa" : machine.status === "maintenance" ? "Mantenimiento" : machine.status || "N/A"}
-                        </Badge>
-                        <Link href={`/maquinas/${machine.id}`}>
-                          <Button variant="ghost" size="icon" data-testid={`button-view-machine-${machine.id}`}>
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </TabsContent>
 
@@ -2108,6 +2248,123 @@ function ActiveEstablishmentDetail({
           )}
         </TabsContent>
       </Tabs>
+
+      <SimpleModal
+        open={showAssignMachines}
+        onClose={() => setShowAssignMachines(false)}
+        title={`Asignar máquinas: ${establishment.name}`}
+        description="Selecciona una o varias máquinas sin asignar para vincularlas a este establecimiento."
+      >
+        <div className="flex flex-col min-h-0 flex-1" data-testid="modal-assign-machines">
+          <div className="flex-shrink-0 mb-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nombre o código..."
+                className="pl-9"
+                value={machineSearch}
+                onChange={(e) => setMachineSearch(e.target.value)}
+                data-testid="input-search-assignable-machines"
+              />
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto border rounded-md">
+            {loadingAllMachines ? (
+              <p className="text-sm text-muted-foreground text-center py-8">Cargando máquinas...</p>
+            ) : unassignedMachines.length === 0 ? (
+              <div className="text-center py-8 px-4">
+                <Building2 className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                <p className="text-sm font-medium">No hay máquinas disponibles</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Todas las máquinas del tenant ya están asignadas. Crea una nueva desde el módulo Máquinas.
+                </p>
+              </div>
+            ) : visibleAssignableMachines.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">Ninguna máquina coincide con la búsqueda.</p>
+            ) : (
+              <div className="divide-y">
+                {visibleAssignableMachines.map((m: any) => {
+                  const checked = selectedMachineIds.has(m.id);
+                  return (
+                    <label
+                      key={m.id}
+                      htmlFor={`assign-machine-${m.id}`}
+                      className="flex items-center gap-3 p-3 cursor-pointer hover-elevate"
+                      data-testid={`row-assignable-machine-${m.id}`}
+                    >
+                      <Checkbox
+                        id={`assign-machine-${m.id}`}
+                        checked={checked}
+                        onCheckedChange={(value) => {
+                          setSelectedMachineIds((prev) => {
+                            const next = new Set(prev);
+                            if (value) next.add(m.id);
+                            else next.delete(m.id);
+                            return next;
+                          });
+                        }}
+                        data-testid={`checkbox-assign-machine-${m.id}`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{m.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {m.code || "Sin código"} - {m.type || "Sin tipo"}
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-between sm:items-center gap-2 mt-4 flex-shrink-0">
+            <p className="text-xs text-muted-foreground" data-testid="text-selected-count">
+              {selectedMachineIds.size} máquina{selectedMachineIds.size !== 1 ? "s" : ""} seleccionada{selectedMachineIds.size !== 1 ? "s" : ""}
+            </p>
+            <div className="flex gap-2 sm:justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowAssignMachines(false)}
+                data-testid="button-cancel-assign-machines"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={selectedMachineIds.size === 0 || assignMachinesMutation.isPending}
+                onClick={() => assignMachinesMutation.mutate(Array.from(selectedMachineIds))}
+                data-testid="button-confirm-assign-machines"
+              >
+                {assignMachinesMutation.isPending ? "Asignando..." : "Asignar"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </SimpleModal>
+
+      <AlertDialog open={!!unassigningMachine} onOpenChange={(open) => { if (!open) setUnassigningMachine(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Quitar máquina del establecimiento</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Seguro que deseas desvincular <strong>{unassigningMachine?.name}</strong> de {establishment.name}? La máquina quedará sin ubicación y podrá asignarse a otro establecimiento.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-unassign">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => unassigningMachine && unassignMachineMutation.mutate(unassigningMachine.id)}
+              disabled={unassignMachineMutation.isPending}
+              data-testid="button-confirm-unassign"
+            >
+              {unassignMachineMutation.isPending ? "Quitando..." : "Quitar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

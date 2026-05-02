@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage, HttpError } from "./storage";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, asc, or, inArray, count, ne, SQL } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, asc, or, inArray, count, ne, isNull, SQL } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { 
   signAccessToken, 
@@ -11057,6 +11057,83 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting establishment machines:", error);
       res.status(500).json({ error: "Error al obtener máquinas del establecimiento" });
+    }
+  });
+
+  // Atomic batch assign of machines to an active establishment.
+  // Only assigns machines whose locationId is currently NULL (precondition) to avoid lost updates.
+  app.post("/api/establishments/:id/machines", authenticateJWT, requireTenant, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      if (!existing.convertedToLocationId) {
+        return res.status(400).json({ error: "El establecimiento aún no fue convertido a ubicación operativa" });
+      }
+      const bodySchema = z.object({ machineIds: z.array(z.string().min(1)).min(1) });
+      const { machineIds } = bodySchema.parse(req.body);
+
+      const assigned = await db
+        .update(machines)
+        .set({ locationId: existing.convertedToLocationId })
+        .where(and(
+          eq(machines.tenantId, tenantId),
+          inArray(machines.id, machineIds),
+          isNull(machines.locationId),
+        ))
+        .returning({ id: machines.id });
+
+      const assignedIds = assigned.map(a => a.id);
+      const skippedIds = machineIds.filter(id => !assignedIds.includes(id));
+
+      res.json({
+        assignedCount: assignedIds.length,
+        assignedIds,
+        skippedIds,
+        skippedReason: skippedIds.length > 0 ? "Algunas máquinas ya estaban asignadas a otra ubicación o no pertenecen al tenant." : null,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error assigning machines to establishment:", error);
+      res.status(500).json({ error: "Error al asignar máquinas al establecimiento" });
+    }
+  });
+
+  // Atomic unassign of a single machine from an active establishment.
+  // Only unassigns if the machine is still attached to this establishment's location (precondition).
+  app.delete("/api/establishments/:id/machines/:machineId", authenticateJWT, requireTenant, authorizeAction("machines", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getEstablishment(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Establecimiento no encontrado" });
+      }
+      if (!existing.convertedToLocationId) {
+        return res.status(400).json({ error: "El establecimiento no tiene ubicación operativa" });
+      }
+
+      const updated = await db
+        .update(machines)
+        .set({ locationId: null })
+        .where(and(
+          eq(machines.tenantId, tenantId),
+          eq(machines.id, req.params.machineId),
+          eq(machines.locationId, existing.convertedToLocationId),
+        ))
+        .returning({ id: machines.id });
+
+      if (updated.length === 0) {
+        return res.status(409).json({ error: "La máquina ya no está asignada a este establecimiento" });
+      }
+
+      res.json({ success: true, machineId: updated[0].id });
+    } catch (error) {
+      console.error("Error unassigning machine from establishment:", error);
+      res.status(500).json({ error: "Error al desasignar máquina del establecimiento" });
     }
   });
 
