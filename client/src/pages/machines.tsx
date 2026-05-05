@@ -163,6 +163,7 @@ export function MachinesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
       setIsAddDialogOpen(false);
       form.reset();
       toast({ title: "Máquina creada", description: "La máquina se ha registrado correctamente" });
@@ -186,6 +187,7 @@ export function MachinesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
       setIsAddDialogOpen(false);
       setEditingMachine(null);
       form.reset();
@@ -203,6 +205,7 @@ export function MachinesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
       setDeletingMachineId(null);
       toast({ title: "Máquina eliminada", description: "La máquina se ha eliminado correctamente" });
     },
@@ -268,6 +271,7 @@ export function MachinesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
       setDeletingLocationId(null);
       toast({ title: "Ubicación eliminada", description: "La ubicación se ha eliminado correctamente" });
     },

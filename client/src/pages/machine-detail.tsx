@@ -325,6 +325,7 @@ export function MachineDetailPage() {
       queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
       setIsEditDialogOpen(false);
       toast({ title: "Máquina actualizada", description: "Los cambios se han guardado correctamente" });
     },
@@ -342,6 +343,7 @@ export function MachineDetailPage() {
       queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
     },
     onError: () => {
       toast({ title: "Error", description: "No se pudo desactivar la máquina", variant: "destructive" });

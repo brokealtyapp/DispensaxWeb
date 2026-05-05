@@ -7907,8 +7907,9 @@ export class DatabaseStorage implements IStorage {
       })
       .from(machines)
       .where(and(
-        sql`${machines.locationId} IN (${sql.join(locationIds.map(id => sql`${id}`), sql`, `)})`,
-        eq(machines.tenantId, tenantId)
+        inArray(machines.locationId, locationIds),
+        eq(machines.tenantId, tenantId),
+        eq(machines.isActive, true)
       ))
       .groupBy(machines.locationId);
 
