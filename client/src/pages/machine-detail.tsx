@@ -308,6 +308,8 @@ export function MachineDetailPage() {
     },
   });
 
+  // REGLA: toda mutación que modifique `locationId` o `isActive` de una máquina debe
+  // invalidar ["/api/establishments/active"] para mantener el machineCount sincronizado.
   const updateMachineMutation = useMutation({
     mutationFn: async (data: MachineEditFormData) => {
       // El servidor espera null cuando no hay override; el form usa "default" como sentinel
@@ -325,6 +327,7 @@ export function MachineDetailPage() {
       queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
+      // Puede modificar locationId → actualizar conteo de máquinas por establecimiento
       queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
       setIsEditDialogOpen(false);
       toast({ title: "Máquina actualizada", description: "Los cambios se han guardado correctamente" });
@@ -343,6 +346,7 @@ export function MachineDetailPage() {
       queryClient.invalidateQueries({ queryKey: [`/api/machines/${machineId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
+      // Modifica isActive → la máquina sale del conteo del establecimiento
       queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
     },
     onError: () => {

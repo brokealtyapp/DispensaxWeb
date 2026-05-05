@@ -149,6 +149,8 @@ export function MachinesPage() {
     queryKey: ["/api/machine-types"],
   });
 
+  // REGLA: toda mutación que modifique `locationId` o `isActive` de una máquina debe
+  // invalidar ["/api/establishments/active"] para mantener el machineCount sincronizado.
   const createMachineMutation = useMutation({
     mutationFn: async (data: MachineFormData) => {
       const cleanData = {
@@ -163,6 +165,7 @@ export function MachinesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
+      // Modifica locationId → actualizar conteo de máquinas por establecimiento
       queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
       setIsAddDialogOpen(false);
       form.reset();
@@ -187,6 +190,7 @@ export function MachinesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
+      // Puede modificar locationId → actualizar conteo de máquinas por establecimiento
       queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
       setIsAddDialogOpen(false);
       setEditingMachine(null);
@@ -205,6 +209,7 @@ export function MachinesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/machines"] });
       queryClient.invalidateQueries({ queryKey: ["/api/summary/machines"] });
+      // Eliminar máquina reduce el conteo del establecimiento → actualizar
       queryClient.invalidateQueries({ queryKey: ["/api/establishments/active"] });
       setDeletingMachineId(null);
       toast({ title: "Máquina eliminada", description: "La máquina se ha eliminado correctamente" });

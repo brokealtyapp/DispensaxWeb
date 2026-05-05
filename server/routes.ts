@@ -10235,11 +10235,17 @@ export async function registerRoutes(
     }
   });
 
+  // NOTA: machineCount se calcula en tiempo real desde la BD en cada request.
+  // No se debe agregar ningún caché de servidor aquí; el header no-store lo garantiza.
+  // Toda mutación del cliente que modifique `locationId` o `isActive` de una máquina
+  // debe invalidar el queryKey ["/api/establishments/active"] para mantener los conteos sincronizados.
   app.get("/api/establishments/active", authenticateJWT, requireTenant, authorizeAction("establishments", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
       const search = req.query.search as string | undefined;
       const contractStatus = req.query.contractStatus as string | undefined;
+      // machineCount se agrega con COUNT(*) agrupado por locationId — no hay caché en este endpoint
+      res.set("Cache-Control", "no-store");
       const results = await storage.getActiveEstablishments(tenantId, { search, contractStatus });
       res.json(results);
     } catch (error) {
