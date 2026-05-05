@@ -2506,7 +2506,12 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
     }
   }, [inviteViewerOnLoad, targetEstablishmentId, activeEstablishments, search, setLocation]);
 
-  const machinesForEstablishment = inviteEstablishment ? machines : [];
+  const machinesForEstablishment = inviteEstablishment
+    ? machines.filter(m =>
+        !m.locationId ||
+        m.locationId === inviteEstablishment.convertedToLocationId
+      )
+    : [];
   const preselectedMachineIds = new Set(
     inviteEstablishment?.convertedToLocationId
       ? machines.filter(m => m.locationId === inviteEstablishment.convertedToLocationId).map(m => m.id)
