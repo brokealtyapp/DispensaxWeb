@@ -9089,7 +9089,7 @@ export async function registerRoutes(
         if (viewer.establishmentId) {
           const est = await storage.getEstablishment(viewer.establishmentId);
           if (est && est.tenantId === viewer.tenantId) {
-            establishment = { id: est.id, name: est.name, address: est.address, city: est.city };
+            establishment = { id: est.id, name: est.name, address: est.address, city: est.city, convertedToLocationId: est.convertedToLocationId ?? null };
             effectiveName = est.name;
           }
         }
@@ -9139,7 +9139,7 @@ export async function registerRoutes(
       if (viewer.establishmentId) {
         const est = await storage.getEstablishment(viewer.establishmentId);
         if (est && est.tenantId === viewer.tenantId) {
-          establishment = { id: est.id, name: est.name, address: est.address, city: est.city };
+          establishment = { id: est.id, name: est.name, address: est.address, city: est.city, convertedToLocationId: est.convertedToLocationId ?? null };
           effectiveName = est.name;
         }
       }

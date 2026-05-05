@@ -79,6 +79,7 @@ interface Machine {
   code: string;
   name: string;
   location: string;
+  locationId?: string | null;
 }
 
 interface MachineAssignment {
@@ -106,6 +107,7 @@ interface EstablishmentViewer {
     name: string;
     address?: string | null;
     city?: string | null;
+    convertedToLocationId?: string | null;
   } | null;
   user?: {
     id: string;
@@ -466,7 +468,14 @@ export default function EstablishmentViewersPage() {
 
   const getAvailableMachines = (viewer: EstablishmentViewer) => {
     const assignedIds = getAssignedMachineIds(viewer);
-    return machines.filter(m => !assignedIds.includes(m.id));
+    const establishmentLocationId = viewer.establishment?.convertedToLocationId ?? null;
+    return machines.filter(m => {
+      if (assignedIds.includes(m.id)) return false;
+      if (establishmentLocationId) {
+        return m.locationId === establishmentLocationId || m.locationId == null;
+      }
+      return m.locationId == null;
+    });
   };
 
   if (isLoading) {
