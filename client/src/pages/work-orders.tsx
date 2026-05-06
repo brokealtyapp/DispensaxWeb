@@ -1329,7 +1329,7 @@ function KanbanCard({
                 ) : (
                   <ArrowRight className="h-3 w-3 mr-1" />
                 )}
-                {STATUS_LABELS[nextStatus] || nextStatus}
+                Avanzar
               </Button>
             )}
           </div>
