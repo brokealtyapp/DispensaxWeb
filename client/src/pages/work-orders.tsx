@@ -1855,6 +1855,7 @@ export function WorkOrdersPage() {
   const [editingStageName, setEditingStageName] = useState("");
   const [editingStageColor, setEditingStageColor] = useState("slate");
   const [editingStageIsFinal, setEditingStageIsFinal] = useState(false);
+  const [editingStageStatuses, setEditingStageStatuses] = useState<string[]>([]);
   const [newStageColor, setNewStageColor] = useState("slate");
   const [activeTemplateTab, setActiveTemplateTab] = useState("tecnico");
   const [newItemLabels, setNewItemLabels] = useState<Record<string, string>>({});
@@ -1959,13 +1960,15 @@ export function WorkOrdersPage() {
   });
 
   const updateStageMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; name?: string; color?: string; isFinal?: boolean }) => {
+    mutationFn: async ({ id, ...data }: { id: string; name?: string; color?: string; isFinal?: boolean; statuses?: string[] }) => {
       const res = await apiRequest("PATCH", `/api/work-order-stages/${id}`, data);
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Error al actualizar etapa"); }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/work-order-stages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders/stats"] });
       setEditingStageId(null);
       toast({ title: "Etapa actualizada" });
     },
@@ -3913,7 +3916,7 @@ export function WorkOrdersPage() {
                           onChange={e => setEditingStageName(e.target.value)}
                           onKeyDown={e => {
                             if (e.key === "Enter" && editingStageName.trim()) {
-                              updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal });
+                              updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal, statuses: editingStageStatuses });
                             }
                             if (e.key === "Escape") setEditingStageId(null);
                           }}
@@ -3944,11 +3947,38 @@ export function WorkOrdersPage() {
                           />
                           <span>Etapa final (requiere permiso de aprobación para mover órdenes aquí)</span>
                         </label>
+                        <div className="rounded-md border bg-muted/20 p-2 space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Estados incluidos en esta etapa</p>
+                          {(["pendiente", "asignada", "en_proceso", "en_ruta", "completada", "cerrada"] as const).map(st => {
+                            const isChecked = editingStageStatuses.includes(st);
+                            const ownerStage = !isChecked ? stages.find(s => s.id !== stage.id && (s.statuses as string[]).includes(st)) : undefined;
+                            return (
+                              <label key={st} className="flex items-center gap-2 text-sm cursor-pointer select-none" data-testid={`checkbox-status-${st}-${stage.id}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={e => {
+                                    if (e.target.checked) {
+                                      setEditingStageStatuses(prev => [...prev, st]);
+                                    } else {
+                                      setEditingStageStatuses(prev => prev.filter(s => s !== st));
+                                    }
+                                  }}
+                                  className="rounded"
+                                />
+                                <span>{STATUS_LABELS[st]}</span>
+                                {ownerStage && (
+                                  <span className="text-xs text-muted-foreground">(actualmente en &quot;{ownerStage.name}&quot;)</span>
+                                )}
+                              </label>
+                            );
+                          })}
+                        </div>
                         <div className="flex gap-2">
                           <Button
                             size="sm"
                             disabled={!editingStageName.trim() || updateStageMutation.isPending}
-                            onClick={() => updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal })}
+                            onClick={() => updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal, statuses: editingStageStatuses })}
                             data-testid={`button-stage-save-${stage.id}`}
                           >
                             {updateStageMutation.isPending ? "Guardando..." : "Guardar"}
@@ -3970,7 +4000,7 @@ export function WorkOrdersPage() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 shrink-0"
-                          onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); setEditingStageColor(stage.color); setEditingStageIsFinal(stage.isFinal ?? false); }}
+                          onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); setEditingStageColor(stage.color); setEditingStageIsFinal(stage.isFinal ?? false); setEditingStageStatuses((stage.statuses as string[]) ?? []); }}
                           data-testid={`button-stage-edit-${stage.id}`}
                         >
                           <Pencil className="h-3 w-3" />
@@ -4037,7 +4067,7 @@ export function WorkOrdersPage() {
           </div>
 
           <p className="text-xs text-muted-foreground pt-1">
-            Las etapas son agrupaciones visuales de estados. Los estados se asignan a etapas automáticamente según la configuración del sistema.
+            Las etapas son columnas del tablero Kanban. Edita cada etapa para elegir qué estados del sistema pertenecen a ella. El estado "Cancelada" siempre queda excluido del tablero.
           </p>
         </div>
       </SimpleModal>

@@ -11524,16 +11524,54 @@ export async function registerRoutes(
   app.patch("/api/work-order-stages/:id", authenticateJWT, authorizeAction("settings", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
+      const ALLOWED_KANBAN_STATUSES = ["pendiente", "asignada", "en_proceso", "en_ruta", "completada", "cerrada"] as const;
       const schema = z.object({
         name: z.string().min(1).max(100).optional(),
         color: z.string().min(1).optional(),
         sortOrder: z.number().int().optional(),
         isFinal: z.boolean().optional(),
+        statuses: z.array(z.enum(ALLOWED_KANBAN_STATUSES)).optional(),
       });
       const updates = schema.parse(req.body);
       const existing = await storage.getWorkOrderStage(req.params.id, tenantId);
       if (!existing) return res.status(404).json({ error: "Etapa no encontrada" });
+      if (updates.statuses !== undefined) {
+        // Deduplicate the incoming statuses array before persisting
+        updates.statuses = [...new Set(updates.statuses)];
+        // Remove newly claimed statuses from any other stage that currently holds them
+        const allStages = await storage.getWorkOrderStages(tenantId);
+        for (const stage of allStages) {
+          if (stage.id === req.params.id) continue;
+          const stageStatuses = (stage.statuses as string[]) ?? [];
+          const filtered = stageStatuses.filter(s => !updates.statuses!.includes(s));
+          if (filtered.length !== stageStatuses.length) {
+            await storage.updateWorkOrderStage(stage.id, tenantId, { statuses: filtered });
+          }
+        }
+      }
       const updated = await storage.updateWorkOrderStage(req.params.id, tenantId, updates);
+      // Resync stageId on all orders when statuses mapping changes so Kanban reflects the update immediately
+      if (updates.statuses !== undefined) {
+        try {
+          const allStages = await storage.getWorkOrderStages(tenantId);
+          // Build authoritative status -> stageId map
+          const statusToStage: Record<string, string> = {};
+          for (const stage of allStages) {
+            for (const s of (stage.statuses as string[]) ?? []) {
+              statusToStage[s] = stage.id;
+            }
+          }
+          const orders = await storage.getWorkOrders(tenantId, {});
+          for (const order of orders) {
+            const correctStageId = statusToStage[order.status] ?? null;
+            if (order.stageId !== correctStageId) {
+              await storage.updateWorkOrder(order.id, { stageId: correctStageId });
+            }
+          }
+        } catch (syncErr) {
+          console.error("[stages-patch] Failed to resync order stageIds after status update:", syncErr instanceof Error ? syncErr.message : syncErr);
+        }
+      }
       res.json(updated);
     } catch (error) {
       if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });
