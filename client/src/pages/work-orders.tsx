@@ -1518,7 +1518,7 @@ function KanbanCard({
             </div>
           </div>
 
-          {order.stageSlaStatus && order.stageSlaStatus !== "ok" && (
+          {order.stageSlaStatus && order.stageSlaStatus !== "dentro_tiempo" && (
             <div
               className={`flex items-center gap-1 text-xs rounded px-1.5 py-0.5 ${
                 order.stageSlaStatus === "vencido"

@@ -12001,20 +12001,14 @@ export async function registerRoutes(
               const pausedMs = now.getTime() - new Date(existing.slaPausedAt).getTime();
               finalPausedSeconds += Math.floor(pausedMs / 1000);
             }
-            // Compute final stage SLA status
-            let exitSlaStatus = "dentro_tiempo";
+            // Compute final stage SLA status for closed log entry
+            let exitSlaStatus: string;
             if (activeLog.slaHours) {
               const totalElapsedSec = Math.floor((now.getTime() - new Date(activeLog.enteredAt).getTime()) / 1000) - finalPausedSeconds;
               const totalSlaSeconds = Number(activeLog.slaHours) * 3600;
-              if (totalElapsedSec > totalSlaSeconds) {
-                exitSlaStatus = "vencido";
-              } else {
-                const escalateAt = (() => {
-                  const stages = [];
-                  return null;
-                })();
-                exitSlaStatus = "dentro_tiempo";
-              }
+              exitSlaStatus = totalElapsedSec > totalSlaSeconds ? "incumplido" : "cumplido";
+            } else {
+              exitSlaStatus = "cumplido"; // no SLA configured for this stage = considered met
             }
             await storage.updateStageLogEntry(activeLog.id, { exitedAt: now, pausedSeconds: finalPausedSeconds, slaStatus: exitSlaStatus });
           }
@@ -12847,6 +12841,14 @@ export async function registerRoutes(
               }
               if (newStageSlaStatus !== order.stageSlaStatus) {
                 orderUpdates.stageSlaStatus = newStageSlaStatus;
+              }
+              // Auto-escalation: bump priority when stage SLA is first exceeded (cap at "critico")
+              if (newStageSlaStatus === "vencido" && order.stageSlaStatus !== "vencido") {
+                const PRIORITY_ORDER = ["bajo", "medio", "alto", "critico"];
+                const currentIdx = PRIORITY_ORDER.indexOf(String(order.priority ?? "medio"));
+                if (currentIdx >= 0 && currentIdx < PRIORITY_ORDER.length - 1) {
+                  orderUpdates.priority = PRIORITY_ORDER[currentIdx + 1];
+                }
               }
             }
           }
