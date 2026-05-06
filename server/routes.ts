@@ -11436,7 +11436,15 @@ export async function registerRoutes(
     const existing = await storage.getWorkOrderStages(tenantId);
     if (existing.length === 0) {
       for (const s of DEFAULT_WORK_ORDER_STAGES) {
-        try { await storage.createWorkOrderStage({ ...s, tenantId }); } catch (_e) { /* ignore */ }
+        try {
+          await storage.createWorkOrderStage({ ...s, tenantId });
+        } catch (seedErr) {
+          // Idempotent: race conditions on concurrent seed calls are expected; log others
+          const msg = seedErr instanceof Error ? seedErr.message : String(seedErr);
+          if (!msg.includes("duplicate") && !msg.includes("unique")) {
+            console.error(`[stages-seed] Unexpected error seeding stage "${s.name}" for tenant ${tenantId}:`, msg);
+          }
+        }
       }
     }
     // Backfill stageId for orders that don't have one
@@ -11453,10 +11461,16 @@ export async function registerRoutes(
       for (const order of untagged) {
         const matchStage = stages.find(s => (s.statuses as string[]).includes(order.status));
         if (matchStage) {
-          await storage.updateWorkOrder(order.id, { stageId: matchStage.id });
+          try {
+            await storage.updateWorkOrder(order.id, { stageId: matchStage.id });
+          } catch (updateErr) {
+            console.error(`[stages-backfill] Failed to assign stageId for order ${order.id}:`, updateErr instanceof Error ? updateErr.message : updateErr);
+          }
         }
       }
-    } catch (_e) { /* non-critical */ }
+    } catch (err) {
+      console.error("[stages-backfill] Backfill failed:", err instanceof Error ? err.message : err);
+    }
   }
 
   app.get("/api/work-order-stages", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {

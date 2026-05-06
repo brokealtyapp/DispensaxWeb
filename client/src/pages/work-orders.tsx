@@ -1651,18 +1651,26 @@ function KanbanBoard({
       return;
     }
 
-    if (targetCol.statuses.includes(order.status)) {
-      setColumnOrdersSynced(columnOrdersSnapshot.current);
-      return;
-    }
-
-    // Determine effective target status: final→cerrada, mapped statuses→first valid, empty→preserve
+    // Determine effective target status: final→cerrada, mapped statuses→first valid, empty→preserve current
     const targetStage = stages.find(s => s.id === targetCol.id);
     const targetIsFinal = targetStage?.isFinal ?? false;
     const hasStatuses = targetCol.statuses.length > 0;
+
+    // Custom stages (no mapped statuses) act as visual buckets: status is preserved, only stageId moves
+    const isCustomBucket = !targetIsFinal && !hasStatuses;
+
+    if (!isCustomBucket && targetCol.statuses.includes(order.status)) {
+      // Already in a stage that maps this status: no-op if stageId also matches
+      if (order.stageId === targetCol.id) {
+        setColumnOrdersSynced(columnOrdersSnapshot.current);
+        return;
+      }
+    }
+
     const targetStatus = targetIsFinal ? "cerrada" : (hasStatuses ? (targetCol.statuses[0] ?? order.status) : order.status);
 
-    if (!isValidTransition(order.status, targetStatus)) {
+    // For stages with mapped statuses validate the transition; custom buckets skip this check
+    if (!isCustomBucket && !isValidTransition(order.status, targetStatus)) {
       setColumnOrdersSynced(columnOrdersSnapshot.current);
       return;
     }
