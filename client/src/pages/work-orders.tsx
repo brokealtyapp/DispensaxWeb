@@ -176,6 +176,8 @@ interface WorkOrder {
   slaStatus: string | null;
   stageSlaStatus: string | null;
   slaPausedAt: string | null;
+  stageEnteredAt: string | null;
+  stageSlaHoursEffective: string | null;
   completedAt: string | null;
   closedAt: string | null;
   closedBy: string | null;
@@ -1097,7 +1099,9 @@ function OrderDetailView({
               {stageLog.map((entry) => {
                 const entered = new Date(entry.enteredAt);
                 const exited = entry.exitedAt ? new Date(entry.exitedAt) : null;
-                const elapsedMs = exited ? exited.getTime() - entered.getTime() : Date.now() - entered.getTime();
+                // nowMs uses slaTick to force re-render every minute for live active-stage timer
+                const nowMs = Date.now() + slaTick * 0;
+                const elapsedMs = exited ? exited.getTime() - entered.getTime() : nowMs - entered.getTime();
                 const elapsedH = Math.floor(elapsedMs / 3_600_000);
                 const elapsedM = Math.floor((elapsedMs % 3_600_000) / 60_000);
                 const slaH = entry.slaHours ? Number(entry.slaHours) : null;
@@ -1456,11 +1460,13 @@ function KanbanCard({
   isAdvancing: boolean;
   ghost?: boolean;
 }) {
+  const slaTick = useSlaTimer();
   const machine = machines.find((m) => m.id === order.machineId);
   const assignee = users.find((u) => u.id === order.assignedUserId);
   const nextStatus = NEXT_STATUS[order.status];
   const elapsed = formatElapsed(order.updatedAt);
   const slaIsOverdue = order.slaStatus === "vencido";
+  void slaTick;
   const slaIsAtRisk = order.slaStatus === "proximo_vencer";
 
   const canAdvanceToNext =
@@ -1518,20 +1524,44 @@ function KanbanCard({
             </div>
           </div>
 
-          {order.stageSlaStatus && order.stageSlaStatus !== "dentro_tiempo" && (
-            <div
-              className={`flex items-center gap-1 text-xs rounded px-1.5 py-0.5 ${
-                order.stageSlaStatus === "vencido"
-                  ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                  : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-              }`}
-              data-testid={`kanban-stage-sla-${order.id}`}
-            >
-              <AlertTriangle className="h-3 w-3 shrink-0" />
-              <span>{order.stageSlaStatus === "vencido" ? "SLA etapa vencido" : "SLA etapa próx. a vencer"}</span>
-              {order.slaPausedAt && <span className="ml-1 opacity-70">(pausado)</span>}
-            </div>
-          )}
+          {order.stageEnteredAt && order.stageSlaHoursEffective && (() => {
+            const slaHours = Number(order.stageSlaHoursEffective);
+            const enteredMs = new Date(order.stageEnteredAt).getTime();
+            const pausedMs = order.slaPausedAt ? Date.now() - new Date(order.slaPausedAt).getTime() : 0;
+            const elapsedMs = Math.max(0, Date.now() - enteredMs - pausedMs);
+            const totalMs = slaHours * 3600 * 1000;
+            const pct = Math.min(100, (elapsedMs / totalMs) * 100);
+            const elapsedH = elapsedMs / 3600000;
+            const remainingH = Math.max(0, slaHours - elapsedH);
+            const isVencido = order.stageSlaStatus === "vencido";
+            const isProximo = order.stageSlaStatus === "proximo_vencer";
+            const barColor = isVencido ? "bg-red-500" : isProximo ? "bg-amber-400" : "bg-green-500";
+            const textColor = isVencido
+              ? "text-red-600 dark:text-red-400"
+              : isProximo
+              ? "text-amber-600 dark:text-amber-400"
+              : "text-muted-foreground";
+            const fmtH = (h: number) =>
+              h < 1 ? `${Math.round(h * 60)}min` : `${h.toFixed(1)}h`;
+            return (
+              <div className="space-y-1" data-testid={`kanban-stage-sla-${order.id}`}>
+                <div className={`flex items-center justify-between text-xs ${textColor}`}>
+                  <span className="flex items-center gap-1">
+                    {(isVencido || isProximo) && <AlertTriangle className="h-3 w-3 shrink-0" />}
+                    <span>{fmtH(elapsedH)} / {fmtH(slaHours)}</span>
+                    {order.slaPausedAt && <span className="opacity-60">(pausado)</span>}
+                  </span>
+                  <span>{isVencido ? "Vencido" : isProximo ? "Próx. vencer" : `−${fmtH(remainingH)}`}</span>
+                </div>
+                <div className="w-full h-1 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${barColor}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="flex items-center gap-1 pt-1 border-t" onClick={(e) => e.stopPropagation()}>
             <Button

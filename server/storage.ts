@@ -850,6 +850,7 @@ export interface IStorage {
   createStageLogEntry(data: InsertWorkOrderStageLog): Promise<WorkOrderStageLog>;
   updateStageLogEntry(id: string, data: Partial<InsertWorkOrderStageLog>): Promise<WorkOrderStageLog | undefined>;
   getActiveStageLog(workOrderId: string): Promise<WorkOrderStageLog | undefined>;
+  getActiveStageLogsForOrders(workOrderIds: string[]): Promise<WorkOrderStageLog[]>;
   getStageLogForOrder(workOrderId: string): Promise<WorkOrderStageLog[]>;
 }
 
@@ -8303,6 +8304,12 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(workOrderStageLog.enteredAt))
       .limit(1);
     return row;
+  }
+
+  async getActiveStageLogsForOrders(workOrderIds: string[]): Promise<WorkOrderStageLog[]> {
+    if (workOrderIds.length === 0) return [];
+    return db.select().from(workOrderStageLog)
+      .where(and(inArray(workOrderStageLog.workOrderId, workOrderIds), isNull(workOrderStageLog.exitedAt)));
   }
 
   async getStageLogForOrder(workOrderId: string): Promise<WorkOrderStageLog[]> {

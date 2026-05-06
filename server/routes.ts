@@ -11281,6 +11281,27 @@ export async function registerRoutes(
     return getDefaultChecklistEntries(type).map((e) => e.label);
   }
 
+  function computeEffectiveSlaHours(
+    stage: { slaHours?: string | null; slaPriorityHours?: unknown },
+    priority: string,
+    slaConf?: { criticalHours?: number | null; highHours?: number | null; mediumHours?: number | null; lowHours?: number | null } | null
+  ): number | null {
+    const priorityHours = stage.slaPriorityHours as Record<string, number> | null;
+    if (priorityHours && priorityHours[priority]) return priorityHours[priority];
+    if (stage.slaHours) return Number(stage.slaHours);
+    if (slaConf) {
+      const globalMap: Record<string, number | null | undefined> = {
+        critico: slaConf.criticalHours,
+        alto: slaConf.highHours,
+        medio: slaConf.mediumHours,
+        bajo: slaConf.lowHours,
+      };
+      const g = globalMap[priority];
+      if (g) return g;
+    }
+    return null;
+  }
+
   function calculateSlaDeadline(priority: string, config?: { criticalHours: number | null; highHours: number | null; mediumHours: number | null; lowHours: number | null }): Date {
     const hours: Record<string, number> = {
       critico: config?.criticalHours ?? 2,
@@ -11334,7 +11355,16 @@ export async function registerRoutes(
         filters.assignedUserId = req.user!.userId;
       }
       const orders = await storage.getWorkOrders(tenantId, filters);
-      res.json(orders);
+      // Enrich orders with active stage log data (stageEnteredAt, stageSlaHoursEffective)
+      // for live SLA progress bars in KanbanCard without N+1 queries
+      const orderIdsWithStage = orders.filter(o => o.stageId).map(o => o.id);
+      const activeLogs = await storage.getActiveStageLogsForOrders(orderIdsWithStage);
+      const logMap = new Map(activeLogs.map(l => [l.workOrderId, l]));
+      const enriched = orders.map(o => {
+        const log = logMap.get(o.id);
+        return { ...o, stageEnteredAt: log?.enteredAt ?? null, stageSlaHoursEffective: log?.slaHours ?? null };
+      });
+      res.json(enriched);
     } catch (error) {
       console.error("Error fetching work orders:", error);
       res.status(500).json({ error: "Error al obtener órdenes de trabajo" });
@@ -11870,10 +11900,8 @@ export async function registerRoutes(
           const stages = await storage.getWorkOrderStages(tenantId);
           const stage = stages.find(s => s.id === order.stageId);
           if (stage) {
-            const priorityHours = stage.slaPriorityHours as Record<string, number> | null;
-            const effectiveSlaHours = (priorityHours && priorityHours[order.priority])
-              ? priorityHours[order.priority]
-              : stage.slaHours ? Number(stage.slaHours) : null;
+            const postSlaConf = await storage.getSlaConfig(tenantId);
+            const effectiveSlaHours = computeEffectiveSlaHours(stage, String(order.priority ?? "medio"), postSlaConf);
             await storage.createStageLogEntry({
               tenantId,
               workOrderId: order.id,
@@ -12017,11 +12045,9 @@ export async function registerRoutes(
           const stages = await storage.getWorkOrderStages(tenantId);
           const targetStage = stages.find(s => s.id === updateData.stageId);
           if (targetStage) {
-            const priorityHours = targetStage.slaPriorityHours as Record<string, number> | null;
+            const patchSlaConf = await storage.getSlaConfig(tenantId);
             const orderPriority = String(finalData.priority ?? existing.priority ?? "medio");
-            const effectiveSlaHours = (priorityHours && priorityHours[orderPriority])
-              ? priorityHours[orderPriority]
-              : targetStage.slaHours ? Number(targetStage.slaHours) : null;
+            const effectiveSlaHours = computeEffectiveSlaHours(targetStage, orderPriority, patchSlaConf);
             // Auto-pause if new status is in slaPauseOnStatuses
             const newStatus = String(finalData.status ?? existing.status);
             const pauseStatuses = (targetStage.slaPauseOnStatuses as string[] | null) ?? [];
@@ -12842,8 +12868,9 @@ export async function registerRoutes(
               if (newStageSlaStatus !== order.stageSlaStatus) {
                 orderUpdates.stageSlaStatus = newStageSlaStatus;
               }
-              // Auto-escalation: bump priority when stage SLA is first exceeded (cap at "critico")
-              if (newStageSlaStatus === "vencido" && order.stageSlaStatus !== "vencido") {
+              // Auto-escalation: bump priority ONCE when first crossing escalateAt% threshold
+              // (idempotent: only triggers when transitioning from "dentro_tiempo" to anything else)
+              if (newStageSlaStatus !== "dentro_tiempo" && order.stageSlaStatus === "dentro_tiempo") {
                 const PRIORITY_ORDER = ["bajo", "medio", "alto", "critico"];
                 const currentIdx = PRIORITY_ORDER.indexOf(String(order.priority ?? "medio"));
                 if (currentIdx >= 0 && currentIdx < PRIORITY_ORDER.length - 1) {
