@@ -80,7 +80,8 @@ import {
   establishmentViewers, machineViewerAssignments,
   machineTypeOptions,
   establishments, establishmentStages, establishmentFollowups, establishmentDocuments, establishmentContracts,
-  workOrders, workOrderTickets, workOrderChecklistItems, workOrderChecklistTemplates, workOrderChecklistTypesInit, workOrderPhotos, slaConfig, cashDenominationCounts, changeFunds, workOrderTypes, workOrderStages,
+  workOrders, workOrderTickets, workOrderChecklistItems, workOrderChecklistTemplates, workOrderChecklistTypesInit, workOrderPhotos, slaConfig, cashDenominationCounts, changeFunds, workOrderTypes, workOrderStages, workOrderStageLog,
+  type WorkOrderStageLog, type InsertWorkOrderStageLog,
   tenants, subscriptionPlans, tenantSubscriptions, tenantSettings, tenantInvites, superAdminAuditLog,
   type Tenant, type InsertTenant,
   type SubscriptionPlan, type InsertSubscriptionPlan,
@@ -845,6 +846,11 @@ export interface IStorage {
   createWorkOrderStage(data: InsertWorkOrderStage): Promise<WorkOrderStage>;
   updateWorkOrderStage(id: string, tenantId: string, data: Partial<InsertWorkOrderStage>): Promise<WorkOrderStage | undefined>;
   deleteWorkOrderStage(id: string, tenantId: string): Promise<boolean>;
+
+  createStageLogEntry(data: InsertWorkOrderStageLog): Promise<WorkOrderStageLog>;
+  updateStageLogEntry(id: string, data: Partial<InsertWorkOrderStageLog>): Promise<WorkOrderStageLog | undefined>;
+  getActiveStageLog(workOrderId: string): Promise<WorkOrderStageLog | undefined>;
+  getStageLogForOrder(workOrderId: string): Promise<WorkOrderStageLog[]>;
 }
 
 export class HttpError extends Error {
@@ -8277,6 +8283,32 @@ export class DatabaseStorage implements IStorage {
   async deleteWorkOrderStage(id: string, tenantId: string): Promise<boolean> {
     const result = await db.delete(workOrderStages).where(and(eq(workOrderStages.id, id), eq(workOrderStages.tenantId, tenantId)));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // ==================== WORK ORDER STAGE LOG ====================
+
+  async createStageLogEntry(data: InsertWorkOrderStageLog): Promise<WorkOrderStageLog> {
+    const [row] = await db.insert(workOrderStageLog).values(data).returning();
+    return row;
+  }
+
+  async updateStageLogEntry(id: string, data: Partial<InsertWorkOrderStageLog>): Promise<WorkOrderStageLog | undefined> {
+    const [row] = await db.update(workOrderStageLog).set(data).where(eq(workOrderStageLog.id, id)).returning();
+    return row;
+  }
+
+  async getActiveStageLog(workOrderId: string): Promise<WorkOrderStageLog | undefined> {
+    const [row] = await db.select().from(workOrderStageLog)
+      .where(and(eq(workOrderStageLog.workOrderId, workOrderId), isNull(workOrderStageLog.exitedAt)))
+      .orderBy(desc(workOrderStageLog.enteredAt))
+      .limit(1);
+    return row;
+  }
+
+  async getStageLogForOrder(workOrderId: string): Promise<WorkOrderStageLog[]> {
+    return db.select().from(workOrderStageLog)
+      .where(eq(workOrderStageLog.workOrderId, workOrderId))
+      .orderBy(asc(workOrderStageLog.enteredAt));
   }
 
   // ==================== BILLING (Nayax Transactions) ====================

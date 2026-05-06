@@ -2865,6 +2865,8 @@ export const workOrders = pgTable("work_orders", {
   description: text("description"),
   slaDeadline: timestamp("sla_deadline"),
   slaStatus: varchar("sla_status").default("dentro_tiempo"),
+  stageSlaStatus: varchar("stage_sla_status").default("dentro_tiempo"),
+  slaPausedAt: timestamp("sla_paused_at"),
   completedAt: timestamp("completed_at"),
   closedAt: timestamp("closed_at"),
   closedBy: varchar("closed_by").references(() => users.id),
@@ -3005,9 +3007,30 @@ export const workOrderStages = pgTable("work_order_stages", {
   sortOrder: integer("sort_order").default(0),
   isFinal: boolean("is_final").notNull().default(false),
   statuses: jsonb("statuses").$type<string[]>().notNull(),
+  slaHours: decimal("sla_hours"),
+  slaPriorityHours: jsonb("sla_priority_hours").$type<{ critico?: number; alto?: number; medio?: number; bajo?: number } | null>(),
+  slaPauseOnStatuses: jsonb("sla_pause_on_statuses").$type<string[]>().default(sql`'[]'::jsonb`),
+  slaEscalateAt: decimal("sla_escalate_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const insertWorkOrderStageSchema = createInsertSchema(workOrderStages).omit({ id: true, createdAt: true });
 export type InsertWorkOrderStage = z.infer<typeof insertWorkOrderStageSchema>;
 export type WorkOrderStage = typeof workOrderStages.$inferSelect;
+
+export const workOrderStageLog = pgTable("work_order_stage_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  workOrderId: varchar("work_order_id").notNull().references(() => workOrders.id),
+  stageId: varchar("stage_id").references(() => workOrderStages.id),
+  stageName: varchar("stage_name"),
+  enteredAt: timestamp("entered_at").notNull().defaultNow(),
+  exitedAt: timestamp("exited_at"),
+  slaHours: decimal("sla_hours"),
+  pausedSeconds: integer("paused_seconds").default(0),
+  slaStatus: varchar("sla_status"),
+});
+
+export const insertWorkOrderStageLogSchema = createInsertSchema(workOrderStageLog).omit({ id: true });
+export type InsertWorkOrderStageLog = z.infer<typeof insertWorkOrderStageLogSchema>;
+export type WorkOrderStageLog = typeof workOrderStageLog.$inferSelect;

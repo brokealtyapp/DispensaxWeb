@@ -11531,6 +11531,15 @@ export async function registerRoutes(
         sortOrder: z.number().int().optional(),
         isFinal: z.boolean().optional(),
         statuses: z.array(z.enum(ALLOWED_KANBAN_STATUSES)).optional(),
+        slaHours: z.number().positive().nullable().optional(),
+        slaPriorityHours: z.object({
+          critico: z.number().positive().optional(),
+          alto: z.number().positive().optional(),
+          medio: z.number().positive().optional(),
+          bajo: z.number().positive().optional(),
+        }).nullable().optional(),
+        slaPauseOnStatuses: z.array(z.enum(ALLOWED_KANBAN_STATUSES)).optional(),
+        slaEscalateAt: z.number().min(0).max(100).nullable().optional(),
       });
       const updates = schema.parse(req.body);
       const existing = await storage.getWorkOrderStage(req.params.id, tenantId);
@@ -11855,6 +11864,30 @@ export async function registerRoutes(
         );
       }
 
+      // Create initial stage log entry when order has a stageId
+      if (order.stageId) {
+        try {
+          const stages = await storage.getWorkOrderStages(tenantId);
+          const stage = stages.find(s => s.id === order.stageId);
+          if (stage) {
+            const priorityHours = stage.slaPriorityHours as Record<string, number> | null;
+            const effectiveSlaHours = (priorityHours && priorityHours[order.priority])
+              ? priorityHours[order.priority]
+              : stage.slaHours ? Number(stage.slaHours) : null;
+            await storage.createStageLogEntry({
+              tenantId,
+              workOrderId: order.id,
+              stageId: order.stageId,
+              stageName: stage.name,
+              slaHours: effectiveSlaHours !== null ? String(effectiveSlaHours) : null,
+              pausedSeconds: 0,
+            });
+          }
+        } catch (logErr) {
+          console.error("[work-orders-post] Failed to create stage log:", logErr instanceof Error ? logErr.message : logErr);
+        }
+      }
+
       res.status(201).json(order);
     } catch (error) {
       if (error instanceof ZodError) {
@@ -11955,8 +11988,99 @@ export async function registerRoutes(
         finalData.closedBy = req.user!.userId;
       }
 
-      const updated = await storage.updateWorkOrder(req.params.id, finalData as Partial<typeof existing>);
-      res.json(updated);
+      // Handle stage transition logging
+      if (updateData.stageId && updateData.stageId !== existing.stageId) {
+        try {
+          // Close the current stage log entry
+          const activeLog = await storage.getActiveStageLog(req.params.id);
+          if (activeLog) {
+            const now = new Date();
+            let finalPausedSeconds = activeLog.pausedSeconds ?? 0;
+            // If the order was paused, count that time too
+            if (existing.slaPausedAt) {
+              const pausedMs = now.getTime() - new Date(existing.slaPausedAt).getTime();
+              finalPausedSeconds += Math.floor(pausedMs / 1000);
+            }
+            // Compute final stage SLA status
+            let exitSlaStatus = "dentro_tiempo";
+            if (activeLog.slaHours) {
+              const totalElapsedSec = Math.floor((now.getTime() - new Date(activeLog.enteredAt).getTime()) / 1000) - finalPausedSeconds;
+              const totalSlaSeconds = Number(activeLog.slaHours) * 3600;
+              if (totalElapsedSec > totalSlaSeconds) {
+                exitSlaStatus = "vencido";
+              } else {
+                const escalateAt = (() => {
+                  const stages = [];
+                  return null;
+                })();
+                exitSlaStatus = "dentro_tiempo";
+              }
+            }
+            await storage.updateStageLogEntry(activeLog.id, { exitedAt: now, pausedSeconds: finalPausedSeconds, slaStatus: exitSlaStatus });
+          }
+
+          // Create new stage log entry for the target stage
+          const stages = await storage.getWorkOrderStages(tenantId);
+          const targetStage = stages.find(s => s.id === updateData.stageId);
+          if (targetStage) {
+            const priorityHours = targetStage.slaPriorityHours as Record<string, number> | null;
+            const orderPriority = String(finalData.priority ?? existing.priority ?? "medio");
+            const effectiveSlaHours = (priorityHours && priorityHours[orderPriority])
+              ? priorityHours[orderPriority]
+              : targetStage.slaHours ? Number(targetStage.slaHours) : null;
+            // Auto-pause if new status is in slaPauseOnStatuses
+            const newStatus = String(finalData.status ?? existing.status);
+            const pauseStatuses = (targetStage.slaPauseOnStatuses as string[] | null) ?? [];
+            const shouldPause = pauseStatuses.includes(newStatus);
+            if (shouldPause) {
+              finalData.slaPausedAt = new Date();
+            } else {
+              finalData.slaPausedAt = null;
+            }
+            finalData.stageSlaStatus = "dentro_tiempo";
+            await storage.createStageLogEntry({
+              tenantId,
+              workOrderId: req.params.id,
+              stageId: updateData.stageId,
+              stageName: targetStage.name,
+              slaHours: effectiveSlaHours !== null ? String(effectiveSlaHours) : null,
+              pausedSeconds: 0,
+            });
+          }
+        } catch (logErr) {
+          console.error("[work-orders-patch] Stage log transition error:", logErr instanceof Error ? logErr.message : logErr);
+        }
+      } else if (updateData.status && updateData.status !== existing.status && !updateData.stageId) {
+        // Status changed without stage change — handle auto-pause/resume based on stage SLA config
+        try {
+          const stages = existing.stageId ? await storage.getWorkOrderStages(tenantId) : [];
+          const currentStage = stages.find(s => s.id === existing.stageId);
+          if (currentStage) {
+            const pauseStatuses = (currentStage.slaPauseOnStatuses as string[] | null) ?? [];
+            const newStatus = String(derivedStatus ?? updateData.status);
+            const nowPausing = pauseStatuses.includes(newStatus);
+            const wasPausing = pauseStatuses.includes(existing.status);
+            if (nowPausing && !wasPausing && !existing.slaPausedAt) {
+              // Entering a pause state
+              finalData.slaPausedAt = new Date();
+            } else if (!nowPausing && wasPausing && existing.slaPausedAt) {
+              // Leaving a pause state — accumulate paused time on the log entry
+              const activeLog = await storage.getActiveStageLog(req.params.id);
+              if (activeLog) {
+                const pausedMs = new Date().getTime() - new Date(existing.slaPausedAt).getTime();
+                const newPausedSec = (activeLog.pausedSeconds ?? 0) + Math.floor(pausedMs / 1000);
+                await storage.updateStageLogEntry(activeLog.id, { pausedSeconds: newPausedSec });
+              }
+              finalData.slaPausedAt = null;
+            }
+          }
+        } catch (pauseErr) {
+          console.error("[work-orders-patch] Pause/resume auto-logic error:", pauseErr instanceof Error ? pauseErr.message : pauseErr);
+        }
+      }
+
+      const finalUpdated = await storage.updateWorkOrder(req.params.id, finalData as Partial<typeof existing>);
+      res.json(finalUpdated);
     } catch (error) {
       if (error instanceof ZodError) {
         return res.status(400).json({ error: "Datos inválidos", details: error.errors });
@@ -11987,6 +12111,56 @@ export async function registerRoutes(
       if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });
       console.error("Error reordering work orders:", error);
       res.status(500).json({ error: "Error al reordenar órdenes de trabajo" });
+    }
+  });
+
+  // --- Stage SLA: Manual pause/resume ---
+
+  app.post("/api/work-orders/:id/sla-pause", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getWorkOrderById(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) return res.status(404).json({ error: "Orden no encontrada" });
+      if (existing.slaPausedAt) return res.status(409).json({ error: "El SLA de etapa ya está en pausa" });
+      const updated = await storage.updateWorkOrder(req.params.id, { slaPausedAt: new Date() });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error pausing stage SLA:", error);
+      res.status(500).json({ error: "Error al pausar SLA de etapa" });
+    }
+  });
+
+  app.post("/api/work-orders/:id/sla-resume", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getWorkOrderById(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) return res.status(404).json({ error: "Orden no encontrada" });
+      if (!existing.slaPausedAt) return res.status(409).json({ error: "El SLA de etapa no está en pausa" });
+      // Accumulate paused time on the active log entry
+      const activeLog = await storage.getActiveStageLog(req.params.id);
+      if (activeLog) {
+        const pausedMs = new Date().getTime() - new Date(existing.slaPausedAt).getTime();
+        const newPausedSec = (activeLog.pausedSeconds ?? 0) + Math.floor(pausedMs / 1000);
+        await storage.updateStageLogEntry(activeLog.id, { pausedSeconds: newPausedSec });
+      }
+      const updated = await storage.updateWorkOrder(req.params.id, { slaPausedAt: null });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error resuming stage SLA:", error);
+      res.status(500).json({ error: "Error al reanudar SLA de etapa" });
+    }
+  });
+
+  app.get("/api/work-orders/:id/stage-log", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getWorkOrderById(req.params.id);
+      if (!existing || existing.tenantId !== tenantId) return res.status(404).json({ error: "Orden no encontrada" });
+      const log = await storage.getStageLogForOrder(req.params.id);
+      res.json(log);
+    } catch (error) {
+      console.error("Error fetching stage log:", error);
+      res.status(500).json({ error: "Error al obtener historial de etapas" });
     }
   });
 
@@ -12627,21 +12801,59 @@ export async function registerRoutes(
       let total = 0;
 
       const orders = await storage.getWorkOrders(tenantId, {});
+      const stages = await storage.getWorkOrderStages(tenantId);
       for (const order of orders) {
         total++;
         if (order.status === "completada" || order.status === "cerrada" || order.status === "cancelada") continue;
-        if (!order.slaDeadline) continue;
-        const deadline = new Date(order.slaDeadline);
-        let newStatus: string;
-        if (now > deadline) {
-          newStatus = "vencido";
-        } else {
-          const hoursLeft = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60);
-          newStatus = hoursLeft <= 1 ? "proximo_vencer" : "dentro_tiempo";
+
+        const orderUpdates: Record<string, unknown> = {};
+
+        // Global SLA (existing logic)
+        if (order.slaDeadline) {
+          const deadline = new Date(order.slaDeadline);
+          let newStatus: string;
+          if (now > deadline) {
+            newStatus = "vencido";
+          } else {
+            const hoursLeft = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60);
+            newStatus = hoursLeft <= 1 ? "proximo_vencer" : "dentro_tiempo";
+          }
+          if (newStatus !== order.slaStatus) {
+            orderUpdates.slaStatus = newStatus;
+            updated++;
+          }
         }
-        if (newStatus !== order.slaStatus) {
-          await storage.updateWorkOrder(order.id, { slaStatus: newStatus });
-          updated++;
+
+        // Stage SLA
+        if (order.stageId) {
+          const stage = stages.find(s => s.id === order.stageId);
+          if (stage) {
+            const activeLog = await storage.getActiveStageLog(order.id);
+            if (activeLog && activeLog.slaHours) {
+              const totalSlaSeconds = Number(activeLog.slaHours) * 3600;
+              let pausedSec = activeLog.pausedSeconds ?? 0;
+              if (order.slaPausedAt) {
+                pausedSec += Math.floor((now.getTime() - new Date(order.slaPausedAt).getTime()) / 1000);
+              }
+              const elapsedSec = Math.floor((now.getTime() - new Date(activeLog.enteredAt).getTime()) / 1000) - pausedSec;
+              const escalateAt = stage.slaEscalateAt ? Number(stage.slaEscalateAt) : 80;
+              let newStageSlaStatus: string;
+              if (elapsedSec >= totalSlaSeconds) {
+                newStageSlaStatus = "vencido";
+              } else if (elapsedSec >= (escalateAt / 100) * totalSlaSeconds) {
+                newStageSlaStatus = "proximo_vencer";
+              } else {
+                newStageSlaStatus = "dentro_tiempo";
+              }
+              if (newStageSlaStatus !== order.stageSlaStatus) {
+                orderUpdates.stageSlaStatus = newStageSlaStatus;
+              }
+            }
+          }
+        }
+
+        if (Object.keys(orderUpdates).length > 0) {
+          await storage.updateWorkOrder(order.id, orderUpdates);
         }
       }
 

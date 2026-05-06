@@ -35,6 +35,7 @@ The application uses a client-server architecture with a React, TypeScript, Vite
 - **Rate Limiting:** In-memory rate limiter for public and authentication endpoints.
 - **Nayax Integration:** HTTP client (`server/nayax.ts`) for Nayax Lynx API for machine, sales, and cashless operations, with per-tenant configuration.
 - **Work Orders Module:** Manages work orders and tickets with auto-numbering, configurable SLA, and default checklists.
+- **Stage SLA Module:** Per-stage SLA configuration (default hours, priority-based hours, pause-on-status rules, escalation threshold %). Tracks elapsed time per stage in `work_order_stage_log`, auto-pauses/resumes on status change, computes `stageSlaStatus` (ok/proximo_vencer/vencido) server-side, exposed in Kanban cards and order detail with manual pause/resume button and stage history view.
 - **Checklist Item Types:** Checklist items support 6 types (checkbox, single/multi-select, open question, numeric, mandatory photo) with template-based storage and dynamic rendering.
 - **Cash Denomination Counting Module:** Facilitates triple-count cash reconciliation for collections using specific RD$ denominations.
 - **Change Fund (Fondo de Cambio) Module:** Manages change funds issued to suppliers, tracking status and denominations.

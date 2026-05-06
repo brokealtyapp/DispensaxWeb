@@ -77,6 +77,9 @@ import {
   ImageIcon,
   List,
   LayoutGrid,
+  Layers,
+  Play,
+  Pause,
 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -171,6 +174,8 @@ interface WorkOrder {
   description: string | null;
   slaDeadline: string | null;
   slaStatus: string | null;
+  stageSlaStatus: string | null;
+  slaPausedAt: string | null;
   completedAt: string | null;
   closedAt: string | null;
   closedBy: string | null;
@@ -178,6 +183,31 @@ interface WorkOrder {
   sortOrder: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+interface WorkOrderStageInfo {
+  id: string;
+  name: string;
+  color: string;
+  sortOrder: number | null;
+  isFinal: boolean;
+  statuses: string[];
+  slaHours: string | null;
+  slaPriorityHours: { critico?: number; alto?: number; medio?: number; bajo?: number } | null;
+  slaPauseOnStatuses: string[];
+  slaEscalateAt: string | null;
+}
+
+interface StageLogEntry {
+  id: string;
+  workOrderId: string;
+  stageId: string | null;
+  stageName: string | null;
+  enteredAt: string;
+  exitedAt: string | null;
+  slaHours: string | null;
+  pausedSeconds: number | null;
+  slaStatus: string | null;
 }
 
 interface Ticket {
@@ -461,6 +491,14 @@ function OrderDetailView({
     },
   });
 
+  const { data: stageLog = [] } = useQuery<StageLogEntry[]>({
+    queryKey: ["/api/work-orders", order.id, "stage-log"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/work-orders/${order.id}/stage-log`);
+      return res.json();
+    },
+  });
+
   // Fetch photo blob URLs with auth headers for checklist items that have photos.
   // fetchedPhotoIdsRef (not state) is used as the guard to avoid stale-closure issues.
   useEffect(() => {
@@ -532,6 +570,34 @@ function OrderDetailView({
     onError: () => {
       toast({ title: "Error", description: "No se pudo actualizar el checklist", variant: "destructive" });
     },
+  });
+
+  const pauseStageSla = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/work-orders/${order.id}/sla-pause`);
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Error al pausar SLA"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders", order.id, "stage-log"] });
+      toast({ title: "SLA de etapa pausado" });
+    },
+    onError: (err: unknown) => { toast({ title: "Error", description: err instanceof Error ? err.message : "No se pudo pausar", variant: "destructive" }); },
+  });
+
+  const resumeStageSla = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/work-orders/${order.id}/sla-resume`);
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Error al reanudar SLA"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders", order.id, "stage-log"] });
+      toast({ title: "SLA de etapa reanudado" });
+    },
+    onError: (err: unknown) => { toast({ title: "Error", description: err instanceof Error ? err.message : "No se pudo reanudar", variant: "destructive" }); },
   });
 
   const handleCameraCapture = async (itemId: string) => {
@@ -706,6 +772,51 @@ function OrderDetailView({
               <span className="text-muted-foreground">SLA:</span>
               <span className={order.slaStatus === "vencido" ? "text-red-600 font-semibold" : ""}>{formatSlaCountdown(order.slaDeadline, slaTick)}</span>
             </div>
+            {order.stageSlaStatus && (
+              <div className="flex items-center gap-2 text-sm">
+                <Layers className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-muted-foreground">SLA etapa:</span>
+                <span className={
+                  order.stageSlaStatus === "vencido"
+                    ? "text-red-600 font-semibold"
+                    : order.stageSlaStatus === "proximo_vencer"
+                    ? "text-amber-600 font-medium"
+                    : "text-green-600"
+                }>
+                  {SLA_LABELS[order.stageSlaStatus] || order.stageSlaStatus}
+                </span>
+                {order.slaPausedAt && (
+                  <span className="text-xs text-muted-foreground">(pausado)</span>
+                )}
+                {can("work_orders", "edit") && !["cerrada", "cancelada"].includes(order.status) && (
+                  order.slaPausedAt ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-xs px-2 ml-auto"
+                      onClick={() => resumeStageSla.mutate()}
+                      disabled={resumeStageSla.isPending}
+                      data-testid="button-sla-resume"
+                    >
+                      <Play className="h-3 w-3 mr-1" />
+                      Reanudar
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-xs px-2 ml-auto"
+                      onClick={() => pauseStageSla.mutate()}
+                      disabled={pauseStageSla.isPending}
+                      data-testid="button-sla-pause"
+                    >
+                      <Pause className="h-3 w-3 mr-1" />
+                      Pausar
+                    </Button>
+                  )
+                )}
+              </div>
+            )}
             {order.description && (
               <div className="pt-2 border-t">
                 <p className="text-sm text-muted-foreground mb-1">Descripción:</p>
@@ -972,6 +1083,64 @@ function OrderDetailView({
           </CardContent>
         </Card>
       </div>
+
+      {stageLog.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Layers className="h-4 w-4" />
+              Historial de etapas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {stageLog.map((entry) => {
+                const entered = new Date(entry.enteredAt);
+                const exited = entry.exitedAt ? new Date(entry.exitedAt) : null;
+                const elapsedMs = exited ? exited.getTime() - entered.getTime() : Date.now() - entered.getTime();
+                const elapsedH = Math.floor(elapsedMs / 3_600_000);
+                const elapsedM = Math.floor((elapsedMs % 3_600_000) / 60_000);
+                const slaH = entry.slaHours ? Number(entry.slaHours) : null;
+                const pausedH = entry.pausedSeconds ? Math.floor(entry.pausedSeconds / 3600) : 0;
+                const pausedM = entry.pausedSeconds ? Math.floor((entry.pausedSeconds % 3600) / 60) : 0;
+                const pct = slaH && slaH > 0 ? Math.min(100, Math.round((elapsedMs / 3_600_000 / slaH) * 100)) : null;
+                return (
+                  <div key={entry.id} className="flex items-start gap-3 text-sm border rounded-md p-2" data-testid={`stage-log-${entry.id}`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{entry.stageName ?? "Sin etapa"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {entered.toLocaleDateString("es-DO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        {exited && ` → ${exited.toLocaleDateString("es-DO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}`}
+                      </p>
+                      {entry.pausedSeconds != null && entry.pausedSeconds > 0 && (
+                        <p className="text-xs text-muted-foreground">Pausado: {pausedH}h {pausedM}m</p>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className={`text-xs font-medium ${entry.slaStatus === "vencido" ? "text-red-600" : entry.slaStatus === "proximo_vencer" ? "text-amber-600" : "text-muted-foreground"}`}>
+                        {elapsedH}h {elapsedM}m{slaH ? ` / ${slaH}h` : ""}
+                      </p>
+                      {pct !== null && (
+                        <div className="mt-1 w-20 bg-muted rounded-full h-1.5">
+                          <div
+                            className={`h-1.5 rounded-full transition-all ${pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-green-500"}`}
+                            style={{ width: `${Math.min(pct, 100)}%` }}
+                          />
+                        </div>
+                      )}
+                      {entry.slaStatus && (
+                        <span className={`text-xs ${entry.slaStatus === "vencido" ? "text-red-600" : entry.slaStatus === "proximo_vencer" ? "text-amber-600" : "text-green-600"}`}>
+                          {SLA_LABELS[entry.slaStatus] ?? entry.slaStatus}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <SimpleModal
         open={replacePhotoItemId !== null}
@@ -1348,6 +1517,21 @@ function KanbanCard({
               <span>{elapsed}</span>
             </div>
           </div>
+
+          {order.stageSlaStatus && order.stageSlaStatus !== "ok" && (
+            <div
+              className={`flex items-center gap-1 text-xs rounded px-1.5 py-0.5 ${
+                order.stageSlaStatus === "vencido"
+                  ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                  : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+              }`}
+              data-testid={`kanban-stage-sla-${order.id}`}
+            >
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              <span>{order.stageSlaStatus === "vencido" ? "SLA etapa vencido" : "SLA etapa próx. a vencer"}</span>
+              {order.slaPausedAt && <span className="ml-1 opacity-70">(pausado)</span>}
+            </div>
+          )}
 
           <div className="flex items-center gap-1 pt-1 border-t" onClick={(e) => e.stopPropagation()}>
             <Button
@@ -1856,6 +2040,10 @@ export function WorkOrdersPage() {
   const [editingStageColor, setEditingStageColor] = useState("slate");
   const [editingStageIsFinal, setEditingStageIsFinal] = useState(false);
   const [editingStageStatuses, setEditingStageStatuses] = useState<string[]>([]);
+  const [editingSlaHours, setEditingSlaHours] = useState<string>("");
+  const [editingSlaPriorityHours, setEditingSlaPriorityHours] = useState<{ critico: string; alto: string; medio: string; bajo: string }>({ critico: "", alto: "", medio: "", bajo: "" });
+  const [editingSlaPauseOnStatuses, setEditingSlaPauseOnStatuses] = useState<string[]>([]);
+  const [editingSlaEscalateAt, setEditingSlaEscalateAt] = useState<string>("");
   const [newStageColor, setNewStageColor] = useState("slate");
   const [activeTemplateTab, setActiveTemplateTab] = useState("tecnico");
   const [newItemLabels, setNewItemLabels] = useState<Record<string, string>>({});
@@ -1960,7 +2148,7 @@ export function WorkOrdersPage() {
   });
 
   const updateStageMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; name?: string; color?: string; isFinal?: boolean; statuses?: string[] }) => {
+    mutationFn: async ({ id, ...data }: { id: string; name?: string; color?: string; isFinal?: boolean; statuses?: string[]; slaHours?: number | null; slaPriorityHours?: { critico?: number; alto?: number; medio?: number; bajo?: number } | null; slaPauseOnStatuses?: string[]; slaEscalateAt?: number | null }) => {
       const res = await apiRequest("PATCH", `/api/work-order-stages/${id}`, data);
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Error al actualizar etapa"); }
       return res.json();
@@ -3916,7 +4104,8 @@ export function WorkOrdersPage() {
                           onChange={e => setEditingStageName(e.target.value)}
                           onKeyDown={e => {
                             if (e.key === "Enter" && editingStageName.trim()) {
-                              updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal, statuses: editingStageStatuses });
+                              const ph = editingSlaPriorityHours;
+                              updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal, statuses: editingStageStatuses, slaHours: editingSlaHours ? Number(editingSlaHours) : null, slaPriorityHours: (ph.critico || ph.alto || ph.medio || ph.bajo) ? { ...(ph.critico ? { critico: Number(ph.critico) } : {}), ...(ph.alto ? { alto: Number(ph.alto) } : {}), ...(ph.medio ? { medio: Number(ph.medio) } : {}), ...(ph.bajo ? { bajo: Number(ph.bajo) } : {}) } : null, slaPauseOnStatuses: editingSlaPauseOnStatuses, slaEscalateAt: editingSlaEscalateAt ? Number(editingSlaEscalateAt) : null });
                             }
                             if (e.key === "Escape") setEditingStageId(null);
                           }}
@@ -3974,11 +4163,85 @@ export function WorkOrdersPage() {
                             );
                           })}
                         </div>
+                        <div className="rounded-md border bg-muted/20 p-2 space-y-2">
+                          <p className="text-xs font-medium text-muted-foreground">SLA de etapa</p>
+                          <div className="flex items-center gap-2">
+                            <label className="text-xs text-muted-foreground w-32 shrink-0">Horas (predeterminado)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              className="flex-1 rounded-md border bg-background px-2 py-1 text-sm"
+                              placeholder="ej. 4"
+                              value={editingSlaHours}
+                              onChange={e => setEditingSlaHours(e.target.value)}
+                              data-testid={`input-stage-sla-hours-${stage.id}`}
+                            />
+                            <span className="text-xs text-muted-foreground shrink-0">h</span>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Horas por prioridad (opcional):</p>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {(["critico", "alto", "medio", "bajo"] as const).map(p => (
+                                <div key={p} className="flex items-center gap-1.5">
+                                  <span className={`text-xs shrink-0 w-14 ${p === "critico" ? "text-red-600" : p === "alto" ? "text-orange-500" : p === "medio" ? "text-amber-500" : "text-slate-500"}`}>{PRIORITY_LABELS[p]}</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.5"
+                                    className="flex-1 rounded-md border bg-background px-2 py-1 text-xs"
+                                    placeholder="h"
+                                    value={editingSlaPriorityHours[p]}
+                                    onChange={e => setEditingSlaPriorityHours(prev => ({ ...prev, [p]: e.target.value }))}
+                                    data-testid={`input-stage-sla-${p}-${stage.id}`}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">Pausar SLA cuando el estado sea:</p>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1">
+                              {(["pendiente", "asignada", "en_proceso", "en_ruta"] as const).map(st => (
+                                <label key={st} className="flex items-center gap-1 text-xs cursor-pointer select-none" data-testid={`checkbox-sla-pause-${st}-${stage.id}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={editingSlaPauseOnStatuses.includes(st)}
+                                    onChange={e => {
+                                      if (e.target.checked) setEditingSlaPauseOnStatuses(prev => [...prev, st]);
+                                      else setEditingSlaPauseOnStatuses(prev => prev.filter(s => s !== st));
+                                    }}
+                                    className="rounded"
+                                  />
+                                  {STATUS_LABELS[st]}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <label className="text-xs text-muted-foreground w-32 shrink-0">Alertar cuando se use</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="5"
+                              className="flex-1 rounded-md border bg-background px-2 py-1 text-sm"
+                              placeholder="ej. 80"
+                              value={editingSlaEscalateAt}
+                              onChange={e => setEditingSlaEscalateAt(e.target.value)}
+                              data-testid={`input-stage-sla-escalate-${stage.id}`}
+                            />
+                            <span className="text-xs text-muted-foreground shrink-0">% del tiempo</span>
+                          </div>
+                        </div>
                         <div className="flex gap-2">
                           <Button
                             size="sm"
                             disabled={!editingStageName.trim() || updateStageMutation.isPending}
-                            onClick={() => updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal, statuses: editingStageStatuses })}
+                            onClick={() => {
+                              const ph = editingSlaPriorityHours;
+                              updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal, statuses: editingStageStatuses, slaHours: editingSlaHours ? Number(editingSlaHours) : null, slaPriorityHours: (ph.critico || ph.alto || ph.medio || ph.bajo) ? { ...(ph.critico ? { critico: Number(ph.critico) } : {}), ...(ph.alto ? { alto: Number(ph.alto) } : {}), ...(ph.medio ? { medio: Number(ph.medio) } : {}), ...(ph.bajo ? { bajo: Number(ph.bajo) } : {}) } : null, slaPauseOnStatuses: editingSlaPauseOnStatuses, slaEscalateAt: editingSlaEscalateAt ? Number(editingSlaEscalateAt) : null });
+                            }}
                             data-testid={`button-stage-save-${stage.id}`}
                           >
                             {updateStageMutation.isPending ? "Guardando..." : "Guardar"}
@@ -4000,7 +4263,18 @@ export function WorkOrdersPage() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 shrink-0"
-                          onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); setEditingStageColor(stage.color); setEditingStageIsFinal(stage.isFinal ?? false); setEditingStageStatuses((stage.statuses as string[]) ?? []); }}
+                          onClick={() => {
+                            const s = stage as WorkOrderStageInfo;
+                            setEditingStageId(stage.id);
+                            setEditingStageName(stage.name);
+                            setEditingStageColor(stage.color);
+                            setEditingStageIsFinal(stage.isFinal ?? false);
+                            setEditingStageStatuses((stage.statuses as string[]) ?? []);
+                            setEditingSlaHours(s.slaHours ?? "");
+                            setEditingSlaPriorityHours({ critico: String(s.slaPriorityHours?.critico ?? ""), alto: String(s.slaPriorityHours?.alto ?? ""), medio: String(s.slaPriorityHours?.medio ?? ""), bajo: String(s.slaPriorityHours?.bajo ?? "") });
+                            setEditingSlaPauseOnStatuses((s.slaPauseOnStatuses as string[]) ?? []);
+                            setEditingSlaEscalateAt(s.slaEscalateAt ?? "");
+                          }}
                           data-testid={`button-stage-edit-${stage.id}`}
                         >
                           <Pencil className="h-3 w-3" />
