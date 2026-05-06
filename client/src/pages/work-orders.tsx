@@ -1534,13 +1534,46 @@ function KanbanBoard({
     const activeColId = findColumnOfItem(activeId);
     if (!activeColId || !resolvedOverColId) return;
 
-    if (activeColId === resolvedOverColId && !overIsColumn) {
+    if (activeColId === resolvedOverColId) {
+      if (!overIsColumn) {
+        setColumnOrders((prev) => {
+          const ids = [...(prev[activeColId] ?? [])];
+          const oldIndex = ids.indexOf(activeId);
+          const newIndex = ids.indexOf(overId);
+          if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return prev;
+          return { ...prev, [activeColId]: arrayMove(ids, oldIndex, newIndex) };
+        });
+      }
+    } else {
+      // Cross-column: move card into target column at the appropriate position
       setColumnOrders((prev) => {
-        const ids = [...(prev[activeColId] ?? [])];
-        const oldIndex = ids.indexOf(activeId);
-        const newIndex = ids.indexOf(overId);
-        if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return prev;
-        return { ...prev, [activeColId]: arrayMove(ids, oldIndex, newIndex) };
+        const sourceIds = (prev[activeColId] ?? []).filter((id) => id !== activeId);
+        const targetIds = (prev[resolvedOverColId] ?? []).filter((id) => id !== activeId);
+
+        let insertIndex: number;
+        if (overIsColumn) {
+          insertIndex = targetIds.length;
+        } else {
+          const overIndex = targetIds.indexOf(overId);
+          if (overIndex === -1) {
+            insertIndex = targetIds.length;
+          } else {
+            // Insert before or after the over card depending on pointer position
+            const overRect = over.rect;
+            const activeTranslated = active.rect.current.translated;
+            if (activeTranslated && overRect) {
+              const activeCenter = activeTranslated.top + activeTranslated.height / 2;
+              const overCenter = overRect.top + overRect.height / 2;
+              insertIndex = activeCenter < overCenter ? overIndex : overIndex + 1;
+            } else {
+              insertIndex = overIndex;
+            }
+          }
+        }
+
+        const newTargetIds = [...targetIds];
+        newTargetIds.splice(insertIndex, 0, activeId);
+        return { ...prev, [activeColId]: sourceIds, [resolvedOverColId]: newTargetIds };
       });
     }
   }
@@ -1555,17 +1588,22 @@ function KanbanBoard({
     }
 
     const activeId = String(active.id);
-    const overId = String(over.id);
 
-    const overIsColumn = KANBAN_COLUMNS.some((c) => c.id === overId);
-    const resolvedOverColId = overIsColumn ? overId : findColumnOfItem(overId);
-    const activeColId = findColumnOfItem(activeId);
+    // Determine the original column from the snapshot (before any drag-over moves)
+    const originalColId =
+      KANBAN_COLUMNS.find((col) =>
+        (columnOrdersSnapshot.current[col.id] ?? []).includes(activeId)
+      )?.id ?? null;
 
-    if (!resolvedOverColId || !activeColId) return;
+    // The current column reflects where handleDragOver placed the card
+    const currentColId = findColumnOfItem(activeId);
 
-    if (activeColId === resolvedOverColId) {
-      const currentIds = columnOrders[activeColId] ?? [];
-      const snapshotIds = columnOrdersSnapshot.current[activeColId] ?? [];
+    if (!originalColId || !currentColId) return;
+
+    if (originalColId === currentColId) {
+      // Same column: persist the new order if it changed
+      const currentIds = columnOrders[currentColId] ?? [];
+      const snapshotIds = columnOrdersSnapshot.current[currentColId] ?? [];
       if (JSON.stringify(currentIds) !== JSON.stringify(snapshotIds)) {
         apiRequest("PATCH", "/api/work-orders/reorder", { orderedIds: currentIds }).catch(() => {
           setColumnOrders(columnOrdersSnapshot.current);
@@ -1574,16 +1612,32 @@ function KanbanBoard({
       return;
     }
 
-    const targetCol = KANBAN_COLUMNS.find((c) => c.id === resolvedOverColId);
+    // Cross-column move: validate the status transition
+    const targetCol = KANBAN_COLUMNS.find((c) => c.id === currentColId);
     const order = orders.find((o) => o.id === activeId);
-    if (!targetCol || !order) return;
+    if (!targetCol || !order) {
+      setColumnOrders(columnOrdersSnapshot.current);
+      return;
+    }
 
-    if (targetCol.statuses.includes(order.status)) return;
+    if (targetCol.statuses.includes(order.status)) {
+      setColumnOrders(columnOrdersSnapshot.current);
+      return;
+    }
 
     const targetStatus = targetCol.statuses[0];
-    if (!isValidTransition(order.status, targetStatus)) return;
-    if (targetStatus === "cerrada" && !canApprove) return;
-    if (targetStatus !== "cerrada" && !canEdit) return;
+    if (!isValidTransition(order.status, targetStatus)) {
+      setColumnOrders(columnOrdersSnapshot.current);
+      return;
+    }
+    if (targetStatus === "cerrada" && !canApprove) {
+      setColumnOrders(columnOrdersSnapshot.current);
+      return;
+    }
+    if (targetStatus !== "cerrada" && !canEdit) {
+      setColumnOrders(columnOrdersSnapshot.current);
+      return;
+    }
 
     onMoveStatus(activeId, targetStatus);
   }
@@ -1607,7 +1661,10 @@ function KanbanBoard({
               .filter((o): o is WorkOrder => Boolean(o));
             const isOver = overColumnId === col.id;
             const incomingFromOtherCol =
-              isOver && activeOrder && !col.statuses.includes(activeOrder.status);
+              isOver &&
+              activeOrder &&
+              !col.statuses.includes(activeOrder.status) &&
+              !colIds.includes(activeOrder.id);
             return (
               <DroppableColumn
                 key={col.id}
