@@ -56,6 +56,8 @@ import {
   MessageSquare,
   Hash,
   ImageIcon,
+  List,
+  LayoutGrid,
 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -1152,6 +1154,244 @@ function SLADashboard({ stats, orders, machines, users, onSelectOrder, typeLabel
   );
 }
 
+// ─── Kanban Board ──────────────────────────────────────────────────────────
+
+const NEXT_STATUS: Record<string, string> = {
+  pendiente: "asignada",
+  asignada: "en_proceso",
+  en_proceso: "en_ruta",
+  en_ruta: "completada",
+  completada: "cerrada",
+};
+
+const KANBAN_COLUMNS: Array<{
+  id: string;
+  label: string;
+  statuses: string[];
+  headerClass: string;
+  countClass: string;
+  dotClass: string;
+}> = [
+  {
+    id: "nuevo",
+    label: "Nuevo",
+    statuses: ["pendiente", "asignada"],
+    headerClass: "bg-slate-100 dark:bg-slate-800/60",
+    countClass: "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300",
+    dotClass: "bg-slate-500",
+  },
+  {
+    id: "en_progreso",
+    label: "En Progreso",
+    statuses: ["en_proceso", "en_ruta"],
+    headerClass: "bg-amber-50 dark:bg-amber-900/20",
+    countClass: "bg-amber-100 dark:bg-amber-800/40 text-amber-700 dark:text-amber-300",
+    dotClass: "bg-amber-500",
+  },
+  {
+    id: "terminado",
+    label: "Terminado",
+    statuses: ["completada"],
+    headerClass: "bg-green-50 dark:bg-green-900/20",
+    countClass: "bg-green-100 dark:bg-green-800/40 text-green-700 dark:text-green-300",
+    dotClass: "bg-green-500",
+  },
+  {
+    id: "verificado",
+    label: "Verificado",
+    statuses: ["cerrada"],
+    headerClass: "bg-red-50 dark:bg-red-900/20",
+    countClass: "bg-red-100 dark:bg-red-900/30 text-[#E84545] dark:text-red-400",
+    dotClass: "bg-[#E84545]",
+  },
+];
+
+function formatElapsed(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+function KanbanCard({
+  order,
+  machines,
+  users,
+  typeLabels,
+  onSelect,
+  onAdvance,
+  canEdit,
+  isAdvancing,
+}: {
+  order: WorkOrder;
+  machines: Machine[];
+  users: UserInfo[];
+  typeLabels: Record<string, string>;
+  onSelect: () => void;
+  onAdvance?: () => void;
+  canEdit: boolean;
+  isAdvancing: boolean;
+}) {
+  const machine = machines.find((m) => m.id === order.machineId);
+  const assignee = users.find((u) => u.id === order.assignedUserId);
+  const nextStatus = NEXT_STATUS[order.status];
+  const elapsed = formatElapsed(order.updatedAt);
+  const slaIsOverdue = order.slaStatus === "vencido";
+  const slaIsAtRisk = order.slaStatus === "proximo_vencer";
+
+  return (
+    <div
+      className="bg-background border rounded-md p-3 space-y-2 cursor-pointer hover-elevate"
+      onClick={onSelect}
+      data-testid={`kanban-card-${order.id}`}
+    >
+      <div className="flex items-start justify-between gap-1">
+        <span className="font-semibold text-sm leading-tight" data-testid={`kanban-order-number-${order.id}`}>
+          {order.orderNumber}
+        </span>
+        <StatusBadge status={order.status} />
+      </div>
+
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <MapPin className="h-3 w-3 shrink-0" />
+        <span className="truncate">{machine?.name || "—"}</span>
+      </div>
+
+      {order.description && (
+        <p className="text-xs text-muted-foreground line-clamp-2">{order.description}</p>
+      )}
+
+      <div className="flex items-center gap-1 flex-wrap">
+        <Badge variant="outline" className="no-default-hover-elevate no-default-active-elevate text-xs py-0">
+          {typeLabels[order.type] || order.type}
+        </Badge>
+        <PriorityBadge priority={order.priority} />
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+          <User className="h-3 w-3 shrink-0" />
+          <span className="truncate">{assignee?.fullName || "Sin asignar"}</span>
+        </div>
+        <div
+          className={`flex items-center gap-1 text-xs shrink-0 ${
+            slaIsOverdue
+              ? "text-red-600 dark:text-red-400 font-medium"
+              : slaIsAtRisk
+              ? "text-amber-600 dark:text-amber-400"
+              : "text-muted-foreground"
+          }`}
+        >
+          {slaIsOverdue ? <AlertTriangle className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+          <span>{elapsed}</span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 pt-1 border-t" onClick={(e) => e.stopPropagation()}>
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={onSelect}
+          data-testid={`kanban-view-${order.id}`}
+          title="Ver detalle"
+        >
+          <Eye className="h-3.5 w-3.5" />
+        </Button>
+        {canEdit && nextStatus && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 text-xs"
+            onClick={onAdvance}
+            disabled={isAdvancing}
+            data-testid={`kanban-advance-${order.id}`}
+          >
+            {isAdvancing ? (
+              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+            ) : (
+              <ArrowRight className="h-3 w-3 mr-1" />
+            )}
+            {STATUS_LABELS[nextStatus] || nextStatus}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function KanbanBoard({
+  orders,
+  machines,
+  users,
+  typeLabels,
+  onSelectOrder,
+  onMoveStatus,
+  canEdit,
+  movingOrderId,
+}: {
+  orders: WorkOrder[];
+  machines: Machine[];
+  users: UserInfo[];
+  typeLabels: Record<string, string>;
+  onSelectOrder: (order: WorkOrder) => void;
+  onMoveStatus: (orderId: string, status: string) => void;
+  canEdit: boolean;
+  movingOrderId: string | null;
+}) {
+  return (
+    <div className="overflow-x-auto pb-4" data-testid="kanban-board">
+      <div className="flex gap-3 min-w-max">
+        {KANBAN_COLUMNS.map((col) => {
+          const colOrders = orders.filter((o) => col.statuses.includes(o.status));
+          return (
+            <div
+              key={col.id}
+              className="flex flex-col w-72 rounded-md border bg-muted/20"
+              data-testid={`kanban-column-${col.id}`}
+            >
+              <div className={`flex items-center justify-between px-3 py-2.5 rounded-t-md ${col.headerClass}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`h-2 w-2 rounded-full shrink-0 ${col.dotClass}`} />
+                  <span className="font-semibold text-sm">{col.label}</span>
+                </div>
+                <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${col.countClass}`}>
+                  {colOrders.length}
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-2 p-2 overflow-y-auto max-h-[calc(100vh-380px)]">
+                {colOrders.length === 0 ? (
+                  <div className="text-center py-8 text-xs text-muted-foreground">
+                    Sin órdenes
+                  </div>
+                ) : (
+                  colOrders.map((order) => (
+                    <KanbanCard
+                      key={order.id}
+                      order={order}
+                      machines={machines}
+                      users={users}
+                      typeLabels={typeLabels}
+                      onSelect={() => onSelectOrder(order)}
+                      onAdvance={() => onMoveStatus(order.id, NEXT_STATUS[order.status])}
+                      canEdit={canEdit}
+                      isAdvancing={movingOrderId === order.id}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── End Kanban Board ───────────────────────────────────────────────────────
+
 const ITEM_TYPE_META: Record<ChecklistItemType, { label: string; icon: React.ElementType; color: string }> = {
   checkbox: { label: "Casilla", icon: SquareCheck, color: "text-muted-foreground" },
   multiple_choice: { label: "Selección única", icon: CircleDot, color: "text-blue-600" },
@@ -1205,6 +1445,10 @@ export function WorkOrdersPage() {
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [editingTypeLabel, setEditingTypeLabel] = useState("");
   const [confirmDeleteTypeId, setConfirmDeleteTypeId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "kanban">(() => {
+    try { return (localStorage.getItem("wo-view-mode") as "list" | "kanban") || "list"; } catch { return "list"; }
+  });
+  const [movingOrderId, setMovingOrderId] = useState<string | null>(null);
 
   const { data: orders = [], isLoading: ordersLoading, isError: ordersError } = useQuery<WorkOrder[]>({
     queryKey: ["/api/work-orders"],
@@ -1402,6 +1646,20 @@ export function WorkOrdersPage() {
   }, [filteredOrders, orderPage]);
 
   useEffect(() => { setOrderPage(1); }, [orderSearch, orderTypeFilter, orderStatusFilter, orderPriorityFilter, orderAssigneeFilter]);
+
+  const moveStatusMutation = useMutation({
+    mutationFn: async ({ orderId, status }: { orderId: string; status: string }) => {
+      await apiRequest("PATCH", `/api/work-orders/${orderId}`, { status });
+    },
+    onMutate: ({ orderId }) => setMovingOrderId(orderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders/stats"] });
+      toast({ title: "Estado actualizado" });
+    },
+    onError: () => toast({ title: "Error", description: "No se pudo actualizar el estado", variant: "destructive" }),
+    onSettled: () => setMovingOrderId(null),
+  });
 
   const filteredTickets = useMemo(() => {
     return tickets.filter((t) => {
@@ -2495,6 +2753,28 @@ export function WorkOrdersPage() {
                 ))}
               </SelectContent>
             </Select>
+            <div className="flex items-center rounded-md border overflow-hidden shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`rounded-none ${viewMode === "list" ? "bg-muted" : ""}`}
+                onClick={() => { setViewMode("list"); try { localStorage.setItem("wo-view-mode", "list"); } catch {} }}
+                title="Vista lista"
+                data-testid="button-view-list"
+              >
+                <List className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`rounded-none ${viewMode === "kanban" ? "bg-muted" : ""}`}
+                onClick={() => { setViewMode("kanban"); try { localStorage.setItem("wo-view-mode", "kanban"); } catch {} }}
+                title="Vista tablero"
+                data-testid="button-view-kanban"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           {ordersError ? (
@@ -2510,6 +2790,17 @@ export function WorkOrdersPage() {
             </Card>
           ) : ordersLoading ? (
             <div className="flex items-center justify-center h-32"><p className="text-muted-foreground">Cargando órdenes...</p></div>
+          ) : viewMode === "kanban" ? (
+            <KanbanBoard
+              orders={filteredOrders.filter((o) => o.status !== "cancelada")}
+              machines={machines}
+              users={users}
+              typeLabels={typeLabels}
+              onSelectOrder={setSelectedOrder}
+              onMoveStatus={(orderId, status) => moveStatusMutation.mutate({ orderId, status })}
+              canEdit={can("work_orders", "edit")}
+              movingOrderId={movingOrderId}
+            />
           ) : filteredOrders.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
