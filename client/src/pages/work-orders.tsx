@@ -178,6 +178,7 @@ interface WorkOrder {
   slaPausedAt: string | null;
   stageEnteredAt: string | null;
   stageSlaHoursEffective: string | null;
+  stagePausedSeconds: number | null;
   completedAt: string | null;
   closedAt: string | null;
   closedBy: string | null;
@@ -273,7 +274,9 @@ interface WOStats {
   byStatus: Record<string, number>;
   byType: Record<string, number>;
   bySla: Record<string, number>;
+  byStageSla: Record<string, number>;
   slaBreached: number;
+  stageSlaBreached: number;
   total: number;
 }
 
@@ -774,46 +777,70 @@ function OrderDetailView({
               <span className="text-muted-foreground">SLA:</span>
               <span className={order.slaStatus === "vencido" ? "text-red-600 font-semibold" : ""}>{formatSlaCountdown(order.slaDeadline, slaTick)}</span>
             </div>
-            {order.stageSlaStatus && (
+            {order.stageSlaStatus && order.stageEnteredAt && order.stageSlaHoursEffective && (() => {
+              const slaH = Number(order.stageSlaHoursEffective);
+              const enteredMs = new Date(order.stageEnteredAt).getTime();
+              const accPausedMs = (order.stagePausedSeconds ?? 0) * 1000;
+              const curPausedMs = order.slaPausedAt ? Date.now() + slaTick * 0 - new Date(order.slaPausedAt).getTime() : 0;
+              const elapsedMs = Math.max(0, Date.now() + slaTick * 0 - enteredMs - accPausedMs - curPausedMs);
+              const totalMs = slaH * 3600 * 1000;
+              const pct = Math.min(100, (elapsedMs / totalMs) * 100);
+              const elapsedH = elapsedMs / 3600000;
+              const remainingH = Math.max(0, slaH - elapsedH);
+              const isVencido = order.stageSlaStatus === "vencido";
+              const isProximo = order.stageSlaStatus === "proximo_vencer";
+              const fmtH = (h: number) => h < 1 ? `${Math.round(h * 60)}min` : `${h.toFixed(1)}h`;
+              const barColor = isVencido ? "bg-red-500" : isProximo ? "bg-amber-400" : "bg-green-500";
+              const textColor = isVencido ? "text-red-600 font-semibold" : isProximo ? "text-amber-600 font-medium" : "text-green-600";
+              return (
+                <div className="pt-2 border-t space-y-2" data-testid="detail-stage-sla">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Layers className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-muted-foreground">SLA de Etapa Actual</span>
+                    </div>
+                    {can("work_orders", "edit") && !["cerrada", "cancelada"].includes(order.status) && (
+                      order.slaPausedAt ? (
+                        <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => resumeStageSla.mutate()} disabled={resumeStageSla.isPending} data-testid="button-sla-resume">
+                          <Play className="h-3 w-3 mr-1" />Reanudar
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => pauseStageSla.mutate()} disabled={pauseStageSla.isPending} data-testid="button-sla-pause">
+                          <Pause className="h-3 w-3 mr-1" />Pausar
+                        </Button>
+                      )
+                    )}
+                  </div>
+                  <div className={`flex items-center justify-between text-xs ${textColor}`}>
+                    <span className="flex items-center gap-1">
+                      {(isVencido || isProximo) && <AlertTriangle className="h-3 w-3 shrink-0" />}
+                      <span>{fmtH(elapsedH)} consumido / {fmtH(slaH)} total</span>
+                      {order.slaPausedAt && <span className="opacity-70">(pausado)</span>}
+                    </span>
+                    <span>{isVencido ? "Vencido" : isProximo ? "Próx. a vencer" : `−${fmtH(remainingH)} restante`}</span>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })()}
+            {order.stageSlaStatus && (!order.stageEnteredAt || !order.stageSlaHoursEffective) && (
               <div className="flex items-center gap-2 text-sm">
                 <Layers className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 <span className="text-muted-foreground">SLA etapa:</span>
-                <span className={
-                  order.stageSlaStatus === "vencido"
-                    ? "text-red-600 font-semibold"
-                    : order.stageSlaStatus === "proximo_vencer"
-                    ? "text-amber-600 font-medium"
-                    : "text-green-600"
-                }>
+                <span className={order.stageSlaStatus === "vencido" ? "text-red-600 font-semibold" : order.stageSlaStatus === "proximo_vencer" ? "text-amber-600 font-medium" : "text-green-600"}>
                   {SLA_LABELS[order.stageSlaStatus] || order.stageSlaStatus}
                 </span>
-                {order.slaPausedAt && (
-                  <span className="text-xs text-muted-foreground">(pausado)</span>
-                )}
+                {order.slaPausedAt && <span className="text-xs text-muted-foreground">(pausado)</span>}
                 {can("work_orders", "edit") && !["cerrada", "cancelada"].includes(order.status) && (
                   order.slaPausedAt ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 text-xs px-2 ml-auto"
-                      onClick={() => resumeStageSla.mutate()}
-                      disabled={resumeStageSla.isPending}
-                      data-testid="button-sla-resume"
-                    >
-                      <Play className="h-3 w-3 mr-1" />
-                      Reanudar
+                    <Button size="sm" variant="outline" className="h-6 text-xs px-2 ml-auto" onClick={() => resumeStageSla.mutate()} disabled={resumeStageSla.isPending} data-testid="button-sla-resume">
+                      <Play className="h-3 w-3 mr-1" />Reanudar
                     </Button>
                   ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 text-xs px-2 ml-auto"
-                      onClick={() => pauseStageSla.mutate()}
-                      disabled={pauseStageSla.isPending}
-                      data-testid="button-sla-pause"
-                    >
-                      <Pause className="h-3 w-3 mr-1" />
-                      Pausar
+                    <Button size="sm" variant="outline" className="h-6 text-xs px-2 ml-auto" onClick={() => pauseStageSla.mutate()} disabled={pauseStageSla.isPending} data-testid="button-sla-pause">
+                      <Pause className="h-3 w-3 mr-1" />Pausar
                     </Button>
                   )
                 )}
@@ -1101,7 +1128,10 @@ function OrderDetailView({
                 const exited = entry.exitedAt ? new Date(entry.exitedAt) : null;
                 // nowMs uses slaTick to force re-render every minute for live active-stage timer
                 const nowMs = Date.now() + slaTick * 0;
-                const elapsedMs = exited ? exited.getTime() - entered.getTime() : nowMs - entered.getTime();
+                const rawElapsedMs = exited ? exited.getTime() - entered.getTime() : nowMs - entered.getTime();
+                // Subtract paused time from effective elapsed
+                const pausedMs = (entry.pausedSeconds ?? 0) * 1000;
+                const elapsedMs = Math.max(0, rawElapsedMs - pausedMs);
                 const elapsedH = Math.floor(elapsedMs / 3_600_000);
                 const elapsedM = Math.floor((elapsedMs % 3_600_000) / 60_000);
                 const slaH = entry.slaHours ? Number(entry.slaHours) : null;
@@ -1121,20 +1151,36 @@ function OrderDetailView({
                       )}
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className={`text-xs font-medium ${entry.slaStatus === "vencido" ? "text-red-600" : entry.slaStatus === "proximo_vencer" ? "text-amber-600" : "text-muted-foreground"}`}>
+                      <p className={`text-xs font-medium ${
+                        entry.slaStatus === "vencido" || entry.slaStatus === "incumplido"
+                          ? "text-red-600"
+                          : entry.slaStatus === "proximo_vencer"
+                          ? "text-amber-600"
+                          : "text-muted-foreground"
+                      }`}>
                         {elapsedH}h {elapsedM}m{slaH ? ` / ${slaH}h` : ""}
                       </p>
                       {pct !== null && (
                         <div className="mt-1 w-20 bg-muted rounded-full h-1.5">
                           <div
-                            className={`h-1.5 rounded-full transition-all ${pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-green-500"}`}
+                            className={`h-1.5 rounded-full transition-all ${
+                              entry.slaStatus === "incumplido" || pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-green-500"
+                            }`}
                             style={{ width: `${Math.min(pct, 100)}%` }}
                           />
                         </div>
                       )}
                       {entry.slaStatus && (
-                        <span className={`text-xs ${entry.slaStatus === "vencido" ? "text-red-600" : entry.slaStatus === "proximo_vencer" ? "text-amber-600" : "text-green-600"}`}>
-                          {SLA_LABELS[entry.slaStatus] ?? entry.slaStatus}
+                        <span className={`text-xs ${
+                          entry.slaStatus === "incumplido" || entry.slaStatus === "vencido"
+                            ? "text-red-600"
+                            : entry.slaStatus === "cumplido"
+                            ? "text-green-600"
+                            : entry.slaStatus === "proximo_vencer"
+                            ? "text-amber-600"
+                            : "text-muted-foreground"
+                        }`}>
+                          {entry.slaStatus === "cumplido" ? "Cumplido" : entry.slaStatus === "incumplido" ? "Incumplido" : SLA_LABELS[entry.slaStatus] ?? entry.slaStatus}
                         </span>
                       )}
                     </div>
@@ -1261,6 +1307,13 @@ function SLADashboard({ stats, orders, machines, users, onSelectOrder, typeLabel
     { name: "Vencido", cantidad: bySla["vencido"] || 0, fill: "#E84545" },
   ];
 
+  const byStageSla = stats.byStageSla || {};
+  const stageSlaBarData = [
+    { name: "En Tiempo", cantidad: byStageSla["dentro_tiempo"] || 0, fill: "#4ECB71" },
+    { name: "Próx. Vencer", cantidad: byStageSla["proximo_vencer"] || 0, fill: "#F59E0B" },
+    { name: "Vencido", cantidad: byStageSla["vencido"] || 0, fill: "#E84545" },
+  ];
+
   const typeData = Object.entries(stats.byType).map(([key, value]) => ({
     name: typeLabels[key] || key,
     cantidad: value,
@@ -1298,6 +1351,33 @@ function SLADashboard({ stats, orders, machines, users, onSelectOrder, typeLabel
 
         <Card>
           <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">SLA de Etapa Activa</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {stageSlaBarData.every(d => d.cantidad === 0) ? (
+              <p className="text-sm text-muted-foreground text-center py-8">Sin datos de SLA de etapa</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={stageSlaBarData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" fontSize={11} />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="cantidad" radius={[4, 4, 0, 0]}>
+                    {stageSlaBarData.map((entry, index) => (
+                      <Cell key={index} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Distribución por Tipo</CardTitle>
           </CardHeader>
           <CardContent>
@@ -1316,6 +1396,28 @@ function SLADashboard({ stats, orders, machines, users, onSelectOrder, typeLabel
                 </PieChart>
               </ResponsiveContainer>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">Resumen SLA</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Órdenes vencidas (global):</span>
+                <span className={`font-semibold ${(stats.slaBreached ?? 0) > 0 ? "text-red-600" : "text-green-600"}`}>{stats.slaBreached ?? 0}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Órdenes etapa vencida:</span>
+                <span className={`font-semibold ${(stats.stageSlaBreached ?? 0) > 0 ? "text-red-600" : "text-green-600"}`}>{stats.stageSlaBreached ?? 0}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Total órdenes:</span>
+                <span className="font-semibold">{stats.total}</span>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -1527,7 +1629,10 @@ function KanbanCard({
           {order.stageEnteredAt && order.stageSlaHoursEffective && (() => {
             const slaHours = Number(order.stageSlaHoursEffective);
             const enteredMs = new Date(order.stageEnteredAt).getTime();
-            const pausedMs = order.slaPausedAt ? Date.now() - new Date(order.slaPausedAt).getTime() : 0;
+            // Total paused = accumulated pausedSeconds from prior cycles + current pause interval (if active)
+            const accPausedMs = (order.stagePausedSeconds ?? 0) * 1000;
+            const curPausedMs = order.slaPausedAt ? Date.now() - new Date(order.slaPausedAt).getTime() : 0;
+            const pausedMs = accPausedMs + curPausedMs;
             const elapsedMs = Math.max(0, Date.now() - enteredMs - pausedMs);
             const totalMs = slaHours * 3600 * 1000;
             const pct = Math.min(100, (elapsedMs / totalMs) * 100);

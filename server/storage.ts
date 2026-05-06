@@ -806,7 +806,7 @@ export interface IStorage {
   reorderWorkOrders(tenantId: string, orderedIds: string[]): Promise<void>;
   deleteWorkOrder(id: string): Promise<boolean>;
   getWorkOrdersByMachine(machineId: string, tenantId: string): Promise<WorkOrder[]>;
-  getWorkOrderStats(tenantId: string): Promise<{ byStatus: Record<string, number>; byType: Record<string, number>; bySla: Record<string, number>; slaBreached: number; total: number }>;
+  getWorkOrderStats(tenantId: string): Promise<{ byStatus: Record<string, number>; byType: Record<string, number>; bySla: Record<string, number>; byStageSla: Record<string, number>; slaBreached: number; stageSlaBreached: number; total: number }>;
   generateOrderNumber(tenantId: string, retryOffset?: number): Promise<string>;
 
   getTickets(tenantId: string, filters?: { status?: string; type?: string; machineId?: string }): Promise<WorkOrderTicket[]>;
@@ -8078,21 +8078,25 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(workOrders).where(and(eq(workOrders.machineId, machineId), eq(workOrders.tenantId, tenantId))).orderBy(desc(workOrders.createdAt));
   }
 
-  async getWorkOrderStats(tenantId: string): Promise<{ byStatus: Record<string, number>; byType: Record<string, number>; bySla: Record<string, number>; slaBreached: number; total: number }> {
+  async getWorkOrderStats(tenantId: string): Promise<{ byStatus: Record<string, number>; byType: Record<string, number>; bySla: Record<string, number>; byStageSla: Record<string, number>; slaBreached: number; stageSlaBreached: number; total: number }> {
     const allOrders = await db.select().from(workOrders).where(eq(workOrders.tenantId, tenantId));
     const byStatus: Record<string, number> = {};
     const byType: Record<string, number> = {};
     const bySla: Record<string, number> = {};
+    const byStageSla: Record<string, number> = {};
     let slaBreached = 0;
+    let stageSlaBreached = 0;
     for (const o of allOrders) {
       byStatus[o.status] = (byStatus[o.status] || 0) + 1;
       byType[o.type] = (byType[o.type] || 0) + 1;
-      if (o.slaStatus) {
-        bySla[o.slaStatus] = (bySla[o.slaStatus] || 0) + 1;
-      }
+      if (o.slaStatus) bySla[o.slaStatus] = (bySla[o.slaStatus] || 0) + 1;
       if (o.slaStatus === 'vencido') slaBreached++;
+      if (o.stageSlaStatus && o.stageId) {
+        byStageSla[o.stageSlaStatus] = (byStageSla[o.stageSlaStatus] || 0) + 1;
+        if (o.stageSlaStatus === 'vencido') stageSlaBreached++;
+      }
     }
-    return { byStatus, byType, bySla, slaBreached, total: allOrders.length };
+    return { byStatus, byType, bySla, byStageSla, slaBreached, stageSlaBreached, total: allOrders.length };
   }
 
   async generateOrderNumber(tenantId: string, retryOffset = 0): Promise<string> {

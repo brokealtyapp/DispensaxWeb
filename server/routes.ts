@@ -11331,7 +11331,15 @@ export async function registerRoutes(
           if (o.slaStatus) bySla[o.slaStatus] = (bySla[o.slaStatus] || 0) + 1;
           if (o.slaStatus === "vencido") slaBreached++;
         }
-        return res.json({ byStatus, byType, bySla, slaBreached, total: allOrders.length });
+        const byStageSla: Record<string, number> = {};
+        let stageSlaBreached = 0;
+        for (const o of allOrders) {
+          if (o.stageSlaStatus && o.stageId) {
+            byStageSla[o.stageSlaStatus] = (byStageSla[o.stageSlaStatus] || 0) + 1;
+            if (o.stageSlaStatus === "vencido") stageSlaBreached++;
+          }
+        }
+        return res.json({ byStatus, byType, bySla, byStageSla, slaBreached, stageSlaBreached, total: allOrders.length });
       }
       const stats = await storage.getWorkOrderStats(tenantId);
       res.json(stats);
@@ -11362,7 +11370,12 @@ export async function registerRoutes(
       const logMap = new Map(activeLogs.map(l => [l.workOrderId, l]));
       const enriched = orders.map(o => {
         const log = logMap.get(o.id);
-        return { ...o, stageEnteredAt: log?.enteredAt ?? null, stageSlaHoursEffective: log?.slaHours ?? null };
+        return {
+          ...o,
+          stageEnteredAt: log?.enteredAt ?? null,
+          stageSlaHoursEffective: log?.slaHours ?? null,
+          stagePausedSeconds: log?.pausedSeconds ?? 0,
+        };
       });
       res.json(enriched);
     } catch (error) {
@@ -12868,9 +12881,9 @@ export async function registerRoutes(
               if (newStageSlaStatus !== order.stageSlaStatus) {
                 orderUpdates.stageSlaStatus = newStageSlaStatus;
               }
-              // Auto-escalation: bump priority ONCE when first crossing escalateAt% threshold
-              // (idempotent: only triggers when transitioning from "dentro_tiempo" to anything else)
-              if (newStageSlaStatus !== "dentro_tiempo" && order.stageSlaStatus === "dentro_tiempo") {
+              // Auto-escalation: bump priority ONCE when crossing threshold, but ONLY when stage
+              // explicitly configures slaEscalateAt (no implicit default escalation side-effect)
+              if (newStageSlaStatus !== "dentro_tiempo" && order.stageSlaStatus === "dentro_tiempo" && stage.slaEscalateAt != null) {
                 const PRIORITY_ORDER = ["bajo", "medio", "alto", "critico"];
                 const currentIdx = PRIORITY_ORDER.indexOf(String(order.priority ?? "medio"));
                 if (currentIdx >= 0 && currentIdx < PRIORITY_ORDER.length - 1) {
