@@ -3296,7 +3296,7 @@ export function WorkOrdersPage() {
                 <LayoutGrid className="h-4 w-4" />
               </Button>
             </div>
-            {viewMode === "kanban" && can("work_orders", "edit") && (
+            {viewMode === "kanban" && can("settings", "edit") && (
               <Button
                 variant="outline"
                 size="icon"

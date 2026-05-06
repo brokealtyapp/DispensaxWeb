@@ -11485,7 +11485,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/work-order-stages", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/work-order-stages", authenticateJWT, authorizeAction("settings", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
       await ensureWorkOrderStagesSeed(tenantId);
@@ -11502,7 +11502,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/work-order-stages/reorder", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/work-order-stages/reorder", authenticateJWT, authorizeAction("settings", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
       const schema = z.object({ orderedIds: z.array(z.string().min(1)).min(1) });
@@ -11521,7 +11521,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/work-order-stages/:id", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/work-order-stages/:id", authenticateJWT, authorizeAction("settings", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
       const schema = z.object({
@@ -11542,7 +11542,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/work-order-stages/:id", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/work-order-stages/:id", authenticateJWT, authorizeAction("settings", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
       const existing = await storage.getWorkOrderStage(req.params.id, tenantId);

@@ -265,6 +265,26 @@ test("custom labels and custom order types are left alone", async () => {
   }
 });
 
+// ── Regression: stage management requires settings.edit permission ──────────
+test("stage management (settings.edit) is denied for abastecedor and supervisor but allowed for admin", async () => {
+  const { canPerformAction } = await import("../shared/permissions.js");
+
+  const rolesWithoutAccess = ["abastecedor", "supervisor", "almacen", "contabilidad", "rh", "visor_establecimiento"] as const;
+  for (const role of rolesWithoutAccess) {
+    assert.equal(
+      canPerformAction(role, "settings", "edit"),
+      false,
+      `${role} must NOT have settings.edit (stage management)`,
+    );
+  }
+
+  assert.equal(
+    canPerformAction("admin", "settings", "edit"),
+    true,
+    "admin MUST have settings.edit (stage management)",
+  );
+});
+
 test.after(async () => {
   await pool.end();
 });
