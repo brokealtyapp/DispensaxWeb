@@ -12375,7 +12375,7 @@ export async function registerRoutes(
 
   // --- SLA Status Update Endpoint ---
 
-  app.post("/api/work-orders/update-sla", authenticateJWT, authorizeAction("work_orders", "approve"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/work-orders/update-sla", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
       const now = new Date();

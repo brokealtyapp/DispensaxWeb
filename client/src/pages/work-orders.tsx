@@ -1970,6 +1970,20 @@ export function WorkOrdersPage() {
     },
   });
 
+  const updateSlaMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/work-orders/update-sla", {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/work-orders/stats"] });
+    },
+  });
+
+  useEffect(() => {
+    updateSlaMutation.mutate();
+  }, []);
+
   const activeOrders = orders.filter(o => !["cerrada", "cancelada", "completada"].includes(o.status)).length;
   const pendingTickets = tickets.filter(t => t.status === "pendiente").length;
   const completedToday = orders.filter(o => {
@@ -2796,6 +2810,16 @@ export function WorkOrdersPage() {
                 <LayoutGrid className="h-4 w-4" />
               </Button>
             </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => updateSlaMutation.mutate()}
+              disabled={updateSlaMutation.isPending}
+              title="Actualizar estados SLA"
+              data-testid="button-refresh-sla"
+            >
+              <RefreshCcw className={`h-4 w-4 ${updateSlaMutation.isPending ? "animate-spin" : ""}`} />
+            </Button>
           </div>
 
           {ordersError ? (
