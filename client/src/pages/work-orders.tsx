@@ -1510,7 +1510,7 @@ function KanbanBoard({
       const next: Record<string, string[]> = {};
       columns.forEach((col) => {
         const colOrders = orders
-          .filter((o) => col.statuses.includes(o.status))
+          .filter((o) => o.stageId === col.id || (!o.stageId && col.statuses.includes(o.status)))
           .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
         const newIds = colOrders.map((o) => o.id);
         const prevIds = prev[col.id] ?? [];

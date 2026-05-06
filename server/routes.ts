@@ -11453,7 +11453,7 @@ export async function registerRoutes(
       for (const order of untagged) {
         const matchStage = stages.find(s => (s.statuses as string[]).includes(order.status));
         if (matchStage) {
-          await storage.updateWorkOrder(order.id, tenantId, { stageId: matchStage.id } as any);
+          await storage.updateWorkOrder(order.id, { stageId: matchStage.id });
         }
       }
     } catch (_e) { /* non-critical */ }
@@ -11473,9 +11473,6 @@ export async function registerRoutes(
 
   app.post("/api/work-order-stages", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
-        return res.status(403).json({ error: "Solo administradores pueden gestionar etapas" });
-      }
       const tenantId = req.user!.tenantId!;
       await ensureWorkOrderStagesSeed(tenantId);
       const schema = z.object({ name: z.string().min(1).max(100) });
@@ -11493,9 +11490,6 @@ export async function registerRoutes(
 
   app.patch("/api/work-order-stages/reorder", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
-        return res.status(403).json({ error: "Solo administradores pueden reordenar etapas" });
-      }
       const tenantId = req.user!.tenantId!;
       const schema = z.object({ orderedIds: z.array(z.string().min(1)).min(1) });
       const { orderedIds } = schema.parse(req.body);
@@ -11515,9 +11509,6 @@ export async function registerRoutes(
 
   app.patch("/api/work-order-stages/:id", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
-        return res.status(403).json({ error: "Solo administradores pueden gestionar etapas" });
-      }
       const tenantId = req.user!.tenantId!;
       const schema = z.object({
         name: z.string().min(1).max(100).optional(),
@@ -11539,9 +11530,6 @@ export async function registerRoutes(
 
   app.delete("/api/work-order-stages/:id", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
-        return res.status(403).json({ error: "Solo administradores pueden gestionar etapas" });
-      }
       const tenantId = req.user!.tenantId!;
       const existing = await storage.getWorkOrderStage(req.params.id, tenantId);
       if (!existing) return res.status(404).json({ error: "Etapa no encontrada" });
@@ -11549,14 +11537,11 @@ export async function registerRoutes(
       if (allStages.length <= 1) {
         return res.status(409).json({ error: "Debe existir al menos una etapa" });
       }
-      const stageStatuses = (existing.statuses as string[]) ?? [];
-      if (stageStatuses.length > 0) {
-        const orders = await storage.getWorkOrders(tenantId, {});
-        const statusSet = new Set(stageStatuses);
-        const blocked = orders.some(o => statusSet.has(o.status));
-        if (blocked) {
-          return res.status(409).json({ error: "No se puede eliminar: existen órdenes activas en esta etapa" });
-        }
+      const orders = await storage.getWorkOrders(tenantId, {});
+      const stageStatuses = new Set((existing.statuses as string[]) ?? []);
+      const blocked = orders.some(o => o.stageId === existing.id || (!o.stageId && stageStatuses.size > 0 && stageStatuses.has(o.status)));
+      if (blocked) {
+        return res.status(409).json({ error: "No se puede eliminar: existen órdenes activas en esta etapa" });
       }
       await storage.deleteWorkOrderStage(req.params.id, tenantId);
       res.json({ success: true });

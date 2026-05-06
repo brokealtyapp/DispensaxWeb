@@ -2859,7 +2859,7 @@ export const workOrders = pgTable("work_orders", {
   type: varchar("type").notNull().default("tecnico"),
   priority: varchar("priority").notNull().default("medio"),
   status: varchar("status").notNull().default("pendiente"),
-  stageId: varchar("stage_id"),
+  stageId: varchar("stage_id").references(() => workOrderStages.id),
   assignedUserId: varchar("assigned_user_id").references(() => users.id),
   ticketId: varchar("ticket_id").references(() => workOrderTickets.id),
   description: text("description"),
