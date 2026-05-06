@@ -1615,6 +1615,9 @@ export function WorkOrdersPage() {
   const [orderStatusFilter, setOrderStatusFilter] = useState("all");
   const [orderPriorityFilter, setOrderPriorityFilter] = useState("all");
   const [orderAssigneeFilter, setOrderAssigneeFilter] = useState("all");
+  const [kanbanQuickMyOrders, setKanbanQuickMyOrders] = useState(false);
+  const [kanbanQuickUrgent, setKanbanQuickUrgent] = useState(false);
+  const [kanbanQuickSlaOverdue, setKanbanQuickSlaOverdue] = useState(false);
   const [orderPage, setOrderPage] = useState(1);
   const [ticketSearch, setTicketSearch] = useState("");
   const [ticketTypeFilter, setTicketTypeFilter] = useState("all");
@@ -1819,7 +1822,7 @@ export function WorkOrdersPage() {
         if (!matchesSearch) return false;
       }
       if (orderTypeFilter !== "all" && o.type !== orderTypeFilter) return false;
-      if (orderStatusFilter !== "all" && o.status !== orderStatusFilter) return false;
+      if (viewMode !== "kanban" && orderStatusFilter !== "all" && o.status !== orderStatusFilter) return false;
       if (orderPriorityFilter !== "all" && o.priority !== orderPriorityFilter) return false;
       if (orderAssigneeFilter !== "all") {
         if (orderAssigneeFilter === "unassigned") {
@@ -1828,9 +1831,12 @@ export function WorkOrdersPage() {
           if (o.assignedUserId !== orderAssigneeFilter) return false;
         }
       }
+      if (viewMode === "kanban" && kanbanQuickMyOrders && o.assignedUserId !== user?.id) return false;
+      if (viewMode === "kanban" && kanbanQuickUrgent && o.priority !== "critico") return false;
+      if (viewMode === "kanban" && kanbanQuickSlaOverdue && o.slaStatus !== "vencido") return false;
       return true;
     });
-  }, [orders, orderSearch, orderTypeFilter, orderStatusFilter, orderPriorityFilter, orderAssigneeFilter, machines]);
+  }, [orders, orderSearch, orderTypeFilter, orderStatusFilter, orderPriorityFilter, orderAssigneeFilter, machines, kanbanQuickMyOrders, kanbanQuickUrgent, kanbanQuickSlaOverdue, user?.id, viewMode]);
 
   const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / ITEMS_PER_PAGE));
   const paginatedOrders = useMemo(() => {
@@ -2926,17 +2932,19 @@ export function WorkOrdersPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={orderStatusFilter} onValueChange={setOrderStatusFilter}>
-              <SelectTrigger className="w-[160px]" data-testid="select-order-status">
-                <SelectValue placeholder="Estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los estados</SelectItem>
-                {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                  <SelectItem key={k} value={k}>{v}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {viewMode !== "kanban" && (
+              <Select value={orderStatusFilter} onValueChange={setOrderStatusFilter}>
+                <SelectTrigger className="w-[160px]" data-testid="select-order-status">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los estados</SelectItem>
+                  {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Select value={orderPriorityFilter} onValueChange={setOrderPriorityFilter}>
               <SelectTrigger className="w-[140px]" data-testid="select-order-priority">
                 <SelectValue placeholder="Prioridad" />
@@ -2993,6 +3001,49 @@ export function WorkOrdersPage() {
               <RefreshCcw className={`h-4 w-4 ${updateSlaMutation.isPending ? "animate-spin" : ""}`} />
             </Button>
           </div>
+
+          {viewMode === "kanban" && (
+            <div className="flex items-center gap-2 flex-wrap" data-testid="kanban-quick-filters">
+              <button
+                type="button"
+                onClick={() => setKanbanQuickMyOrders(v => !v)}
+                className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full border transition-colors ${kanbanQuickMyOrders ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover-elevate"}`}
+                data-testid="chip-kanban-my-orders"
+              >
+                <User className="h-3.5 w-3.5" />
+                Mis órdenes
+              </button>
+              <button
+                type="button"
+                onClick={() => setKanbanQuickUrgent(v => !v)}
+                className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full border transition-colors ${kanbanQuickUrgent ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover-elevate"}`}
+                data-testid="chip-kanban-urgent"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Urgente
+              </button>
+              <button
+                type="button"
+                onClick={() => setKanbanQuickSlaOverdue(v => !v)}
+                className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full border transition-colors ${kanbanQuickSlaOverdue ? "bg-destructive text-destructive-foreground border-destructive" : "bg-background border-border hover-elevate"}`}
+                data-testid="chip-kanban-sla-overdue"
+              >
+                <Clock className="h-3.5 w-3.5" />
+                Vencidas SLA
+              </button>
+              {(kanbanQuickMyOrders || kanbanQuickUrgent || kanbanQuickSlaOverdue) && (
+                <button
+                  type="button"
+                  onClick={() => { setKanbanQuickMyOrders(false); setKanbanQuickUrgent(false); setKanbanQuickSlaOverdue(false); }}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  data-testid="chip-kanban-clear-quick"
+                >
+                  <X className="h-3 w-3" />
+                  Limpiar
+                </button>
+              )}
+            </div>
+          )}
 
           {ordersError ? (
             <Card>
