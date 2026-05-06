@@ -2859,6 +2859,7 @@ export const workOrders = pgTable("work_orders", {
   type: varchar("type").notNull().default("tecnico"),
   priority: varchar("priority").notNull().default("medio"),
   status: varchar("status").notNull().default("pendiente"),
+  stageId: varchar("stage_id"),
   assignedUserId: varchar("assigned_user_id").references(() => users.id),
   ticketId: varchar("ticket_id").references(() => workOrderTickets.id),
   description: text("description"),
@@ -3002,6 +3003,7 @@ export const workOrderStages = pgTable("work_order_stages", {
   name: varchar("name").notNull(),
   color: varchar("color").notNull().default("slate"),
   sortOrder: integer("sort_order").default(0),
+  isFinal: boolean("is_final").notNull().default(false),
   statuses: jsonb("statuses").$type<string[]>().notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });

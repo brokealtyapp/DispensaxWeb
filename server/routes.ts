@@ -11425,21 +11425,38 @@ export async function registerRoutes(
 
   // --- Work Order Stages CRUD ---
 
-  const DEFAULT_WORK_ORDER_STAGES: Array<{ name: string; color: string; sortOrder: number; statuses: string[] }> = [
-    { name: "Nuevo", color: "slate", sortOrder: 0, statuses: ["pendiente", "asignada"] },
-    { name: "En Progreso", color: "amber", sortOrder: 1, statuses: ["en_proceso", "en_ruta"] },
-    { name: "Terminado", color: "green", sortOrder: 2, statuses: ["completada"] },
-    { name: "Verificado", color: "red", sortOrder: 3, statuses: ["cerrada"] },
+  const DEFAULT_WORK_ORDER_STAGES: Array<{ name: string; color: string; sortOrder: number; isFinal: boolean; statuses: string[] }> = [
+    { name: "Nuevo",      color: "slate",  sortOrder: 0, isFinal: false, statuses: ["pendiente", "asignada"] },
+    { name: "En Progreso",color: "amber",  sortOrder: 1, isFinal: false, statuses: ["en_proceso", "en_ruta"] },
+    { name: "Terminado",  color: "green",  sortOrder: 2, isFinal: false, statuses: ["completada"] },
+    { name: "Verificado", color: "red",    sortOrder: 3, isFinal: true,  statuses: ["cerrada"] },
   ];
 
   async function ensureWorkOrderStagesSeed(tenantId: string): Promise<void> {
     const existing = await storage.getWorkOrderStages(tenantId);
-    if (existing.length > 0) return;
-    for (const s of DEFAULT_WORK_ORDER_STAGES) {
-      try {
-        await storage.createWorkOrderStage({ ...s, tenantId });
-      } catch (_e) { /* ignore */ }
+    if (existing.length === 0) {
+      for (const s of DEFAULT_WORK_ORDER_STAGES) {
+        try { await storage.createWorkOrderStage({ ...s, tenantId }); } catch (_e) { /* ignore */ }
+      }
     }
+    // Backfill stageId for orders that don't have one
+    await backfillOrderStageIds(tenantId);
+  }
+
+  async function backfillOrderStageIds(tenantId: string): Promise<void> {
+    try {
+      const stages = await storage.getWorkOrderStages(tenantId);
+      if (stages.length === 0) return;
+      const orders = await storage.getWorkOrders(tenantId, {});
+      const untagged = orders.filter(o => !o.stageId);
+      if (untagged.length === 0) return;
+      for (const order of untagged) {
+        const matchStage = stages.find(s => (s.statuses as string[]).includes(order.status));
+        if (matchStage) {
+          await storage.updateWorkOrder(order.id, tenantId, { stageId: matchStage.id } as any);
+        }
+      }
+    } catch (_e) { /* non-critical */ }
   }
 
   app.get("/api/work-order-stages", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
@@ -11506,6 +11523,7 @@ export async function registerRoutes(
         name: z.string().min(1).max(100).optional(),
         color: z.string().min(1).optional(),
         sortOrder: z.number().int().optional(),
+        isFinal: z.boolean().optional(),
       });
       const updates = schema.parse(req.body);
       const existing = await storage.getWorkOrderStage(req.params.id, tenantId);
@@ -11835,6 +11853,7 @@ export async function registerRoutes(
 
       const woUpdateSchema = z.object({
         status: workOrderStatusEnum.optional(),
+        stageId: z.string().optional(),
         priority: workOrderPriorityEnum.optional(),
         type: z.string().min(1).optional(),
         assignedUserId: z.string().nullable().optional(),
@@ -11859,7 +11878,32 @@ export async function registerRoutes(
         }
       }
 
+      // Derive status from stage if stageId is provided
+      const WO_STATUS_ORDER = ["pendiente", "asignada", "en_proceso", "en_ruta", "completada", "cerrada"];
+      let derivedStatus: string | undefined = updateData.status;
+      if (updateData.stageId && updateData.stageId !== existing.stageId) {
+        const stages = await storage.getWorkOrderStages(tenantId);
+        const targetStage = stages.find(s => s.id === updateData.stageId);
+        if (!targetStage) {
+          return res.status(400).json({ error: "Etapa no encontrada" });
+        }
+        const stageStatuses = (targetStage.statuses as string[]);
+        if (targetStage.isFinal) {
+          derivedStatus = "cerrada";
+        } else if (stageStatuses.length > 0) {
+          // Pick the first valid transition target from this stage, else first status
+          const validTarget = stageStatuses.find(s => {
+            const fromIdx = WO_STATUS_ORDER.indexOf(existing.status);
+            const toIdx = WO_STATUS_ORDER.indexOf(s);
+            return fromIdx !== -1 && toIdx !== -1 && toIdx !== fromIdx;
+          });
+          derivedStatus = validTarget ?? stageStatuses[0];
+        }
+      }
+
       const finalData: Record<string, unknown> = { ...updateData };
+      if (derivedStatus) finalData.status = derivedStatus;
+
       if (finalData.status === "completada" && existing.status !== "completada") {
         finalData.completedAt = new Date();
       }

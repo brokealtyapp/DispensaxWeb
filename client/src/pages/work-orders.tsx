@@ -115,6 +115,7 @@ type WorkOrderStage = {
   name: string;
   color: string;
   sortOrder: number;
+  isFinal: boolean;
   statuses: string[];
   createdAt: string;
 };
@@ -1480,7 +1481,7 @@ function KanbanBoard({
   users: UserInfo[];
   typeLabels: Record<string, string>;
   onSelectOrder: (order: WorkOrder) => void;
-  onMoveStatus: (orderId: string, status: string) => void;
+  onMoveStatus: (orderId: string, status: string, stageId?: string) => void;
   canEdit: boolean;
   canApprove: boolean;
   movingOrderId: string | null;
@@ -1556,7 +1557,7 @@ function KanbanBoard({
     const overId = String(over.id);
     const current = columnOrdersRef.current;
 
-    const overIsColumn = KANBAN_COLUMNS.some((c) => c.id === overId);
+    const overIsColumn = columns.some((c) => c.id === overId);
     const resolvedOverColId = overIsColumn ? overId : findColumnOfItem(current, overId);
     setOverColumnId(resolvedOverColId);
 
@@ -1655,21 +1656,25 @@ function KanbanBoard({
       return;
     }
 
-    const targetStatus = targetCol.statuses[0];
+    // Determine effective target status: use isFinal from stage or first valid status
+    const targetStage = stages.find(s => s.id === targetCol.id);
+    const targetIsFinal = targetStage?.isFinal ?? false;
+    const targetStatus = targetIsFinal ? "cerrada" : (targetCol.statuses[0] ?? "pendiente");
+
     if (!isValidTransition(order.status, targetStatus)) {
       setColumnOrdersSynced(columnOrdersSnapshot.current);
       return;
     }
-    if (targetStatus === "cerrada" && !canApprove) {
+    if (targetIsFinal && !canApprove) {
       setColumnOrdersSynced(columnOrdersSnapshot.current);
       return;
     }
-    if (targetStatus !== "cerrada" && !canEdit) {
+    if (!targetIsFinal && !canEdit) {
       setColumnOrdersSynced(columnOrdersSnapshot.current);
       return;
     }
 
-    onMoveStatus(activeId, targetStatus);
+    onMoveStatus(activeId, targetStatus, targetCol.id);
   }
 
   const isDraggingAny = activeOrder !== null;
@@ -1816,6 +1821,7 @@ export function WorkOrdersPage() {
   const [editingStageId, setEditingStageId] = useState<string | null>(null);
   const [editingStageName, setEditingStageName] = useState("");
   const [editingStageColor, setEditingStageColor] = useState("slate");
+  const [editingStageIsFinal, setEditingStageIsFinal] = useState(false);
   const [activeTemplateTab, setActiveTemplateTab] = useState("tecnico");
   const [newItemLabels, setNewItemLabels] = useState<Record<string, string>>({});
   const [newItemTypes, setNewItemTypes] = useState<Record<string, ChecklistItemType>>({});
@@ -1918,7 +1924,7 @@ export function WorkOrdersPage() {
   });
 
   const updateStageMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; name?: string; color?: string }) => {
+    mutationFn: async ({ id, ...data }: { id: string; name?: string; color?: string; isFinal?: boolean }) => {
       const res = await apiRequest("PATCH", `/api/work-order-stages/${id}`, data);
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Error al actualizar etapa"); }
       return res.json();
@@ -2103,8 +2109,8 @@ export function WorkOrdersPage() {
   useEffect(() => { setOrderPage(1); }, [orderSearch, orderTypeFilter, orderStatusFilter, orderPriorityFilter, orderAssigneeFilter]);
 
   const moveStatusMutation = useMutation({
-    mutationFn: async ({ orderId, status }: { orderId: string; status: string }) => {
-      await apiRequest("PATCH", `/api/work-orders/${orderId}`, { status });
+    mutationFn: async ({ orderId, status, stageId }: { orderId: string; status: string; stageId?: string }) => {
+      await apiRequest("PATCH", `/api/work-orders/${orderId}`, { status, ...(stageId ? { stageId } : {}) });
     },
     onMutate: ({ orderId }) => setMovingOrderId(orderId),
     onSuccess: () => {
@@ -3332,7 +3338,7 @@ export function WorkOrdersPage() {
               users={users}
               typeLabels={typeLabels}
               onSelectOrder={setSelectedOrder}
-              onMoveStatus={(orderId, status) => moveStatusMutation.mutate({ orderId, status })}
+              onMoveStatus={(orderId, status, stageId) => moveStatusMutation.mutate({ orderId, status, stageId })}
               canEdit={can("work_orders", "edit")}
               canApprove={can("work_orders", "approve")}
               movingOrderId={movingOrderId}
@@ -3865,7 +3871,7 @@ export function WorkOrdersPage() {
                       onChange={e => setEditingStageName(e.target.value)}
                       onKeyDown={e => {
                         if (e.key === "Enter" && editingStageName.trim()) {
-                          updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor });
+                          updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal });
                         }
                         if (e.key === "Escape") setEditingStageId(null);
                       }}
@@ -3887,11 +3893,20 @@ export function WorkOrdersPage() {
                         );
                       })}
                     </div>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer" data-testid={`toggle-stage-final-${stage.id}`}>
+                      <input
+                        type="checkbox"
+                        checked={editingStageIsFinal}
+                        onChange={e => setEditingStageIsFinal(e.target.checked)}
+                        className="rounded"
+                      />
+                      <span>Etapa final (requiere permiso de aprobación para mover órdenes aquí)</span>
+                    </label>
                     <div className="flex gap-2">
                       <Button
                         size="sm"
                         disabled={!editingStageName.trim() || updateStageMutation.isPending}
-                        onClick={() => updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor })}
+                        onClick={() => updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal })}
                         data-testid={`button-stage-save-${stage.id}`}
                       >
                         {updateStageMutation.isPending ? "Guardando..." : "Guardar"}
@@ -3905,12 +3920,15 @@ export function WorkOrdersPage() {
                   <>
                     <div className={`h-3 w-3 rounded-full ${STAGE_COLORS[stage.color]?.dotPreview ?? "bg-slate-500"} shrink-0`} />
                     <span className="flex-1 text-sm font-medium truncate">{stage.name}</span>
+                    {stage.isFinal && (
+                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded shrink-0">Final</span>
+                    )}
                     <span className="text-xs text-muted-foreground shrink-0">{(stage.statuses as string[]).length} estado(s)</span>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 shrink-0"
-                      onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); setEditingStageColor(stage.color); }}
+                      onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); setEditingStageColor(stage.color); setEditingStageIsFinal(stage.isFinal ?? false); }}
                       data-testid={`button-stage-edit-${stage.id}`}
                     >
                       <Pencil className="h-3 w-3" />
