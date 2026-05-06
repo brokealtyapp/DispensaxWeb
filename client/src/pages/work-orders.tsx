@@ -1215,6 +1215,13 @@ function formatElapsed(dateStr: string): string {
   return `${Math.floor(hours / 24)}d`;
 }
 
+const PRIORITY_STRIP: Record<string, string> = {
+  critico: "bg-[#E84545]",
+  alto: "bg-orange-500",
+  medio: "bg-amber-400",
+  bajo: "bg-slate-300 dark:bg-slate-600",
+};
+
 function KanbanCard({
   order,
   machines,
@@ -1223,6 +1230,7 @@ function KanbanCard({
   onSelect,
   onAdvance,
   canEdit,
+  canApprove,
   isAdvancing,
 }: {
   order: WorkOrder;
@@ -1232,6 +1240,7 @@ function KanbanCard({
   onSelect: () => void;
   onAdvance?: () => void;
   canEdit: boolean;
+  canApprove: boolean;
   isAdvancing: boolean;
 }) {
   const machine = machines.find((m) => m.id === order.machineId);
@@ -1241,81 +1250,90 @@ function KanbanCard({
   const slaIsOverdue = order.slaStatus === "vencido";
   const slaIsAtRisk = order.slaStatus === "proximo_vencer";
 
+  const canAdvanceToNext =
+    nextStatus &&
+    (order.status === "completada" ? canApprove : canEdit);
+
   return (
     <div
-      className="bg-background border rounded-md p-3 space-y-2 cursor-pointer hover-elevate"
+      className="bg-background border rounded-md cursor-pointer hover-elevate overflow-visible"
       onClick={onSelect}
       data-testid={`kanban-card-${order.id}`}
     >
-      <div className="flex items-start justify-between gap-1">
-        <span className="font-semibold text-sm leading-tight" data-testid={`kanban-order-number-${order.id}`}>
-          {order.orderNumber}
-        </span>
-        <StatusBadge status={order.status} />
-      </div>
+      <div className="flex">
+        <div className={`w-1.5 rounded-l-md shrink-0 ${PRIORITY_STRIP[order.priority] || "bg-slate-300"}`} />
+        <div className="flex-1 p-3 space-y-2 min-w-0">
+          <div className="flex items-start justify-between gap-1">
+            <span className="font-semibold text-sm leading-tight" data-testid={`kanban-order-number-${order.id}`}>
+              {order.orderNumber}
+            </span>
+            <StatusBadge status={order.status} />
+          </div>
 
-      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-        <MapPin className="h-3 w-3 shrink-0" />
-        <span className="truncate">{machine?.name || "—"}</span>
-      </div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <MapPin className="h-3 w-3 shrink-0" />
+            <span className="truncate">{machine?.name || "—"}</span>
+          </div>
 
-      {order.description && (
-        <p className="text-xs text-muted-foreground line-clamp-2">{order.description}</p>
-      )}
+          {order.description && (
+            <p className="text-xs text-muted-foreground line-clamp-2">{order.description}</p>
+          )}
 
-      <div className="flex items-center gap-1 flex-wrap">
-        <Badge variant="outline" className="no-default-hover-elevate no-default-active-elevate text-xs py-0">
-          {typeLabels[order.type] || order.type}
-        </Badge>
-        <PriorityBadge priority={order.priority} />
-      </div>
+          <div className="flex items-center gap-1 flex-wrap">
+            <Badge variant="outline" className="no-default-hover-elevate no-default-active-elevate text-xs py-0">
+              {typeLabels[order.type] || order.type}
+            </Badge>
+            <PriorityBadge priority={order.priority} />
+          </div>
 
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
-          <User className="h-3 w-3 shrink-0" />
-          <span className="truncate">{assignee?.fullName || "Sin asignar"}</span>
-        </div>
-        <div
-          className={`flex items-center gap-1 text-xs shrink-0 ${
-            slaIsOverdue
-              ? "text-red-600 dark:text-red-400 font-medium"
-              : slaIsAtRisk
-              ? "text-amber-600 dark:text-amber-400"
-              : "text-muted-foreground"
-          }`}
-        >
-          {slaIsOverdue ? <AlertTriangle className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
-          <span>{elapsed}</span>
-        </div>
-      </div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+              <User className="h-3 w-3 shrink-0" />
+              <span className="truncate">{assignee?.fullName || "Sin asignar"}</span>
+            </div>
+            <div
+              className={`flex items-center gap-1 text-xs shrink-0 ${
+                slaIsOverdue
+                  ? "text-red-600 dark:text-red-400 font-medium"
+                  : slaIsAtRisk
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-muted-foreground"
+              }`}
+            >
+              {slaIsOverdue ? <AlertTriangle className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+              <span>{elapsed}</span>
+            </div>
+          </div>
 
-      <div className="flex items-center gap-1 pt-1 border-t" onClick={(e) => e.stopPropagation()}>
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={onSelect}
-          data-testid={`kanban-view-${order.id}`}
-          title="Ver detalle"
-        >
-          <Eye className="h-3.5 w-3.5" />
-        </Button>
-        {canEdit && nextStatus && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="flex-1 text-xs"
-            onClick={onAdvance}
-            disabled={isAdvancing}
-            data-testid={`kanban-advance-${order.id}`}
-          >
-            {isAdvancing ? (
-              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-            ) : (
-              <ArrowRight className="h-3 w-3 mr-1" />
+          <div className="flex items-center gap-1 pt-1 border-t" onClick={(e) => e.stopPropagation()}>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={onSelect}
+              data-testid={`kanban-view-${order.id}`}
+              title="Ver detalle"
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
+            {canAdvanceToNext && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 text-xs"
+                onClick={onAdvance}
+                disabled={isAdvancing}
+                data-testid={`kanban-advance-${order.id}`}
+              >
+                {isAdvancing ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <ArrowRight className="h-3 w-3 mr-1" />
+                )}
+                {STATUS_LABELS[nextStatus] || nextStatus}
+              </Button>
             )}
-            {STATUS_LABELS[nextStatus] || nextStatus}
-          </Button>
-        )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1329,6 +1347,7 @@ function KanbanBoard({
   onSelectOrder,
   onMoveStatus,
   canEdit,
+  canApprove,
   movingOrderId,
 }: {
   orders: WorkOrder[];
@@ -1338,6 +1357,7 @@ function KanbanBoard({
   onSelectOrder: (order: WorkOrder) => void;
   onMoveStatus: (orderId: string, status: string) => void;
   canEdit: boolean;
+  canApprove: boolean;
   movingOrderId: string | null;
 }) {
   return (
@@ -1377,6 +1397,7 @@ function KanbanBoard({
                       onSelect={() => onSelectOrder(order)}
                       onAdvance={() => onMoveStatus(order.id, NEXT_STATUS[order.status])}
                       canEdit={canEdit}
+                      canApprove={canApprove}
                       isAdvancing={movingOrderId === order.id}
                     />
                   ))
@@ -2799,6 +2820,7 @@ export function WorkOrdersPage() {
               onSelectOrder={setSelectedOrder}
               onMoveStatus={(orderId, status) => moveStatusMutation.mutate({ orderId, status })}
               canEdit={can("work_orders", "edit")}
+              canApprove={can("work_orders", "approve")}
               movingOrderId={movingOrderId}
             />
           ) : filteredOrders.length === 0 ? (
