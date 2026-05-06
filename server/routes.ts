@@ -11755,6 +11755,30 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/work-orders/reorder", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const schema = z.object({ orderedIds: z.array(z.string().min(1)).min(1) });
+      const { orderedIds } = schema.parse(req.body);
+      const uniqueIds = [...new Set(orderedIds)];
+      if (uniqueIds.length !== orderedIds.length) {
+        return res.status(400).json({ error: "orderedIds contiene duplicados" });
+      }
+      const existing = await storage.getWorkOrders(tenantId, {});
+      const tenantOrderIds = new Set(existing.map((o) => o.id));
+      const invalid = uniqueIds.filter((id) => !tenantOrderIds.has(id));
+      if (invalid.length > 0) {
+        return res.status(400).json({ error: "Algunos IDs no pertenecen a este tenant" });
+      }
+      await storage.reorderWorkOrders(tenantId, uniqueIds);
+      res.json({ success: true });
+    } catch (error) {
+      if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      console.error("Error reordering work orders:", error);
+      res.status(500).json({ error: "Error al reordenar órdenes de trabajo" });
+    }
+  });
+
   app.delete("/api/work-orders/:id", authenticateJWT, authorizeAction("work_orders", "delete"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;

@@ -801,6 +801,7 @@ export interface IStorage {
   getWorkOrderById(id: string): Promise<WorkOrder | undefined>;
   createWorkOrder(data: InsertWorkOrder): Promise<WorkOrder>;
   updateWorkOrder(id: string, data: Partial<InsertWorkOrder>): Promise<WorkOrder | undefined>;
+  reorderWorkOrders(tenantId: string, orderedIds: string[]): Promise<void>;
   deleteWorkOrder(id: string): Promise<boolean>;
   getWorkOrdersByMachine(machineId: string, tenantId: string): Promise<WorkOrder[]>;
   getWorkOrderStats(tenantId: string): Promise<{ byStatus: Record<string, number>; byType: Record<string, number>; bySla: Record<string, number>; slaBreached: number; total: number }>;
@@ -8024,7 +8025,17 @@ export class DatabaseStorage implements IStorage {
     if (filters?.type) conditions.push(eq(workOrders.type, filters.type));
     if (filters?.machineId) conditions.push(eq(workOrders.machineId, filters.machineId));
     if (filters?.assignedUserId) conditions.push(eq(workOrders.assignedUserId, filters.assignedUserId));
-    return db.select().from(workOrders).where(and(...conditions)).orderBy(desc(workOrders.createdAt));
+    return db.select().from(workOrders).where(and(...conditions)).orderBy(asc(workOrders.sortOrder), desc(workOrders.createdAt));
+  }
+
+  async reorderWorkOrders(tenantId: string, orderedIds: string[]): Promise<void> {
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx.update(workOrders)
+          .set({ sortOrder: i, updatedAt: new Date() })
+          .where(and(eq(workOrders.id, orderedIds[i]), eq(workOrders.tenantId, tenantId)));
+      }
+    });
   }
 
   async getWorkOrderById(id: string): Promise<WorkOrder | undefined> {

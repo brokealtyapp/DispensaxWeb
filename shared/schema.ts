@@ -2868,6 +2868,7 @@ export const workOrders = pgTable("work_orders", {
   closedAt: timestamp("closed_at"),
   closedBy: varchar("closed_by").references(() => users.id),
   notes: text("notes"),
+  sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (t) => [uniqueIndex("uq_order_number_tenant").on(t.tenantId, t.orderNumber)]);

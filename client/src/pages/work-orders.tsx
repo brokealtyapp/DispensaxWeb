@@ -163,6 +163,7 @@ interface WorkOrder {
   closedAt: string | null;
   closedBy: string | null;
   notes: string | null;
+  sortOrder: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1479,9 +1480,10 @@ function KanbanBoard({
     setColumnOrders((prev) => {
       const next: Record<string, string[]> = {};
       KANBAN_COLUMNS.forEach((col) => {
-        const newIds = orders
+        const colOrders = orders
           .filter((o) => col.statuses.includes(o.status))
-          .map((o) => o.id);
+          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+        const newIds = colOrders.map((o) => o.id);
         const prevIds = prev[col.id] ?? [];
         const kept = prevIds.filter((id) => newIds.includes(id));
         const added = newIds.filter((id) => !kept.includes(id));
@@ -1561,7 +1563,16 @@ function KanbanBoard({
 
     if (!resolvedOverColId || !activeColId) return;
 
-    if (activeColId === resolvedOverColId) return;
+    if (activeColId === resolvedOverColId) {
+      const currentIds = columnOrders[activeColId] ?? [];
+      const snapshotIds = columnOrdersSnapshot.current[activeColId] ?? [];
+      if (JSON.stringify(currentIds) !== JSON.stringify(snapshotIds)) {
+        apiRequest("PATCH", "/api/work-orders/reorder", { orderedIds: currentIds }).catch(() => {
+          setColumnOrders(columnOrdersSnapshot.current);
+        });
+      }
+      return;
+    }
 
     const targetCol = KANBAN_COLUMNS.find((c) => c.id === resolvedOverColId);
     const order = orders.find((o) => o.id === activeId);
