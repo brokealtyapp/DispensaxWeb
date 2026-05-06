@@ -11475,11 +11475,11 @@ export async function registerRoutes(
     try {
       const tenantId = req.user!.tenantId!;
       await ensureWorkOrderStagesSeed(tenantId);
-      const schema = z.object({ name: z.string().min(1).max(100) });
-      const { name } = schema.parse(req.body);
+      const schema = z.object({ name: z.string().min(1).max(100), color: z.string().min(1).max(50).optional() });
+      const { name, color } = schema.parse(req.body);
       const existing = await storage.getWorkOrderStages(tenantId);
       const sortOrder = existing.length > 0 ? Math.max(...existing.map(s => s.sortOrder ?? 0)) + 1 : 4;
-      const created = await storage.createWorkOrderStage({ tenantId, name, color: "slate", sortOrder, statuses: [] });
+      const created = await storage.createWorkOrderStage({ tenantId, name, color: color ?? "slate", sortOrder, statuses: [] });
       res.status(201).json(created);
     } catch (error) {
       if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });

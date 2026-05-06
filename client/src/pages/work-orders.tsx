@@ -166,6 +166,7 @@ interface WorkOrder {
   type: string;
   priority: string;
   status: string;
+  stageId: string | null;
   assignedUserId: string | null;
   ticketId: string | null;
   description: string | null;
@@ -1786,6 +1787,30 @@ const ITEM_TYPE_META: Record<ChecklistItemType, { label: string; icon: React.Ele
 
 const ITEM_TYPE_OPTIONS: ChecklistItemType[] = ["checkbox", "multiple_choice", "multi_select", "open_question", "numeric", "photo"];
 
+function SortableStageItem({ id, children, ...rest }: { id: string; children: React.ReactNode; [key: string]: unknown }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+      className="flex items-center gap-2 rounded-md border p-2 bg-muted/30"
+      {...(rest as Record<string, unknown>)}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground shrink-0 touch-none"
+        tabIndex={-1}
+        aria-label="Arrastrar para reordenar"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      {children}
+    </div>
+  );
+}
+
 export function WorkOrdersPage() {
   const { user } = useAuth();
   const isAbastecedor = user?.role === "abastecedor";
@@ -1822,6 +1847,7 @@ export function WorkOrdersPage() {
   const [editingStageName, setEditingStageName] = useState("");
   const [editingStageColor, setEditingStageColor] = useState("slate");
   const [editingStageIsFinal, setEditingStageIsFinal] = useState(false);
+  const [newStageColor, setNewStageColor] = useState("slate");
   const [activeTemplateTab, setActiveTemplateTab] = useState("tecnico");
   const [newItemLabels, setNewItemLabels] = useState<Record<string, string>>({});
   const [newItemTypes, setNewItemTypes] = useState<Record<string, ChecklistItemType>>({});
@@ -1908,14 +1934,15 @@ export function WorkOrdersPage() {
   }, [orderTypes, orderTypesAll]);
 
   const createStageMutation = useMutation({
-    mutationFn: async (name: string) => {
-      const res = await apiRequest("POST", "/api/work-order-stages", { name });
+    mutationFn: async ({ name, color }: { name: string; color: string }) => {
+      const res = await apiRequest("POST", "/api/work-order-stages", { name, color });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Error al crear etapa"); }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/work-order-stages"] });
       setNewStageName("");
+      setNewStageColor("slate");
       toast({ title: "Etapa creada" });
     },
     onError: (err: unknown) => {
@@ -2072,6 +2099,15 @@ export function WorkOrdersPage() {
     updateTemplateMutation.mutate({ id: a.id, sortOrder: swapIdx });
     updateTemplateMutation.mutate({ id: b.id, sortOrder: idx });
   };
+
+  const stageOrderCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const o of orders) {
+      const sid = o.stageId || stages.find(s => (s.statuses as string[]).includes(o.status))?.id;
+      if (sid) counts[sid] = (counts[sid] || 0) + 1;
+    }
+    return counts;
+  }, [orders, stages]);
 
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
@@ -3823,155 +3859,160 @@ export function WorkOrdersPage() {
 
       <SimpleModal
         open={showStageSettings}
-        onClose={() => { setShowStageSettings(false); setEditingStageId(null); setNewStageName(""); }}
+        onClose={() => { setShowStageSettings(false); setEditingStageId(null); setNewStageName(""); setNewStageColor("slate"); }}
         title="Gestionar Etapas del Tablero"
         description="Personaliza las columnas del tablero Kanban. Arrastra para reordenar, edita el nombre y el color de cada etapa."
       >
         <div className="space-y-3">
-          {stages.map((stage, idx) => {
-            const isEditing = editingStageId === stage.id;
-            return (
-              <div key={stage.id} className="flex items-center gap-2 rounded-md border p-2 bg-muted/30" data-testid={`stage-item-${stage.id}`}>
-                <div className="flex flex-col gap-0.5">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    disabled={idx === 0 || reorderStagesMutation.isPending}
-                    onClick={() => {
-                      const ids = stages.map(s => s.id);
-                      const tmp = ids[idx]; ids[idx] = ids[idx - 1]; ids[idx - 1] = tmp;
-                      reorderStagesMutation.mutate(ids);
-                    }}
-                    data-testid={`button-stage-up-${stage.id}`}
-                  >
-                    <ChevronUp className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    disabled={idx === stages.length - 1 || reorderStagesMutation.isPending}
-                    onClick={() => {
-                      const ids = stages.map(s => s.id);
-                      const tmp = ids[idx]; ids[idx] = ids[idx + 1]; ids[idx + 1] = tmp;
-                      reorderStagesMutation.mutate(ids);
-                    }}
-                    data-testid={`button-stage-down-${stage.id}`}
-                  >
-                    <ChevronDown className="h-3 w-3" />
-                  </Button>
-                </div>
-
-                {isEditing ? (
-                  <div className="flex-1 space-y-2">
-                    <input
-                      className="w-full rounded-md border bg-background px-2 py-1 text-sm"
-                      value={editingStageName}
-                      onChange={e => setEditingStageName(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === "Enter" && editingStageName.trim()) {
-                          updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal });
-                        }
-                        if (e.key === "Escape") setEditingStageId(null);
-                      }}
-                      autoFocus
-                      data-testid={`input-stage-name-${stage.id}`}
-                    />
-                    <div className="flex gap-1.5 flex-wrap">
-                      {STAGE_COLOR_OPTIONS.map(c => {
-                        const meta = STAGE_COLORS[c];
-                        return (
-                          <button
-                            key={c}
-                            type="button"
-                            title={STAGE_COLOR_LABELS[c]}
-                            className={`h-5 w-5 rounded-full ${meta.dotPreview} ring-offset-1 ${editingStageColor === c ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-muted-foreground"}`}
-                            onClick={() => setEditingStageColor(c)}
-                            data-testid={`color-swatch-${c}`}
+          <DndContext
+            sensors={useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))}
+            onDragEnd={(event: DragEndEvent) => {
+              const { active, over } = event;
+              if (!over || active.id === over.id) return;
+              const ids = stages.map(s => s.id);
+              const oldIdx = ids.indexOf(String(active.id));
+              const newIdx = ids.indexOf(String(over.id));
+              if (oldIdx !== -1 && newIdx !== -1) {
+                reorderStagesMutation.mutate(arrayMove(ids, oldIdx, newIdx));
+              }
+            }}
+          >
+            <SortableContext items={stages.map(s => s.id)} strategy={verticalListSortingStrategy}>
+              {stages.map((stage) => {
+                const isEditing = editingStageId === stage.id;
+                const orderCount = stageOrderCounts[stage.id] ?? 0;
+                const canDelete = stages.length > 1 && orderCount === 0;
+                return (
+                  <SortableStageItem key={stage.id} id={stage.id} data-testid={`stage-item-${stage.id}`}>
+                    {isEditing ? (
+                      <div className="flex-1 space-y-2">
+                        <input
+                          className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                          value={editingStageName}
+                          onChange={e => setEditingStageName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && editingStageName.trim()) {
+                              updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal });
+                            }
+                            if (e.key === "Escape") setEditingStageId(null);
+                          }}
+                          autoFocus
+                          data-testid={`input-stage-name-${stage.id}`}
+                        />
+                        <div className="flex gap-1.5 flex-wrap">
+                          {STAGE_COLOR_OPTIONS.map(c => {
+                            const meta = STAGE_COLORS[c];
+                            return (
+                              <button
+                                key={c}
+                                type="button"
+                                title={STAGE_COLOR_LABELS[c]}
+                                className={`h-5 w-5 rounded-full ${meta.dotPreview} ring-offset-1 ${editingStageColor === c ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-muted-foreground"}`}
+                                onClick={() => setEditingStageColor(c)}
+                                data-testid={`color-swatch-edit-${c}`}
+                              />
+                            );
+                          })}
+                        </div>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer" data-testid={`toggle-stage-final-${stage.id}`}>
+                          <input
+                            type="checkbox"
+                            checked={editingStageIsFinal}
+                            onChange={e => setEditingStageIsFinal(e.target.checked)}
+                            className="rounded"
                           />
-                        );
-                      })}
-                    </div>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer" data-testid={`toggle-stage-final-${stage.id}`}>
-                      <input
-                        type="checkbox"
-                        checked={editingStageIsFinal}
-                        onChange={e => setEditingStageIsFinal(e.target.checked)}
-                        className="rounded"
-                      />
-                      <span>Etapa final (requiere permiso de aprobación para mover órdenes aquí)</span>
-                    </label>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        disabled={!editingStageName.trim() || updateStageMutation.isPending}
-                        onClick={() => updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal })}
-                        data-testid={`button-stage-save-${stage.id}`}
-                      >
-                        {updateStageMutation.isPending ? "Guardando..." : "Guardar"}
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setEditingStageId(null)} data-testid={`button-stage-cancel-${stage.id}`}>
-                        Cancelar
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className={`h-3 w-3 rounded-full ${STAGE_COLORS[stage.color]?.dotPreview ?? "bg-slate-500"} shrink-0`} />
-                    <span className="flex-1 text-sm font-medium truncate">{stage.name}</span>
-                    {stage.isFinal && (
-                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded shrink-0">Final</span>
+                          <span>Etapa final (requiere permiso de aprobación para mover órdenes aquí)</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            disabled={!editingStageName.trim() || updateStageMutation.isPending}
+                            onClick={() => updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal })}
+                            data-testid={`button-stage-save-${stage.id}`}
+                          >
+                            {updateStageMutation.isPending ? "Guardando..." : "Guardar"}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingStageId(null)} data-testid={`button-stage-cancel-${stage.id}`}>
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className={`h-3 w-3 rounded-full ${STAGE_COLORS[stage.color]?.dotPreview ?? "bg-slate-500"} shrink-0`} />
+                        <span className="flex-1 text-sm font-medium truncate">{stage.name}</span>
+                        {stage.isFinal && (
+                          <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded shrink-0">Final</span>
+                        )}
+                        <span className="text-xs text-muted-foreground shrink-0">{orderCount > 0 ? `${orderCount} orden(es)` : "vacía"}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); setEditingStageColor(stage.color); setEditingStageIsFinal(stage.isFinal ?? false); }}
+                          data-testid={`button-stage-edit-${stage.id}`}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 text-destructive"
+                          disabled={!canDelete || deleteStageMutation.isPending}
+                          onClick={() => deleteStageMutation.mutate(stage.id)}
+                          title={!canDelete ? (stages.length <= 1 ? "Debe existir al menos una etapa" : `Etapa con ${orderCount} orden(es) activa(s)`) : "Eliminar etapa"}
+                          data-testid={`button-stage-delete-${stage.id}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </>
                     )}
-                    <span className="text-xs text-muted-foreground shrink-0">{(stage.statuses as string[]).length} estado(s)</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0"
-                      onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); setEditingStageColor(stage.color); setEditingStageIsFinal(stage.isFinal ?? false); }}
-                      data-testid={`button-stage-edit-${stage.id}`}
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0 text-destructive"
-                      disabled={stages.length <= 1 || deleteStageMutation.isPending}
-                      onClick={() => deleteStageMutation.mutate(stage.id)}
-                      title={stages.length <= 1 ? "Debe existir al menos una etapa" : "Eliminar etapa"}
-                      data-testid={`button-stage-delete-${stage.id}`}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </>
-                )}
-              </div>
-            );
-          })}
+                  </SortableStageItem>
+                );
+              })}
+            </SortableContext>
+          </DndContext>
 
-          <div className="flex gap-2 pt-1">
-            <input
-              className="flex-1 rounded-md border bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground"
-              placeholder="Nombre de nueva etapa..."
-              value={newStageName}
-              onChange={e => setNewStageName(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === "Enter" && newStageName.trim()) {
-                  createStageMutation.mutate(newStageName.trim());
-                }
-              }}
-              data-testid="input-new-stage-name"
-            />
-            <Button
-              size="sm"
-              disabled={!newStageName.trim() || createStageMutation.isPending}
-              onClick={() => createStageMutation.mutate(newStageName.trim())}
-              data-testid="button-add-stage"
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              {createStageMutation.isPending ? "Creando..." : "Agregar"}
-            </Button>
+          <div className="flex flex-col gap-2 pt-1 rounded-md border p-2 bg-muted/20">
+            <p className="text-xs font-medium text-muted-foreground">Nueva etapa</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {STAGE_COLOR_OPTIONS.map(c => {
+                const meta = STAGE_COLORS[c];
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    title={STAGE_COLOR_LABELS[c]}
+                    className={`h-5 w-5 rounded-full ${meta.dotPreview} ring-offset-1 ${newStageColor === c ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-muted-foreground"}`}
+                    onClick={() => setNewStageColor(c)}
+                    data-testid={`color-swatch-new-${c}`}
+                  />
+                );
+              })}
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 rounded-md border bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground"
+                placeholder="Nombre de nueva etapa..."
+                value={newStageName}
+                onChange={e => setNewStageName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && newStageName.trim()) {
+                    createStageMutation.mutate({ name: newStageName.trim(), color: newStageColor });
+                  }
+                }}
+                data-testid="input-new-stage-name"
+              />
+              <Button
+                size="sm"
+                disabled={!newStageName.trim() || createStageMutation.isPending}
+                onClick={() => createStageMutation.mutate({ name: newStageName.trim(), color: newStageColor })}
+                data-testid="button-add-stage"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                {createStageMutation.isPending ? "Creando..." : "Agregar"}
+              </Button>
+            </div>
           </div>
 
           <p className="text-xs text-muted-foreground pt-1">
