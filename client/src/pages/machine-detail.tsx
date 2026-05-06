@@ -61,6 +61,7 @@ import {
   Copy,
   Settings as SettingsIcon,
   Grid3x3,
+  ClipboardList,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -209,7 +210,7 @@ export function MachineDetailPage() {
   
   const searchParams = new URLSearchParams(searchString);
   const tabFromUrl = searchParams.get("tab");
-  const validTabs = ["servicio", "inventario", "alertas", "visitas", "ventas"];
+  const validTabs = ["servicio", "inventario", "alertas", "visitas", "ventas", "ordenes"];
   const initialTab = tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : "servicio";
   const [activeTab, setActiveTab] = useState(initialTab);
   
@@ -229,6 +230,22 @@ export function MachineDetailPage() {
       setActiveTab(tabFromUrl);
     }
   }, [tabFromUrl]);
+
+  type MachineWorkOrder = {
+    id: string; orderNumber: string; type: string; priority: string;
+    status: string; slaStatus: string | null; slaDeadline: string | null;
+    assignedUserId: string | null; createdAt: string;
+  };
+
+  const { data: machineOrders = [] } = useQuery<MachineWorkOrder[]>({
+    queryKey: ["/api/work-orders", { machineId: machineId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/work-orders?machineId=${machineId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error al cargar órdenes");
+      return res.json();
+    },
+    enabled: !!machineId && activeTab === "ordenes",
+  });
   
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -1223,6 +1240,10 @@ export function MachineDetailPage() {
             <DollarSign className="h-4 w-4 mr-2" />
             Ventas
           </TabsTrigger>
+          <TabsTrigger value="ordenes" data-testid="tab-orders">
+            <ClipboardList className="h-4 w-4 mr-2" />
+            Órdenes {machineOrders.filter(o => !["cerrada","cancelada"].includes(o.status)).length > 0 && `(${machineOrders.filter(o => !["cerrada","cancelada"].includes(o.status)).length})`}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="servicio" className="mt-4">
@@ -2016,6 +2037,69 @@ export function MachineDetailPage() {
                   <p className="text-2xl font-bold">{formatCurrency(machine.salesSummary?.month || 0)}</p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ordenes" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="h-5 w-5" />
+                Órdenes de Trabajo
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {machineOrders.length === 0 ? (
+                <div className="text-center py-8">
+                  <ClipboardList className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">Sin órdenes de trabajo para esta máquina</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {machineOrders.map((order) => {
+                    const priorityColors: Record<string, string> = {
+                      critica: "bg-red-500", alta: "bg-orange-500",
+                      media: "bg-yellow-500", baja: "bg-blue-500",
+                    };
+                    const statusLabels: Record<string, string> = {
+                      pendiente: "Pendiente", asignada: "Asignada", en_proceso: "En proceso",
+                      en_ruta: "En ruta", completada: "Completada", cerrada: "Cerrada", cancelada: "Cancelada",
+                    };
+                    const slaLabels: Record<string, string> = {
+                      dentro_tiempo: "A tiempo", proximo_vencer: "Por vencer", vencido: "Vencido",
+                    };
+                    const slaColors: Record<string, string> = {
+                      dentro_tiempo: "text-green-600", proximo_vencer: "text-orange-600", vencido: "text-red-600",
+                    };
+                    return (
+                      <div
+                        key={order.id}
+                        className="flex items-center gap-3 p-3 rounded-md border hover-elevate cursor-pointer"
+                        data-testid={`row-machine-order-${order.id}`}
+                        onClick={() => navigate(`/ordenes-trabajo?search=${order.orderNumber}`)}
+                      >
+                        <div className={`w-1.5 h-10 rounded-full shrink-0 ${priorityColors[order.priority] || "bg-muted"}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">{order.orderNumber}</span>
+                            <Badge variant="secondary" className="text-xs no-default-hover-elevate no-default-active-elevate">{order.type}</Badge>
+                            <Badge variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">{statusLabels[order.status] || order.status}</Badge>
+                          </div>
+                          {order.slaStatus && (
+                            <p className={`text-xs mt-0.5 ${slaColors[order.slaStatus] || ""}`}>
+                              SLA: {slaLabels[order.slaStatus] || order.slaStatus}
+                            </p>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground shrink-0">
+                          {new Date(order.createdAt).toLocaleDateString("es-DO")}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

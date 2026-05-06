@@ -11831,7 +11831,11 @@ export async function registerRoutes(
       const allItems = await storage.getChecklistItems(order.id);
       const targetItem = allItems.find((i) => i.id === req.params.itemId);
 
-      const itype = targetItem?.itemType ?? "checkbox";
+      if (!targetItem) {
+        return res.status(404).json({ error: "Ítem de checklist no encontrado" });
+      }
+
+      const itype = targetItem.itemType;
       const requiresPhoto = targetItem?.requiresPhoto || itype === "photo";
 
       if (parsedChecklist.answer !== undefined) {
@@ -11930,6 +11934,11 @@ export async function registerRoutes(
       const allChecklistItems = await storage.getChecklistItems(order.id);
       const checklistItem = allChecklistItems.find((i) => i.id === req.params.itemId);
       if (!checklistItem) return res.status(404).json({ error: "Item del checklist no encontrado" });
+
+      // Validate that item type accepts photos
+      if (checklistItem.itemType !== "photo" && !checklistItem.requiresPhoto) {
+        return res.status(400).json({ error: "Este ítem no requiere foto" });
+      }
 
       // Allow replacement when ?replace=true; otherwise reject if photo exists
       const isReplace = req.query.replace === "true";

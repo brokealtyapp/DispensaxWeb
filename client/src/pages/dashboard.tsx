@@ -15,7 +15,8 @@ import {
   Plus, MoreHorizontal, Check, Box, AlertTriangle, TrendingUp, Users, Loader2,
   Route, Warehouse, DollarSign, Wallet, ShoppingCart, Fuel, UserCheck, FileText,
   Package, Clock, ArrowUpRight, ArrowDownRight, Truck, CircleDollarSign, MapPin,
-  CheckCircle2, XCircle, BarChart3, Calendar, ChevronLeft, ChevronRight, PanelRightClose, PanelRightOpen
+  CheckCircle2, XCircle, BarChart3, Calendar, ChevronLeft, ChevronRight, PanelRightClose, PanelRightOpen,
+  ClipboardList,
 } from "lucide-react";
 import { Link } from "wouter";
 import type { Task, Machine } from "@shared/schema";
@@ -210,6 +211,18 @@ export function DashboardPage() {
 
   const { data: machinesSummary } = useQuery<SummaryMachines>({
     queryKey: ["/api/summary/machines"],
+  });
+
+  interface WOStats {
+    byStatus: Record<string, number>;
+    byType: Record<string, number>;
+    bySla: Record<string, number>;
+    slaBreached: number;
+    total: number;
+  }
+
+  const { data: woStats } = useQuery<WOStats>({
+    queryKey: ["/api/work-orders/stats"],
   });
 
   const toggleTaskMutation = useMutation({
@@ -675,6 +688,44 @@ export function DashboardPage() {
                 </CardContent>
               </Card>
             </Link>
+
+            {woStats && (
+              <Link href="/ordenes-trabajo">
+                <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-work-orders">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="h-10 w-10 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                        <ClipboardList className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold">Órdenes de Trabajo</h3>
+                        <p className="text-xs text-muted-foreground">{woStats.total} en total</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Pendientes</span>
+                        <span className="font-medium">
+                          {(woStats.byStatus?.pendiente || 0) + (woStats.byStatus?.asignada || 0)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">En proceso</span>
+                        <span className="font-medium text-blue-600">
+                          {(woStats.byStatus?.en_proceso || 0) + (woStats.byStatus?.en_ruta || 0)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">SLA vencidas</span>
+                        <span className={`font-medium ${woStats.slaBreached > 0 ? "text-red-600" : "text-green-600"}`}>
+                          {woStats.slaBreached}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
 
             <Card className="h-full" data-testid="widget-reports">
               <CardContent className="p-4">
