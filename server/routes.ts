@@ -11737,7 +11737,7 @@ export async function registerRoutes(
         finalData.completedAt = new Date();
       }
       if (finalData.status === "cerrada" && existing.status !== "cerrada") {
-        if (!checkPermission(req, "work_orders", "approve")) {
+        if (!req.user!.isSuperAdmin && !checkPermission(req, "work_orders", "approve")) {
           return res.status(403).json({ error: "Se requiere permiso de aprobación para cerrar órdenes" });
         }
         finalData.closedAt = new Date();
