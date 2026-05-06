@@ -122,7 +122,9 @@ import {
   workOrders as workOrdersTable,
   workOrderChecklistItems as workOrderChecklistItemsTable,
   workOrderChecklistTemplates as workOrderChecklistTemplatesTable,
+  workOrderStages as workOrderStagesTable,
   type TrayAudit,
+  type WorkOrderStage,
 } from "@shared/schema";
 import { z, ZodError } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection, enqueueLaneChangeForNayax, syncNayaxSalesForTenant, categorizePaymentMethod } from "./nayax";
@@ -11418,6 +11420,131 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting work order type:", error);
       res.status(500).json({ error: "Error al eliminar tipo de orden" });
+    }
+  });
+
+  // --- Work Order Stages CRUD ---
+
+  const DEFAULT_WORK_ORDER_STAGES: Array<{ name: string; color: string; sortOrder: number; statuses: string[] }> = [
+    { name: "Nuevo", color: "slate", sortOrder: 0, statuses: ["pendiente", "asignada"] },
+    { name: "En Progreso", color: "amber", sortOrder: 1, statuses: ["en_proceso", "en_ruta"] },
+    { name: "Terminado", color: "green", sortOrder: 2, statuses: ["completada"] },
+    { name: "Verificado", color: "red", sortOrder: 3, statuses: ["cerrada"] },
+  ];
+
+  async function ensureWorkOrderStagesSeed(tenantId: string): Promise<void> {
+    const existing = await storage.getWorkOrderStages(tenantId);
+    if (existing.length > 0) return;
+    for (const s of DEFAULT_WORK_ORDER_STAGES) {
+      try {
+        await storage.createWorkOrderStage({ ...s, tenantId });
+      } catch (_e) { /* ignore */ }
+    }
+  }
+
+  app.get("/api/work-order-stages", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      await ensureWorkOrderStagesSeed(tenantId);
+      const stages = await storage.getWorkOrderStages(tenantId);
+      res.json(stages);
+    } catch (error) {
+      console.error("Error fetching work order stages:", error);
+      res.status(500).json({ error: "Error al obtener etapas" });
+    }
+  });
+
+  app.post("/api/work-order-stages", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
+        return res.status(403).json({ error: "Solo administradores pueden gestionar etapas" });
+      }
+      const tenantId = req.user!.tenantId!;
+      await ensureWorkOrderStagesSeed(tenantId);
+      const schema = z.object({ name: z.string().min(1).max(100) });
+      const { name } = schema.parse(req.body);
+      const existing = await storage.getWorkOrderStages(tenantId);
+      const sortOrder = existing.length > 0 ? Math.max(...existing.map(s => s.sortOrder ?? 0)) + 1 : 4;
+      const created = await storage.createWorkOrderStage({ tenantId, name, color: "slate", sortOrder, statuses: [] });
+      res.status(201).json(created);
+    } catch (error) {
+      if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      console.error("Error creating work order stage:", error);
+      res.status(500).json({ error: "Error al crear etapa" });
+    }
+  });
+
+  app.patch("/api/work-order-stages/reorder", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
+        return res.status(403).json({ error: "Solo administradores pueden reordenar etapas" });
+      }
+      const tenantId = req.user!.tenantId!;
+      const schema = z.object({ orderedIds: z.array(z.string().min(1)).min(1) });
+      const { orderedIds } = schema.parse(req.body);
+      const existing = await storage.getWorkOrderStages(tenantId);
+      const stageIds = new Set(existing.map(s => s.id));
+      if (!orderedIds.every(id => stageIds.has(id))) {
+        return res.status(400).json({ error: "IDs inválidos" });
+      }
+      await Promise.all(orderedIds.map((id, idx) => storage.updateWorkOrderStage(id, tenantId, { sortOrder: idx })));
+      res.json({ success: true });
+    } catch (error) {
+      if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      console.error("Error reordering work order stages:", error);
+      res.status(500).json({ error: "Error al reordenar etapas" });
+    }
+  });
+
+  app.patch("/api/work-order-stages/:id", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
+        return res.status(403).json({ error: "Solo administradores pueden gestionar etapas" });
+      }
+      const tenantId = req.user!.tenantId!;
+      const schema = z.object({
+        name: z.string().min(1).max(100).optional(),
+        color: z.string().min(1).optional(),
+        sortOrder: z.number().int().optional(),
+      });
+      const updates = schema.parse(req.body);
+      const existing = await storage.getWorkOrderStage(req.params.id, tenantId);
+      if (!existing) return res.status(404).json({ error: "Etapa no encontrada" });
+      const updated = await storage.updateWorkOrderStage(req.params.id, tenantId, updates);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof ZodError) return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      console.error("Error updating work order stage:", error);
+      res.status(500).json({ error: "Error al actualizar etapa" });
+    }
+  });
+
+  app.delete("/api/work-order-stages/:id", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (req.user!.role !== "admin" && !req.user!.isSuperAdmin) {
+        return res.status(403).json({ error: "Solo administradores pueden gestionar etapas" });
+      }
+      const tenantId = req.user!.tenantId!;
+      const existing = await storage.getWorkOrderStage(req.params.id, tenantId);
+      if (!existing) return res.status(404).json({ error: "Etapa no encontrada" });
+      const allStages = await storage.getWorkOrderStages(tenantId);
+      if (allStages.length <= 1) {
+        return res.status(409).json({ error: "Debe existir al menos una etapa" });
+      }
+      const stageStatuses = (existing.statuses as string[]) ?? [];
+      if (stageStatuses.length > 0) {
+        const orders = await storage.getWorkOrders(tenantId, {});
+        const statusSet = new Set(stageStatuses);
+        const blocked = orders.some(o => statusSet.has(o.status));
+        if (blocked) {
+          return res.status(409).json({ error: "No se puede eliminar: existen órdenes activas en esta etapa" });
+        }
+      }
+      await storage.deleteWorkOrderStage(req.params.id, tenantId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting work order stage:", error);
+      res.status(500).json({ error: "Error al eliminar etapa" });
     }
   });
 

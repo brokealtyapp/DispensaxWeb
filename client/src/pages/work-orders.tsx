@@ -77,6 +77,7 @@ import {
   ImageIcon,
   List,
   LayoutGrid,
+  Layers,
 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -105,6 +106,16 @@ type WorkOrderType = {
   isActive: boolean;
   isDefault: boolean;
   sortOrder: number;
+  createdAt: string;
+};
+
+type WorkOrderStage = {
+  id: string;
+  tenantId: string;
+  name: string;
+  color: string;
+  sortOrder: number;
+  statuses: string[];
   createdAt: string;
 };
 
@@ -1193,47 +1204,48 @@ function isValidTransition(from: string, to: string): boolean {
   return fromIdx !== -1 && toIdx !== -1 && toIdx !== fromIdx && fromIdx !== closedIdx;
 }
 
-const KANBAN_COLUMNS: Array<{
+const STAGE_COLOR_OPTIONS = ["slate", "amber", "green", "red", "blue", "violet", "orange", "pink"] as const;
+const STAGE_COLOR_LABELS: Record<string, string> = {
+  slate: "Gris",
+  amber: "Ámbar",
+  green: "Verde",
+  red: "Rojo",
+  blue: "Azul",
+  violet: "Violeta",
+  orange: "Naranja",
+  pink: "Rosa",
+};
+const STAGE_COLORS: Record<string, { headerClass: string; countClass: string; dotClass: string; dotPreview: string }> = {
+  slate:  { headerClass: "bg-slate-100 dark:bg-slate-800/60",   countClass: "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300",         dotClass: "bg-slate-500",    dotPreview: "bg-slate-500" },
+  amber:  { headerClass: "bg-amber-50 dark:bg-amber-900/20",    countClass: "bg-amber-100 dark:bg-amber-800/40 text-amber-700 dark:text-amber-300",       dotClass: "bg-amber-500",    dotPreview: "bg-amber-400" },
+  green:  { headerClass: "bg-green-50 dark:bg-green-900/20",    countClass: "bg-green-100 dark:bg-green-800/40 text-green-700 dark:text-green-300",       dotClass: "bg-green-500",    dotPreview: "bg-green-500" },
+  red:    { headerClass: "bg-red-50 dark:bg-red-900/20",        countClass: "bg-red-100 dark:bg-red-900/30 text-[#E84545] dark:text-red-400",            dotClass: "bg-[#E84545]",   dotPreview: "bg-red-500" },
+  blue:   { headerClass: "bg-blue-50 dark:bg-blue-900/20",      countClass: "bg-blue-100 dark:bg-blue-800/40 text-blue-700 dark:text-blue-300",           dotClass: "bg-blue-500",     dotPreview: "bg-blue-500" },
+  violet: { headerClass: "bg-violet-50 dark:bg-violet-900/20",  countClass: "bg-violet-100 dark:bg-violet-800/40 text-violet-700 dark:text-violet-300",   dotClass: "bg-violet-500",   dotPreview: "bg-violet-500" },
+  orange: { headerClass: "bg-orange-50 dark:bg-orange-900/20",  countClass: "bg-orange-100 dark:bg-orange-800/40 text-orange-700 dark:text-orange-300",   dotClass: "bg-orange-500",   dotPreview: "bg-orange-500" },
+  pink:   { headerClass: "bg-pink-50 dark:bg-pink-900/20",      countClass: "bg-pink-100 dark:bg-pink-800/40 text-pink-700 dark:text-pink-300",           dotClass: "bg-pink-500",     dotPreview: "bg-pink-500" },
+};
+
+type KanbanColumn = {
   id: string;
   label: string;
   statuses: string[];
   headerClass: string;
   countClass: string;
   dotClass: string;
-}> = [
-  {
-    id: "nuevo",
-    label: "Nuevo",
-    statuses: ["pendiente", "asignada"],
-    headerClass: "bg-slate-100 dark:bg-slate-800/60",
-    countClass: "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300",
-    dotClass: "bg-slate-500",
-  },
-  {
-    id: "en_progreso",
-    label: "En Progreso",
-    statuses: ["en_proceso", "en_ruta"],
-    headerClass: "bg-amber-50 dark:bg-amber-900/20",
-    countClass: "bg-amber-100 dark:bg-amber-800/40 text-amber-700 dark:text-amber-300",
-    dotClass: "bg-amber-500",
-  },
-  {
-    id: "terminado",
-    label: "Terminado",
-    statuses: ["completada"],
-    headerClass: "bg-green-50 dark:bg-green-900/20",
-    countClass: "bg-green-100 dark:bg-green-800/40 text-green-700 dark:text-green-300",
-    dotClass: "bg-green-500",
-  },
-  {
-    id: "verificado",
-    label: "Verificado",
-    statuses: ["cerrada"],
-    headerClass: "bg-red-50 dark:bg-red-900/20",
-    countClass: "bg-red-100 dark:bg-red-900/30 text-[#E84545] dark:text-red-400",
-    dotClass: "bg-[#E84545]",
-  },
-];
+};
+
+function stageToColumn(stage: WorkOrderStage): KanbanColumn {
+  const colorMeta = STAGE_COLORS[stage.color] ?? STAGE_COLORS.slate;
+  return {
+    id: stage.id,
+    label: stage.name,
+    statuses: stage.statuses,
+    headerClass: colorMeta.headerClass,
+    countClass: colorMeta.countClass,
+    dotClass: colorMeta.dotClass,
+  };
+}
 
 function formatElapsed(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -1433,7 +1445,7 @@ function DroppableColumn({
   isOver,
   isActive,
 }: {
-  col: typeof KANBAN_COLUMNS[number];
+  col: KanbanColumn;
   children: React.ReactNode;
   isOver: boolean;
   isActive: boolean;
@@ -1461,6 +1473,7 @@ function KanbanBoard({
   canEdit,
   canApprove,
   movingOrderId,
+  stages,
 }: {
   orders: WorkOrder[];
   machines: Machine[];
@@ -1471,12 +1484,15 @@ function KanbanBoard({
   canEdit: boolean;
   canApprove: boolean;
   movingOrderId: string | null;
+  stages: WorkOrderStage[];
 }) {
   const [activeOrder, setActiveOrder] = useState<WorkOrder | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [columnOrders, setColumnOrders] = useState<Record<string, string[]>>({});
   const columnOrdersRef = useRef<Record<string, string[]>>({});
   const columnOrdersSnapshot = useRef<Record<string, string[]>>({});
+
+  const columns = useMemo(() => stages.map(stageToColumn), [stages]);
 
   // Keep ref in sync with state so event handlers always read the latest value
   // even if dnd-kit calls the handler via a stale closure.
@@ -1491,7 +1507,7 @@ function KanbanBoard({
   useEffect(() => {
     setColumnOrdersSynced((prev) => {
       const next: Record<string, string[]> = {};
-      KANBAN_COLUMNS.forEach((col) => {
+      columns.forEach((col) => {
         const colOrders = orders
           .filter((o) => col.statuses.includes(o.status))
           .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -1503,7 +1519,7 @@ function KanbanBoard({
       });
       return next;
     });
-  }, [orders]);
+  }, [orders, columns]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -1511,7 +1527,7 @@ function KanbanBoard({
   );
 
   function findColumnOfItem(colMap: Record<string, string[]>, itemId: string): string | null {
-    for (const col of KANBAN_COLUMNS) {
+    for (const col of columns) {
       if ((colMap[col.id] ?? []).includes(itemId)) return col.id;
     }
     return null;
@@ -1605,7 +1621,7 @@ function KanbanBoard({
 
     // Determine the original column from the snapshot (before any drag-over moves)
     const originalColId =
-      KANBAN_COLUMNS.find((col) =>
+      columns.find((col) =>
         (columnOrdersSnapshot.current[col.id] ?? []).includes(activeId)
       )?.id ?? null;
 
@@ -1627,7 +1643,7 @@ function KanbanBoard({
     }
 
     // Cross-column move: validate the status transition
-    const targetCol = KANBAN_COLUMNS.find((c) => c.id === currentColId);
+    const targetCol = columns.find((c) => c.id === currentColId);
     const order = orders.find((o) => o.id === activeId);
     if (!targetCol || !order) {
       setColumnOrdersSynced(columnOrdersSnapshot.current);
@@ -1668,7 +1684,7 @@ function KanbanBoard({
     >
       <div className="overflow-x-auto pb-4" data-testid="kanban-board">
         <div className="flex gap-3 min-w-max">
-          {KANBAN_COLUMNS.map((col) => {
+          {columns.map((col) => {
             const colIds = columnOrders[col.id] ?? [];
             const colOrders = colIds
               .map((id) => orders.find((o) => o.id === id))
@@ -1795,6 +1811,11 @@ export function WorkOrdersPage() {
   const [ticketPage, setTicketPage] = useState(1);
   const [reassignUserId, setReassignUserId] = useState("");
   const [showChecklistSettings, setShowChecklistSettings] = useState(false);
+  const [showStageSettings, setShowStageSettings] = useState(false);
+  const [newStageName, setNewStageName] = useState("");
+  const [editingStageId, setEditingStageId] = useState<string | null>(null);
+  const [editingStageName, setEditingStageName] = useState("");
+  const [editingStageColor, setEditingStageColor] = useState("slate");
   const [activeTemplateTab, setActiveTemplateTab] = useState("tecnico");
   const [newItemLabels, setNewItemLabels] = useState<Record<string, string>>({});
   const [newItemTypes, setNewItemTypes] = useState<Record<string, ChecklistItemType>>({});
@@ -1868,12 +1889,78 @@ export function WorkOrdersPage() {
     staleTime: 60000,
   });
 
+  const { data: stages = [] } = useQuery<WorkOrderStage[]>({
+    queryKey: ["/api/work-order-stages"],
+    staleTime: 30000,
+  });
+
   const typeLabels = useMemo<Record<string, string>>(() => {
     const map: Record<string, string> = {};
     for (const t of orderTypes) map[t.key] = t.label;
     for (const t of orderTypesAll) if (!map[t.key]) map[t.key] = t.label;
     return map;
   }, [orderTypes, orderTypesAll]);
+
+  const createStageMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", "/api/work-order-stages", { name });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Error al crear etapa"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-order-stages"] });
+      setNewStageName("");
+      toast({ title: "Etapa creada" });
+    },
+    onError: (err: unknown) => {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "No se pudo crear la etapa", variant: "destructive" });
+    },
+  });
+
+  const updateStageMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; name?: string; color?: string }) => {
+      const res = await apiRequest("PATCH", `/api/work-order-stages/${id}`, data);
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Error al actualizar etapa"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-order-stages"] });
+      setEditingStageId(null);
+      toast({ title: "Etapa actualizada" });
+    },
+    onError: (err: unknown) => {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "No se pudo actualizar la etapa", variant: "destructive" });
+    },
+  });
+
+  const deleteStageMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/work-order-stages/${id}`);
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Error al eliminar etapa"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-order-stages"] });
+      toast({ title: "Etapa eliminada" });
+    },
+    onError: (err: unknown) => {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "No se pudo eliminar la etapa", variant: "destructive" });
+    },
+  });
+
+  const reorderStagesMutation = useMutation({
+    mutationFn: async (orderedIds: string[]) => {
+      const res = await apiRequest("PATCH", "/api/work-order-stages/reorder", { orderedIds });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Error al reordenar"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/work-order-stages"] });
+    },
+    onError: (err: unknown) => {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "No se pudo reordenar", variant: "destructive" });
+    },
+  });
 
   const createTypeMutation = useMutation({
     mutationFn: async (label: string) => {
@@ -3159,6 +3246,17 @@ export function WorkOrdersPage() {
                 <LayoutGrid className="h-4 w-4" />
               </Button>
             </div>
+            {viewMode === "kanban" && can("work_orders", "edit") && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setShowStageSettings(true)}
+                title="Gestionar etapas del tablero"
+                data-testid="button-stage-settings"
+              >
+                <Layers className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               variant="outline"
               size="icon"
@@ -3238,6 +3336,7 @@ export function WorkOrdersPage() {
               canEdit={can("work_orders", "edit")}
               canApprove={can("work_orders", "approve")}
               movingOrderId={movingOrderId}
+              stages={stages}
             />
           ) : filteredOrders.length === 0 ? (
             <Card>
@@ -3714,6 +3813,153 @@ export function WorkOrdersPage() {
             </div>
           </form>
         </Form>
+      </SimpleModal>
+
+      <SimpleModal
+        open={showStageSettings}
+        onClose={() => { setShowStageSettings(false); setEditingStageId(null); setNewStageName(""); }}
+        title="Gestionar Etapas del Tablero"
+        description="Personaliza las columnas del tablero Kanban. Arrastra para reordenar, edita el nombre y el color de cada etapa."
+      >
+        <div className="space-y-3">
+          {stages.map((stage, idx) => {
+            const isEditing = editingStageId === stage.id;
+            return (
+              <div key={stage.id} className="flex items-center gap-2 rounded-md border p-2 bg-muted/30" data-testid={`stage-item-${stage.id}`}>
+                <div className="flex flex-col gap-0.5">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5"
+                    disabled={idx === 0 || reorderStagesMutation.isPending}
+                    onClick={() => {
+                      const ids = stages.map(s => s.id);
+                      const tmp = ids[idx]; ids[idx] = ids[idx - 1]; ids[idx - 1] = tmp;
+                      reorderStagesMutation.mutate(ids);
+                    }}
+                    data-testid={`button-stage-up-${stage.id}`}
+                  >
+                    <ChevronUp className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5"
+                    disabled={idx === stages.length - 1 || reorderStagesMutation.isPending}
+                    onClick={() => {
+                      const ids = stages.map(s => s.id);
+                      const tmp = ids[idx]; ids[idx] = ids[idx + 1]; ids[idx + 1] = tmp;
+                      reorderStagesMutation.mutate(ids);
+                    }}
+                    data-testid={`button-stage-down-${stage.id}`}
+                  >
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </div>
+
+                {isEditing ? (
+                  <div className="flex-1 space-y-2">
+                    <input
+                      className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                      value={editingStageName}
+                      onChange={e => setEditingStageName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && editingStageName.trim()) {
+                          updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor });
+                        }
+                        if (e.key === "Escape") setEditingStageId(null);
+                      }}
+                      autoFocus
+                      data-testid={`input-stage-name-${stage.id}`}
+                    />
+                    <div className="flex gap-1.5 flex-wrap">
+                      {STAGE_COLOR_OPTIONS.map(c => {
+                        const meta = STAGE_COLORS[c];
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            title={STAGE_COLOR_LABELS[c]}
+                            className={`h-5 w-5 rounded-full ${meta.dotPreview} ring-offset-1 ${editingStageColor === c ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-muted-foreground"}`}
+                            onClick={() => setEditingStageColor(c)}
+                            data-testid={`color-swatch-${c}`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        disabled={!editingStageName.trim() || updateStageMutation.isPending}
+                        onClick={() => updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor })}
+                        data-testid={`button-stage-save-${stage.id}`}
+                      >
+                        {updateStageMutation.isPending ? "Guardando..." : "Guardar"}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setEditingStageId(null)} data-testid={`button-stage-cancel-${stage.id}`}>
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className={`h-3 w-3 rounded-full ${STAGE_COLORS[stage.color]?.dotPreview ?? "bg-slate-500"} shrink-0`} />
+                    <span className="flex-1 text-sm font-medium truncate">{stage.name}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">{(stage.statuses as string[]).length} estado(s)</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      onClick={() => { setEditingStageId(stage.id); setEditingStageName(stage.name); setEditingStageColor(stage.color); }}
+                      data-testid={`button-stage-edit-${stage.id}`}
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 text-destructive"
+                      disabled={stages.length <= 1 || deleteStageMutation.isPending}
+                      onClick={() => deleteStageMutation.mutate(stage.id)}
+                      title={stages.length <= 1 ? "Debe existir al menos una etapa" : "Eliminar etapa"}
+                      data-testid={`button-stage-delete-${stage.id}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+
+          <div className="flex gap-2 pt-1">
+            <input
+              className="flex-1 rounded-md border bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground"
+              placeholder="Nombre de nueva etapa..."
+              value={newStageName}
+              onChange={e => setNewStageName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && newStageName.trim()) {
+                  createStageMutation.mutate(newStageName.trim());
+                }
+              }}
+              data-testid="input-new-stage-name"
+            />
+            <Button
+              size="sm"
+              disabled={!newStageName.trim() || createStageMutation.isPending}
+              onClick={() => createStageMutation.mutate(newStageName.trim())}
+              data-testid="button-add-stage"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              {createStageMutation.isPending ? "Creando..." : "Agregar"}
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground pt-1">
+            Las etapas son agrupaciones visuales de estados. Los estados se asignan a etapas automáticamente según la configuración del sistema.
+          </p>
+        </div>
       </SimpleModal>
 
       {sharedModals}

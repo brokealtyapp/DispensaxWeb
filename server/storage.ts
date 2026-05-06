@@ -62,6 +62,7 @@ import {
   type CashDenominationCount, type InsertCashDenominationCount,
   type ChangeFund, type InsertChangeFund,
   type WorkOrderType, type InsertWorkOrderType,
+  type WorkOrderStage, type InsertWorkOrderStage,
   type LaneChangeEvent, type InsertLaneChangeEvent,
   type TrayAudit, type InsertTrayAudit,
   type NayaxTransaction,
@@ -79,7 +80,7 @@ import {
   establishmentViewers, machineViewerAssignments,
   machineTypeOptions,
   establishments, establishmentStages, establishmentFollowups, establishmentDocuments, establishmentContracts,
-  workOrders, workOrderTickets, workOrderChecklistItems, workOrderChecklistTemplates, workOrderChecklistTypesInit, workOrderPhotos, slaConfig, cashDenominationCounts, changeFunds, workOrderTypes,
+  workOrders, workOrderTickets, workOrderChecklistItems, workOrderChecklistTemplates, workOrderChecklistTypesInit, workOrderPhotos, slaConfig, cashDenominationCounts, changeFunds, workOrderTypes, workOrderStages,
   tenants, subscriptionPlans, tenantSubscriptions, tenantSettings, tenantInvites, superAdminAuditLog,
   type Tenant, type InsertTenant,
   type SubscriptionPlan, type InsertSubscriptionPlan,
@@ -838,6 +839,12 @@ export interface IStorage {
   createWorkOrderType(data: InsertWorkOrderType): Promise<WorkOrderType>;
   updateWorkOrderType(id: string, tenantId: string, data: Partial<InsertWorkOrderType>): Promise<WorkOrderType | undefined>;
   deleteWorkOrderType(id: string, tenantId: string): Promise<boolean>;
+
+  getWorkOrderStages(tenantId: string): Promise<WorkOrderStage[]>;
+  getWorkOrderStage(id: string, tenantId: string): Promise<WorkOrderStage | undefined>;
+  createWorkOrderStage(data: InsertWorkOrderStage): Promise<WorkOrderStage>;
+  updateWorkOrderStage(id: string, tenantId: string, data: Partial<InsertWorkOrderStage>): Promise<WorkOrderStage | undefined>;
+  deleteWorkOrderStage(id: string, tenantId: string): Promise<boolean>;
 }
 
 export class HttpError extends Error {
@@ -8245,6 +8252,30 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWorkOrderType(id: string, tenantId: string): Promise<boolean> {
     const result = await db.delete(workOrderTypes).where(and(eq(workOrderTypes.id, id), eq(workOrderTypes.tenantId, tenantId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getWorkOrderStages(tenantId: string): Promise<WorkOrderStage[]> {
+    return db.select().from(workOrderStages).where(eq(workOrderStages.tenantId, tenantId)).orderBy(asc(workOrderStages.sortOrder), asc(workOrderStages.createdAt));
+  }
+
+  async getWorkOrderStage(id: string, tenantId: string): Promise<WorkOrderStage | undefined> {
+    const [row] = await db.select().from(workOrderStages).where(and(eq(workOrderStages.id, id), eq(workOrderStages.tenantId, tenantId)));
+    return row;
+  }
+
+  async createWorkOrderStage(data: InsertWorkOrderStage): Promise<WorkOrderStage> {
+    const [row] = await db.insert(workOrderStages).values(data).returning();
+    return row;
+  }
+
+  async updateWorkOrderStage(id: string, tenantId: string, data: Partial<InsertWorkOrderStage>): Promise<WorkOrderStage | undefined> {
+    const [row] = await db.update(workOrderStages).set(data).where(and(eq(workOrderStages.id, id), eq(workOrderStages.tenantId, tenantId))).returning();
+    return row;
+  }
+
+  async deleteWorkOrderStage(id: string, tenantId: string): Promise<boolean> {
+    const result = await db.delete(workOrderStages).where(and(eq(workOrderStages.id, id), eq(workOrderStages.tenantId, tenantId)));
     return (result.rowCount ?? 0) > 0;
   }
 

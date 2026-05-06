@@ -2995,3 +2995,17 @@ export const workOrderTypes = pgTable("work_order_types", {
 export const insertWorkOrderTypeSchema = createInsertSchema(workOrderTypes).omit({ id: true, createdAt: true });
 export type InsertWorkOrderType = z.infer<typeof insertWorkOrderTypeSchema>;
 export type WorkOrderType = typeof workOrderTypes.$inferSelect;
+
+export const workOrderStages = pgTable("work_order_stages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  name: varchar("name").notNull(),
+  color: varchar("color").notNull().default("slate"),
+  sortOrder: integer("sort_order").default(0),
+  statuses: jsonb("statuses").$type<string[]>().notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertWorkOrderStageSchema = createInsertSchema(workOrderStages).omit({ id: true, createdAt: true });
+export type InsertWorkOrderStage = z.infer<typeof insertWorkOrderStageSchema>;
+export type WorkOrderStage = typeof workOrderStages.$inferSelect;
