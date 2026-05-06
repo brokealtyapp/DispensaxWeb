@@ -11386,15 +11386,21 @@ export async function registerRoutes(
       // Enrich orders with active stage log data (stageEnteredAt, stageSlaHoursEffective)
       // for live SLA progress bars in KanbanCard without N+1 queries
       const orderIdsWithStage = orders.filter(o => o.stageId).map(o => o.id);
-      const activeLogs = await storage.getActiveStageLogsForOrders(orderIdsWithStage);
+      const [activeLogs, allStages] = await Promise.all([
+        storage.getActiveStageLogsForOrders(orderIdsWithStage),
+        storage.getWorkOrderStages(tenantId),
+      ]);
       const logMap = new Map(activeLogs.map(l => [l.workOrderId, l]));
+      const stageMap = new Map(allStages.map(s => [s.id, s]));
       const enriched = orders.map(o => {
         const log = logMap.get(o.id);
+        const stage = o.stageId ? stageMap.get(o.stageId) : undefined;
         return {
           ...o,
           stageEnteredAt: log?.enteredAt ?? null,
           stageSlaHoursEffective: log?.slaHours ?? null,
           stagePausedSeconds: log?.pausedSeconds ?? 0,
+          stageEscalateAt: stage?.slaEscalateAt ?? null,
         };
       });
       res.json(enriched);

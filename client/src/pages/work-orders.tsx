@@ -179,6 +179,7 @@ interface WorkOrder {
   stageEnteredAt: string | null;
   stageSlaHoursEffective: string | null;
   stagePausedSeconds: number | null;
+  stageEscalateAt: string | null;
   completedAt: string | null;
   closedAt: string | null;
   closedBy: string | null;
@@ -1566,9 +1567,10 @@ function KanbanCard({
   const machine = machines.find((m) => m.id === order.machineId);
   const assignee = users.find((u) => u.id === order.assignedUserId);
   const nextStatus = NEXT_STATUS[order.status];
+  // slaTick drives a re-render every minute so elapsed and countdown stay current
+  const _tick = slaTick;
   const elapsed = formatElapsed(order.updatedAt);
   const slaIsOverdue = order.slaStatus === "vencido";
-  void slaTick;
   const slaIsAtRisk = order.slaStatus === "proximo_vencer";
 
   const canAdvanceToNext =
@@ -1627,36 +1629,70 @@ function KanbanCard({
           </div>
 
           {order.stageEnteredAt && order.stageSlaHoursEffective && (() => {
+            // _tick consumed here so every 1-min tick triggers a fresh Date.now() computation
+            void _tick;
             const slaHours = Number(order.stageSlaHoursEffective);
             const enteredMs = new Date(order.stageEnteredAt).getTime();
             // Total paused = accumulated pausedSeconds from prior cycles + current pause interval (if active)
             const accPausedMs = (order.stagePausedSeconds ?? 0) * 1000;
-            const curPausedMs = order.slaPausedAt ? Date.now() - new Date(order.slaPausedAt).getTime() : 0;
+            const isPaused = !!order.slaPausedAt;
+            const curPausedMs = isPaused ? Date.now() - new Date(order.slaPausedAt!).getTime() : 0;
             const pausedMs = accPausedMs + curPausedMs;
             const elapsedMs = Math.max(0, Date.now() - enteredMs - pausedMs);
             const totalMs = slaHours * 3600 * 1000;
+            const remainingMs = Math.max(0, totalMs - elapsedMs);
             const pct = Math.min(100, (elapsedMs / totalMs) * 100);
             const elapsedH = elapsedMs / 3600000;
-            const remainingH = Math.max(0, slaHours - elapsedH);
-            const isVencido = order.stageSlaStatus === "vencido";
-            const isProximo = order.stageSlaStatus === "proximo_vencer";
+            // Compute severity live from elapsed time so it transitions on the 1-min tick
+            // without waiting for the next API refetch. escalateAt defaults to 80 (same as server).
+            const parsedEscalate = Number(order.stageEscalateAt);
+            const escalatePct = Number.isFinite(parsedEscalate) && order.stageEscalateAt != null ? parsedEscalate : 80;
+            const isVencido = elapsedMs >= totalMs;
+            const isProximo = !isVencido && elapsedMs >= (escalatePct / 100) * totalMs;
             const barColor = isVencido ? "bg-red-500" : isProximo ? "bg-amber-400" : "bg-green-500";
             const textColor = isVencido
               ? "text-red-600 dark:text-red-400"
               : isProximo
               ? "text-amber-600 dark:text-amber-400"
               : "text-muted-foreground";
+            // Format duration in human-friendly "Xh Ym" or "Ym" style
+            const fmtDuration = (ms: number) => {
+              const totalMin = Math.floor(ms / 60000);
+              const h = Math.floor(totalMin / 60);
+              const m = totalMin % 60;
+              if (h === 0) return `${m}m`;
+              if (m === 0) return `${h}h`;
+              return `${h}h ${m}m`;
+            };
             const fmtH = (h: number) =>
-              h < 1 ? `${Math.round(h * 60)}min` : `${h.toFixed(1)}h`;
+              h < 1 ? `${Math.round(h * 60)}min` : `${Math.floor(h)}h ${Math.round((h % 1) * 60)}m`;
+            // Countdown label: only show when active (not paused) and not exceeded
+            const countdownLabel = isVencido
+              ? null
+              : isPaused
+              ? null
+              : fmtDuration(remainingMs);
             return (
               <div className="space-y-1" data-testid={`kanban-stage-sla-${order.id}`}>
                 <div className={`flex items-center justify-between text-xs ${textColor}`}>
                   <span className="flex items-center gap-1">
                     {(isVencido || isProximo) && <AlertTriangle className="h-3 w-3 shrink-0" />}
                     <span>{fmtH(elapsedH)} / {fmtH(slaHours)}</span>
-                    {order.slaPausedAt && <span className="opacity-60">(pausado)</span>}
+                    {isPaused && <span className="opacity-60">(pausado)</span>}
                   </span>
-                  <span>{isVencido ? "Vencido" : isProximo ? "Próx. vencer" : `−${fmtH(remainingH)}`}</span>
+                  {isVencido ? (
+                    <span className="font-medium">Vencido</span>
+                  ) : countdownLabel ? (
+                    <span
+                      className={`flex items-center gap-0.5 font-medium ${textColor}`}
+                      data-testid={`kanban-stage-countdown-${order.id}`}
+                    >
+                      <Clock className="h-3 w-3 shrink-0" />
+                      {countdownLabel} restante
+                    </span>
+                  ) : isPaused ? (
+                    <span className="opacity-60 text-xs">pausado</span>
+                  ) : null}
                 </div>
                 <div className="w-full h-1 rounded-full bg-muted overflow-hidden">
                   <div
