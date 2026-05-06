@@ -11883,6 +11883,9 @@ export async function registerRoutes(
             return fromIdx !== -1 && toIdx !== -1 && toIdx !== fromIdx;
           });
           derivedStatus = validTarget ?? stageStatuses[0];
+        } else {
+          // Stage has no mapped statuses (custom stage): preserve existing order status
+          derivedStatus = existing.status;
         }
       }
 

@@ -77,7 +77,6 @@ import {
   ImageIcon,
   List,
   LayoutGrid,
-  Layers,
 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -1657,10 +1656,11 @@ function KanbanBoard({
       return;
     }
 
-    // Determine effective target status: use isFinal from stage or first valid status
+    // Determine effective target status: final→cerrada, mapped statuses→first valid, empty→preserve
     const targetStage = stages.find(s => s.id === targetCol.id);
     const targetIsFinal = targetStage?.isFinal ?? false;
-    const targetStatus = targetIsFinal ? "cerrada" : (targetCol.statuses[0] ?? "pendiente");
+    const hasStatuses = targetCol.statuses.length > 0;
+    const targetStatus = targetIsFinal ? "cerrada" : (hasStatuses ? (targetCol.statuses[0] ?? order.status) : order.status);
 
     if (!isValidTransition(order.status, targetStatus)) {
       setColumnOrdersSynced(columnOrdersSnapshot.current);
@@ -1921,7 +1921,7 @@ export function WorkOrdersPage() {
     staleTime: 60000,
   });
 
-  const { data: stages = [] } = useQuery<WorkOrderStage[]>({
+  const { data: stages = [], isLoading: stagesLoading } = useQuery<WorkOrderStage[]>({
     queryKey: ["/api/work-order-stages"],
     staleTime: 30000,
   });
@@ -3296,7 +3296,7 @@ export function WorkOrdersPage() {
                 title="Gestionar etapas del tablero"
                 data-testid="button-stage-settings"
               >
-                <Layers className="h-4 w-4" />
+                <Settings className="h-4 w-4" />
               </Button>
             )}
             <Button
@@ -3365,8 +3365,21 @@ export function WorkOrdersPage() {
                 </Button>
               </CardContent>
             </Card>
-          ) : ordersLoading ? (
-            <div className="flex items-center justify-center h-32"><p className="text-muted-foreground">Cargando órdenes...</p></div>
+          ) : ordersLoading || (viewMode === "kanban" && stagesLoading) ? (
+            viewMode === "kanban" ? (
+              <div className="flex gap-4 overflow-x-auto pb-2" data-testid="kanban-skeleton">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="flex-shrink-0 w-72">
+                    <div className="h-8 rounded-md bg-muted animate-pulse mb-3" />
+                    {[...Array(3)].map((__, j) => (
+                      <div key={j} className="h-24 rounded-md bg-muted/60 animate-pulse mb-2" />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-32"><p className="text-muted-foreground">Cargando órdenes...</p></div>
+            )
           ) : viewMode === "kanban" ? (
             <KanbanBoard
               orders={filteredOrders.filter((o) => o.status !== "cancelada")}
