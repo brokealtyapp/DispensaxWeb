@@ -1189,7 +1189,8 @@ const STATUS_ORDER = ["pendiente", "asignada", "en_proceso", "en_ruta", "complet
 function isValidTransition(from: string, to: string): boolean {
   const fromIdx = STATUS_ORDER.indexOf(from);
   const toIdx = STATUS_ORDER.indexOf(to);
-  return fromIdx !== -1 && toIdx !== -1 && toIdx > fromIdx;
+  const closedIdx = STATUS_ORDER.indexOf("cerrada");
+  return fromIdx !== -1 && toIdx !== -1 && toIdx !== fromIdx && fromIdx !== closedIdx;
 }
 
 const KANBAN_COLUMNS: Array<{
