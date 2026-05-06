@@ -11316,6 +11316,26 @@ export async function registerRoutes(
 
   // --- Work Orders ---
 
+  app.get("/api/work-orders/reports/stage-sla", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const { from, to } = req.query;
+      const fromDate = from ? new Date(`${from}T00:00:00.000Z`) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const toDate = to ? new Date(`${to}T23:59:59.999Z`) : new Date();
+      if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+        return res.status(400).json({ error: "Fechas inválidas" });
+      }
+      if (fromDate > toDate) {
+        return res.status(400).json({ error: "La fecha de inicio debe ser anterior o igual a la fecha de fin" });
+      }
+      const summary = await storage.getStageSlaSummary(tenantId, fromDate, toDate);
+      res.json(summary);
+    } catch (error) {
+      console.error("Error fetching stage SLA summary:", error);
+      res.status(500).json({ error: "Error al obtener reporte SLA por etapa" });
+    }
+  });
+
   app.get("/api/work-orders/stats", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;

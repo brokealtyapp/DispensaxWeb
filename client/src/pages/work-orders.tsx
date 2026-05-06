@@ -2200,6 +2200,13 @@ export function WorkOrdersPage() {
   });
   const [movingOrderId, setMovingOrderId] = useState<string | null>(null);
 
+  const [slaReportFrom, setSlaReportFrom] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [slaReportTo, setSlaReportTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
+
   const { data: orders = [], isLoading: ordersLoading, isError: ordersError } = useQuery<WorkOrder[]>({
     queryKey: ["/api/work-orders"],
   });
@@ -2221,6 +2228,20 @@ export function WorkOrdersPage() {
 
   const { data: stats, isError: statsError, refetch: refetchStats } = useQuery<WOStats>({
     queryKey: ["/api/work-orders/stats"],
+  });
+
+  type StageSlaRow = { stageId: string | null; stageName: string; total: number; withinSla: number; atRisk: number; exceeded: number; avgElapsedHours: number };
+  const { data: stageSlaReport = [], isLoading: stageSlaLoading, isError: stageSlaError, refetch: refetchStageSla } = useQuery<StageSlaRow[]>({
+    queryKey: ["/api/work-orders/reports/stage-sla", slaReportFrom, slaReportTo],
+    queryFn: async () => {
+      const token = getAccessToken();
+      const res = await fetch(`/api/work-orders/reports/stage-sla?from=${slaReportFrom}&to=${slaReportTo}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Error al cargar reporte");
+      return res.json();
+    },
+    enabled: activeTab === "reportes-sla",
   });
 
   const { data: machines = [] } = useQuery<Machine[]>({
@@ -3539,6 +3560,7 @@ export function WorkOrdersPage() {
           <TabsTrigger value="ordenes" data-testid="tab-ordenes">Órdenes</TabsTrigger>
           <TabsTrigger value="tickets" data-testid="tab-tickets">Tickets</TabsTrigger>
           <TabsTrigger value="sla" data-testid="tab-sla">Dashboard SLA</TabsTrigger>
+          <TabsTrigger value="reportes-sla" data-testid="tab-reportes-sla">Reporte SLA por Etapa</TabsTrigger>
         </TabsList>
 
         <TabsContent value="ordenes" className="space-y-4">
@@ -3950,6 +3972,183 @@ export function WorkOrdersPage() {
           ) : (
             <SLADashboard stats={stats} orders={orders} machines={machines} users={users} onSelectOrder={setSelectedOrder} typeLabels={typeLabels} />
           )}
+        </TabsContent>
+
+        <TabsContent value="reportes-sla" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <CardTitle className="text-base font-semibold">Cumplimiento SLA por Etapa</CardTitle>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <label className="text-xs text-muted-foreground">Desde</label>
+                    <Input
+                      type="date"
+                      value={slaReportFrom}
+                      onChange={(e) => setSlaReportFrom(e.target.value)}
+                      className="w-[145px] text-xs"
+                      data-testid="input-sla-report-from"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <label className="text-xs text-muted-foreground">Hasta</label>
+                    <Input
+                      type="date"
+                      value={slaReportTo}
+                      onChange={(e) => setSlaReportTo(e.target.value)}
+                      className="w-[145px] text-xs"
+                      data-testid="input-sla-report-to"
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refetchStageSla()}
+                    data-testid="button-sla-report-refresh"
+                  >
+                    <RefreshCcw className="h-4 w-4 mr-1" />
+                    Actualizar
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={stageSlaReport.length === 0}
+                    onClick={() => {
+                      const escCsv = (v: string | number) => {
+                        const s = String(v);
+                        return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+                      };
+                      const headers = ["Etapa", "Total", "En Tiempo", "% En Tiempo", "Próx. Vencer", "% Próx. Vencer", "Vencido", "% Vencido", "Prom. Horas"];
+                      const rows = stageSlaReport.map((r) => {
+                        const pct = (n: number) => r.total > 0 ? ((n / r.total) * 100).toFixed(1) : "0.0";
+                        return [r.stageName, r.total, r.withinSla, `${pct(r.withinSla)}%`, r.atRisk, `${pct(r.atRisk)}%`, r.exceeded, `${pct(r.exceeded)}%`, r.avgElapsedHours.toFixed(2)];
+                      });
+                      const csv = [headers, ...rows].map(row => row.map(escCsv).join(",")).join("\n");
+                      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `sla-etapas-${slaReportFrom}-${slaReportTo}.csv`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                    data-testid="button-sla-report-export"
+                  >
+                    <List className="h-4 w-4 mr-1" />
+                    Exportar CSV
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {stageSlaLoading ? (
+                <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="text-sm">Cargando reporte...</span>
+                </div>
+              ) : stageSlaError ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <AlertTriangle className="h-8 w-8 text-destructive" />
+                  <p className="text-sm text-muted-foreground">Error al cargar reporte SLA</p>
+                  <Button variant="outline" size="sm" onClick={() => refetchStageSla()} data-testid="button-retry-sla-report">
+                    <RefreshCcw className="mr-1 h-4 w-4" /> Reintentar
+                  </Button>
+                </div>
+              ) : stageSlaReport.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
+                  <ClipboardList className="h-8 w-8 opacity-40" />
+                  <p className="text-sm">No hay datos de log de etapas para el período seleccionado.</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-collapse" data-testid="table-sla-report">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2 px-3 font-medium text-muted-foreground">Etapa</th>
+                          <th className="text-right py-2 px-3 font-medium text-muted-foreground">Total</th>
+                          <th className="text-right py-2 px-3 font-medium text-muted-foreground">
+                            <span className="text-[#4ECB71]">En Tiempo</span>
+                          </th>
+                          <th className="text-right py-2 px-3 font-medium text-muted-foreground">% En T.</th>
+                          <th className="text-right py-2 px-3 font-medium text-muted-foreground">
+                            <span className="text-[#F59E0B]">Próx. Vencer</span>
+                          </th>
+                          <th className="text-right py-2 px-3 font-medium text-muted-foreground">% P.V.</th>
+                          <th className="text-right py-2 px-3 font-medium text-muted-foreground">
+                            <span className="text-destructive">Vencido</span>
+                          </th>
+                          <th className="text-right py-2 px-3 font-medium text-muted-foreground">% Venc.</th>
+                          <th className="text-right py-2 px-3 font-medium text-muted-foreground">Prom. Horas</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {stageSlaReport.map((row, idx) => {
+                          const pct = (n: number) => row.total > 0 ? ((n / row.total) * 100).toFixed(1) : "0.0";
+                          return (
+                            <tr key={row.stageId ?? idx} className="border-b last:border-0 hover-elevate" data-testid={`row-sla-stage-${idx}`}>
+                              <td className="py-2 px-3 font-medium">{row.stageName}</td>
+                              <td className="py-2 px-3 text-right">{row.total}</td>
+                              <td className="py-2 px-3 text-right text-[#4ECB71] font-medium">{row.withinSla}</td>
+                              <td className="py-2 px-3 text-right text-muted-foreground">{pct(row.withinSla)}%</td>
+                              <td className="py-2 px-3 text-right text-[#F59E0B] font-medium">{row.atRisk}</td>
+                              <td className="py-2 px-3 text-right text-muted-foreground">{pct(row.atRisk)}%</td>
+                              <td className="py-2 px-3 text-right text-destructive font-medium">{row.exceeded}</td>
+                              <td className="py-2 px-3 text-right text-muted-foreground">{pct(row.exceeded)}%</td>
+                              <td className="py-2 px-3 text-right text-muted-foreground">{row.avgElapsedHours.toFixed(1)}h</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-3">Distribución SLA por Etapa</p>
+                    <ResponsiveContainer width="100%" height={280}>
+                      <BarChart
+                        data={stageSlaReport.map((r) => ({
+                          name: r.stageName,
+                          "En Tiempo": r.withinSla,
+                          "Próx. Vencer": r.atRisk,
+                          "Vencido": r.exceeded,
+                        }))}
+                        margin={{ top: 4, right: 16, left: 0, bottom: 4 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" fontSize={11} tick={{ fontSize: 11 }} />
+                        <YAxis allowDecimals={false} fontSize={11} />
+                        <Tooltip />
+                        <Legend fontSize={11} />
+                        <Bar dataKey="En Tiempo" stackId="sla" fill="#4ECB71" radius={[0, 0, 0, 0]} />
+                        <Bar dataKey="Próx. Vencer" stackId="sla" fill="#F59E0B" radius={[0, 0, 0, 0]} />
+                        <Bar dataKey="Vencido" stackId="sla" fill="#E84545" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-3">Tiempo Promedio por Etapa (horas)</p>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart
+                        data={stageSlaReport.map((r) => ({
+                          name: r.stageName,
+                          "Prom. Horas": r.avgElapsedHours,
+                        }))}
+                        margin={{ top: 4, right: 16, left: 0, bottom: 4 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" fontSize={11} />
+                        <YAxis allowDecimals={false} fontSize={11} />
+                        <Tooltip formatter={(v: number) => `${v.toFixed(1)}h`} />
+                        <Bar dataKey="Prom. Horas" fill="#2F6FED" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

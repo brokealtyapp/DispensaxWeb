@@ -852,6 +852,15 @@ export interface IStorage {
   getActiveStageLog(workOrderId: string): Promise<WorkOrderStageLog | undefined>;
   getActiveStageLogsForOrders(workOrderIds: string[]): Promise<WorkOrderStageLog[]>;
   getStageLogForOrder(workOrderId: string): Promise<WorkOrderStageLog[]>;
+  getStageSlaSummary(tenantId: string, from: Date, to: Date): Promise<Array<{
+    stageId: string | null;
+    stageName: string;
+    total: number;
+    withinSla: number;
+    atRisk: number;
+    exceeded: number;
+    avgElapsedHours: number;
+  }>>;
 }
 
 export class HttpError extends Error {
@@ -8320,6 +8329,49 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(workOrderStageLog)
       .where(eq(workOrderStageLog.workOrderId, workOrderId))
       .orderBy(asc(workOrderStageLog.enteredAt));
+  }
+
+  async getStageSlaSummary(tenantId: string, from: Date, to: Date): Promise<Array<{
+    stageId: string | null;
+    stageName: string;
+    total: number;
+    withinSla: number;
+    atRisk: number;
+    exceeded: number;
+    avgElapsedHours: number;
+  }>> {
+    const rows = await db.execute(sql`
+      SELECT
+        stage_id AS "stageId",
+        COALESCE(stage_name, 'Sin etapa') AS "stageName",
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE sla_status = 'dentro_tiempo')::int AS "withinSla",
+        COUNT(*) FILTER (WHERE sla_status = 'proximo_vencer')::int AS "atRisk",
+        COUNT(*) FILTER (WHERE sla_status = 'vencido')::int AS exceeded,
+        ROUND(
+          AVG(
+            EXTRACT(EPOCH FROM (COALESCE(exited_at, NOW()) - entered_at)) / 3600.0
+            - COALESCE(paused_seconds, 0) / 3600.0
+          )::numeric,
+          2
+        ) AS "avgElapsedHours"
+      FROM work_order_stage_log
+      WHERE tenant_id = ${tenantId}
+        AND entered_at >= ${from}
+        AND entered_at <= ${to}
+        AND stage_name IS NOT NULL
+      GROUP BY stage_id, stage_name
+      ORDER BY stage_name
+    `);
+    return (rows.rows as any[]).map((r) => ({
+      stageId: r.stageId ?? null,
+      stageName: r.stageName as string,
+      total: Number(r.total),
+      withinSla: Number(r.withinSla),
+      atRisk: Number(r.atRisk),
+      exceeded: Number(r.exceeded),
+      avgElapsedHours: Number(r.avgElapsedHours ?? 0),
+    }));
   }
 
   // ==================== BILLING (Nayax Transactions) ====================
