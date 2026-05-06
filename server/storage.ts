@@ -267,6 +267,7 @@ export interface IStorage {
   createMachineAlert(alert: InsertMachineAlert): Promise<MachineAlert>;
   resolveAlert(id: string, userId: string): Promise<MachineAlert | undefined>;
   resolveAlertSimple(id: string): Promise<MachineAlert | undefined>;
+  findUnresolvedSlaAlertForOrder(machineId: string, workOrderId: string): Promise<MachineAlert | undefined>;
   
   getMachineVisits(machineId: string): Promise<MachineVisit[]>;
   getMachineVisit(id: string): Promise<MachineVisit | undefined>;
@@ -1770,6 +1771,17 @@ export class DatabaseStorage implements IStorage {
       .where(eq(machineAlerts.id, id))
       .returning();
     return updated;
+  }
+
+  async findUnresolvedSlaAlertForOrder(machineId: string, workOrderId: string): Promise<MachineAlert | undefined> {
+    const [alert] = await db.select().from(machineAlerts)
+      .where(and(
+        eq(machineAlerts.machineId, machineId),
+        eq(machineAlerts.isResolved, false),
+        eq(machineAlerts.type, "sla_etapa_vencida"),
+        sql`${machineAlerts.message} LIKE ${'%[OT:' + workOrderId + ']%'}`
+      ));
+    return alert;
   }
 
   async getMachineVisits(machineId: string): Promise<MachineVisit[]> {

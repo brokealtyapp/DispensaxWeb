@@ -123,6 +123,77 @@ export function isEmailConfigured(): boolean {
   return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD);
 }
 
+interface SlaBreachEmailParams {
+  recipients: { email: string; name?: string | null }[];
+  orderNumber: string;
+  stageName: string;
+  machineName?: string | null;
+  priority: string;
+  assignedUserName?: string | null;
+}
+
+export async function sendSlaBreachEmail(params: SlaBreachEmailParams): Promise<boolean> {
+  const priorityLabel: Record<string, string> = {
+    bajo: "Bajo",
+    medio: "Medio",
+    alto: "Alto",
+    critico: "Crítico",
+  };
+  const toAddresses = params.recipients
+    .filter(r => !!r.email)
+    .map(r => r.email)
+    .join(", ");
+
+  if (!toAddresses) return false;
+
+  const mailOptions = {
+    from: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER,
+    to: toAddresses,
+    subject: `[Dispensax] SLA de etapa vencido – OT ${params.orderNumber}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"></head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #E84545 0%, #d63939 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+          <h1 style="color: white; margin: 0; font-size: 24px;">Dispensax</h1>
+          <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0;">Alerta de SLA de Etapa Vencido</p>
+        </div>
+        <div style="background: #fff8f8; border: 1px solid #fca5a5; border-top: none; padding: 24px;">
+          <h2 style="color: #b91c1c; margin-top: 0;">SLA de Etapa Vencido</h2>
+          <p>La orden de trabajo <strong>${params.orderNumber}</strong> ha superado el tiempo SLA configurado para la etapa actual.</p>
+          <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+            <tr><td style="padding: 6px 0; color: #666; width: 40%;">Orden de trabajo:</td><td style="padding: 6px 0;"><strong>${params.orderNumber}</strong></td></tr>
+            <tr><td style="padding: 6px 0; color: #666;">Etapa:</td><td style="padding: 6px 0;"><strong>${params.stageName}</strong></td></tr>
+            ${params.machineName ? `<tr><td style="padding: 6px 0; color: #666;">Máquina:</td><td style="padding: 6px 0;"><strong>${params.machineName}</strong></td></tr>` : ""}
+            ${params.assignedUserName ? `<tr><td style="padding: 6px 0; color: #666;">Asignado a:</td><td style="padding: 6px 0;"><strong>${params.assignedUserName}</strong></td></tr>` : ""}
+            <tr><td style="padding: 6px 0; color: #666;">Prioridad:</td><td style="padding: 6px 0;"><strong>${priorityLabel[params.priority] || params.priority}</strong></td></tr>
+          </table>
+          <p style="color: #991b1b; font-weight: bold;">Por favor, atienda esta orden a la brevedad posible.</p>
+        </div>
+        <div style="background: #f5f5f5; padding: 16px; text-align: center; border-radius: 0 0 10px 10px; border: 1px solid #e0e0e0; border-top: none;">
+          <p style="color: #999; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Dispensax. Todos los derechos reservados.</p>
+        </div>
+      </body>
+      </html>
+    `,
+    text: `SLA de Etapa Vencido – OT ${params.orderNumber}\n\nLa orden ${params.orderNumber} ha superado el tiempo SLA de la etapa "${params.stageName}".\n${params.machineName ? `Máquina: ${params.machineName}\n` : ""}${params.assignedUserName ? `Asignado a: ${params.assignedUserName}\n` : ""}Prioridad: ${priorityLabel[params.priority] || params.priority}\n\nPor favor, atienda esta orden a la brevedad posible.\n\nDispensax`,
+  };
+
+  try {
+    if (!isEmailConfigured()) {
+      console.log(`[SLA] SMTP no configurado. Alerta SLA para OT ${params.orderNumber} (destinatarios: ${toAddresses})`);
+      return false;
+    }
+    await transporter.sendMail(mailOptions);
+    console.log(`[SLA] Correo de alerta SLA enviado para OT ${params.orderNumber} a: ${toAddresses}`);
+    return true;
+  } catch (error) {
+    console.error(`[SLA] Error al enviar correo de alerta SLA para OT ${params.orderNumber}:`, error);
+    return false;
+  }
+}
+
 interface ViewerInviteEmailParams {
   email: string;
   token: string;

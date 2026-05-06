@@ -12887,6 +12887,25 @@ export async function registerRoutes(
 
       const orders = await storage.getWorkOrders(tenantId, {});
       const stages = await storage.getWorkOrderStages(tenantId);
+
+      // Lazy-load tenant admin users for SLA breach email notifications
+      let tenantAdmins: { email: string | null; fullName: string | null }[] | null = null;
+      const getTenantAdmins = async () => {
+        if (tenantAdmins === null) {
+          tenantAdmins = await db
+            .select({ email: users.email, fullName: users.fullName })
+            .from(users)
+            .where(and(
+              eq(users.tenantId, tenantId),
+              inArray(users.role, ["admin", "supervisor"]),
+              eq(users.isActive, true)
+            ));
+        }
+        return tenantAdmins;
+      };
+
+      const { sendSlaBreachEmail } = await import("./email");
+
       for (const order of orders) {
         total++;
         if (order.status === "completada" || order.status === "cerrada" || order.status === "cancelada") continue;
@@ -12942,6 +12961,64 @@ export async function registerRoutes(
                 if (currentIdx >= 0 && currentIdx < PRIORITY_ORDER.length - 1) {
                   orderUpdates.priority = PRIORITY_ORDER[currentIdx + 1];
                   updated++;
+                }
+              }
+
+              // SLA breach alert: fire when transitioning TO "vencido" for the first time
+              if (newStageSlaStatus === "vencido" && order.stageSlaStatus !== "vencido") {
+                try {
+                  const existing = await storage.findUnresolvedSlaAlertForOrder(order.machineId, order.id);
+                  if (!existing) {
+                    const alertMessage = `SLA de etapa "${stage.name}" vencido para OT ${order.orderNumber} [OT:${order.id}]`;
+                    await storage.createMachineAlert({
+                      tenantId,
+                      machineId: order.machineId,
+                      type: "sla_etapa_vencida",
+                      priority: "alta",
+                      message: alertMessage,
+                    });
+
+                    // Collect recipients: assigned technician + tenant admins/supervisors
+                    const recipients: { email: string; name?: string | null }[] = [];
+                    if (order.assignedUserId) {
+                      const assignedUser = await storage.getUser(order.assignedUserId);
+                      if (assignedUser?.email) {
+                        recipients.push({ email: assignedUser.email, name: assignedUser.fullName });
+                      }
+                    }
+                    const admins = await getTenantAdmins();
+                    for (const admin of admins) {
+                      if (admin.email && !recipients.some(r => r.email === admin.email)) {
+                        recipients.push({ email: admin.email, name: admin.fullName });
+                      }
+                    }
+
+                    // Get machine name for the email (best-effort)
+                    let machineName: string | null = null;
+                    try {
+                      const machine = await storage.getMachine(order.machineId);
+                      machineName = machine?.name ?? null;
+                    } catch (_) { /* ignore */ }
+
+                    let assignedUserName: string | null = null;
+                    if (order.assignedUserId) {
+                      try {
+                        const u = await storage.getUser(order.assignedUserId);
+                        assignedUserName = u?.fullName ?? null;
+                      } catch (_) { /* ignore */ }
+                    }
+
+                    sendSlaBreachEmail({
+                      recipients,
+                      orderNumber: order.orderNumber,
+                      stageName: stage.name,
+                      machineName,
+                      priority: String(order.priority ?? "medio"),
+                      assignedUserName,
+                    }).catch(err => console.error("[SLA] Error al enviar email de SLA vencido:", err));
+                  }
+                } catch (alertErr) {
+                  console.error(`[SLA] Error al crear alerta de SLA vencido para OT ${order.orderNumber}:`, alertErr);
                 }
               }
             }
