@@ -1475,10 +1475,21 @@ function KanbanBoard({
   const [activeOrder, setActiveOrder] = useState<WorkOrder | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [columnOrders, setColumnOrders] = useState<Record<string, string[]>>({});
+  const columnOrdersRef = useRef<Record<string, string[]>>({});
   const columnOrdersSnapshot = useRef<Record<string, string[]>>({});
 
-  useEffect(() => {
+  // Keep ref in sync with state so event handlers always read the latest value
+  // even if dnd-kit calls the handler via a stale closure.
+  function setColumnOrdersSynced(updater: Record<string, string[]> | ((prev: Record<string, string[]>) => Record<string, string[]>)) {
     setColumnOrders((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      columnOrdersRef.current = next;
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    setColumnOrdersSynced((prev) => {
       const next: Record<string, string[]> = {};
       KANBAN_COLUMNS.forEach((col) => {
         const colOrders = orders
@@ -1499,9 +1510,9 @@ function KanbanBoard({
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
   );
 
-  function findColumnOfItem(itemId: string): string | null {
+  function findColumnOfItem(colMap: Record<string, string[]>, itemId: string): string | null {
     for (const col of KANBAN_COLUMNS) {
-      if ((columnOrders[col.id] ?? []).includes(itemId)) return col.id;
+      if ((colMap[col.id] ?? []).includes(itemId)) return col.id;
     }
     return null;
   }
@@ -1509,13 +1520,13 @@ function KanbanBoard({
   function handleDragStart(event: DragStartEvent) {
     const order = orders.find((o) => o.id === event.active.id);
     setActiveOrder(order ?? null);
-    columnOrdersSnapshot.current = columnOrders;
+    columnOrdersSnapshot.current = columnOrdersRef.current;
   }
 
   function handleDragCancel() {
     setActiveOrder(null);
     setOverColumnId(null);
-    setColumnOrders(columnOrdersSnapshot.current);
+    setColumnOrdersSynced(columnOrdersSnapshot.current);
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -1527,17 +1538,18 @@ function KanbanBoard({
 
     const activeId = String(active.id);
     const overId = String(over.id);
+    const current = columnOrdersRef.current;
 
     const overIsColumn = KANBAN_COLUMNS.some((c) => c.id === overId);
-    const resolvedOverColId = overIsColumn ? overId : findColumnOfItem(overId);
+    const resolvedOverColId = overIsColumn ? overId : findColumnOfItem(current, overId);
     setOverColumnId(resolvedOverColId);
 
-    const activeColId = findColumnOfItem(activeId);
+    const activeColId = findColumnOfItem(current, activeId);
     if (!activeColId || !resolvedOverColId) return;
 
     if (activeColId === resolvedOverColId) {
       if (!overIsColumn) {
-        setColumnOrders((prev) => {
+        setColumnOrdersSynced((prev) => {
           const ids = [...(prev[activeColId] ?? [])];
           const oldIndex = ids.indexOf(activeId);
           const newIndex = ids.indexOf(overId);
@@ -1547,7 +1559,7 @@ function KanbanBoard({
       }
     } else {
       // Cross-column: move card into target column at the appropriate position
-      setColumnOrders((prev) => {
+      setColumnOrdersSynced((prev) => {
         const sourceIds = (prev[activeColId] ?? []).filter((id) => id !== activeId);
         const targetIds = (prev[resolvedOverColId] ?? []).filter((id) => id !== activeId);
 
@@ -1584,11 +1596,12 @@ function KanbanBoard({
     setOverColumnId(null);
     const { active, over } = event;
     if (!over) {
-      setColumnOrders(columnOrdersSnapshot.current);
+      setColumnOrdersSynced(columnOrdersSnapshot.current);
       return;
     }
 
     const activeId = String(active.id);
+    const latest = columnOrdersRef.current;
 
     // Determine the original column from the snapshot (before any drag-over moves)
     const originalColId =
@@ -1597,17 +1610,17 @@ function KanbanBoard({
       )?.id ?? null;
 
     // The current column reflects where handleDragOver placed the card
-    const currentColId = findColumnOfItem(activeId);
+    const currentColId = findColumnOfItem(latest, activeId);
 
     if (!originalColId || !currentColId) return;
 
     if (originalColId === currentColId) {
       // Same column: persist the new order if it changed
-      const currentIds = columnOrders[currentColId] ?? [];
+      const currentIds = latest[currentColId] ?? [];
       const snapshotIds = columnOrdersSnapshot.current[currentColId] ?? [];
       if (JSON.stringify(currentIds) !== JSON.stringify(snapshotIds)) {
         apiRequest("PATCH", "/api/work-orders/reorder", { orderedIds: currentIds }).catch(() => {
-          setColumnOrders(columnOrdersSnapshot.current);
+          setColumnOrdersSynced(columnOrdersSnapshot.current);
         });
       }
       return;
@@ -1617,26 +1630,26 @@ function KanbanBoard({
     const targetCol = KANBAN_COLUMNS.find((c) => c.id === currentColId);
     const order = orders.find((o) => o.id === activeId);
     if (!targetCol || !order) {
-      setColumnOrders(columnOrdersSnapshot.current);
+      setColumnOrdersSynced(columnOrdersSnapshot.current);
       return;
     }
 
     if (targetCol.statuses.includes(order.status)) {
-      setColumnOrders(columnOrdersSnapshot.current);
+      setColumnOrdersSynced(columnOrdersSnapshot.current);
       return;
     }
 
     const targetStatus = targetCol.statuses[0];
     if (!isValidTransition(order.status, targetStatus)) {
-      setColumnOrders(columnOrdersSnapshot.current);
+      setColumnOrdersSynced(columnOrdersSnapshot.current);
       return;
     }
     if (targetStatus === "cerrada" && !canApprove) {
-      setColumnOrders(columnOrdersSnapshot.current);
+      setColumnOrdersSynced(columnOrdersSnapshot.current);
       return;
     }
     if (targetStatus !== "cerrada" && !canEdit) {
-      setColumnOrders(columnOrdersSnapshot.current);
+      setColumnOrdersSynced(columnOrdersSnapshot.current);
       return;
     }
 
