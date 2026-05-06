@@ -1,4 +1,17 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+  type DragStartEvent,
+  type DragOverEvent,
+} from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { getAccessToken } from "@/lib/auth-context";
@@ -1164,6 +1177,14 @@ const NEXT_STATUS: Record<string, string> = {
   completada: "cerrada",
 };
 
+const STATUS_ORDER = ["pendiente", "asignada", "en_proceso", "en_ruta", "completada", "cerrada"];
+
+function isValidTransition(from: string, to: string): boolean {
+  const fromIdx = STATUS_ORDER.indexOf(from);
+  const toIdx = STATUS_ORDER.indexOf(to);
+  return fromIdx !== -1 && toIdx !== -1 && toIdx > fromIdx;
+}
+
 const KANBAN_COLUMNS: Array<{
   id: string;
   label: string;
@@ -1232,6 +1253,7 @@ function KanbanCard({
   canEdit,
   canApprove,
   isAdvancing,
+  ghost,
 }: {
   order: WorkOrder;
   machines: Machine[];
@@ -1242,6 +1264,7 @@ function KanbanCard({
   canEdit: boolean;
   canApprove: boolean;
   isAdvancing: boolean;
+  ghost?: boolean;
 }) {
   const machine = machines.find((m) => m.id === order.machineId);
   const assignee = users.find((u) => u.id === order.assignedUserId);
@@ -1256,7 +1279,7 @@ function KanbanCard({
 
   return (
     <div
-      className="bg-background border rounded-md cursor-pointer hover-elevate overflow-visible"
+      className={`bg-background border rounded-md cursor-pointer hover-elevate overflow-visible transition-opacity${ghost ? " opacity-40 pointer-events-none" : ""}`}
       onClick={onSelect}
       data-testid={`kanban-card-${order.id}`}
     >
@@ -1339,6 +1362,81 @@ function KanbanCard({
   );
 }
 
+function DraggableKanbanCard({
+  order,
+  machines,
+  users,
+  typeLabels,
+  onSelect,
+  onAdvance,
+  canEdit,
+  canApprove,
+  isAdvancing,
+  isDragging,
+}: {
+  order: WorkOrder;
+  machines: Machine[];
+  users: UserInfo[];
+  typeLabels: Record<string, string>;
+  onSelect: () => void;
+  onAdvance?: () => void;
+  canEdit: boolean;
+  canApprove: boolean;
+  isAdvancing: boolean;
+  isDragging: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+    id: order.id,
+    data: { order },
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    touchAction: "none",
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <KanbanCard
+        order={order}
+        machines={machines}
+        users={users}
+        typeLabels={typeLabels}
+        onSelect={onSelect}
+        onAdvance={onAdvance}
+        canEdit={canEdit}
+        canApprove={canApprove}
+        isAdvancing={isAdvancing}
+        ghost={isDragging}
+      />
+    </div>
+  );
+}
+
+function DroppableColumn({
+  col,
+  children,
+  isOver,
+  isActive,
+}: {
+  col: typeof KANBAN_COLUMNS[number];
+  children: React.ReactNode;
+  isOver: boolean;
+  isActive: boolean;
+}) {
+  const { setNodeRef } = useDroppable({ id: col.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex flex-col w-72 rounded-md border bg-muted/20 transition-colors${isOver ? " ring-2 ring-primary bg-primary/5" : ""}${isActive && !isOver ? " border-dashed border-muted-foreground/40" : ""}`}
+      data-testid={`kanban-column-${col.id}`}
+    >
+      {children}
+    </div>
+  );
+}
+
 function KanbanBoard({
   orders,
   machines,
@@ -1360,54 +1458,128 @@ function KanbanBoard({
   canApprove: boolean;
   movingOrderId: string | null;
 }) {
-  return (
-    <div className="overflow-x-auto pb-4" data-testid="kanban-board">
-      <div className="flex gap-3 min-w-max">
-        {KANBAN_COLUMNS.map((col) => {
-          const colOrders = orders.filter((o) => col.statuses.includes(o.status));
-          return (
-            <div
-              key={col.id}
-              className="flex flex-col w-72 rounded-md border bg-muted/20"
-              data-testid={`kanban-column-${col.id}`}
-            >
-              <div className={`flex items-center justify-between px-3 py-2.5 rounded-t-md ${col.headerClass}`}>
-                <div className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full shrink-0 ${col.dotClass}`} />
-                  <span className="font-semibold text-sm">{col.label}</span>
-                </div>
-                <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${col.countClass}`}>
-                  {colOrders.length}
-                </span>
-              </div>
+  const [activeOrder, setActiveOrder] = useState<WorkOrder | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
 
-              <div className="flex flex-col gap-2 p-2 overflow-y-auto max-h-[calc(100vh-380px)]">
-                {colOrders.length === 0 ? (
-                  <div className="text-center py-8 text-xs text-muted-foreground">
-                    Sin órdenes
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  function handleDragStart(event: DragStartEvent) {
+    const order = orders.find((o) => o.id === event.active.id);
+    setActiveOrder(order ?? null);
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    setOverId(event.over ? String(event.over.id) : null);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveOrder(null);
+    setOverId(null);
+    const { active, over } = event;
+    if (!over) return;
+
+    const orderId = String(active.id);
+    const targetColId = String(over.id);
+    const targetCol = KANBAN_COLUMNS.find((c) => c.id === targetColId);
+    const order = orders.find((o) => o.id === orderId);
+    if (!targetCol || !order) return;
+
+    if (targetCol.statuses.includes(order.status)) return;
+
+    const targetStatus = targetCol.statuses[0];
+
+    if (!isValidTransition(order.status, targetStatus)) return;
+
+    if (targetStatus === "cerrada" && !canApprove) return;
+    if (targetStatus !== "cerrada" && !canEdit) return;
+
+    onMoveStatus(orderId, targetStatus);
+  }
+
+  const isDraggingAny = activeOrder !== null;
+
+  return (
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="overflow-x-auto pb-4" data-testid="kanban-board">
+        <div className="flex gap-3 min-w-max">
+          {KANBAN_COLUMNS.map((col) => {
+            const colOrders = orders.filter((o) => col.statuses.includes(o.status));
+            const isOver = overId === col.id;
+            return (
+              <DroppableColumn
+                key={col.id}
+                col={col}
+                isOver={isOver}
+                isActive={isDraggingAny}
+              >
+                <div className={`flex items-center justify-between px-3 py-2.5 rounded-t-md ${col.headerClass}`}>
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full shrink-0 ${col.dotClass}`} />
+                    <span className="font-semibold text-sm">{col.label}</span>
                   </div>
-                ) : (
-                  colOrders.map((order) => (
-                    <KanbanCard
-                      key={order.id}
-                      order={order}
-                      machines={machines}
-                      users={users}
-                      typeLabels={typeLabels}
-                      onSelect={() => onSelectOrder(order)}
-                      onAdvance={() => onMoveStatus(order.id, NEXT_STATUS[order.status])}
-                      canEdit={canEdit}
-                      canApprove={canApprove}
-                      isAdvancing={movingOrderId === order.id}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
-          );
-        })}
+                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${col.countClass}`}>
+                    {colOrders.length}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-2 p-2 overflow-y-auto max-h-[calc(100vh-380px)]">
+                  {colOrders.length === 0 ? (
+                    <div className={`text-center py-8 text-xs text-muted-foreground${isOver ? " text-primary" : ""}`}>
+                      {isOver ? "Soltar aquí" : "Sin órdenes"}
+                    </div>
+                  ) : (
+                    colOrders.map((order) => (
+                      <DraggableKanbanCard
+                        key={order.id}
+                        order={order}
+                        machines={machines}
+                        users={users}
+                        typeLabels={typeLabels}
+                        onSelect={() => onSelectOrder(order)}
+                        onAdvance={() => onMoveStatus(order.id, NEXT_STATUS[order.status])}
+                        canEdit={canEdit}
+                        canApprove={canApprove}
+                        isAdvancing={movingOrderId === order.id}
+                        isDragging={activeOrder?.id === order.id}
+                      />
+                    ))
+                  )}
+                  {colOrders.length > 0 && isOver && activeOrder && !col.statuses.includes(activeOrder.status) && (
+                    <div className="border-2 border-dashed border-primary/40 rounded-md h-16 flex items-center justify-center text-xs text-primary/60">
+                      Soltar aquí
+                    </div>
+                  )}
+                </div>
+              </DroppableColumn>
+            );
+          })}
+        </div>
       </div>
-    </div>
+
+      <DragOverlay dropAnimation={null}>
+        {activeOrder ? (
+          <div className="w-72 rotate-1 shadow-lg opacity-95">
+            <KanbanCard
+              order={activeOrder}
+              machines={machines}
+              users={users}
+              typeLabels={typeLabels}
+              onSelect={() => {}}
+              canEdit={canEdit}
+              canApprove={canApprove}
+              isAdvancing={false}
+            />
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
 
