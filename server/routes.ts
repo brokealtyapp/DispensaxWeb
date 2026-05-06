@@ -12155,6 +12155,8 @@ export async function registerRoutes(
       const existing = await storage.getWorkOrderById(req.params.id);
       if (!existing || existing.tenantId !== tenantId) return res.status(404).json({ error: "Orden no encontrada" });
       if (existing.slaPausedAt) return res.status(409).json({ error: "El SLA de etapa ya está en pausa" });
+      const activeLog = await storage.getActiveStageLog(req.params.id);
+      if (!activeLog) return res.status(409).json({ error: "No hay etapa activa con SLA para pausar" });
       const updated = await storage.updateWorkOrder(req.params.id, { slaPausedAt: new Date() });
       res.json(updated);
     } catch (error) {
@@ -12718,6 +12720,7 @@ export async function registerRoutes(
         priority: workOrderPriorityEnum.optional(),
         assignedUserId: z.string().uuid().nullable().optional(),
         description: z.string().optional(),
+        stageId: z.string().uuid().nullable().optional(),
       });
       const parsed = createOrderFromTicketSchema.parse(req.body);
 
@@ -12754,6 +12757,7 @@ export async function registerRoutes(
             description: parsed.description || ticket.description,
             slaDeadline,
             slaStatus: "dentro_tiempo",
+            stageId: parsed.stageId ?? null,
           });
           break;
         } catch (err) {
@@ -12777,6 +12781,28 @@ export async function registerRoutes(
             options: item.options,
           }))
         );
+      }
+
+      // Create initial stage log if order has a stageId (consistent with POST /api/work-orders)
+      if (order.stageId) {
+        try {
+          const ticketStages = await storage.getWorkOrderStages(tenantId);
+          const ticketStage = ticketStages.find(s => s.id === order.stageId);
+          if (ticketStage) {
+            const ticketSlaConf = await storage.getSlaConfig(tenantId);
+            const ticketEffectiveSlaHours = computeEffectiveSlaHours(ticketStage, String(order.priority ?? "medio"), ticketSlaConf);
+            await storage.createStageLogEntry({
+              tenantId,
+              workOrderId: order.id,
+              stageId: order.stageId,
+              stageName: ticketStage.name,
+              slaHours: ticketEffectiveSlaHours !== null ? String(ticketEffectiveSlaHours) : null,
+              pausedSeconds: 0,
+            });
+          }
+        } catch (logErr) {
+          console.error("[tickets-create-order] Failed to create stage log:", logErr instanceof Error ? logErr.message : logErr);
+        }
       }
 
       await storage.updateTicket(ticket.id, { status: "en_proceso" });
@@ -12880,6 +12906,7 @@ export async function registerRoutes(
               }
               if (newStageSlaStatus !== order.stageSlaStatus) {
                 orderUpdates.stageSlaStatus = newStageSlaStatus;
+                updated++;
               }
               // Auto-escalation: bump priority ONCE when crossing threshold, but ONLY when stage
               // explicitly configures slaEscalateAt (no implicit default escalation side-effect)
@@ -12888,6 +12915,7 @@ export async function registerRoutes(
                 const currentIdx = PRIORITY_ORDER.indexOf(String(order.priority ?? "medio"));
                 if (currentIdx >= 0 && currentIdx < PRIORITY_ORDER.length - 1) {
                   orderUpdates.priority = PRIORITY_ORDER[currentIdx + 1];
+                  updated++;
                 }
               }
             }
