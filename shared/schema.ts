@@ -3028,6 +3028,7 @@ export const workOrderStageLog = pgTable("work_order_stage_log", {
   enteredAt: timestamp("entered_at").notNull().defaultNow(),
   exitedAt: timestamp("exited_at"),
   slaHours: decimal("sla_hours"),
+  slaHoursSource: varchar("sla_hours_source"),
   pausedSeconds: integer("paused_seconds").default(0),
   slaStatus: varchar("sla_status"),
 });

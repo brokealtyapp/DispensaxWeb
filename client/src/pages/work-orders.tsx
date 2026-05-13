@@ -178,6 +178,7 @@ interface WorkOrder {
   slaPausedAt: string | null;
   stageEnteredAt: string | null;
   stageSlaHoursEffective: string | null;
+  stageSlaSource: string | null;
   stagePausedSeconds: number | null;
   stageEscalateAt: string | null;
   completedAt: string | null;
@@ -794,12 +795,24 @@ function OrderDetailView({
               const fmtH = (h: number) => h < 1 ? `${Math.round(h * 60)}min` : `${h.toFixed(1)}h`;
               const barColor = isVencido ? "bg-red-500" : isProximo ? "bg-amber-400" : "bg-green-500";
               const textColor = isVencido ? "text-red-600 font-semibold" : isProximo ? "text-amber-600 font-medium" : "text-green-600";
+              const detailSlaSourceLabels: Record<string, string> = {
+                prioridad: "por prioridad",
+                tipo: "por tipo",
+                etapa: "etapa",
+                global: "global",
+              };
+              const detailSlaSourceLabel = order.stageSlaSource ? detailSlaSourceLabels[order.stageSlaSource] ?? order.stageSlaSource : null;
               return (
                 <div className="pt-2 border-t space-y-2" data-testid="detail-stage-sla">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm">
                       <Layers className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-muted-foreground">SLA de Etapa Actual</span>
+                      {detailSlaSourceLabel && (
+                        <span className="text-xs text-muted-foreground/70 bg-muted px-1.5 py-0.5 rounded" data-testid="text-detail-sla-source">
+                          {detailSlaSourceLabel}
+                        </span>
+                      )}
                     </div>
                     {can("work_orders", "edit") && !["cerrada", "cancelada"].includes(order.status) && (
                       order.slaPausedAt ? (
@@ -1673,6 +1686,13 @@ function KanbanCard({
               : isPaused
               ? null
               : fmtDuration(remainingMs);
+            const slaSourceLabels: Record<string, string> = {
+              prioridad: "por prioridad",
+              tipo: "por tipo",
+              etapa: "etapa",
+              global: "global",
+            };
+            const slaSourceLabel = order.stageSlaSource ? slaSourceLabels[order.stageSlaSource] ?? order.stageSlaSource : null;
             return (
               <div className="space-y-1" data-testid={`kanban-stage-sla-${order.id}`}>
                 <div className={`flex items-center justify-between text-xs ${textColor}`}>
@@ -1701,6 +1721,11 @@ function KanbanCard({
                     style={{ width: `${pct}%` }}
                   />
                 </div>
+                {slaSourceLabel && (
+                  <div className="text-xs text-muted-foreground/70 text-right" data-testid={`kanban-stage-sla-source-${order.id}`}>
+                    Regla: {slaSourceLabel}
+                  </div>
+                )}
               </div>
             );
           })()}

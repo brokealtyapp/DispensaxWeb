@@ -11305,6 +11305,30 @@ export async function registerRoutes(
     return null;
   }
 
+  function computeEffectiveSlaHoursWithSource(
+    stage: { slaHours?: string | null; slaPriorityHours?: unknown; slaTypeHours?: unknown },
+    priority: string,
+    slaConf?: { criticalHours?: number | null; highHours?: number | null; mediumHours?: number | null; lowHours?: number | null } | null,
+    orderType?: string
+  ): { hours: number | null; source: string | null } {
+    const priorityHours = stage.slaPriorityHours as Record<string, number> | null;
+    if (priorityHours && priorityHours[priority]) return { hours: priorityHours[priority], source: "prioridad" };
+    const typeHours = stage.slaTypeHours as Record<string, number> | null;
+    if (typeHours && orderType && typeHours[orderType]) return { hours: typeHours[orderType], source: "tipo" };
+    if (stage.slaHours) return { hours: Number(stage.slaHours), source: "etapa" };
+    if (slaConf) {
+      const globalMap: Record<string, number | null | undefined> = {
+        critico: slaConf.criticalHours,
+        alto: slaConf.highHours,
+        medio: slaConf.mediumHours,
+        bajo: slaConf.lowHours,
+      };
+      const g = globalMap[priority];
+      if (g) return { hours: g, source: "global" };
+    }
+    return { hours: null, source: null };
+  }
+
   function calculateSlaDeadline(priority: string, config?: { criticalHours: number | null; highHours: number | null; mediumHours: number | null; lowHours: number | null }): Date {
     const hours: Record<string, number> = {
       critico: config?.criticalHours ?? 2,
@@ -11402,6 +11426,7 @@ export async function registerRoutes(
           ...o,
           stageEnteredAt: log?.enteredAt ?? null,
           stageSlaHoursEffective: log?.slaHours ?? null,
+          stageSlaSource: log?.slaHoursSource ?? null,
           stagePausedSeconds: log?.pausedSeconds ?? 0,
           stageEscalateAt: stage?.slaEscalateAt ?? null,
         };
@@ -11944,13 +11969,14 @@ export async function registerRoutes(
           const stage = stages.find(s => s.id === order.stageId);
           if (stage) {
             const postSlaConf = await storage.getSlaConfig(tenantId);
-            const effectiveSlaHours = computeEffectiveSlaHours(stage, String(order.priority ?? "medio"), postSlaConf, String(order.type ?? ""));
+            const { hours: effectiveSlaHours, source: slaHoursSource } = computeEffectiveSlaHoursWithSource(stage, String(order.priority ?? "medio"), postSlaConf, String(order.type ?? ""));
             await storage.createStageLogEntry({
               tenantId,
               workOrderId: order.id,
               stageId: order.stageId,
               stageName: stage.name,
               slaHours: effectiveSlaHours !== null ? String(effectiveSlaHours) : null,
+              slaHoursSource: slaHoursSource ?? undefined,
               pausedSeconds: 0,
             });
           }
@@ -12091,7 +12117,7 @@ export async function registerRoutes(
             const patchSlaConf = await storage.getSlaConfig(tenantId);
             const orderPriority = String(finalData.priority ?? existing.priority ?? "medio");
             const orderType = String(finalData.type ?? existing.type ?? "");
-            const effectiveSlaHours = computeEffectiveSlaHours(targetStage, orderPriority, patchSlaConf, orderType);
+            const { hours: effectiveSlaHours, source: patchSlaHoursSource } = computeEffectiveSlaHoursWithSource(targetStage, orderPriority, patchSlaConf, orderType);
             // Auto-pause if new status is in slaPauseOnStatuses
             const newStatus = String(finalData.status ?? existing.status);
             const pauseStatuses = (targetStage.slaPauseOnStatuses as string[] | null) ?? [];
@@ -12108,6 +12134,7 @@ export async function registerRoutes(
               stageId: updateData.stageId,
               stageName: targetStage.name,
               slaHours: effectiveSlaHours !== null ? String(effectiveSlaHours) : null,
+              slaHoursSource: patchSlaHoursSource ?? undefined,
               pausedSeconds: 0,
             });
           }
@@ -12821,13 +12848,14 @@ export async function registerRoutes(
           const ticketStage = ticketStages.find(s => s.id === order.stageId);
           if (ticketStage) {
             const ticketSlaConf = await storage.getSlaConfig(tenantId);
-            const ticketEffectiveSlaHours = computeEffectiveSlaHours(ticketStage, String(order.priority ?? "medio"), ticketSlaConf, String(order.type ?? ""));
+            const { hours: ticketEffectiveSlaHours, source: ticketSlaHoursSource } = computeEffectiveSlaHoursWithSource(ticketStage, String(order.priority ?? "medio"), ticketSlaConf, String(order.type ?? ""));
             await storage.createStageLogEntry({
               tenantId,
               workOrderId: order.id,
               stageId: order.stageId,
               stageName: ticketStage.name,
               slaHours: ticketEffectiveSlaHours !== null ? String(ticketEffectiveSlaHours) : null,
+              slaHoursSource: ticketSlaHoursSource ?? undefined,
               pausedSeconds: 0,
             });
           }
