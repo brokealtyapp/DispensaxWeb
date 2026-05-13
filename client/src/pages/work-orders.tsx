@@ -494,12 +494,21 @@ function OrderDetailView({
   const fetchedPhotoIdsRef = useRef<Set<string>>(new Set());
   const [photoModal, setPhotoModal] = useState<{
     url: string;
-    itemId: string;
+    itemId?: string;
+    downloadLabel?: string;
     technicianName: string | null;
     takenAt: string | null;
     lat: string | null;
     lng: string | null;
   } | null>(null);
+
+  // Gallery photos state
+  const [galleryBlobUrls, setGalleryBlobUrls] = useState<Record<string, string>>({});
+  const fetchedGalleryIdsRef = useRef<Set<string>>(new Set());
+  const [galleryCaption, setGalleryCaption] = useState("");
+  const [uploadingGallery, setUploadingGallery] = useState(false);
+  const [deleteGalleryPhotoId, setDeleteGalleryPhotoId] = useState<string | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const { data: checklist = [], isLoading: checklistLoading } = useQuery<ChecklistItem[]>({
     queryKey: ["/api/work-orders", order.id, "checklist"],
@@ -561,6 +570,101 @@ function OrderDetailView({
       Object.values(photoBlobUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
     };
   }, []);
+
+  // Gallery photos query
+  const { data: galleryPhotos = [], refetch: refetchGallery } = useQuery<{ id: string; workOrderId: string; tenantId: string; url: string; caption: string | null; createdAt: string | null }[]>({
+    queryKey: ["/api/work-orders", order.id, "photos"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/work-orders/${order.id}/photos`);
+      return res.json();
+    },
+  });
+
+  // Fetch gallery photo blob URLs with auth headers
+  useEffect(() => {
+    if (galleryPhotos.length === 0) return;
+    const blobMap: Record<string, string> = {};
+    const fetchPromises = galleryPhotos.map(async (photo) => {
+      if (fetchedGalleryIdsRef.current.has(photo.id)) return;
+      fetchedGalleryIdsRef.current.add(photo.id);
+      try {
+        const token = getAccessToken();
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        const res = await fetch(`/api/work-orders/${order.id}/photos/${photo.id}/file`, { headers, credentials: "include" });
+        if (res.ok) {
+          const blob = await res.blob();
+          blobMap[photo.id] = URL.createObjectURL(blob);
+        } else {
+          fetchedGalleryIdsRef.current.delete(photo.id);
+        }
+      } catch {
+        fetchedGalleryIdsRef.current.delete(photo.id);
+      }
+    });
+    Promise.all(fetchPromises).then(() => {
+      if (Object.keys(blobMap).length > 0) {
+        setGalleryBlobUrls(prev => ({ ...prev, ...blobMap }));
+      }
+    });
+  }, [galleryPhotos]);
+
+  // Revoke gallery blob URLs on unmount
+  const galleryBlobUrlsRef = useRef(galleryBlobUrls);
+  useEffect(() => { galleryBlobUrlsRef.current = galleryBlobUrls; }, [galleryBlobUrls]);
+  useEffect(() => {
+    return () => { Object.values(galleryBlobUrlsRef.current).forEach(url => URL.revokeObjectURL(url)); };
+  }, []);
+
+  const uploadGalleryPhoto = async (file: File) => {
+    setUploadingGallery(true);
+    try {
+      const formData = new FormData();
+      formData.append("photo", file);
+      if (galleryCaption.trim()) formData.append("caption", galleryCaption.trim());
+      const token = getAccessToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`/api/work-orders/${order.id}/photos`, { method: "POST", headers, body: formData, credentials: "include" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: "Error al subir foto", description: data.error || "Error desconocido", variant: "destructive" });
+      } else {
+        setGalleryCaption("");
+        await refetchGallery();
+      }
+    } catch {
+      toast({ title: "Error al subir foto", description: "Error de conexión", variant: "destructive" });
+    } finally {
+      setUploadingGallery(false);
+      if (galleryInputRef.current) galleryInputRef.current.value = "";
+    }
+  };
+
+  const deleteGalleryPhoto = async (photoId: string) => {
+    try {
+      const token = getAccessToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`/api/work-orders/${order.id}/photos/${photoId}`, { method: "DELETE", headers, credentials: "include" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: "Error al eliminar", description: data.error || "Error desconocido", variant: "destructive" });
+      } else {
+        setGalleryBlobUrls(prev => {
+          const next = { ...prev };
+          if (next[photoId]) { URL.revokeObjectURL(next[photoId]); delete next[photoId]; }
+          return next;
+        });
+        fetchedGalleryIdsRef.current.delete(photoId);
+        await refetchGallery();
+      }
+    } catch {
+      toast({ title: "Error al eliminar", description: "Error de conexión", variant: "destructive" });
+    } finally {
+      setDeleteGalleryPhotoId(null);
+    }
+  };
 
   const [pendingAnswers, setPendingAnswers] = useState<Record<string, string>>({});
 
@@ -1147,6 +1251,111 @@ function OrderDetailView({
         </Card>
       </div>
 
+      {/* Gallery Photos Section */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <ImageIcon className="h-4 w-4" />
+            Fotos ({galleryPhotos.length})
+          </CardTitle>
+          {can("work_orders", "edit") && (
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Descripción (opcional)"
+                value={galleryCaption}
+                onChange={e => setGalleryCaption(e.target.value)}
+                className="h-8 text-xs w-40"
+                maxLength={200}
+                data-testid="input-gallery-caption"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={uploadingGallery}
+                onClick={() => galleryInputRef.current?.click()}
+                data-testid="button-add-gallery-photo"
+              >
+                {uploadingGallery ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Camera className="h-3.5 w-3.5 mr-1" />}
+                Agregar foto
+              </Button>
+              <input
+                ref={galleryInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                data-testid="input-gallery-file"
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadGalleryPhoto(file);
+                }}
+              />
+            </div>
+          )}
+        </CardHeader>
+        <CardContent>
+          {galleryPhotos.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No hay fotos adjuntas. Agrega evidencia fotográfica de la orden.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-3 lg:grid-cols-4">
+              {galleryPhotos.map(photo => (
+                <div key={photo.id} className="relative group" data-testid={`gallery-photo-${photo.id}`}>
+                  {galleryBlobUrls[photo.id] ? (
+                    <img
+                      src={galleryBlobUrls[photo.id]}
+                      alt={photo.caption || "Foto de orden"}
+                      className="w-full h-24 object-cover rounded-md border cursor-pointer hover-elevate"
+                      onClick={() => setPhotoModal({
+                        url: galleryBlobUrls[photo.id],
+                        downloadLabel: `galeria_${photo.id.slice(0, 8)}`,
+                        technicianName: null,
+                        takenAt: photo.createdAt,
+                        lat: null,
+                        lng: null,
+                      })}
+                      data-testid={`img-gallery-${photo.id}`}
+                    />
+                  ) : (
+                    <div className="w-full h-24 rounded-md border bg-muted flex items-center justify-center">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                  )}
+                  {photo.caption && (
+                    <p className="text-xs text-muted-foreground mt-1 truncate" title={photo.caption}>{photo.caption}</p>
+                  )}
+                  {can("work_orders", "edit") && (
+                    <Button
+                      size="icon"
+                      variant="destructive"
+                      className="absolute top-1 right-1 h-6 w-6 invisible group-hover:visible"
+                      onClick={() => setDeleteGalleryPhotoId(photo.id)}
+                      data-testid={`button-delete-gallery-${photo.id}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Delete gallery photo confirmation */}
+      <Dialog open={!!deleteGalleryPhotoId} onOpenChange={open => { if (!open) setDeleteGalleryPhotoId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar foto</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">¿Estás seguro de que deseas eliminar esta foto? Esta acción no se puede deshacer.</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteGalleryPhotoId(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => deleteGalleryPhotoId && deleteGalleryPhoto(deleteGalleryPhotoId)} data-testid="button-confirm-delete-gallery">
+              Eliminar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {stageLog.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
@@ -1331,13 +1540,13 @@ function OrderDetailView({
       <Dialog open={!!photoModal} onOpenChange={(open) => { if (!open) setPhotoModal(null); }}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Foto del checklist</DialogTitle>
+            <DialogTitle>{photoModal?.itemId ? "Foto del checklist" : "Foto de la orden"}</DialogTitle>
           </DialogHeader>
           {photoModal && (
             <div className="space-y-3">
               <img
                 src={photoModal.url}
-                alt="Foto del checklist"
+                alt={photoModal?.itemId ? "Foto del checklist" : "Foto de la orden"}
                 className="w-full max-h-[65vh] object-contain rounded-md"
               />
               <div className="text-sm text-muted-foreground space-y-1">
@@ -1361,7 +1570,8 @@ function OrderDetailView({
                 onClick={() => {
                   const a = document.createElement("a");
                   a.href = photoModal.url;
-                  a.download = `${order.orderNumber}_checklist_${photoModal.itemId}.jpg`;
+                  const label = photoModal.downloadLabel ?? (photoModal.itemId ? `checklist_${photoModal.itemId}` : "foto");
+                  a.download = `${order.orderNumber}_${label}.jpg`;
                   a.click();
                 }}
               >

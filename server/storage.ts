@@ -832,6 +832,8 @@ export interface IStorage {
 
   getWorkOrderPhotos(workOrderId: string): Promise<WorkOrderPhoto[]>;
   createWorkOrderPhoto(data: InsertWorkOrderPhoto): Promise<WorkOrderPhoto>;
+  getWorkOrderPhotoById(id: string, tenantId: string): Promise<WorkOrderPhoto | undefined>;
+  deleteWorkOrderPhoto(id: string, tenantId: string): Promise<boolean>;
 
   getSlaConfig(tenantId: string): Promise<SlaConfig | undefined>;
   upsertSlaConfig(data: InsertSlaConfig): Promise<SlaConfig>;
@@ -8240,6 +8242,16 @@ export class DatabaseStorage implements IStorage {
   async createWorkOrderPhoto(data: InsertWorkOrderPhoto): Promise<WorkOrderPhoto> {
     const [photo] = await db.insert(workOrderPhotos).values(data).returning();
     return photo;
+  }
+
+  async getWorkOrderPhotoById(id: string, tenantId: string): Promise<WorkOrderPhoto | undefined> {
+    const [photo] = await db.select().from(workOrderPhotos).where(and(eq(workOrderPhotos.id, id), eq(workOrderPhotos.tenantId, tenantId)));
+    return photo;
+  }
+
+  async deleteWorkOrderPhoto(id: string, tenantId: string): Promise<boolean> {
+    const result = await db.delete(workOrderPhotos).where(and(eq(workOrderPhotos.id, id), eq(workOrderPhotos.tenantId, tenantId))).returning({ id: workOrderPhotos.id });
+    return result.length > 0;
   }
 
   // ==================== SLA CONFIG ====================

@@ -12592,7 +12592,49 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/work-orders/:id/photos", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+  const galleryUploadMulter = (await import("multer")).default;
+  const galleryUpload = galleryUploadMulter({ storage: galleryUploadMulter.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+  app.post("/api/work-orders/:id/photos", authenticateJWT, authorizeAction("work_orders", "edit"), (req: AuthenticatedRequest, res: Response, next) => {
+    galleryUpload.single("photo")(req as Request, res, (err: unknown) => {
+      const multerErr = err as { code?: string } | null;
+      if (multerErr?.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ error: "La foto excede el tamaño máximo de 10MB" });
+      }
+      if (err) return next(err);
+      next();
+    });
+  }, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const order = await storage.getWorkOrderById(req.params.id);
+      if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.userId) {
+        return res.status(403).json({ error: "Sin permisos" });
+      }
+
+      const file = (req as Express.Request & { file?: Express.Multer.File }).file;
+      if (!file) return res.status(400).json({ error: "Foto requerida" });
+      if (!file.mimetype.startsWith("image/")) return res.status(400).json({ error: "Solo se permiten imágenes" });
+
+      const { Client } = await import("@replit/object-storage");
+      const { randomUUID } = await import("crypto");
+      const fileKey = `.private/${tenantId}/work-order-photos/${order.id}/${randomUUID()}_${Date.now()}.jpg`;
+      const objClient = new Client({ bucketId: getObjectStorageBucketId() });
+      await objClient.uploadFromBytes(fileKey, file.buffer);
+
+      const caption = typeof req.body?.caption === "string" && req.body.caption.trim() ? req.body.caption.trim() : null;
+      const photo = await storage.createWorkOrderPhoto({ workOrderId: order.id, tenantId, url: fileKey, caption });
+      res.status(201).json(photo);
+    } catch (error) {
+      console.error("Error uploading gallery photo:", error);
+      res.status(500).json({ error: "Error al subir foto" });
+    }
+  });
+
+  app.get("/api/work-orders/:id/photos/:photoId/file", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
       const order = await storage.getWorkOrderById(req.params.id);
@@ -12603,17 +12645,57 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
 
-      const parsed = insertWorkOrderPhotoSchema.parse({
-        ...req.body,
-        workOrderId: order.id,
-        tenantId,
-      });
+      const photo = await storage.getWorkOrderPhotoById(req.params.photoId, tenantId);
+      if (!photo || photo.workOrderId !== order.id) return res.status(404).json({ error: "Foto no encontrada" });
 
-      const photo = await storage.createWorkOrderPhoto(parsed);
-      res.status(201).json(photo);
+      const { Client } = await import("@replit/object-storage");
+      const objClient = new Client({ bucketId: getObjectStorageBucketId() });
+      const result = await objClient.downloadAsBytes(photo.url);
+      if (!result.ok) return res.status(404).json({ error: "Foto no encontrada en storage" });
+
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      const raw = result.value as Buffer | [Buffer] | Buffer[];
+      let payload: Buffer | null = null;
+      if (Buffer.isBuffer(raw)) {
+        payload = raw;
+      } else if (Array.isArray(raw) && raw.length > 0) {
+        payload = Buffer.isBuffer(raw[0]) ? raw[0] : Buffer.from(raw[0] as any);
+      }
+      if (!payload || payload.length === 0) {
+        return res.status(500).json({ error: "Foto vacía en almacenamiento" });
+      }
+      res.send(payload);
     } catch (error) {
-      console.error("Error creating photo:", error);
-      res.status(500).json({ error: "Error al guardar foto" });
+      console.error("Error fetching gallery photo:", error);
+      res.status(500).json({ error: "Error al obtener foto" });
+    }
+  });
+
+  app.delete("/api/work-orders/:id/photos/:photoId", authenticateJWT, authorizeAction("work_orders", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const order = await storage.getWorkOrderById(req.params.id);
+      if (!order || order.tenantId !== tenantId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+
+      const photo = await storage.getWorkOrderPhotoById(req.params.photoId, tenantId);
+      if (!photo || photo.workOrderId !== order.id) return res.status(404).json({ error: "Foto no encontrada" });
+
+      // Delete from object storage (best-effort, non-fatal)
+      try {
+        const { Client: ObjClientDel } = await import("@replit/object-storage");
+        await new ObjClientDel({ bucketId: getObjectStorageBucketId() }).delete(photo.url);
+      } catch (deleteErr) {
+        console.warn("Error deleting gallery photo from storage (non-fatal):", deleteErr);
+      }
+
+      await storage.deleteWorkOrderPhoto(req.params.photoId, tenantId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting gallery photo:", error);
+      res.status(500).json({ error: "Error al eliminar foto" });
     }
   });
 
