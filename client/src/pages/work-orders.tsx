@@ -198,6 +198,7 @@ interface WorkOrderStageInfo {
   statuses: string[];
   slaHours: string | null;
   slaPriorityHours: { critico?: number; alto?: number; medio?: number; bajo?: number } | null;
+  slaTypeHours: Record<string, number> | null;
   slaPauseOnStatuses: string[];
   slaEscalateAt: string | null;
 }
@@ -2213,6 +2214,7 @@ export function WorkOrdersPage() {
   const [editingStageStatuses, setEditingStageStatuses] = useState<string[]>([]);
   const [editingSlaHours, setEditingSlaHours] = useState<string>("");
   const [editingSlaPriorityHours, setEditingSlaPriorityHours] = useState<{ critico: string; alto: string; medio: string; bajo: string }>({ critico: "", alto: "", medio: "", bajo: "" });
+  const [editingSlaTypeHours, setEditingSlaTypeHours] = useState<Record<string, string>>({});
   const [editingSlaPauseOnStatuses, setEditingSlaPauseOnStatuses] = useState<string[]>([]);
   const [editingSlaEscalateAt, setEditingSlaEscalateAt] = useState<string>("");
   const [newStageColor, setNewStageColor] = useState("slate");
@@ -2340,7 +2342,7 @@ export function WorkOrdersPage() {
   });
 
   const updateStageMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; name?: string; color?: string; isFinal?: boolean; statuses?: string[]; slaHours?: number | null; slaPriorityHours?: { critico?: number; alto?: number; medio?: number; bajo?: number } | null; slaPauseOnStatuses?: string[]; slaEscalateAt?: number | null }) => {
+    mutationFn: async ({ id, ...data }: { id: string; name?: string; color?: string; isFinal?: boolean; statuses?: string[]; slaHours?: number | null; slaPriorityHours?: { critico?: number; alto?: number; medio?: number; bajo?: number } | null; slaTypeHours?: Record<string, number> | null; slaPauseOnStatuses?: string[]; slaEscalateAt?: number | null }) => {
       const res = await apiRequest("PATCH", `/api/work-order-stages/${id}`, data);
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Error al actualizar etapa"); }
       return res.json();
@@ -4475,7 +4477,8 @@ export function WorkOrdersPage() {
                           onKeyDown={e => {
                             if (e.key === "Enter" && editingStageName.trim()) {
                               const ph = editingSlaPriorityHours;
-                              updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal, statuses: editingStageStatuses, slaHours: editingSlaHours ? Number(editingSlaHours) : null, slaPriorityHours: (ph.critico || ph.alto || ph.medio || ph.bajo) ? { ...(ph.critico ? { critico: Number(ph.critico) } : {}), ...(ph.alto ? { alto: Number(ph.alto) } : {}), ...(ph.medio ? { medio: Number(ph.medio) } : {}), ...(ph.bajo ? { bajo: Number(ph.bajo) } : {}) } : null, slaPauseOnStatuses: editingSlaPauseOnStatuses, slaEscalateAt: editingSlaEscalateAt ? Number(editingSlaEscalateAt) : null });
+                              const thEntries = Object.entries(editingSlaTypeHours).filter(([, v]) => v !== "").map(([k, v]) => [k, Number(v)]);
+                              updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal, statuses: editingStageStatuses, slaHours: editingSlaHours ? Number(editingSlaHours) : null, slaPriorityHours: (ph.critico || ph.alto || ph.medio || ph.bajo) ? { ...(ph.critico ? { critico: Number(ph.critico) } : {}), ...(ph.alto ? { alto: Number(ph.alto) } : {}), ...(ph.medio ? { medio: Number(ph.medio) } : {}), ...(ph.bajo ? { bajo: Number(ph.bajo) } : {}) } : null, slaTypeHours: thEntries.length > 0 ? Object.fromEntries(thEntries) : null, slaPauseOnStatuses: editingSlaPauseOnStatuses, slaEscalateAt: editingSlaEscalateAt ? Number(editingSlaEscalateAt) : null });
                             }
                             if (e.key === "Escape") setEditingStageId(null);
                           }}
@@ -4569,6 +4572,28 @@ export function WorkOrdersPage() {
                               ))}
                             </div>
                           </div>
+                          {orderTypes.length > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">Horas por tipo de orden (opcional):</p>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {orderTypes.map(ot => (
+                                  <div key={ot.key} className="flex items-center gap-1.5">
+                                    <span className="text-xs shrink-0 w-20 truncate text-muted-foreground" title={ot.label}>{ot.label}</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.5"
+                                      className="flex-1 rounded-md border bg-background px-2 py-1 text-xs"
+                                      placeholder="h"
+                                      value={editingSlaTypeHours[ot.key] ?? ""}
+                                      onChange={e => setEditingSlaTypeHours(prev => ({ ...prev, [ot.key]: e.target.value }))}
+                                      data-testid={`input-stage-sla-type-${ot.key}-${stage.id}`}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           <div>
                             <p className="text-xs text-muted-foreground mb-1">Pausar SLA cuando el estado sea:</p>
                             <div className="flex flex-wrap gap-x-3 gap-y-1">
@@ -4610,7 +4635,8 @@ export function WorkOrdersPage() {
                             disabled={!editingStageName.trim() || updateStageMutation.isPending}
                             onClick={() => {
                               const ph = editingSlaPriorityHours;
-                              updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal, statuses: editingStageStatuses, slaHours: editingSlaHours ? Number(editingSlaHours) : null, slaPriorityHours: (ph.critico || ph.alto || ph.medio || ph.bajo) ? { ...(ph.critico ? { critico: Number(ph.critico) } : {}), ...(ph.alto ? { alto: Number(ph.alto) } : {}), ...(ph.medio ? { medio: Number(ph.medio) } : {}), ...(ph.bajo ? { bajo: Number(ph.bajo) } : {}) } : null, slaPauseOnStatuses: editingSlaPauseOnStatuses, slaEscalateAt: editingSlaEscalateAt ? Number(editingSlaEscalateAt) : null });
+                              const thEntries = Object.entries(editingSlaTypeHours).filter(([, v]) => v !== "").map(([k, v]) => [k, Number(v)]);
+                              updateStageMutation.mutate({ id: stage.id, name: editingStageName.trim(), color: editingStageColor, isFinal: editingStageIsFinal, statuses: editingStageStatuses, slaHours: editingSlaHours ? Number(editingSlaHours) : null, slaPriorityHours: (ph.critico || ph.alto || ph.medio || ph.bajo) ? { ...(ph.critico ? { critico: Number(ph.critico) } : {}), ...(ph.alto ? { alto: Number(ph.alto) } : {}), ...(ph.medio ? { medio: Number(ph.medio) } : {}), ...(ph.bajo ? { bajo: Number(ph.bajo) } : {}) } : null, slaTypeHours: thEntries.length > 0 ? Object.fromEntries(thEntries) : null, slaPauseOnStatuses: editingSlaPauseOnStatuses, slaEscalateAt: editingSlaEscalateAt ? Number(editingSlaEscalateAt) : null });
                             }}
                             data-testid={`button-stage-save-${stage.id}`}
                           >
@@ -4642,6 +4668,7 @@ export function WorkOrdersPage() {
                             setEditingStageStatuses((stage.statuses as string[]) ?? []);
                             setEditingSlaHours(s.slaHours ?? "");
                             setEditingSlaPriorityHours({ critico: String(s.slaPriorityHours?.critico ?? ""), alto: String(s.slaPriorityHours?.alto ?? ""), medio: String(s.slaPriorityHours?.medio ?? ""), bajo: String(s.slaPriorityHours?.bajo ?? "") });
+                            setEditingSlaTypeHours(Object.fromEntries(Object.entries(s.slaTypeHours ?? {}).map(([k, v]) => [k, String(v)])));
                             setEditingSlaPauseOnStatuses((s.slaPauseOnStatuses as string[]) ?? []);
                             setEditingSlaEscalateAt(s.slaEscalateAt ?? "");
                           }}

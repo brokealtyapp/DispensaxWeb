@@ -11282,12 +11282,15 @@ export async function registerRoutes(
   }
 
   function computeEffectiveSlaHours(
-    stage: { slaHours?: string | null; slaPriorityHours?: unknown },
+    stage: { slaHours?: string | null; slaPriorityHours?: unknown; slaTypeHours?: unknown },
     priority: string,
-    slaConf?: { criticalHours?: number | null; highHours?: number | null; mediumHours?: number | null; lowHours?: number | null } | null
+    slaConf?: { criticalHours?: number | null; highHours?: number | null; mediumHours?: number | null; lowHours?: number | null } | null,
+    orderType?: string
   ): number | null {
     const priorityHours = stage.slaPriorityHours as Record<string, number> | null;
     if (priorityHours && priorityHours[priority]) return priorityHours[priority];
+    const typeHours = stage.slaTypeHours as Record<string, number> | null;
+    if (typeHours && orderType && typeHours[orderType]) return typeHours[orderType];
     if (stage.slaHours) return Number(stage.slaHours);
     if (slaConf) {
       const globalMap: Record<string, number | null | undefined> = {
@@ -11607,6 +11610,7 @@ export async function registerRoutes(
           medio: z.number().positive().optional(),
           bajo: z.number().positive().optional(),
         }).nullable().optional(),
+        slaTypeHours: z.record(z.string(), z.number().positive()).nullable().optional(),
         slaPauseOnStatuses: z.array(z.enum(ALLOWED_KANBAN_STATUSES)).optional(),
         slaEscalateAt: z.number().min(0).max(100).nullable().optional(),
       });
@@ -11940,7 +11944,7 @@ export async function registerRoutes(
           const stage = stages.find(s => s.id === order.stageId);
           if (stage) {
             const postSlaConf = await storage.getSlaConfig(tenantId);
-            const effectiveSlaHours = computeEffectiveSlaHours(stage, String(order.priority ?? "medio"), postSlaConf);
+            const effectiveSlaHours = computeEffectiveSlaHours(stage, String(order.priority ?? "medio"), postSlaConf, String(order.type ?? ""));
             await storage.createStageLogEntry({
               tenantId,
               workOrderId: order.id,
@@ -12086,7 +12090,8 @@ export async function registerRoutes(
           if (targetStage) {
             const patchSlaConf = await storage.getSlaConfig(tenantId);
             const orderPriority = String(finalData.priority ?? existing.priority ?? "medio");
-            const effectiveSlaHours = computeEffectiveSlaHours(targetStage, orderPriority, patchSlaConf);
+            const orderType = String(finalData.type ?? existing.type ?? "");
+            const effectiveSlaHours = computeEffectiveSlaHours(targetStage, orderPriority, patchSlaConf, orderType);
             // Auto-pause if new status is in slaPauseOnStatuses
             const newStatus = String(finalData.status ?? existing.status);
             const pauseStatuses = (targetStage.slaPauseOnStatuses as string[] | null) ?? [];
@@ -12816,7 +12821,7 @@ export async function registerRoutes(
           const ticketStage = ticketStages.find(s => s.id === order.stageId);
           if (ticketStage) {
             const ticketSlaConf = await storage.getSlaConfig(tenantId);
-            const ticketEffectiveSlaHours = computeEffectiveSlaHours(ticketStage, String(order.priority ?? "medio"), ticketSlaConf);
+            const ticketEffectiveSlaHours = computeEffectiveSlaHours(ticketStage, String(order.priority ?? "medio"), ticketSlaConf, String(order.type ?? ""));
             await storage.createStageLogEntry({
               tenantId,
               workOrderId: order.id,

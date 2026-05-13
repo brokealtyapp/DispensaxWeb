@@ -3009,6 +3009,7 @@ export const workOrderStages = pgTable("work_order_stages", {
   statuses: jsonb("statuses").$type<string[]>().notNull(),
   slaHours: decimal("sla_hours"),
   slaPriorityHours: jsonb("sla_priority_hours").$type<{ critico?: number; alto?: number; medio?: number; bajo?: number } | null>(),
+  slaTypeHours: jsonb("sla_type_hours").$type<Record<string, number> | null>(),
   slaPauseOnStatuses: jsonb("sla_pause_on_statuses").$type<string[]>().default(sql`'[]'::jsonb`),
   slaEscalateAt: decimal("sla_escalate_at"),
   createdAt: timestamp("created_at").defaultNow(),
