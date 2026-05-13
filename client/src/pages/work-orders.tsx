@@ -1565,6 +1565,7 @@ function KanbanCard({
   canApprove,
   isAdvancing,
   ghost,
+  isPreFinalStage,
 }: {
   order: WorkOrder;
   machines: Machine[];
@@ -1576,6 +1577,7 @@ function KanbanCard({
   canApprove: boolean;
   isAdvancing: boolean;
   ghost?: boolean;
+  isPreFinalStage?: boolean;
 }) {
   const slaTick = useSlaTimer();
   const machine = machines.find((m) => m.id === order.machineId);
@@ -1589,7 +1591,7 @@ function KanbanCard({
 
   const canAdvanceToNext =
     nextStatus &&
-    (order.status === "completada" ? canApprove : canEdit);
+    ((order.status === "completada" || isPreFinalStage) ? canApprove : canEdit);
 
   return (
     <div
@@ -1775,6 +1777,7 @@ function DraggableKanbanCard({
   canApprove,
   isAdvancing,
   isActiveItem,
+  isPreFinalStage,
 }: {
   order: WorkOrder;
   machines: Machine[];
@@ -1786,6 +1789,7 @@ function DraggableKanbanCard({
   canApprove: boolean;
   isAdvancing: boolean;
   isActiveItem: boolean;
+  isPreFinalStage?: boolean;
 }) {
   const {
     attributes,
@@ -1816,6 +1820,7 @@ function DraggableKanbanCard({
         canApprove={canApprove}
         isAdvancing={isAdvancing}
         ghost={isActiveItem}
+        isPreFinalStage={isPreFinalStage}
       />
     </div>
   );
@@ -2079,7 +2084,7 @@ function KanbanBoard({
     >
       <div className="overflow-x-auto pb-4" data-testid="kanban-board">
         <div className="flex gap-3 min-w-max">
-          {columns.map((col) => {
+          {columns.map((col, colIdx) => {
             const colIds = columnOrders[col.id] ?? [];
             const colOrders = colIds
               .map((id) => orders.find((o) => o.id === id))
@@ -2090,6 +2095,14 @@ function KanbanBoard({
               activeOrder &&
               !col.statuses.includes(activeOrder.status) &&
               !colIds.includes(activeOrder.id);
+
+            // Determine the next column so the "Avanzar" button uses the correct stageId
+            const nextCol = columns[colIdx + 1] ?? null;
+            const nextStage = stages[colIdx + 1] ?? null;
+            const isPreFinalStage = nextStage?.isFinal ?? false;
+            const nextIsFinal = nextStage?.isFinal ?? false;
+            const nextHasStatuses = (nextCol?.statuses.length ?? 0) > 0;
+
             return (
               <DroppableColumn
                 key={col.id}
@@ -2114,7 +2127,14 @@ function KanbanBoard({
                         {isOver ? "Soltar aquí" : "Sin órdenes"}
                       </div>
                     ) : (
-                      colOrders.map((order) => (
+                      colOrders.map((order) => {
+                        // Mirror the same target-status logic used by handleDragEnd
+                        const advanceTargetStatus = nextIsFinal
+                          ? "cerrada"
+                          : nextHasStatuses
+                          ? (nextCol!.statuses[0] ?? order.status)
+                          : order.status;
+                        return (
                         <DraggableKanbanCard
                           key={order.id}
                           order={order}
@@ -2122,13 +2142,15 @@ function KanbanBoard({
                           users={users}
                           typeLabels={typeLabels}
                           onSelect={() => onSelectOrder(order)}
-                          onAdvance={() => onMoveStatus(order.id, NEXT_STATUS[order.status])}
+                          onAdvance={nextCol ? () => onMoveStatus(order.id, advanceTargetStatus, nextCol.id) : undefined}
                           canEdit={canEdit}
                           canApprove={canApprove}
                           isAdvancing={movingOrderId === order.id}
                           isActiveItem={activeOrder?.id === order.id}
+                          isPreFinalStage={isPreFinalStage}
                         />
-                      ))
+                        );
+                      })
                     )}
                   </SortableContext>
                   {incomingFromOtherCol && (
