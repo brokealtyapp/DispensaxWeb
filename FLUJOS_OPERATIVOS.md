@@ -2,9 +2,9 @@
 
 ## Guía de Operaciones Diarias por Rol
 
-**Versión:** 1.0  
+**Versión:** 2.0  
 **Sistema:** Dispensax  
-**Fecha:** Enero 2026
+**Fecha:** Mayo 2026
 
 ---
 
@@ -57,7 +57,19 @@
    - [8.4 Vandalismo o Robo](#84-vandalismo-o-robo)
    - [8.5 Abastecedor Ausente](#85-abastecedor-ausente)
    - [8.6 Stock Crítico en Almacén](#86-stock-crítico-en-almacén)
-9. [Diagrama de Flujo General del Negocio](#9-diagrama-de-flujo-general-del-negocio)
+9. [Flujos Nayax y Conciliación Cruzada](#9-flujos-nayax-y-conciliación-cruzada)
+   - [9.1 Configuración inicial de Nayax](#91-configuración-inicial-de-nayax)
+   - [9.2 Sincronización y conciliación cruzada diaria](#92-sincronización-y-conciliación-cruzada-diaria)
+10. [Flujos de Órdenes de Trabajo (Kanban)](#10-flujos-de-órdenes-de-trabajo-kanban)
+    - [10.1 Crear orden desde un ticket](#101-crear-orden-desde-un-ticket)
+    - [10.2 Gestión diaria del Kanban](#102-gestión-diaria-del-kanban)
+    - [10.3 Respuesta a alerta de SLA vencido](#103-respuesta-a-alerta-de-sla-vencido)
+11. [Flujos de Establecimientos](#11-flujos-de-establecimientos)
+    - [11.1 Onboarding de nuevo establecimiento](#111-onboarding-de-nuevo-establecimiento)
+    - [11.2 Gestión de documentos y contrato](#112-gestión-de-documentos-y-contrato)
+12. [Flujos de Auditoría de Bandejas](#12-flujos-de-auditoría-de-bandejas)
+    - [12.1 Auditoría de bandejas durante servicio](#121-auditoría-de-bandejas-durante-servicio)
+13. [Diagrama de Flujo General del Negocio](#13-diagrama-de-flujo-general-del-negocio)
 
 ---
 
@@ -2875,7 +2887,551 @@ FLUJO: STOCK CRÍTICO
 
 ---
 
-## 9. Diagrama de Flujo General del Negocio
+## 9. Flujos Nayax y Conciliación Cruzada
+
+### 9.1 Configuración inicial de Nayax
+
+**Momento:** Primera vez que se activa la integración Nayax en un tenant  
+**Objetivo:** Conectar la cuenta Nayax Lynx del cliente con Dispensax y vincular las máquinas
+
+```
+FLUJO: CONFIGURACIÓN INICIAL NAYAX
+════════════════════════════════════
+
+[Admin inicia sesión en Dispensax]
+    │
+    ▼
+[Ir a Integraciones → Nayax → Pestaña Configuración]
+    │
+    ├─► Obtener API Token de Nayax Lynx:
+    │   ├─ Portal Nayax Lynx → Configuración → API
+    │   └─ O solicitarlo al soporte de Nayax
+    │
+    ▼
+[Ingresar token y activar integración]
+    │
+    ├─ Pegar token en campo "API Token"
+    ├─ Activar toggle "Integración habilitada"
+    ├─ Hacer clic en "Guardar configuración"
+    │
+    ▼
+[Probar conexión]
+    │
+    ├─► Hacer clic en "Probar conexión"
+    │   │
+    │   ├─► ÉXITO: Aparece "Conexión exitosa"
+    │   │   └─► Continuar al siguiente paso
+    │   │
+    │   └─► ERROR: Revisar token
+    │       ├─ Verificar que el token está completo y sin espacios
+    │       ├─ Verificar que la cuenta Nayax tiene acceso a la API
+    │       └─ Contactar soporte Nayax si persiste
+    │
+    ▼
+[Vincular máquinas]
+    │
+    ├─► Ir a pestaña "Máquinas"
+    │
+    ├─► Para cada máquina con dispositivo VPOS Nayax:
+    │   │
+    │   ├─ Identificar la máquina en la lista Nayax
+    │   │   (por nombre o número de serie)
+    │   │
+    │   ├─ Hacer clic en "Vincular"
+    │   │
+    │   ├─ Seleccionar la máquina Dispensax correspondiente
+    │   │   └─ Verificar que el código/nombre coincide
+    │   │
+    │   └─ Confirmar vínculo
+    │
+    └─► Resultado: Ícono verde = vinculada / Gris = sin vincular
+    │
+    ▼
+[Verificar vínculo]
+    │
+    ├─► Ir a una máquina vinculada
+    ├─► Hacer clic en "Ver últimas ventas"
+    │   │
+    │   ├─► Si aparecen transacciones: Vínculo correcto
+    │   └─► Si error: Verificar que el ID Nayax es el correcto
+    │
+    ▼
+[Configurar sincronización]
+    │
+    ├─ Definir intervalo deseado (ej: cada 60 min)
+    ├─ Activar "Auto-sync de ventas" (pendiente de activar scheduler)
+    └─ Guardar
+    │
+    ▼
+[Integración activa]
+    │
+    └─► A partir de este momento:
+        ├─ Sync manual disponible en cualquier momento
+        ├─ Transacciones importadas disponibles en Conciliación
+        └─ Dashboard Nayax muestra KPIs del período
+```
+
+---
+
+### 9.2 Sincronización y conciliación cruzada diaria
+
+**Momento:** Al cierre de cada jornada operativa, o antes de generar reportes  
+**Objetivo:** Traer las ventas cashless de Nayax y cruzarlas con el efectivo recolectado
+
+```
+FLUJO: CONCILIACIÓN CRUZADA CON NAYAX
+══════════════════════════════════════
+
+[Inicio del proceso de cierre - Contabilidad]
+    │
+    ▼
+[Sincronizar ventas Nayax]
+    │
+    ├─► Ir a Nayax → Pestaña Resumen
+    ├─► Hacer clic en "Sincronizar ahora"
+    │
+    ├─► El sistema consulta Lynx para cada máquina vinculada
+    │
+    ├─► Resultado del sync:
+    │   ├─ "X transacciones importadas de Y máquinas"
+    │   └─ Errores por máquina (si los hay)
+    │
+    ├─► ¿Hay errores de sync?
+    │   ├─► SÍ: Verificar conexión a internet y estado de Nayax Lynx
+    │   │   └─ Reintentar o proceder con datos disponibles
+    │   └─► NO: Continuar
+    │
+    ▼
+[Ir a Conciliación Cruzada]
+    │
+    ├─► Contabilidad → Conciliación Cruzada
+    ├─► Seleccionar máquina a conciliar
+    ├─► Seleccionar período (día / semana / mes)
+    │
+    ▼
+[El sistema carga automáticamente]
+    │
+    ├─ Ventas Nayax del período (cashless)
+    │   ├─ Total en tarjeta (card)
+    │   ├─ Total en efectivo vía MDB (cash)
+    │   └─ Otros métodos (other)
+    │
+    ├─ Movimientos de efectivo registrados
+    │   ├─ Recolecciones del período
+    │   └─ Fondos de cambio emitidos/devueltos
+    │
+    └─ Historial de carriles vacíos del período
+    │
+    ▼
+[Ingresar datos manuales]
+    │
+    ├─ Fondo inicial entregado al abastecedor (RD$)
+    │
+    └─ Conteo físico de efectivo (resultado del triple conteo)
+        └─► Usar módulo Conteo de Denominaciones para el triple conteo
+    │
+    ▼
+[Calcular conciliación]
+    │
+    ├─► Hacer clic en "Calcular"
+    │
+    ├─► El sistema calcula:
+    │   │
+    │   ├─ Total teórico esperado:
+    │   │   (Fondo inicial) + (Ventas Nayax efectivo) - (Nayax cashless ya depositado)
+    │   │
+    │   ├─ Total real:
+    │   │   (Conteo físico) + (Ventas Nayax cashless)
+    │   │
+    │   └─ Diferencia = Total real - Total teórico
+    │
+    ▼
+[Revisar resultado]
+    │
+    ├─► CUADRE (diferencia < umbral):
+    │   ├─ Aprobar conciliación
+    │   └─ Exportar reporte de cierre (PDF o CSV)
+    │
+    ├─► FALTANTE (diferencia negativa significativa):
+    │   ├─ Verificar si hay transacciones Nayax sin sincronizar
+    │   ├─ Revisar si el conteo físico es correcto
+    │   ├─ Investigar según flujo 8.2 (Faltante de Efectivo)
+    │   └─ Documentar el faltante antes de cerrar
+    │
+    └─► SOBRANTE (diferencia positiva):
+        ├─ Verificar si hay error en el fondo inicial ingresado
+        ├─ Verificar si hay recolecciones no registradas
+        └─ Documentar el sobrante
+    │
+    ▼
+[Exportar y archivar]
+    │
+    ├─► Exportar PDF → Para el expediente del cierre
+    ├─► Exportar CSV → Para el análisis en hoja de cálculo
+    │
+    └─► Marcar conciliación como cerrada
+        └─ Quedará en el historial de conciliaciones del período
+```
+
+---
+
+## 10. Flujos de Órdenes de Trabajo (Kanban)
+
+### 10.1 Crear orden desde un ticket
+
+**Momento:** Cuando un abastecedor, supervisor o cliente reporta un problema  
+**Objetivo:** Registrar el trabajo técnico necesario y asignarlo correctamente
+
+```
+FLUJO: CREAR ORDEN DE TRABAJO
+══════════════════════════════
+
+[Reporte de problema]
+    │
+    ├─► Fuente del reporte:
+    │   ├─ Abastecedor crea ticket durante servicio
+    │   ├─ Supervisor detecta en visita
+    │   ├─ Alerta del sistema (máquina fuera de servicio)
+    │   └─ Reporte del establecimiento
+    │
+    ▼
+[Supervisor/Admin revisa el ticket]
+    │
+    ├─► Ir a Órdenes de Trabajo → Tickets
+    ├─► Abrir ticket pendiente
+    │
+    ├─► Evaluar:
+    │   ├─ ¿Qué tipo de trabajo es? (Técnico / Instalación / Preventivo)
+    │   ├─ ¿Cuál es la prioridad? (Crítico / Alto / Medio / Bajo)
+    │   └─ ¿Quién es el responsable?
+    │
+    ▼
+[Crear la orden de trabajo]
+    │
+    ├─► Hacer clic en "+ Nueva Orden" o "Convertir ticket"
+    │
+    ├─► Completar formulario:
+    │   ├─ Tipo de orden
+    │   ├─ Máquina afectada
+    │   ├─ Prioridad
+    │   ├─ Descripción detallada
+    │   ├─ Técnico asignado
+    │   └─ SLA esperado (se calcula automáticamente)
+    │
+    ├─► El sistema aplica el SLA:
+    │   ├─ Busca SLA por prioridad específica (ej: Crítico = 2h)
+    │   ├─ Si no hay → busca SLA por tipo de orden
+    │   ├─ Si no hay → usa SLA base de la etapa
+    │   └─ Si no hay → usa SLA global del tenant
+    │
+    └─► La orden aparece en la primera columna del Kanban
+    │
+    ▼
+[Notificación]
+    │
+    ├─ Técnico asignado recibe notificación
+    ├─ El timer SLA comienza en la primera etapa
+    └─ Supervisor puede monitorear en el Kanban
+```
+
+---
+
+### 10.2 Gestión diaria del Kanban
+
+**Momento:** Durante la jornada operativa  
+**Objetivo:** Mover las órdenes a través de las etapas y mantener el SLA bajo control
+
+```
+FLUJO: GESTIÓN DIARIA KANBAN
+═════════════════════════════
+
+[Inicio de jornada - Supervisor revisa el Kanban]
+    │
+    ├─► Ver tarjetas por columna (etapa)
+    │
+    ├─► Identificar tarjetas en riesgo:
+    │   ├─ Barra amarilla: Próximas a vencer SLA
+    │   └─ Barra roja: SLA vencido
+    │
+    ▼
+[Técnico ejecuta la orden]
+    │
+    ├─► Entra a la orden de trabajo
+    ├─► Revisa la descripción del problema
+    ├─► Completa los ítems del checklist de la etapa:
+    │   ├─ Checkbox: Marca como completado
+    │   ├─ Foto obligatoria: Adjunta imagen
+    │   ├─ Numérico: Ingresa valor medido
+    │   └─ Pregunta abierta: Escribe observación
+    │
+    ├─► ¿Puede avanzar a la siguiente etapa?
+    │   ├─► SÍ (checklist completado):
+    │   │   ├─ Hacer clic en "Avanzar etapa"
+    │   │   ├─ El sistema registra la hora de salida de la etapa
+    │   │   └─ Timer reinicia para la nueva etapa
+    │   │
+    │   └─► NO (bloqueado por falta de repuesto, etc.):
+    │       ├─ Añadir nota de bloqueo
+    │       ├─ Notificar al supervisor
+    │       └─ Opcionalmente pausar el timer SLA
+    │
+    ▼
+[Hasta llegar a etapa final "Cerrado"]
+    │
+    ├─► Verificar que todos los checklists estén completos
+    ├─► Añadir observaciones finales
+    ├─► Mover a "Cerrado"
+    │
+    └─► El sistema registra:
+        ├─ Tiempo total
+        ├─ SLA cumplido o vencido
+        └─ Historial completo de etapas
+```
+
+---
+
+### 10.3 Respuesta a alerta de SLA vencido
+
+**Momento:** Cuando el sistema detecta que una orden superó el tiempo de etapa  
+**Objetivo:** Reaccionar rápido para minimizar el impacto operativo
+
+```
+FLUJO: RESPUESTA A SLA VENCIDO
+═══════════════════════════════
+
+[Alerta generada]
+    │
+    ├─► Notificación in-app: "SLA vencido - Orden #XXX"
+    └─► Correo al supervisor responsable
+    │
+    ▼
+[Supervisor evalúa la situación]
+    │
+    ├─► Abrir la orden en el Kanban
+    ├─► Revisar:
+    │   ├─ ¿En qué etapa está?
+    │   ├─ ¿Por qué no ha avanzado?
+    │   └─ ¿Qué bloqueos hay?
+    │
+    ▼
+[Determinar causa del retraso]
+    │
+    ├─► TÉCNICO NO DISPONIBLE:
+    │   ├─ Reasignar a otro técnico
+    │   └─ Notificar urgencia
+    │
+    ├─► FALTA DE REPUESTO:
+    │   ├─ Verificar en almacén
+    │   ├─ Gestionar compra urgente (flujo 8.1)
+    │   └─ Documentar bloqueo
+    │
+    ├─► MÁQUINA INACCESIBLE:
+    │   ├─ Coordinar con el establecimiento
+    │   └─ Reprogramar visita
+    │
+    └─► PROBLEMA MÁS COMPLEJO:
+        ├─ Escalar a técnico senior
+        └─ Actualizar estimación de tiempo
+    │
+    ▼
+[Cerrar la alerta]
+    │
+    ├─ Documentar la causa del retraso en la orden
+    ├─ Actualizar el plan de acción
+    └─ Continuar monitoreando hasta cierre
+```
+
+---
+
+## 11. Flujos de Establecimientos
+
+### 11.1 Onboarding de nuevo establecimiento
+
+**Momento:** Cuando se cierra un acuerdo con un nuevo lugar para instalar máquinas  
+**Objetivo:** Llevar al prospecto desde el primer contacto hasta la instalación activa
+
+```
+FLUJO: ONBOARDING DE ESTABLECIMIENTO
+══════════════════════════════════════
+
+[Prospecto identificado]
+    │
+    ├─► Fuentes posibles:
+    │   ├─ Recomendación de cliente actual
+    │   ├─ Prospección activa del equipo comercial
+    │   └─ Solicitud entrante del establecimiento
+    │
+    ▼
+[Registrar en el sistema]
+    │
+    ├─► Ir a Establecimientos → "+ Nuevo Establecimiento"
+    ├─► Completar:
+    │   ├─ Nombre del lugar
+    │   ├─ Dirección
+    │   ├─ Tipo (aeropuerto, empresa, hospital, etc.)
+    │   ├─ Contacto principal + teléfono + correo
+    │   └─ Etapa: "Prospecto"
+    │
+    ▼
+[Etapas del Pipeline]
+    │
+    ├─► PROSPECTO → CONTACTADO:
+    │   ├─ Primera llamada o visita
+    │   └─ Registrar seguimiento con resultado
+    │
+    ├─► CONTACTADO → INTERESADO:
+    │   ├─ Confirman interés en tener máquinas
+    │   └─ Agendar presentación/visita técnica
+    │
+    ├─► INTERESADO → PROPUESTA ENVIADA:
+    │   ├─ Calcular propuesta (afluencia, productos, comisión)
+    │   ├─ Subir documento de propuesta al expediente
+    │   └─ Enviar al contacto
+    │
+    ├─► PROPUESTA ENVIADA → NEGOCIACIÓN:
+    │   ├─ Registrar objeciones y contraoferta
+    │   └─ Ajustar propuesta si es necesario
+    │
+    ├─► NEGOCIACIÓN → CONTRATO FIRMADO:
+    │   ├─ Generar contrato en el sistema
+    │   ├─ Subir contrato firmado
+    │   └─ Cambiar etapa
+    │
+    └─► CONTRATO FIRMADO → ACTIVO:
+        ├─ Programar instalación de máquinas
+        ├─ Vincular máquinas al establecimiento en el sistema
+        ├─ Crear cuenta de visor para el contacto del establecimiento
+        └─ Primera visita de servicio
+    │
+    ▼
+[Establecimiento activo]
+    │
+    ├─► El visor del establecimiento puede ver:
+    │   ├─ Ventas de sus máquinas
+    │   └─ Comisiones generadas
+    │
+    └─► Aparece en el dashboard de abastecimiento y rutas
+```
+
+---
+
+### 11.2 Gestión de documentos y contrato
+
+**Momento:** Durante todo el ciclo de vida del establecimiento  
+**Objetivo:** Mantener el expediente documental completo y accesible
+
+```
+FLUJO: GESTIÓN DOCUMENTAL DE ESTABLECIMIENTO
+═════════════════════════════════════════════
+
+[Nuevo documento a agregar]
+    │
+    ├─► Tipos frecuentes:
+    │   ├─ Propuesta comercial (PDF)
+    │   ├─ Contrato de arrendamiento de espacio (PDF)
+    │   ├─ Fotos del espacio de instalación (JPG/PNG)
+    │   ├─ Acuerdo de confidencialidad (PDF)
+    │   └─ Comunicaciones importantes (PDF)
+    │
+    ▼
+[Subir al sistema]
+    │
+    ├─► Ir a Establecimientos → Seleccionar establecimiento
+    ├─► Pestaña "Documentos"
+    ├─► Hacer clic en "+ Subir Documento"
+    │
+    ├─► Completar:
+    │   ├─ Tipo de documento
+    │   ├─ Descripción breve
+    │   ├─ Fecha del documento
+    │   └─ Adjuntar archivo
+    │
+    └─► Guardar
+    │
+    ▼
+[Documento disponible en expediente]
+    │
+    ├─► Cualquier usuario autorizado puede ver y descargar
+    ├─► Al eliminar: sistema hace limpieza del almacenamiento en la nube
+    │
+    └─► Si el contrato tiene fecha de vencimiento:
+        └─ Registrar en "Fecha de vencimiento" para alerta anticipada
+```
+
+---
+
+## 12. Flujos de Auditoría de Bandejas
+
+### 12.1 Auditoría de bandejas durante servicio
+
+**Momento:** Cuando el técnico/abastecedor llega a la máquina para servicio  
+**Objetivo:** Verificar el estado real de cada carril y registrar cambios de producto
+
+```
+FLUJO: AUDITORÍA DE BANDEJAS
+══════════════════════════════
+
+[Técnico llega a la máquina]
+    │
+    ▼
+[Abrir auditoría en sistema]
+    │
+    ├─► Ir a Órdenes de Trabajo → Orden activa de esta máquina
+    │   └─ O ir a Máquinas → Detalle → Auditoría de Bandejas
+    │
+    ├─► El sistema carga el layout de la máquina:
+    │   └─ Grilla visual con bandejas (filas) × carriles (columnas)
+    │   └─ Cada carril muestra el producto asignado en planograma
+    │
+    ▼
+[Revisar carril por carril]
+    │
+    ├─► Para cada carril:
+    │   │
+    │   ├─► El producto en físico = lo que dice el sistema?
+    │   │   │
+    │   │   ├─► SÍ: Registrar cantidad encontrada
+    │   │   │   ├─ Lleno (> 70%)
+    │   │   │   ├─ Parcial (30-70%)
+    │   │   │   └─ Bajo (< 30%)
+    │   │   │
+    │   │   └─► NO: Registrar cambio de producto
+    │   │       ├─ Producto anterior: [el que tenía el sistema]
+    │   │       ├─ Producto nuevo: [el que está realmente en el carril]
+    │   │       └─ El sistema registra el evento en lane_change_events
+    │   │
+    │   ├─► ¿Carril vacío?
+    │   │   ├─► SÍ: Marcar como "Vacío"
+    │   │   │   └─ El sistema lo contabiliza para conciliación
+    │   │   └─► NO: Continuar
+    │   │
+    │   └─► Notas del carril (opcional)
+    │
+    ▼
+[Completar auditoría]
+    │
+    ├─► Resumen:
+    │   ├─ Total de carriles auditados
+    │   ├─ Carriles vacíos: X (se usarán en conciliación)
+    │   ├─ Carriles con cambio de producto: Y
+    │   └─ Carriles en buen estado: Z
+    │
+    └─► Confirmar auditoría
+        └─ Los cambios de carril actualizan el planograma automáticamente
+    │
+    ▼
+[Post-auditoría]
+    │
+    ├─► El planograma queda actualizado
+    ├─► Los cambios quedan en el historial (lane_change_events)
+    │
+    └─► NOTA: En el futuro estos cambios se sincronizarán con Nayax
+        para mantener los nombres de producto correctos en ambos sistemas
+```
+
+---
+
+## 13. Diagrama de Flujo General del Negocio
 
 ### Flujo de Productos
 
@@ -2931,10 +3487,10 @@ FLUJO: STOCK CRÍTICO
 
 ## Información de Contacto
 
-**Sistema:** Dispensax v2.0  
+**Sistema:** Dispensax v3.0  
 **Documento:** Flujos Operativos  
 **Zona Horaria:** América/Santo_Domingo (GMT-4)
 
 ---
 
-*Este documento está sujeto a actualizaciones según evolucionen los procesos operativos. Última actualización: Enero 2026.*
+*Este documento está sujeto a actualizaciones según evolucionen los procesos operativos. Última actualización: Mayo 2026.*

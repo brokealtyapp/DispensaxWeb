@@ -1,8 +1,8 @@
 # Manual de Usuario - Dispensax
 ## Sistema de Gestión de Máquinas Expendedoras
 
-**Versión:** 2.0  
-**Fecha:** Enero 2026  
+**Versión:** 3.0  
+**Fecha:** Mayo 2026  
 **Zona Horaria:** América/Santo_Domingo (GMT-4)  
 **Moneda:** Pesos Dominicanos (RD$)
 
@@ -42,6 +42,15 @@
    - [4.20 Detalle de Máquina](#420-detalle-de-máquina)
    - [4.21 Gestión de Ubicaciones](#421-gestión-de-ubicaciones)
    - [4.22 Gestión de Paradas de Ruta](#422-gestión-de-paradas-de-ruta)
+   - [4.23 Nayax — Pagos Cashless](#423-nayax--pagos-cashless)
+   - [4.24 Órdenes de Trabajo](#424-órdenes-de-trabajo)
+   - [4.25 Planogramas](#425-planogramas)
+   - [4.26 Establecimientos (CRM)](#426-establecimientos-crm)
+   - [4.27 Conciliación Cruzada](#427-conciliación-cruzada)
+   - [4.28 Conteo de Denominaciones](#428-conteo-de-denominaciones)
+   - [4.29 Fondo de Cambio](#429-fondo-de-cambio)
+   - [4.30 Layout y Auditoría de Bandejas](#430-layout-y-auditoría-de-bandejas)
+   - [4.31 Alertas In-App y por Correo](#431-alertas-in-app-y-por-correo)
 5. [Preguntas Frecuentes](#5-preguntas-frecuentes)
 6. [Glosario](#glosario)
 7. [Anexo A: Matriz de Permisos](#anexo-a-matriz-de-permisos-por-rol)
@@ -1692,6 +1701,413 @@ Configuración de las visitas programadas en cada ruta.
 
 ---
 
+### 4.23 Nayax — Pagos Cashless
+
+Integración con Nayax Lynx para centralizar las ventas realizadas con tarjeta, NFC, Apple Pay y otros métodos cashless en las máquinas que tienen instalado un dispositivo VPOS Nayax.
+
+**Acceso:** Administrador (configuración completa), Supervisor (ver transacciones y sincronizar)
+
+**Pestañas:**
+- **Resumen**: KPIs de ventas cashless, gráfica de área por día, estado de conexión
+- **Máquinas**: Lista de máquinas Nayax disponibles y su vínculo con Dispensax
+- **Transacciones**: Historial de ventas importadas con filtros por máquina, período y categoría
+- **Configuración**: Token API, toggles de auto-sync, prueba de conexión
+
+#### Configurar la integración
+
+1. Obtenga el **API Token** desde el portal Nayax Lynx de su empresa
+2. Vaya a **Nayax → Configuración**
+3. Pegue el token y active la integración
+4. Haga clic en **"Probar conexión"** — debe aparecer "Conexión exitosa"
+5. Guarde la configuración
+
+#### Vincular máquinas
+
+1. Vaya a la pestaña **"Máquinas"**
+2. Para cada máquina con dispositivo Nayax, haga clic en **"Vincular"**
+3. Seleccione la máquina Dispensax correspondiente y confirme
+4. El ícono de vínculo cambiará a verde
+
+#### Sincronizar ventas
+
+1. Haga clic en **"Sincronizar ahora"** en la pestaña Resumen
+2. El sistema consultará Nayax para todas las máquinas vinculadas
+3. Las transacciones se importan y quedan disponibles en Conciliación Cruzada
+
+**Categorías de pago que maneja Dispensax:**
+- **Efectivo** (`cash`): monedas, billetes, MDB
+- **Tarjeta** (`card`): crédito, débito, NFC, contactless, Apple/Google Pay
+- **Otro** (`other`): métodos no reconocidos
+
+**Ejemplo Práctico:**
+> Después de una semana sin sincronizar:
+> - Ir a Nayax → Sincronizar ahora
+> - Resultado: "48 transacciones importadas de 12 máquinas"
+> - Ir a Transacciones → Ver ventas por máquina
+> - MAQ-05: RD$8,400 en tarjeta, RD$2,100 en efectivo (MDB)
+> - Llevar esos datos a Conciliación Cruzada para el cierre del período
+
+---
+
+### 4.24 Órdenes de Trabajo
+
+Sistema de gestión de trabajo técnico con tablero Kanban, SLA configurable, checklists dinámicos y fotos obligatorias.
+
+**Acceso:** Administrador, Supervisor (gestión completa); Técnicos asignados (ejecución)
+
+**Tipos de orden configurables (ejemplos):**
+- Técnica (reparación)
+- Instalación (nueva máquina)
+- Preventivo (mantenimiento programado)
+- Personalizado (según la empresa)
+
+**Prioridades:** Crítico, Alto, Medio, Bajo
+
+**Vistas disponibles:**
+- **Kanban**: Tarjetas agrupadas por etapa con timer SLA y barra de progreso
+- **Lista**: Vista tabular con filtros avanzados
+- **Tickets**: Reportes de problemas pendientes de convertir en orden
+
+#### Crear una orden de trabajo
+
+1. Vaya a **Órdenes de Trabajo**
+2. Haga clic en **"+ Nueva Orden"**
+3. Complete:
+   - Tipo de orden
+   - Máquina afectada
+   - Prioridad
+   - Descripción del problema
+   - Técnico asignado (opcional)
+4. La orden aparece en la primera etapa del Kanban
+
+#### Mover una orden entre etapas
+
+1. En el Kanban, arrastre la tarjeta a la siguiente columna
+2. O haga clic en la tarjeta → Botón "Avanzar etapa"
+3. El sistema registra la hora de entrada/salida de cada etapa para el cálculo de SLA
+
+#### SLA (Acuerdo de Nivel de Servicio)
+
+Cada etapa puede tener un tiempo máximo configurado. La tarjeta muestra:
+- **Barra de progreso**: Verde → Amarilla → Roja según el tiempo consumido
+- **Timer**: Cuenta el tiempo transcurrido en la etapa actual
+- **Regla activa**: Indicador del origen del SLA (por prioridad, tipo, etapa o global)
+
+**Estados de SLA:**
+- `ok`: Dentro del tiempo
+- `próximo a vencer`: En los últimos 20% del tiempo
+- `vencido`: Superó el límite
+
+Si el SLA vence, se genera una alerta in-app y se envía correo al responsable.
+
+#### Checklists configurables
+
+Las órdenes pueden incluir checklists con 6 tipos de ítem:
+- **Checkbox**: Verificación simple (sí/no)
+- **Selección única**: Elige una opción de una lista
+- **Selección múltiple**: Elige varias opciones
+- **Pregunta abierta**: Texto libre
+- **Numérico**: Valor con unidad (ej: temperatura en °C)
+- **Foto obligatoria**: No puede completarse sin adjuntar imagen
+
+#### Historial de etapas
+
+Haga clic en "Ver historial" dentro de una orden para ver:
+- Qué etapa, cuánto tiempo duró, quién la gestionó
+- Si el SLA de esa etapa fue respetado o vencido
+
+**Ejemplo Práctico:**
+> Orden "Reparación refrigeración MAQ-22":
+> - Tipo: Técnica, Prioridad: Crítico
+> - Entra en "Diagnóstico" → SLA: 2 horas
+> - A los 90 min la barra llega a amarillo: alerta de próximo a vencer
+> - Técnico avanza a "En reparación" → SLA: 4 horas
+> - Completa checklist: temperatura verificada (5°C), foto del sensor nuevo
+> - Avanza a "Cerrado" → Tiempo total: 3h 20min — SLA cumplido
+
+---
+
+### 4.25 Planogramas
+
+Vista de pivote (tabla cruzada) que muestra qué producto va en qué carril de cada máquina, con capacidades y cantidades estándar editables.
+
+**Acceso:** Administrador, Supervisor
+
+**Vista principal:**
+- Filas: Productos
+- Columnas: Máquinas
+- Celda: Cantidad estándar y capacidad máxima del carril
+
+#### Editar un planograma
+
+1. Vaya a **Planogramas**
+2. Encuentre la celda (producto × máquina) que desea editar
+3. Haga clic en la celda
+4. Ajuste:
+   - **Cantidad estándar**: Unidades que normalmente se cargan
+   - **Capacidad máxima**: Unidades que caben en el carril
+5. Guarde
+
+#### Actualización masiva
+
+Para aplicar el mismo cambio a múltiples máquinas:
+1. Seleccione las máquinas con los checkboxes
+2. Haga clic en **"Actualización masiva"**
+3. Defina el valor para todas las seleccionadas
+4. Confirme
+
+**Ejemplo Práctico:**
+> Revisar que todas las máquinas del aeropuerto tienen capacidad correcta para Monster Energy:
+> - Filtrar máquinas por zona "Aeropuerto"
+> - Fila "Monster Energy 473ml"
+> - Verificar que todas las celdas muestran capacidad 8 (carril estándar)
+> - Ajustar las que muestren valores diferentes
+
+---
+
+### 4.26 Establecimientos (CRM)
+
+Pipeline de gestión comercial para administrar los prospectos y clientes que hospedan las máquinas, desde el primer contacto hasta el contrato activo.
+
+**Acceso:** Administrador (gestión completa), Supervisor (lectura y seguimientos)
+
+**Etapas del pipeline:**
+1. Prospecto
+2. Contactado
+3. Interesado
+4. Propuesta enviada
+5. Negociación
+6. Contrato firmado
+7. Activo
+8. Inactivo
+
+#### Crear un establecimiento
+
+1. Vaya a **Establecimientos**
+2. Haga clic en **"+ Nuevo Establecimiento"**
+3. Complete: nombre del lugar, dirección, tipo, contacto principal, teléfono, correo
+4. Asigne la etapa inicial del pipeline
+5. Guarde
+
+#### Seguimientos
+
+Registre cada interacción con el establecimiento:
+1. Abra el establecimiento
+2. Haga clic en **"+ Seguimiento"**
+3. Ingrese: fecha, tipo de contacto (llamada, visita, correo), resultado y próxima acción
+4. Los seguimientos aparecen en línea de tiempo cronológica
+
+#### Gestión de documentos
+
+Adjunte documentos al expediente del establecimiento:
+- Propuestas comerciales
+- Contratos
+- Fotos del espacio
+- Acuerdos de confidencialidad
+
+Los documentos se almacenan en la nube con acceso seguro.
+
+#### Portal del visor de establecimiento
+
+El administrador puede invitar al dueño/encargado del establecimiento a un portal de solo lectura donde podrá ver:
+- Ventas de sus máquinas
+- Comisiones generadas
+
+**Para invitar:**
+1. Abra el establecimiento
+2. Haga clic en **"Invitar visor"**
+3. Ingrese el correo del contacto
+4. El sistema envía el enlace de acceso por correo
+
+**Ejemplo Práctico:**
+> Seguimiento al CC Sambil (prospecto activo):
+> - Ir a Establecimientos → Sambil → "En negociación"
+> - Registrar seguimiento: "Reunión con administración, solicitaron ajuste de comisión al 8%"
+> - Próxima acción: "Enviar propuesta revisada el lunes"
+> - Subir documento: "Propuesta_Sambil_v2_Mayo2026.pdf"
+> - Al firmar contrato: Cambiar etapa a "Contrato firmado" → "Activo"
+> - Crear cuenta de visor para el jefe de operaciones del Sambil
+
+---
+
+### 4.27 Conciliación Cruzada
+
+Módulo que reconcilia la caja de efectivo de cada máquina contra las ventas Nayax (cashless), detectando diferencias de forma automatizada.
+
+**Acceso:** Administrador, Contabilidad
+
+**Componentes de la conciliación:**
+| Componente | Descripción |
+|------------|-------------|
+| Fondo inicial | Efectivo entregado al abastecedor al inicio |
+| Ventas Nayax | Transacciones cashless importadas de Nayax |
+| Movimientos de efectivo | Recolecciones y entregas registradas |
+| Conteo físico | Efectivo contado manualmente al cierre |
+| Carriles vacíos | Productos agotados en máquina |
+
+#### Ejecutar una conciliación
+
+1. Vaya a **Contabilidad → Conciliación Cruzada**
+2. Seleccione la máquina y el período
+3. El sistema carga automáticamente los datos de Nayax y los movimientos de efectivo
+4. Ingrese el fondo inicial y el conteo físico
+5. Haga clic en **"Calcular"**
+6. Revise el resultado:
+   - **En cuadre**: Diferencia < RD$50 (configurable)
+   - **Faltante**: El efectivo contado es menor al esperado
+   - **Sobrante**: El efectivo contado es mayor al esperado
+
+#### Exportar reporte
+
+1. Con la conciliación calculada, haga clic en **"Exportar CSV"** o **"Exportar PDF"**
+2. El reporte incluye el detalle por componente y la diferencia
+
+**Ejemplo Práctico:**
+> Conciliación de MAQ-15 del mes de mayo:
+> - Fondo inicial: RD$5,000
+> - Ventas Nayax: RD$32,500 (tarjeta) + RD$1,200 (MDB/efectivo)
+> - Recolecciones de efectivo: RD$28,400
+> - Conteo físico final: RD$4,980
+> - Resultado: Diferencia de -RD$220 (faltante)
+> - Exportar PDF para revisar con el supervisor
+
+---
+
+### 4.28 Conteo de Denominaciones
+
+Módulo para realizar el conteo físico de efectivo usando las denominaciones específicas de RD$ (billetes y monedas), con validación triple para reducir errores.
+
+**Denominaciones soportadas:**
+- **Billetes**: RD$2,000 · RD$1,000 · RD$500 · RD$200 · RD$100 · RD$50
+- **Monedas**: RD$25 · RD$10 · RD$5 · RD$1
+
+**Flujo de conteo:**
+
+1. Vaya a **Dinero y Productos → Conteo de Denominaciones**
+2. Seleccione la caja o abastecedor a contar
+3. **Primer conteo**: Una persona cuenta e ingresa la cantidad de cada denominación
+4. **Segundo conteo**: Otra persona repite el proceso
+5. **Tercer conteo (si hay diferencia)**: Se hace un tercer conteo de desempate
+6. El sistema calcula el total automáticamente por cada conteo
+7. Si los tres conteos coinciden (o el promedio es aceptable), se registra el monto final
+
+**Ejemplo Práctico:**
+> Contar la caja de Carlos al cierre del día:
+> - Primer conteo: 3×RD$1,000 + 5×RD$500 + 12×RD$100 + 8×RD$50 = RD$6,900
+> - Segundo conteo: 3×RD$1,000 + 5×RD$500 + 12×RD$100 + 7×RD$50 = RD$6,850
+> - Diferencia: RD$50 → Hacer tercer conteo
+> - Tercer conteo: RD$6,900 → Se adopta el valor de mayoría: RD$6,900
+
+---
+
+### 4.29 Fondo de Cambio
+
+Gestión de los fondos en efectivo entregados a los abastecedores para dar cambio a los clientes en las máquinas.
+
+**Acceso:** Administrador, Contabilidad
+
+**Estados de un fondo:**
+- **Emitido**: Entregado al abastecedor
+- **En uso**: Abastecedor lo tiene activo en ruta
+- **Devuelto**: Regresó al cierre de jornada
+- **Conciliado**: Verificado y cerrado
+
+#### Emitir un fondo de cambio
+
+1. Vaya a **Dinero y Productos → Fondo de Cambio**
+2. Haga clic en **"+ Nuevo Fondo"**
+3. Seleccione el abastecedor
+4. Ingrese el monto y las denominaciones incluidas
+5. Confirme la emisión
+
+#### Registrar devolución
+
+1. Abra el fondo activo del abastecedor
+2. Haga clic en **"Registrar devolución"**
+3. Ingrese las denominaciones devueltas
+4. El sistema calcula si hay diferencia respecto al monto emitido
+
+---
+
+### 4.30 Layout y Auditoría de Bandejas
+
+Editor visual de la disposición física de las máquinas (bandejas × carriles) y herramienta para auditar qué producto hay en cada posición durante el servicio.
+
+**Acceso:** Administrador, Supervisor (configuración); Técnicos asignados (auditoría)
+
+#### Configurar el layout de una máquina
+
+1. Vaya al **Detalle de la Máquina → Pestaña "Layout"**
+2. Haga clic en **"Editar Layout"**
+3. Configure:
+   - Número de bandejas (filas)
+   - Número de carriles por bandeja (columnas)
+4. Asigne un producto a cada posición en la grilla visual
+5. Guarde el layout
+
+#### Auditar bandejas durante un servicio
+
+Durante la ejecución de un servicio en el campo:
+
+1. Abra la orden de trabajo o servicio de la máquina
+2. Vaya a **"Auditoría de Bandejas"**
+3. Para cada carril auditado:
+   - Confirme el producto actual
+   - Ingrese la cantidad encontrada (vacío, parcial, lleno)
+   - Si el producto no coincide con el planograma, regístrelo como cambio
+4. El sistema registra el evento en `lane_change_events`
+
+**Colores en la grilla:**
+- **Verde**: Carril lleno o casi lleno
+- **Amarillo**: Carril bajo (menos del 30%)
+- **Rojo**: Carril vacío
+- **Gris**: Sin asignación de producto
+
+**Historial de cambios de carril:**
+Cada cambio de producto en un carril queda registrado con fecha, usuario y producto anterior/nuevo. Esto alimenta los planogramas y, en el futuro, se sincronizará con Nayax.
+
+**Ejemplo Práctico:**
+> Auditoría durante servicio de MAQ-08:
+> - Bandeja 1, Carril 3: Debería ser Pepsi 500ml → encontrado: Coca-Cola 500ml
+> - Registrar cambio: producto anterior "Pepsi", nuevo "Coca-Cola"
+> - Sistema guarda el evento y actualiza el planograma de esa máquina
+> - Bandeja 2, Carril 1: Vacío → registrar como carril vacío
+> - El supervisor ve el porcentaje de carriles vacíos en el resumen del servicio
+
+---
+
+### 4.31 Alertas In-App y por Correo
+
+Sistema de notificaciones que informa sobre eventos críticos sin necesidad de buscarlos manualmente.
+
+**Tipos de alertas activas:**
+
+| Tipo | Cuándo se genera | Canal |
+|------|-----------------|-------|
+| SLA de etapa próximo a vencer | Quedan menos del 20% del tiempo | In-app |
+| SLA de etapa vencido | Se superó el tiempo límite | In-app + Correo |
+| Stock bajo en almacén | Producto cae por debajo del mínimo | In-app |
+| Lote próximo a vencer | Menos de 30 días para caducar | In-app |
+| Máquina fuera de servicio | Cambio de estado a "Fuera de servicio" | In-app |
+| Error de sync Nayax | Falla al sincronizar con Nayax Lynx | In-app |
+
+#### Ver alertas activas
+
+1. Haga clic en el ícono de campana en la barra superior
+2. Se despliega el panel de alertas con las notificaciones no leídas
+3. Haga clic en una alerta para ir directamente al contexto relevante
+4. Marque como leída o descártela
+
+#### Configurar preferencias de alertas
+
+1. Vaya a **Configuración → Notificaciones**
+2. Active o desactive cada tipo de alerta
+3. Configure si desea recibir las alertas también por correo electrónico
+
+**Nota sobre SLA:** Las alertas de SLA de etapa usan la misma lógica de fallback de 4 niveles que el timer del Kanban (prioridad → tipo de orden → horas base de etapa → global del tenant).
+
+---
+
 ## Anexo A: Matriz de Permisos por Rol
 
 Esta tabla muestra los permisos de cada rol en el sistema. Las acciones posibles son:
@@ -1856,10 +2272,10 @@ R: Sí, una vez que hace clic en "Guardar" o "Confirmar", los datos se almacenan
 
 ## Información de Contacto
 
-**Sistema:** Dispensax v2.0  
+**Sistema:** Dispensax v3.0  
 **Desarrollado para:** Gestión de Máquinas Expendedoras  
 **Zona Horaria:** América/Santo_Domingo (GMT-4)
 
 ---
 
-*Este manual está sujeto a actualizaciones según evolucione el sistema. Última actualización: Enero 2026.*
+*Este manual está sujeto a actualizaciones según evolucione el sistema. Última actualización: Mayo 2026.*
