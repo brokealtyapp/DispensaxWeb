@@ -12553,15 +12553,7 @@ export async function registerRoutes(
 
       res.setHeader("Content-Type", "image/jpeg");
       res.setHeader("Cache-Control", "private, max-age=3600");
-      // downloadAsBytes return shape varies between SDK versions
-      // (Buffer vs [Buffer] tuple). Handle both safely.
-      const raw = result.value as Buffer | [Buffer] | Buffer[];
-      let payload: Buffer | null = null;
-      if (Buffer.isBuffer(raw)) {
-        payload = raw;
-      } else if (Array.isArray(raw) && raw.length > 0) {
-        payload = Buffer.isBuffer(raw[0]) ? raw[0] : Buffer.from(raw[0] as any);
-      }
+      const payload = result.value[0];
       if (!payload || payload.length === 0) {
         return res.status(500).json({ error: "Foto vacía en almacenamiento" });
       }
@@ -12655,13 +12647,7 @@ export async function registerRoutes(
 
       res.setHeader("Content-Type", "image/jpeg");
       res.setHeader("Cache-Control", "private, max-age=3600");
-      const raw = result.value as Buffer | [Buffer] | Buffer[];
-      let payload: Buffer | null = null;
-      if (Buffer.isBuffer(raw)) {
-        payload = raw;
-      } else if (Array.isArray(raw) && raw.length > 0) {
-        payload = Buffer.isBuffer(raw[0]) ? raw[0] : Buffer.from(raw[0] as any);
-      }
+      const payload = result.value[0];
       if (!payload || payload.length === 0) {
         return res.status(500).json({ error: "Foto vacía en almacenamiento" });
       }
