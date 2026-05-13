@@ -2074,6 +2074,11 @@ function KanbanBoard({
 
   const isDraggingAny = activeOrder !== null;
 
+  const finalStageIndex = useMemo(
+    () => stages.findIndex((s) => s.isFinal),
+    [stages]
+  );
+
   return (
     <DndContext
       sensors={sensors}
