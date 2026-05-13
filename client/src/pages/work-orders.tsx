@@ -1912,6 +1912,9 @@ function KanbanBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
   );
+  const stageSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
 
   function findColumnOfItem(colMap: Record<string, string[]>, itemId: string): string | null {
     for (const col of columns) {
@@ -4501,7 +4504,7 @@ export function WorkOrdersPage() {
       >
         <div className="space-y-3">
           <DndContext
-            sensors={useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))}
+            sensors={stageSensors}
             onDragEnd={(event: DragEndEvent) => {
               const { active, over } = event;
               if (!over || active.id === over.id) return;
