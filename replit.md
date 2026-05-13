@@ -4,7 +4,7 @@
 Dispensax is a multi-tenant SaaS platform for managing beverage vending machines, providing data isolation for multiple client companies and a Super Administrator role. It operates in the Dominican Republic, handling monetary values in RD$ and standardizing to GMT-4. The platform manages machines, inventory, sales, and personnel with robust role-based access control across 12 operational modules, targeting companies with 25 to hundreds of machines.
 
 ## User Preferences
-- Idioma: Español
+- Idioma: Español — responder SIEMPRE en español, sin excepción
 - Color primario: #E84545 (rojo Dispensax)
 - Diseño basado en el screenshot proporcionado (estilo dashboard moderno)
 - Tarjetas coloridas para máquinas
