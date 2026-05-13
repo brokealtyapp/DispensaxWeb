@@ -83,6 +83,7 @@ import {
 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   BarChart,
   Bar,
@@ -490,6 +491,13 @@ function OrderDetailView({
   const [photoBlobUrls, setPhotoBlobUrls] = useState<Record<string, string>>({});
   // Track which item IDs have been fetched — avoids stale-closure issues with photoBlobUrls state
   const fetchedPhotoIdsRef = useRef<Set<string>>(new Set());
+  const [photoModal, setPhotoModal] = useState<{
+    url: string;
+    technicianName: string | null;
+    takenAt: string | null;
+    lat: string | null;
+    lng: string | null;
+  } | null>(null);
 
   const { data: checklist = [], isLoading: checklistLoading } = useQuery<ChecklistItem[]>({
     queryKey: ["/api/work-orders", order.id, "checklist"],
@@ -1076,7 +1084,15 @@ function OrderDetailView({
                             <img
                               src={photoBlobUrls[item.id]}
                               alt="Foto del checklist"
-                              className="h-20 w-28 object-cover rounded-md border"
+                              className="h-20 w-28 object-cover rounded-md border cursor-pointer hover-elevate"
+                              onClick={() => setPhotoModal({
+                                url: photoBlobUrls[item.id],
+                                technicianName: item.photoTechnicianName ?? null,
+                                takenAt: item.photoTakenAt ?? null,
+                                lat: item.photoLat ?? null,
+                                lng: item.photoLng ?? null,
+                              })}
+                              title="Ver foto completa"
                               data-testid={`photo-checklist-${item.id}`}
                             />
                           )}
@@ -1308,6 +1324,34 @@ function OrderDetailView({
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={!!photoModal} onOpenChange={(open) => { if (!open) setPhotoModal(null); }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Foto del checklist</DialogTitle>
+          </DialogHeader>
+          {photoModal && (
+            <div className="space-y-3">
+              <img
+                src={photoModal.url}
+                alt="Foto del checklist"
+                className="w-full max-h-[65vh] object-contain rounded-md"
+              />
+              <div className="text-sm text-muted-foreground space-y-1">
+                {photoModal.technicianName && (
+                  <p><span className="font-medium text-foreground">Técnico:</span> {photoModal.technicianName}</p>
+                )}
+                {photoModal.takenAt && (
+                  <p><span className="font-medium text-foreground">Fecha:</span> {formatDate(photoModal.takenAt)}</p>
+                )}
+                {photoModal.lat && photoModal.lng && (
+                  <p><span className="font-medium text-foreground">GPS:</span> {photoModal.lat}, {photoModal.lng}</p>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
