@@ -12553,10 +12553,17 @@ export async function registerRoutes(
 
       res.setHeader("Content-Type", "image/jpeg");
       res.setHeader("Cache-Control", "private, max-age=3600");
-      const payload = result.value[0];
-      if (!payload || payload.length === 0) {
+      // downloadAsBytes returns Result<[Buffer]> — handle tuple and plain-Buffer SDK shapes defensively
+      const valueRaw: unknown = result.value;
+      let payload: Buffer;
+      if (Buffer.isBuffer(valueRaw)) {
+        payload = valueRaw;
+      } else if (Array.isArray(valueRaw) && valueRaw.length > 0 && Buffer.isBuffer(valueRaw[0])) {
+        payload = valueRaw[0];
+      } else {
         return res.status(500).json({ error: "Foto vacía en almacenamiento" });
       }
+      if (payload.length === 0) return res.status(500).json({ error: "Foto vacía en almacenamiento" });
       res.send(payload);
     } catch (error) {
       console.error("Error fetching checklist photo:", error);
@@ -12647,10 +12654,17 @@ export async function registerRoutes(
 
       res.setHeader("Content-Type", "image/jpeg");
       res.setHeader("Cache-Control", "private, max-age=3600");
-      const payload = result.value[0];
-      if (!payload || payload.length === 0) {
+      // downloadAsBytes returns Result<[Buffer]> — handle tuple and plain-Buffer SDK shapes defensively
+      const valueRaw: unknown = result.value;
+      let payload: Buffer;
+      if (Buffer.isBuffer(valueRaw)) {
+        payload = valueRaw;
+      } else if (Array.isArray(valueRaw) && valueRaw.length > 0 && Buffer.isBuffer(valueRaw[0])) {
+        payload = valueRaw[0];
+      } else {
         return res.status(500).json({ error: "Foto vacía en almacenamiento" });
       }
+      if (payload.length === 0) return res.status(500).json({ error: "Foto vacía en almacenamiento" });
       res.send(payload);
     } catch (error) {
       console.error("Error fetching gallery photo:", error);
