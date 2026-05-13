@@ -80,10 +80,11 @@ import {
   Layers,
   Play,
   Pause,
+  Download,
 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   BarChart,
   Bar,
@@ -493,6 +494,7 @@ function OrderDetailView({
   const fetchedPhotoIdsRef = useRef<Set<string>>(new Set());
   const [photoModal, setPhotoModal] = useState<{
     url: string;
+    itemId: string;
     technicianName: string | null;
     takenAt: string | null;
     lat: string | null;
@@ -1087,6 +1089,7 @@ function OrderDetailView({
                               className="h-20 w-28 object-cover rounded-md border cursor-pointer hover-elevate"
                               onClick={() => setPhotoModal({
                                 url: photoBlobUrls[item.id],
+                                itemId: item.id,
                                 technicianName: item.photoTechnicianName ?? null,
                                 takenAt: item.photoTakenAt ?? null,
                                 lat: item.photoLat ?? null,
@@ -1349,6 +1352,23 @@ function OrderDetailView({
                 )}
               </div>
             </div>
+          )}
+          {photoModal && (
+            <DialogFooter>
+              <Button
+                variant="outline"
+                data-testid="button-download-photo"
+                onClick={() => {
+                  const a = document.createElement("a");
+                  a.href = photoModal.url;
+                  a.download = `${order.orderNumber}_checklist_${photoModal.itemId}.jpg`;
+                  a.click();
+                }}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Descargar foto
+              </Button>
+            </DialogFooter>
           )}
         </DialogContent>
       </Dialog>
