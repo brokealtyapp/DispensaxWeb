@@ -4560,7 +4560,7 @@ export function WorkOrdersPage() {
                                   <span className={`text-xs shrink-0 w-14 ${p === "critico" ? "text-red-600" : p === "alto" ? "text-orange-500" : p === "medio" ? "text-amber-500" : "text-slate-500"}`}>{PRIORITY_LABELS[p]}</span>
                                   <input
                                     type="number"
-                                    min="0"
+                                    min="0.5"
                                     step="0.5"
                                     className="flex-1 rounded-md border bg-background px-2 py-1 text-xs"
                                     placeholder="h"
@@ -4581,7 +4581,7 @@ export function WorkOrdersPage() {
                                     <span className="text-xs shrink-0 w-20 truncate text-muted-foreground" title={ot.label}>{ot.label}</span>
                                     <input
                                       type="number"
-                                      min="0"
+                                      min="0.5"
                                       step="0.5"
                                       className="flex-1 rounded-md border bg-background px-2 py-1 text-xs"
                                       placeholder="h"
