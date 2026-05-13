@@ -1912,10 +1912,6 @@ function KanbanBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
   );
-  const stageSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
-  );
-
   function findColumnOfItem(colMap: Record<string, string[]>, itemId: string): string | null {
     for (const col of columns) {
       if ((colMap[col.id] ?? []).includes(itemId)) return col.id;
@@ -2235,6 +2231,9 @@ export function WorkOrdersPage() {
   const isAbastecedor = user?.role === "abastecedor";
   const { can, isLoading: permLoading } = usePermissions();
   const { toast } = useToast();
+  const stageSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
   const [activeTab, setActiveTab] = useState("ordenes");
   const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
   const [showCreateOrder, setShowCreateOrder] = useState(false);
