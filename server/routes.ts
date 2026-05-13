@@ -12680,6 +12680,10 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Orden de trabajo no encontrada" });
       }
 
+      if (req.user!.role === "abastecedor" && order.assignedUserId !== req.user!.userId) {
+        return res.status(404).json({ error: "Orden de trabajo no encontrada" });
+      }
+
       const photo = await storage.getWorkOrderPhotoById(req.params.photoId, tenantId);
       if (!photo || photo.workOrderId !== order.id) return res.status(404).json({ error: "Foto no encontrada" });
 
