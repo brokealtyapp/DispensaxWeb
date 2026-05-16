@@ -2951,7 +2951,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/route-stages", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/supplier/route-stages", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
       const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
@@ -2965,7 +2965,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/supplier/route-stages/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/supplier/route-stages/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
       const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
@@ -2980,7 +2980,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/supplier/route-stages/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/supplier/route-stages/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
       const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
@@ -2995,7 +2995,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/route-stages/reorder", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/supplier/route-stages/reorder", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
       const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
@@ -3009,7 +3009,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/route-stages/init-defaults", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/supplier/route-stages/init-defaults", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
       const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
@@ -3096,7 +3096,7 @@ export async function registerRoutes(
 
   // ── Configuración de alertas de rutas ─────────────────────────────────────
 
-  app.get("/api/supplier/route-config/alerts", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/supplier/route-config/alerts", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
       const config = await storage.getRouteModuleAlertConfig(tenantId);
@@ -3106,7 +3106,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/supplier/route-config/alerts", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.put("/api/supplier/route-config/alerts", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
       const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
@@ -3122,7 +3122,7 @@ export async function registerRoutes(
 
   // ── Configuración de permisos por acción ──────────────────────────────────
 
-  app.get("/api/supplier/route-config/permissions", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/supplier/route-config/permissions", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
       await storage.initDefaultRouteActionPermissions(tenantId);
@@ -3133,7 +3133,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/supplier/route-config/permissions", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.put("/api/supplier/route-config/permissions", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
       const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
