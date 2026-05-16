@@ -96,6 +96,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, asc, or, inArray, count, isNull, SQL } from "drizzle-orm";
+import { computeRouteSlaStatus, computeRouteElapsedMinutes } from "./routeUtils";
 
 // =====================
 // SECURITY: User without password for API responses
@@ -331,7 +332,7 @@ export interface IStorage {
   deleteRouteStage(id: string, tenantId: string): Promise<boolean>;
   reorderRouteStages(ids: string[], tenantId: string): Promise<void>;
   // Log de etapas de ruta
-  getRouteStageLog(routeId: string): Promise<RouteStageLogEntry[]>;
+  getRouteStageLog(routeId: string): Promise<(RouteStageLogEntry & { changedByUser?: { username: string; fullName?: string | null } })[]>;
   createRouteStageLogEntry(data: InsertRouteStageLog): Promise<RouteStageLogEntry>;
   closeRouteStageLogEntry(routeId: string, exitedAt: Date): Promise<void>;
   advanceRouteStage(routeId: string, newStageId: string, changedBy: string, notes?: string): Promise<Route | undefined>;
@@ -2421,11 +2422,28 @@ export class DatabaseStorage implements IStorage {
     const [route] = await db.select().from(routes).where(eq(routes.id, id));
     if (!route) return undefined;
     
-    const supplier = await this.getUser(route.supplierId);
-    const supervisor = route.supervisorId ? await this.getUser(route.supervisorId) : undefined;
-    const stops = await this.getRouteStops(route.id);
+    const [supplier, supervisor, stops, stageLog] = await Promise.all([
+      this.getUser(route.supplierId),
+      route.supervisorId ? this.getUser(route.supervisorId) : Promise.resolve(undefined),
+      this.getRouteStops(route.id),
+      this.getRouteStageLog(route.id),
+    ]);
+
+    let currentStage: import("@shared/schema").RouteStage | undefined;
+    if (route.currentStageId) {
+      const [stg] = await db.select().from(routeStages).where(eq(routeStages.id, route.currentStageId));
+      currentStage = stg;
+    }
+
+    const enteredAt = route.currentStageEnteredAt ? new Date(route.currentStageEnteredAt) : null;
+    const slaHours = currentStage?.slaHours ? Number(currentStage.slaHours) : null;
+    const thresholdPct = currentStage?.slaAlertThresholdPct ?? 80;
+    const elapsedMinutes = computeRouteElapsedMinutes(enteredAt);
+    const computedSlaStatus = enteredAt && slaHours
+      ? computeRouteSlaStatus(enteredAt, slaHours, thresholdPct)
+      : route.slaStatus ?? "sin_sla";
     
-    return { ...route, supplier, supervisor, stops };
+    return { ...route, slaStatus: computedSlaStatus, supplier, supervisor, stops, stageLog, currentStage, elapsedMinutes };
   }
 
   async getTodayRoute(userId: string): Promise<any> {
@@ -2535,7 +2553,7 @@ export class DatabaseStorage implements IStorage {
 
   // ── Log de etapas de ruta ────────────────────────────────────────────────────
 
-  async getRouteStageLog(routeId: string): Promise<RouteStageLogEntry[]> {
+  async getRouteStageLog(routeId: string): Promise<(RouteStageLogEntry & { changedByUser?: { username: string; fullName?: string | null } })[]> {
     const logEntries = await db.select().from(routeStageLog)
       .where(eq(routeStageLog.routeId, routeId))
       .orderBy(asc(routeStageLog.enteredAt));
@@ -2555,7 +2573,7 @@ export class DatabaseStorage implements IStorage {
     return logEntries.map(e => ({
       ...e,
       changedByUser: e.changedBy ? usersMap.get(e.changedBy) : undefined,
-    })) as any[];
+    }));
   }
 
   async createRouteStageLogEntry(data: InsertRouteStageLog): Promise<RouteStageLogEntry> {
@@ -2581,8 +2599,9 @@ export class DatabaseStorage implements IStorage {
     // Cerrar entrada de log anterior
     await this.closeRouteStageLogEntry(routeId, now);
     
-    // Calcular SLA status para la nueva etapa
-    const slaStatus = "dentro_tiempo";
+    // La nueva etapa empieza con slaStatus "dentro_tiempo" (acaba de comenzar)
+    const slaHours = newStage.slaHours ? Number(newStage.slaHours) : null;
+    const slaStatus = slaHours && slaHours > 0 ? "dentro_tiempo" : "sin_sla";
     
     // Actualizar ruta con nueva etapa
     const [updated] = await db.update(routes)

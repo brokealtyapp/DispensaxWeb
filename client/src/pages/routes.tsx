@@ -195,7 +195,7 @@ const ITEMS_PER_PAGE = 20;
 export default function RoutesPage() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const { canCreate, canEdit, canDelete } = usePermissions();
+  const { canCreate, canEdit, canDelete, isAdmin } = usePermissions();
   const [, setLocation] = useLocation();
   
   // Redirigir abastecedores a su página - no tienen acceso a gestión de rutas
@@ -943,7 +943,7 @@ export default function RoutesPage() {
           <p className="text-muted-foreground">Planifica y administra las rutas de abastecimiento</p>
         </div>
         <div className="flex gap-2">
-          {user?.role === "admin" && (
+          {isAdmin && (
             <Button
               variant="outline"
               onClick={() => { setIsConfigOpen(true); setConfigTab("stages"); }}
@@ -2287,7 +2287,7 @@ export default function RoutesPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs value={configTab} onValueChange={(v) => setConfigTab(v as any)}>
+          <Tabs value={configTab} onValueChange={(v) => setConfigTab(v as "stages" | "alerts" | "permissions")}>
             <TabsList className="grid grid-cols-3 w-full">
               <TabsTrigger value="stages" className="gap-2">
                 <Layers className="h-4 w-4" />Etapas

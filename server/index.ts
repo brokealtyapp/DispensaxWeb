@@ -7,6 +7,8 @@ import { requestTimeout } from "./middleware";
 import { startCacheUpdater } from "./cache";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import { checkAndSendRouteAlerts } from "./routeAlertService";
+import { tenants } from "@shared/schema";
 
 const app = express();
 const httpServer = createServer(app);
@@ -111,6 +113,16 @@ async function backfillMachineLayout() {
   startCacheUpdater();
   await backfillStandardQuantity();
   await backfillMachineLayout();
+
+  // Job periódico: verificar alertas SLA de rutas cada 30 minutos
+  setInterval(async () => {
+    try {
+      const allTenants = await db.select({ id: tenants.id }).from(tenants);
+      await Promise.allSettled(allTenants.map(t => checkAndSendRouteAlerts(t.id)));
+    } catch (err) {
+      console.error("[SLA-Rutas] Error en job periódico:", err);
+    }
+  }, 30 * 60 * 1000);
 
   await registerRoutes(httpServer, app);
 

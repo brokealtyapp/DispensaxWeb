@@ -1,9 +1,12 @@
-import { storage } from "./storage";
 import { isEmailConfigured } from "./email";
 import nodemailer from "nodemailer";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
-import { users as usersTable } from "@shared/schema";
+import { and, eq, inArray } from "drizzle-orm";
+import { users as usersTable, routes } from "@shared/schema";
+import { computeRouteSlaStatus, computeRouteElapsedMinutes } from "./routeUtils";
+import { storage } from "./storage";
+
+export { computeRouteSlaStatus, computeRouteElapsedMinutes };
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -14,28 +17,6 @@ const transporter = nodemailer.createTransport({
     pass: process.env.SMTP_PASSWORD,
   },
 });
-
-export function computeRouteSlaStatus(
-  enteredAt: Date,
-  slaHours: number | null,
-  thresholdPct: number = 80,
-  exitedAt?: Date | null
-): string {
-  if (!slaHours || slaHours <= 0) return "sin_sla";
-  const now = exitedAt ? new Date(exitedAt) : new Date();
-  const elapsedH = (now.getTime() - new Date(enteredAt).getTime()) / 3_600_000;
-  const pct = (elapsedH / slaHours) * 100;
-  if (exitedAt) return pct <= 100 ? "finalizada_a_tiempo" : "finalizada_fuera_de_tiempo";
-  if (pct >= 100) return "vencido";
-  if (pct >= thresholdPct) return "proximo_vencer";
-  return "dentro_tiempo";
-}
-
-export function computeRouteElapsedMinutes(enteredAt: Date | null, exitedAt?: Date | null): number {
-  if (!enteredAt) return 0;
-  const end = exitedAt ? new Date(exitedAt) : new Date();
-  return Math.round((end.getTime() - new Date(enteredAt).getTime()) / 60_000);
-}
 
 interface RouteAlertEmailParams {
   recipients: string[];
@@ -103,6 +84,34 @@ async function sendRouteAlertEmail(params: RouteAlertEmailParams): Promise<boole
   }
 }
 
+async function resolveRecipientEmails(tenantId: string, recipientIds: string[]): Promise<string[]> {
+  const emails: string[] = [];
+
+  if (recipientIds.includes("all_admins")) {
+    const rows = await db.select({ email: usersTable.email })
+      .from(usersTable)
+      .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.role, "admin")));
+    rows.forEach(r => r.email && emails.push(r.email));
+  }
+
+  if (recipientIds.includes("all_supervisors")) {
+    const rows = await db.select({ email: usersTable.email })
+      .from(usersTable)
+      .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.role, "supervisor")));
+    rows.forEach(r => r.email && emails.push(r.email));
+  }
+
+  const specificIds = recipientIds.filter(id => id !== "all_admins" && id !== "all_supervisors");
+  if (specificIds.length > 0) {
+    const rows = await db.select({ email: usersTable.email })
+      .from(usersTable)
+      .where(and(eq(usersTable.tenantId, tenantId), inArray(usersTable.id, specificIds)));
+    rows.forEach(r => r.email && emails.push(r.email));
+  }
+
+  return [...new Set(emails)];
+}
+
 export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {
   try {
     const alertConfig = await storage.getRouteModuleAlertConfig(tenantId);
@@ -112,7 +121,10 @@ export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {
     const stageMap = new Map(stages.map(s => [s.id, s]));
 
     const routesResult = await storage.getRoutes(undefined, undefined, undefined, tenantId, 1, 200);
-    const activeRoutes = routesResult.data.filter(r => r.status !== "completada" && r.status !== "cancelada" && r.currentStageId && r.currentStageEnteredAt);
+    const activeRoutes = routesResult.data.filter(
+      (r: { status: string; currentStageId?: string | null; currentStageEnteredAt?: Date | null }) =>
+        r.status !== "completada" && r.status !== "cancelada" && r.currentStageId && r.currentStageEnteredAt
+    );
 
     if (activeRoutes.length === 0) return;
 
@@ -124,13 +136,8 @@ export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {
       recipientIds = ["all_admins"];
     }
 
-    const resolvedEmails: string[] = [];
-    if (recipientIds.includes("all_admins")) {
-      const admins = await db.select({ email: usersTable.email })
-        .from(usersTable)
-        .where(eq(usersTable.tenantId, tenantId));
-      admins.forEach(u => u.email && resolvedEmails.push(u.email));
-    }
+    const resolvedEmails = await resolveRecipientEmails(tenantId, recipientIds);
+    if (resolvedEmails.length === 0) return;
 
     for (const route of activeRoutes) {
       const stage = route.currentStageId ? stageMap.get(route.currentStageId) : undefined;
@@ -166,7 +173,7 @@ export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {
         elapsedMinutes,
       });
 
-      await storage.updateRoute(route.id, { lastAlertSentAt: now } as any);
+      await db.update(routes).set({ lastAlertSentAt: now }).where(eq(routes.id, route.id));
     }
   } catch (error) {
     console.error("[SLA-Rutas] Error en checkAndSendRouteAlerts:", error);

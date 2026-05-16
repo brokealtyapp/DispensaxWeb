@@ -2488,6 +2488,14 @@ export async function registerRoutes(
       const tenantId = req.user!.tenantId;
       const data = insertRouteSchema.omit({ tenantId: true }).extend({ date: z.coerce.date() }).parse(req.body);
       const route = await storage.createRoute({ ...data, tenantId });
+
+      // Asignar etapa por defecto y crear entrada inicial en el log
+      const stages = await storage.getRouteStages(tenantId);
+      const defaultStage = stages.sort((a, b) => a.sortOrder - b.sortOrder).find(s => s.isDefault) ?? stages.sort((a, b) => a.sortOrder - b.sortOrder)[0];
+      if (defaultStage) {
+        await storage.advanceRouteStage(route.id, defaultStage.id, req.user!.userId, "Ruta creada");
+      }
+
       res.status(201).json(route);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2501,6 +2509,14 @@ export async function registerRoutes(
   app.patch("/api/supplier/routes/:id", authenticateJWT, authorizeAction("routes", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyRouteTenant(req.params.id, req, res)) return;
+
+      // Bloquear edición si la ruta está en una etapa terminal (excepto admin)
+      if (req.user!.role !== "admin") {
+        const existingRoute = await storage.getRoute(req.params.id);
+        if (existingRoute?.currentStage?.isTerminal) {
+          return res.status(409).json({ error: "No se puede editar una ruta que está en una etapa terminal" });
+        }
+      }
       
       const data = insertRouteSchema.extend({ date: z.coerce.date().optional() }).partial().parse(req.body);
       const route = await storage.updateRoute(req.params.id, data);
@@ -2958,13 +2974,13 @@ export async function registerRoutes(
       const tenantId = req.user!.tenantId;
       const existing = await storage.getRouteStages(tenantId);
       if (existing.length > 0) return res.status(400).json({ error: "Ya existen etapas configuradas" });
-      const defaults = [
-        { tenantId, name: "Pendiente", color: "#6B7280", sortOrder: 0, isDefault: true, isTerminal: false, slaAlertThresholdPct: 80, alertOnSlaWarning: false, alertOnSlaExpired: false },
+      const defaults: import("@shared/schema").InsertRouteStage[] = [
+        { tenantId, name: "Pendiente", color: "#6B7280", sortOrder: 0, isDefault: true, isTerminal: false, slaHours: null, slaAlertThresholdPct: 80, alertOnSlaWarning: false, alertOnSlaExpired: false },
         { tenantId, name: "Programada", color: "#3B82F6", sortOrder: 1, isDefault: false, isTerminal: false, slaHours: "2", slaAlertThresholdPct: 80, alertOnSlaWarning: true, alertOnSlaExpired: false },
         { tenantId, name: "En Ruta", color: "#F59E0B", sortOrder: 2, isDefault: false, isTerminal: false, slaHours: "8", slaAlertThresholdPct: 80, alertOnSlaWarning: true, alertOnSlaExpired: true },
-        { tenantId, name: "Finalizada", color: "#10B981", sortOrder: 3, isDefault: false, isTerminal: true, slaAlertThresholdPct: 80, alertOnSlaWarning: false, alertOnSlaExpired: false },
+        { tenantId, name: "Finalizada", color: "#10B981", sortOrder: 3, isDefault: false, isTerminal: true, slaHours: null, slaAlertThresholdPct: 80, alertOnSlaWarning: false, alertOnSlaExpired: false },
       ];
-      const created = await Promise.all(defaults.map(d => storage.createRouteStage(d as any)));
+      const created = await Promise.all(defaults.map(d => storage.createRouteStage(d)));
       res.status(201).json(created);
     } catch (error) {
       res.status(500).json({ error: "Error al inicializar etapas por defecto" });
@@ -2993,6 +3009,7 @@ export async function registerRoutes(
 
       const tenantId = req.user!.tenantId;
       const userId = req.user!.userId;
+      const isAdmin = req.user!.role === "admin";
 
       // Verificar permisos configurables
       const perms = await storage.getRouteActionPermissions(tenantId);
@@ -3004,8 +3021,24 @@ export async function registerRoutes(
       const existingRoute = await storage.getRoute(req.params.id);
       if (!existingRoute) return res.status(404).json({ error: "Ruta no encontrada" });
 
+      // Bloquear avance desde etapa terminal (solo admin puede hacerlo)
+      if (existingRoute.currentStage?.isTerminal && !isAdmin) {
+        return res.status(409).json({ error: "La ruta ya se encuentra en una etapa terminal y no puede avanzar" });
+      }
+
       const newStage = await storage.getRouteStage(newStageId, tenantId);
       if (!newStage) return res.status(404).json({ error: "Etapa no encontrada" });
+
+      // Aplicar restricción secuencial para no-admin: solo puede avanzar a la siguiente etapa inmediata
+      if (!isAdmin && existingRoute.currentStage) {
+        const allStages = await storage.getRouteStages(tenantId);
+        const sortedStages = allStages.sort((a, b) => a.sortOrder - b.sortOrder);
+        const currentIdx = sortedStages.findIndex(s => s.id === existingRoute.currentStage.id);
+        const nextStage = sortedStages[currentIdx + 1];
+        if (!nextStage || nextStage.id !== newStageId) {
+          return res.status(400).json({ error: "Solo puede avanzar a la siguiente etapa en secuencia" });
+        }
+      }
 
       const route = await storage.advanceRouteStage(req.params.id, newStageId, userId, notes);
       if (!route) return res.status(404).json({ error: "Ruta no encontrada" });
