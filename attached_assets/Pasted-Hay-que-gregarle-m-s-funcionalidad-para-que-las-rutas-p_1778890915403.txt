@@ -1,0 +1,61 @@
+Hay que gregarle más funcionalidad para que las rutas puedan gestionarse de forma más completa y dinámica.
+
+Mejoras requeridas
+Actualmente el módulo ya permite visualizar/gestionar rutas, pero necesitamos que cada ruta creada quede guardada y pueda manejarse por etapas, tiempos y acciones.
+Cada ruta debe tener acciones como:
+•⁠  ⁠Ver ruta
+•⁠  ⁠Editar ruta
+•⁠  ⁠Iniciar ruta
+•⁠  ⁠Terminar ruta
+•⁠  ⁠Configurar ruta/SLA, según permisos
+
+Al hacer clic en Ver ruta, debe mostrarse el detalle completo de la ruta, incluyendo:
+•⁠  ⁠Máquinas asociadas a esa ruta
+•⁠  ⁠Información de cada máquina
+•⁠  ⁠Ubicación de cada máquina
+•⁠  ⁠Abastecedor asignado
+•⁠  ⁠Estado actual de la ruta
+•⁠  ⁠Etapa en la que se encuentra
+•⁠  ⁠Tiempo transcurrido
+•⁠  ⁠SLA aplicado
+•⁠  ⁠Historial de cambios o movimientos
+
+Etapas de la ruta
+Tomando en cuenta el flujo actual del módulo, necesitamos manejar etapas configurables como:
+•⁠  ⁠Pendiente
+•⁠  ⁠Programada
+•⁠  ⁠En ruta
+•⁠  ⁠Finalizada
+
+SLA y tiempos
+Necesitamos poder configurar tiempos por etapa. Por ejemplo:
+•⁠  ⁠Cuánto tiempo puede durar una ruta en pendiente
+•⁠  ⁠Cuánto tiempo puede durar programada antes de iniciarse
+•⁠  ⁠Cuánto tiempo máximo puede estar en ruta
+•⁠  ⁠Cuándo debe marcarse como vencida
+El sistema debe mostrar si la ruta está:
+•⁠  ⁠Dentro del tiempo
+•⁠  ⁠Próxima a vencer
+•⁠  ⁠Vencida
+•⁠  ⁠Finalizada a tiempo
+•⁠  ⁠Finalizada fuera de tiempo
+
+Configuración del módulo
+Debe agregarse un botón o sección de Configuración donde el administrador pueda:
+•⁠  ⁠Agregar etapas
+•⁠  ⁠Editar etapas
+•⁠  ⁠Eliminar etapas
+•⁠  ⁠Ordenar etapas
+•⁠  ⁠Definir colores por etapa
+•⁠  ⁠Configurar SLA por etapa
+•⁠  ⁠Configurar alertas
+•⁠  ⁠Definir qué usuarios pueden editar, iniciar o finalizar rutas
+
+Reglas importantes
+El sistema debe validar que:
+•⁠  ⁠Una ruta no pueda iniciarse si no tiene abastecedor asignado.
+•⁠  ⁠Una ruta no pueda iniciarse si no tiene máquinas asignadas.
+•⁠  ⁠Una ruta no pueda finalizarse si no fue iniciada.
+•⁠  ⁠Una ruta finalizada no pueda modificarse, salvo permisos especiales.
+•⁠  ⁠Cada cambio de etapa quede guardado en el historial.
+•⁠  ⁠Si se vence el tiempo configurado, el SLA debe marcarse como vencido automáticamente.
