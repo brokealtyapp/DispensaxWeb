@@ -2934,9 +2934,11 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/route-stages", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/supplier/route-stages", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
+      const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
+      if (!canCfg) return res.status(403).json({ error: "No tienes permiso para configurar el módulo de rutas" });
       const data = insertRouteStageSchema.omit({ tenantId: true }).parse(req.body);
       const stage = await storage.createRouteStage({ ...data, tenantId });
       res.status(201).json(stage);
@@ -2946,9 +2948,11 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/supplier/route-stages/:id", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/supplier/route-stages/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
+      const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
+      if (!canCfg) return res.status(403).json({ error: "No tienes permiso para configurar el módulo de rutas" });
       const data = insertRouteStageSchema.partial().parse(req.body);
       const stage = await storage.updateRouteStage(req.params.id, data, tenantId);
       if (!stage) return res.status(404).json({ error: "Etapa no encontrada" });
@@ -2959,21 +2963,26 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/supplier/route-stages/:id", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/supplier/route-stages/:id", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
+      const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
+      if (!canCfg) return res.status(403).json({ error: "No tienes permiso para configurar el módulo de rutas" });
       const ok = await storage.deleteRouteStage(req.params.id, tenantId);
       if (!ok) return res.status(404).json({ error: "Etapa no encontrada" });
       res.json({ success: true });
-    } catch (error: any) {
-      if (error?.statusCode === 409) return res.status(409).json({ error: error.message });
+    } catch (error: unknown) {
+      const e = error as { statusCode?: number; message?: string };
+      if (e?.statusCode === 409) return res.status(409).json({ error: e.message });
       res.status(500).json({ error: "Error al eliminar etapa" });
     }
   });
 
-  app.post("/api/supplier/route-stages/reorder", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/supplier/route-stages/reorder", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
+      const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
+      if (!canCfg) return res.status(403).json({ error: "No tienes permiso para configurar el módulo de rutas" });
       const { ids } = z.object({ ids: z.array(z.string()) }).parse(req.body);
       await storage.reorderRouteStages(ids, tenantId);
       res.json({ success: true });
@@ -2983,9 +2992,11 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/route-stages/init-defaults", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/supplier/route-stages/init-defaults", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
+      const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
+      if (!canCfg) return res.status(403).json({ error: "No tienes permiso para configurar el módulo de rutas" });
       const existing = await storage.getRouteStages(tenantId);
       if (existing.length > 0) return res.status(400).json({ error: "Ya existen etapas configuradas" });
       const defaults: import("@shared/schema").InsertRouteStage[] = [
@@ -3078,9 +3089,11 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/supplier/route-config/alerts", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+  app.put("/api/supplier/route-config/alerts", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
+      const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
+      if (!canCfg) return res.status(403).json({ error: "No tienes permiso para configurar el módulo de rutas" });
       const data = insertRouteModuleAlertConfigSchema.omit({ tenantId: true }).partial().parse(req.body);
       const config = await storage.upsertRouteModuleAlertConfig(tenantId, data);
       res.json(config);
@@ -3103,9 +3116,11 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/supplier/route-config/permissions", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+  app.put("/api/supplier/route-config/permissions", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
+      const canCfg = await checkRouteActionPermission(tenantId, "configurar_modulo", req.user!.role);
+      if (!canCfg) return res.status(403).json({ error: "No tienes permiso para configurar el módulo de rutas" });
       const { action, allowedRoles } = z.object({
         action: z.string().min(1),
         allowedRoles: z.array(z.string()),

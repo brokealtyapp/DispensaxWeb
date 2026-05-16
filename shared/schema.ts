@@ -785,6 +785,7 @@ export const routes = pgTable("routes", {
   slaStatus: varchar("sla_status"),
   currentStageEnteredAt: timestamp("current_stage_entered_at"),
   lastAlertSentAt: timestamp("last_alert_sent_at"),
+  lastAlertedSlaStatus: varchar("last_alerted_sla_status"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -799,6 +800,7 @@ export const insertRouteSchema = createInsertSchema(routes).omit({
   slaStatus: true,
   currentStageEnteredAt: true,
   lastAlertSentAt: true,
+  lastAlertedSlaStatus: true,
 });
 
 export type InsertRoute = z.infer<typeof insertRouteSchema>;

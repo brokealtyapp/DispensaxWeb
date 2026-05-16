@@ -2630,12 +2630,14 @@ export class DatabaseStorage implements IStorage {
     const slaHours = newStage.slaHours ? Number(newStage.slaHours) : null;
     const slaStatus = slaHours && slaHours > 0 ? "dentro_tiempo" : "sin_sla";
     
-    // Actualizar ruta con nueva etapa
+    // Actualizar ruta con nueva etapa; resetear lastAlertedSlaStatus para trigger por transición
     const [updated] = await db.update(routes)
       .set({
         currentStageId: newStageId,
         currentStageEnteredAt: now,
         slaStatus,
+        lastAlertedSlaStatus: null,
+        lastAlertSentAt: null,
       })
       .where(eq(routes.id, routeId))
       .returning();

@@ -720,7 +720,7 @@ export default function RoutesPage() {
 
   const reorderStagesMutation = useMutation({
     mutationFn: async (orderedIds: string[]) => {
-      const res = await apiRequest("POST", "/api/supplier/route-stages/reorder", { orderedIds });
+      const res = await apiRequest("POST", "/api/supplier/route-stages/reorder", { ids: orderedIds });
       return res.json();
     },
     onSuccess: () => {
@@ -753,6 +753,7 @@ export default function RoutesPage() {
   const canStartRoute = actionPermissions.find(p => p.action === "iniciar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
   const canCompleteRoute = actionPermissions.find(p => p.action === "terminar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
   const canAdvanceStage = actionPermissions.find(p => p.action === "avanzar_etapa")?.allowedRoles.includes(userRole) ?? isAdmin;
+  const canConfigModule = actionPermissions.find(p => p.action === "configurar_modulo")?.allowedRoles.includes(userRole) ?? isAdmin;
 
   const initDefaultStagesMutation = useMutation({
     mutationFn: async () => {
@@ -870,8 +871,15 @@ export default function RoutesPage() {
   };
 
   const getSlaStatusBadge = (slaStatus?: string) => {
-    if (!slaStatus || slaStatus === "sin_sla" || slaStatus === "dentro_tiempo") return null;
+    if (!slaStatus || slaStatus === "sin_sla") return null;
     switch (slaStatus) {
+      case "dentro_tiempo":
+        return (
+          <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 gap-1">
+            <CheckCircle2 className="h-3 w-3" />
+            En tiempo
+          </Badge>
+        );
       case "proximo_vencer":
         return (
           <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 gap-1">
@@ -1065,7 +1073,7 @@ export default function RoutesPage() {
           <p className="text-muted-foreground">Planifica y administra las rutas de abastecimiento</p>
         </div>
         <div className="flex gap-2">
-          {isAdmin && (
+          {canConfigModule && (
             <Button
               variant="outline"
               onClick={() => { setIsConfigOpen(true); setConfigTab("stages"); }}

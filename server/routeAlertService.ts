@@ -155,9 +155,11 @@ export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {
 
       if (!shouldAlertWarning && !shouldAlertExpired) continue;
 
-      const lastAlert = route.lastAlertSentAt ? new Date(route.lastAlertSentAt) : null;
+      // Solo enviar si la ruta acaba de ENTRAR en este estado (transición)
+      const lastAlertedStatus = (route as import("@shared/schema").Route).lastAlertedSlaStatus;
+      if (lastAlertedStatus === slaStatus) continue;
+
       const now = new Date();
-      if (lastAlert && (now.getTime() - lastAlert.getTime()) < 60 * 60 * 1000) continue;
 
       const supplierName = route.supplier?.fullName || route.supplier?.username || "Sin abastecedor";
       const routeDate = new Date(route.date).toLocaleDateString("es-DO", { timeZone: "America/Santo_Domingo" });
@@ -173,7 +175,10 @@ export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {
         elapsedMinutes,
       });
 
-      await db.update(routes).set({ lastAlertSentAt: now }).where(eq(routes.id, route.id));
+      await db.update(routes).set({
+        lastAlertSentAt: now,
+        lastAlertedSlaStatus: slaStatus,
+      }).where(eq(routes.id, route.id));
     }
   } catch (error) {
     console.error("[SLA-Rutas] Error en checkAndSendRouteAlerts:", error);
