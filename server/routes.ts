@@ -204,7 +204,9 @@ function rateLimit(options: {
   };
 }
 
-// Cleanup old rate limit entries every 10 minutes
+// Cleanup old rate limit entries every 10 minutes.
+// .unref() ensures this timer does not prevent the Node.js process from
+// exiting cleanly (important for test environments that import this module).
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of rateLimitStore.entries()) {
@@ -212,7 +214,7 @@ setInterval(() => {
       rateLimitStore.delete(key);
     }
   }
-}, 10 * 60 * 1000);
+}, 10 * 60 * 1000).unref();
 
 class ObjectStorageNotConfiguredError extends Error {
   constructor() {
