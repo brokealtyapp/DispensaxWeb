@@ -2514,9 +2514,24 @@ export class DatabaseStorage implements IStorage {
     const effectiveStartTime = route.startTime ? new Date(route.startTime) : new Date();
     const endTime = new Date();
     const actualDuration = Math.round((endTime.getTime() - effectiveStartTime.getTime()) / 60000);
-    
-    // Persist startTime if it was null (auto-assign start time)
-    const setData: any = { status: "completada", endTime, actualDuration };
+
+    // Calcular SLA terminal de la etapa actual si tiene SLA configurado
+    let terminalSlaStatus: string | null = null;
+    if (route.currentStageId && route.currentStageEnteredAt) {
+      const [stage] = await db.select().from(routeStages).where(eq(routeStages.id, route.currentStageId));
+      if (stage?.slaHours) {
+        const slaMs = Number(stage.slaHours) * 60 * 60 * 1000;
+        const elapsedMs = endTime.getTime() - new Date(route.currentStageEnteredAt).getTime();
+        terminalSlaStatus = elapsedMs <= slaMs ? "finalizada_a_tiempo" : "finalizada_fuera_de_tiempo";
+      }
+    }
+
+    const setData: Partial<typeof routes.$inferInsert> & { startTime?: Date } = {
+      status: "completada",
+      endTime,
+      actualDuration,
+      ...(terminalSlaStatus ? { slaStatus: terminalSlaStatus } : {}),
+    };
     if (!route.startTime) setData.startTime = effectiveStartTime;
     
     const [updated] = await db.update(routes)

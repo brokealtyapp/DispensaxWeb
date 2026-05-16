@@ -2515,7 +2515,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/supplier/routes/:id", authenticateJWT, authorizeAction("routes", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/supplier/routes/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyRouteTenant(req.params.id, req, res)) return;
 
@@ -2570,7 +2570,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/routes/:id/start", authenticateJWT, authorizeAction("routes", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/supplier/routes/:id/start", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyRouteTenant(req.params.id, req, res)) return;
       const existingRoute = await storage.getRoute(req.params.id);
@@ -2610,7 +2610,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/routes/:id/complete", authenticateJWT, authorizeAction("routes", "edit"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/supplier/routes/:id/complete", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyRouteTenant(req.params.id, req, res)) return;
       const existingRoute = await storage.getRoute(req.params.id);

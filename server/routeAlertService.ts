@@ -115,7 +115,7 @@ async function resolveRecipientEmails(tenantId: string, recipientIds: string[]):
 export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {
   try {
     const alertConfig = await storage.getRouteModuleAlertConfig(tenantId);
-    if (!alertConfig?.globalAlertOnExpiry) return;
+    const globalExpiry = alertConfig?.globalAlertOnExpiry ?? true;
 
     const stages = await storage.getRouteStages(tenantId);
     const stageMap = new Map(stages.map(s => [s.id, s]));
@@ -128,7 +128,7 @@ export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {
 
     if (activeRoutes.length === 0) return;
 
-    const recipientJson = alertConfig.alertRecipientsJson ?? '["all_admins"]';
+    const recipientJson = alertConfig?.alertRecipientsJson ?? '["all_admins"]';
     let recipientIds: string[] = [];
     try {
       recipientIds = JSON.parse(recipientJson);
@@ -150,8 +150,10 @@ export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {
 
       const slaStatus = computeRouteSlaStatus(enteredAt, slaHours, thresholdPct);
 
+      // warning: solo si la etapa tiene alertOnSlaWarning habilitado
       const shouldAlertWarning = slaStatus === "proximo_vencer" && stage.alertOnSlaWarning;
-      const shouldAlertExpired = slaStatus === "vencido" && stage.alertOnSlaExpired;
+      // expiry: si la etapa tiene alertOnSlaExpired O el flag global está activo
+      const shouldAlertExpired = slaStatus === "vencido" && (stage.alertOnSlaExpired || globalExpiry);
 
       if (!shouldAlertWarning && !shouldAlertExpired) continue;
 
