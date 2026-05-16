@@ -2895,7 +2895,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/supplier/routes/:id", authenticateJWT, authorizeAction("routes", "delete"), async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/supplier/routes/:id", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyRouteTenant(req.params.id, req, res)) return;
       

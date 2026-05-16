@@ -761,10 +761,14 @@ export default function RoutesPage() {
 
   // ── Permisos de acción de ruta basados en configuración DB ──
   const userRole = user?.role ?? "";
-  const canStartRoute = actionPermissions.find(p => p.action === "iniciar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
+  const canStartRoute   = actionPermissions.find(p => p.action === "iniciar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
   const canCompleteRoute = actionPermissions.find(p => p.action === "terminar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
+  const canEditRoute    = actionPermissions.find(p => p.action === "editar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
+  const canCancelRoute  = actionPermissions.find(p => p.action === "cancelar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
   const canAdvanceStage = actionPermissions.find(p => p.action === "avanzar_etapa")?.allowedRoles.includes(userRole) ?? isAdmin;
   const canConfigModule = actionPermissions.find(p => p.action === "configurar_modulo")?.allowedRoles.includes(userRole) ?? isAdmin;
+  // Eliminar rutas es exclusivo del rol admin (spec: "siempre admin")
+  const canDeleteRoute  = isAdmin;
 
   const initDefaultStagesMutation = useMutation({
     mutationFn: async () => {
@@ -1260,7 +1264,7 @@ export default function RoutesPage() {
                             Cancelar ({bulkCancellableIds.length})
                           </Button>
                         )}
-                        {bulkDeletableIds.length > 0 && canDelete("routes") && (
+                        {bulkDeletableIds.length > 0 && canDeleteRoute && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -1381,73 +1385,78 @@ export default function RoutesPage() {
                                 </Button>
                                 {route.status === "pendiente" && (
                                   <>
-                                    {canStartRoute && canEdit("routes") && (
-                                      <>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => startRouteMutation.mutate(route.id)}
-                                          disabled={startRouteMutation.isPending}
-                                          data-testid={`button-start-route-${route.id}`}
-                                          title="Iniciar ruta"
-                                        >
-                                          <Play className="h-4 w-4 text-blue-500" />
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => handleEditRoute(route)}
-                                          data-testid={`button-edit-route-${route.id}`}
-                                        >
-                                          <Edit2 className="h-4 w-4" />
-                                        </Button>
-                                      </>
+                                    {canStartRoute && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => startRouteMutation.mutate(route.id)}
+                                        disabled={startRouteMutation.isPending}
+                                        data-testid={`button-start-route-${route.id}`}
+                                        title="Iniciar ruta"
+                                      >
+                                        <Play className="h-4 w-4 text-blue-500" />
+                                      </Button>
                                     )}
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => {
-                                        setSelectedRoute(route);
-                                        setIsCancelRouteOpen(true);
-                                      }}
-                                      data-testid={`button-cancel-route-${route.id}`}
-                                      title="Cancelar ruta"
-                                    >
-                                      <XCircle className="h-4 w-4 text-orange-500" />
-                                    </Button>
+                                    {canEditRoute && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handleEditRoute(route)}
+                                        data-testid={`button-edit-route-${route.id}`}
+                                        title="Editar ruta"
+                                      >
+                                        <Edit2 className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                    {canCancelRoute && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => {
+                                          setSelectedRoute(route);
+                                          setIsCancelRouteOpen(true);
+                                        }}
+                                        data-testid={`button-cancel-route-${route.id}`}
+                                        title="Cancelar ruta"
+                                      >
+                                        <XCircle className="h-4 w-4 text-orange-500" />
+                                      </Button>
+                                    )}
                                   </>
                                 )}
                                 {route.status === "en_progreso" && (
                                   <>
                                     {canCompleteRoute && (
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => {
-                                        setSelectedRoute(route);
-                                        setIsCompleteRouteOpen(true);
-                                      }}
-                                      data-testid={`button-complete-route-${route.id}`}
-                                      title="Completar ruta"
-                                    >
-                                      <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                    </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => {
+                                          setSelectedRoute(route);
+                                          setIsCompleteRouteOpen(true);
+                                        }}
+                                        data-testid={`button-complete-route-${route.id}`}
+                                        title="Completar ruta"
+                                      >
+                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                      </Button>
                                     )}
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => {
-                                        setSelectedRoute(route);
-                                        setIsCancelRouteOpen(true);
-                                      }}
-                                      data-testid={`button-cancel-active-route-${route.id}`}
-                                      title="Cancelar ruta"
-                                    >
-                                      <XCircle className="h-4 w-4 text-orange-500" />
-                                    </Button>
+                                    {canCancelRoute && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => {
+                                          setSelectedRoute(route);
+                                          setIsCancelRouteOpen(true);
+                                        }}
+                                        data-testid={`button-cancel-active-route-${route.id}`}
+                                        title="Cancelar ruta"
+                                      >
+                                        <XCircle className="h-4 w-4 text-orange-500" />
+                                      </Button>
+                                    )}
                                   </>
                                 )}
-                                {route.status !== "en_progreso" && canDelete("routes") && (
+                                {route.status !== "en_progreso" && canDeleteRoute && (
                                   <Button
                                     variant="ghost"
                                     size="icon"
@@ -2557,34 +2566,51 @@ export default function RoutesPage() {
                     let selected: string[] = [];
                     try { selected = JSON.parse(alertConfig?.alertRecipientsJson ?? '["all_admins"]'); } catch { selected = ["all_admins"]; }
                     const isAllAdmins = selected.includes("all_admins");
-                    const adminUsers: User[] = admins;
-                    const supervisorUsers: User[] = supervisores;
-                    const allSelectableUsers = [...adminUsers, ...supervisorUsers];
-                    const toggleAllAdmins = (checked: boolean) => {
-                      const next = checked ? ["all_admins"] : [];
-                      setAlertConfig(prev => prev ? { ...prev, alertRecipientsJson: JSON.stringify(next) } : { tenantId: "", alertRecipientsJson: JSON.stringify(next) });
+                    const isAllSupervisors = selected.includes("all_supervisors");
+                    const hasGroupToken = isAllAdmins || isAllSupervisors;
+                    const allSelectableUsers: User[] = [...admins, ...supervisores];
+                    const updateSelected = (next: string[]) =>
+                      setAlertConfig(prev => prev
+                        ? { ...prev, alertRecipientsJson: JSON.stringify(next) }
+                        : { tenantId: "", alertRecipientsJson: JSON.stringify(next) }
+                      );
+                    const toggleToken = (token: string, checked: boolean) => {
+                      const withoutToken = selected.filter(s => s !== token);
+                      updateSelected(checked ? [...withoutToken, token] : withoutToken);
                     };
                     const toggleUser = (userId: string, checked: boolean) => {
-                      const withoutAll = selected.filter(s => s !== "all_admins");
-                      const next = checked ? [...withoutAll, userId] : withoutAll.filter(s => s !== userId);
-                      setAlertConfig(prev => prev ? { ...prev, alertRecipientsJson: JSON.stringify(next) } : { tenantId: "", alertRecipientsJson: JSON.stringify(next) });
+                      const withoutGroups = selected.filter(s => s !== "all_admins" && s !== "all_supervisors");
+                      updateSelected(checked ? [...withoutGroups, userId] : withoutGroups.filter(s => s !== userId));
                     };
                     return (
                       <div className="space-y-2">
+                        {/* Tokens de grupo */}
                         <div className="flex items-center gap-2 p-2 rounded-md border bg-background">
                           <Checkbox
                             id="chk-all-admins"
                             checked={isAllAdmins}
-                            onCheckedChange={(v) => toggleAllAdmins(!!v)}
+                            onCheckedChange={(v) => toggleToken("all_admins", !!v)}
                             data-testid="checkbox-all-admins"
                           />
                           <label htmlFor="chk-all-admins" className="text-sm cursor-pointer select-none">
                             Todos los administradores
                           </label>
                         </div>
-                        {!isAllAdmins && (
+                        <div className="flex items-center gap-2 p-2 rounded-md border bg-background">
+                          <Checkbox
+                            id="chk-all-supervisors"
+                            checked={isAllSupervisors}
+                            onCheckedChange={(v) => toggleToken("all_supervisors", !!v)}
+                            data-testid="checkbox-all-supervisors"
+                          />
+                          <label htmlFor="chk-all-supervisors" className="text-sm cursor-pointer select-none">
+                            Todos los supervisores
+                          </label>
+                        </div>
+                        {/* Usuarios individuales */}
+                        {!hasGroupToken && (
                           <div className="space-y-1 pl-1">
-                            <p className="text-xs text-muted-foreground mb-1">Selecciona usuarios específicos:</p>
+                            <p className="text-xs text-muted-foreground mb-1">O selecciona usuarios específicos:</p>
                             {allSelectableUsers.length === 0 ? (
                               <p className="text-xs text-muted-foreground italic">Sin usuarios admin/supervisor</p>
                             ) : allSelectableUsers.map(u => (
