@@ -781,7 +781,7 @@ export const routes = pgTable("routes", {
   startTime: timestamp("start_time"),
   endTime: timestamp("end_time"),
   notes: text("notes"),
-  currentStageId: varchar("current_stage_id"),
+  currentStageId: varchar("current_stage_id").references(() => routeStages.id, { onDelete: "set null" }),
   slaStatus: varchar("sla_status"),
   currentStageEnteredAt: timestamp("current_stage_entered_at"),
   lastAlertSentAt: timestamp("last_alert_sent_at"),

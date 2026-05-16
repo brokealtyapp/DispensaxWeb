@@ -315,11 +315,11 @@ export interface IStorage {
   // ==================== MÓDULO ABASTECEDOR ====================
   
   // Rutas
-  getRoutes(userId?: string, date?: Date, status?: string, tenantId?: string, page?: number, pageSize?: number, supplierIdFilter?: string, search?: string): Promise<{ data: any[], total: number, page: number, pageSize: number }>;
+  getRoutes(userId?: string, date?: Date, status?: string, tenantId?: string, page?: number, pageSize?: number, supplierIdFilter?: string, search?: string): Promise<{ data: Route[], total: number, page: number, pageSize: number }>;
   getRouteStats(userId?: string, tenantId?: string): Promise<{ total: number, today: number, pending: number, active: number, completed: number }>;
   cancelRouteStops(routeId: string): Promise<void>;
-  getRoute(id: string): Promise<any>;
-  getTodayRoute(userId: string): Promise<any>;
+  getRoute(id: string): Promise<Route & { currentStage?: RouteStage; stageLog?: unknown[]; elapsedMinutes?: number } | undefined>;
+  getTodayRoute(userId: string): Promise<Route | undefined>;
   createRoute(route: InsertRoute): Promise<Route>;
   updateRoute(id: string, route: Partial<InsertRoute>): Promise<Route | undefined>;
   startRoute(id: string): Promise<Route | undefined>;
@@ -2368,13 +2368,36 @@ export class DatabaseStorage implements IStorage {
       stopsByRoute.get(stop.routeId)!.push(stopWithMachine);
     }
     
-    // Construir resultado final
-    const data = result.map(route => ({
-      ...route,
-      supplier: userMap.get(route.supplierId),
-      supervisor: route.supervisorId ? userMap.get(route.supervisorId) : undefined,
-      stops: stopsByRoute.get(route.id) || []
-    }));
+    // Precargar etapas del tenant para SLA dinámico
+    const stagesToLoad = result.filter(r => r.currentStageId).map(r => r.currentStageId!);
+    const uniqueStageIds = Array.from(new Set(stagesToLoad));
+    const stageMap = new Map<string, import("@shared/schema").RouteStage>();
+    if (uniqueStageIds.length > 0) {
+      const stagesData = await db.select().from(routeStages)
+        .where(inArray(routeStages.id, uniqueStageIds));
+      stagesData.forEach(s => stageMap.set(s.id, s));
+    }
+
+    // Construir resultado final con SLA dinámico
+    const data = result.map(route => {
+      const currentStage = route.currentStageId ? stageMap.get(route.currentStageId) : undefined;
+      const enteredAt = route.currentStageEnteredAt ? new Date(route.currentStageEnteredAt) : null;
+      const slaHours = currentStage?.slaHours ? Number(currentStage.slaHours) : null;
+      const thresholdPct = currentStage?.slaAlertThresholdPct ?? 80;
+      const computedSlaStatus = enteredAt && slaHours
+        ? computeRouteSlaStatus(enteredAt, slaHours, thresholdPct)
+        : (route.slaStatus ?? "sin_sla");
+      const elapsedMinutes = computeRouteElapsedMinutes(enteredAt);
+      return {
+        ...route,
+        slaStatus: computedSlaStatus,
+        currentStage,
+        elapsedMinutes,
+        supplier: userMap.get(route.supplierId),
+        supervisor: route.supervisorId ? userMap.get(route.supervisorId) : undefined,
+        stops: stopsByRoute.get(route.id) || [],
+      };
+    });
     
     return { data, total, page, pageSize };
   }
@@ -2531,10 +2554,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteRouteStage(id: string, tenantId: string): Promise<boolean> {
-    // Verificar que no haya rutas activas en esta etapa
+    // Verificar que no haya rutas activas (no completadas ni canceladas) en esta etapa
     const [active] = await db.select({ count: sql<number>`count(*)` })
       .from(routes)
-      .where(and(eq(routes.currentStageId, id), eq(routes.tenantId, tenantId)));
+      .where(and(
+        eq(routes.currentStageId, id),
+        eq(routes.tenantId, tenantId),
+        sql`${routes.status} NOT IN ('completada', 'cancelada')`
+      ));
     if (Number(active?.count ?? 0) > 0) {
       throw new HttpError(409, "No se puede eliminar una etapa que tiene rutas activas en ella");
     }

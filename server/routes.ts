@@ -134,6 +134,15 @@ import { z, ZodError } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection, enqueueLaneChangeForNayax, syncNayaxSalesForTenant, categorizePaymentMethod } from "./nayax";
 import { checkAndSendRouteAlerts } from "./routeAlertService";
 
+// ── Helper: verifica permiso de acción de ruta (auto-inicializa si no existe) ──
+async function checkRouteActionPermission(tenantId: string, action: string, role: string): Promise<boolean> {
+  await storage.initDefaultRouteActionPermissions(tenantId);
+  const perms = await storage.getRouteActionPermissions(tenantId);
+  const perm = perms.find(p => p.action === action);
+  if (!perm) return false;
+  return perm.allowedRoles.includes(role);
+}
+
 // =====================
 // DATABASE ERROR HELPERS
 // =====================
@@ -2510,11 +2519,18 @@ export async function registerRoutes(
     try {
       if (!await verifyRouteTenant(req.params.id, req, res)) return;
 
+      // Verificar permiso configurable de edición
+      const tenantEditar = req.user!.tenantId;
+      const canEditRoute = await checkRouteActionPermission(tenantEditar, "editar_ruta", req.user!.role);
+      if (!canEditRoute) {
+        return res.status(403).json({ error: "No tienes permiso para editar rutas" });
+      }
+
       // Bloquear edición si la ruta está en una etapa terminal (excepto admin)
       if (req.user!.role !== "admin") {
         const existingRoute = await storage.getRoute(req.params.id);
         if (existingRoute?.currentStage?.isTerminal) {
-          return res.status(409).json({ error: "No se puede editar una ruta que está en una etapa terminal" });
+          return res.status(403).json({ error: "No se puede editar una ruta que está en una etapa terminal" });
         }
       }
       
@@ -2562,11 +2578,10 @@ export async function registerRoutes(
       if (req.user?.role === "abastecedor" && existingRoute.supplierId !== req.user.userId) {
         return res.status(403).json({ error: "No tienes permiso para iniciar esta ruta" });
       }
-      // Validar permisos configurables
+      // Validar permisos configurables (auto-inicializa si no existen)
       const tenantId = req.user!.tenantId;
-      const perms = await storage.getRouteActionPermissions(tenantId);
-      const initPerm = perms.find(p => p.action === "iniciar_ruta");
-      if (initPerm && !initPerm.allowedRoles.includes(req.user!.role)) {
+      const canStart = await checkRouteActionPermission(tenantId, "iniciar_ruta", req.user!.role);
+      if (!canStart) {
         return res.status(403).json({ error: "No tienes permiso para iniciar rutas" });
       }
       // Validar que tenga abastecedor
@@ -2603,11 +2618,10 @@ export async function registerRoutes(
       if (req.user?.role === "abastecedor" && existingRoute.supplierId !== req.user.userId) {
         return res.status(403).json({ error: "No tienes permiso para completar esta ruta" });
       }
-      // Validar permisos configurables
+      // Validar permisos configurables (auto-inicializa si no existen)
       const tenantId = req.user!.tenantId;
-      const perms = await storage.getRouteActionPermissions(tenantId);
-      const termPerm = perms.find(p => p.action === "terminar_ruta");
-      if (termPerm && !termPerm.allowedRoles.includes(req.user!.role)) {
+      const canComplete = await checkRouteActionPermission(tenantId, "terminar_ruta", req.user!.role);
+      if (!canComplete) {
         return res.status(403).json({ error: "No tienes permiso para terminar rutas" });
       }
       // Validar que fue iniciada
@@ -2999,7 +3013,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/supplier/routes/:id/advance-stage", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional"), async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/supplier/routes/:id/advance-stage", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyRouteTenant(req.params.id, req, res)) return;
       const { newStageId, notes } = z.object({
@@ -3011,10 +3025,9 @@ export async function registerRoutes(
       const userId = req.user!.userId;
       const isAdmin = req.user!.role === "admin";
 
-      // Verificar permisos configurables
-      const perms = await storage.getRouteActionPermissions(tenantId);
-      const advancePerm = perms.find(p => p.action === "avanzar_etapa");
-      if (advancePerm && !advancePerm.allowedRoles.includes(req.user!.role)) {
+      // Verificar permisos configurables (auto-inicializa si no existen)
+      const canAdvance = await checkRouteActionPermission(tenantId, "avanzar_etapa", req.user!.role);
+      if (!canAdvance) {
         return res.status(403).json({ error: "No tienes permiso para avanzar la etapa" });
       }
 
@@ -3023,7 +3036,7 @@ export async function registerRoutes(
 
       // Bloquear avance desde etapa terminal (solo admin puede hacerlo)
       if (existingRoute.currentStage?.isTerminal && !isAdmin) {
-        return res.status(409).json({ error: "La ruta ya se encuentra en una etapa terminal y no puede avanzar" });
+        return res.status(403).json({ error: "La ruta ya se encuentra en una etapa terminal y no puede avanzar" });
       }
 
       const newStage = await storage.getRouteStage(newStageId, tenantId);

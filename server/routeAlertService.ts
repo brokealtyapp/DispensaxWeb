@@ -109,7 +109,7 @@ async function resolveRecipientEmails(tenantId: string, recipientIds: string[]):
     rows.forEach(r => r.email && emails.push(r.email));
   }
 
-  return [...new Set(emails)];
+  return Array.from(new Set(emails));
 }
 
 export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {

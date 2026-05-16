@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -6,6 +6,23 @@ import { z } from "zod";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import { usePermissions } from "@/hooks/use-permissions";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { formatDateShort, formatDate, formatTime, getDateKeyInTimezone, getTodayInTimezone } from "@/lib/utils";
 import { 
   Route, MapPin, Plus, Search, Edit2, Trash2, Eye, 
@@ -191,6 +208,76 @@ const stopFormSchema = z.object({
 type StopFormData = z.infer<typeof stopFormSchema>;
 
 const ITEMS_PER_PAGE = 20;
+
+// ── Componente sortable de etapa para DnD ──
+function SortableStageItem({
+  stage,
+  onEdit,
+  onDelete,
+}: {
+  stage: RouteStage;
+  onEdit: (s: RouteStage) => void;
+  onDelete: (s: RouteStage) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: stage.id,
+  });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-3 p-3 rounded-lg border bg-card"
+      data-testid={`config-stage-${stage.id}`}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing text-muted-foreground flex-shrink-0 focus:outline-none"
+        aria-label="Arrastrar para reordenar"
+        tabIndex={0}
+        data-testid={`drag-handle-stage-${stage.id}`}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color }} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="font-medium text-sm">{stage.name}</p>
+          {stage.isDefault && <Badge variant="outline" className="text-xs">Inicial</Badge>}
+          {stage.isTerminal && <Badge variant="outline" className="text-xs">Terminal</Badge>}
+          {stage.slaHours && (
+            <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs gap-1">
+              <Timer className="h-3 w-3" />
+              SLA {stage.slaHours}h
+            </Badge>
+          )}
+          {stage.alertOnSlaExpired && (
+            <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-xs gap-1">
+              <Bell className="h-3 w-3" />Alerta
+            </Badge>
+          )}
+        </div>
+        {stage.slaHours && (
+          <p className="text-xs text-muted-foreground">Umbral: {stage.slaAlertThresholdPct ?? 80}%</p>
+        )}
+      </div>
+      <div className="flex gap-1">
+        <Button variant="ghost" size="icon" onClick={() => onEdit(stage)} data-testid={`button-edit-stage-${stage.id}`}>
+          <Edit2 className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={() => onDelete(stage)} data-testid={`button-delete-stage-${stage.id}`}>
+          <Trash2 className="h-4 w-4 text-destructive" />
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function RoutesPage() {
   const { toast } = useToast();
@@ -393,7 +480,6 @@ export default function RoutesPage() {
 
   const { data: actionPermissions = [] } = useQuery<RouteActionPermission[]>({
     queryKey: ["/api/supplier/route-config/permissions"],
-    enabled: isConfigOpen && configTab === "permissions",
   });
 
   const stageMap = useMemo(() => new Map(routeStages.map(s => [s.id, s])), [routeStages]);
@@ -631,6 +717,42 @@ export default function RoutesPage() {
       toast({ title: "Error al eliminar etapa", description: getApiErrorMessage(error), variant: "destructive" });
     },
   });
+
+  const reorderStagesMutation = useMutation({
+    mutationFn: async (orderedIds: string[]) => {
+      const res = await apiRequest("POST", "/api/supplier/route-stages/reorder", { orderedIds });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/route-stages"] });
+    },
+    onError: (error) => {
+      toast({ title: "Error al reordenar etapas", description: getApiErrorMessage(error), variant: "destructive" });
+    },
+  });
+
+  // ── Sensores DnD para reordenar etapas ──
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleStageDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const sorted = [...routeStages].sort((a, b) => a.sortOrder - b.sortOrder);
+    const oldIndex = sorted.findIndex(s => s.id === active.id);
+    const newIndex = sorted.findIndex(s => s.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(sorted, oldIndex, newIndex);
+    reorderStagesMutation.mutate(reordered.map(s => s.id));
+  }, [routeStages, reorderStagesMutation]);
+
+  // ── Permisos de acción de ruta basados en configuración DB ──
+  const userRole = user?.role ?? "";
+  const canStartRoute = actionPermissions.find(p => p.action === "iniciar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
+  const canCompleteRoute = actionPermissions.find(p => p.action === "terminar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
+  const canAdvanceStage = actionPermissions.find(p => p.action === "avanzar_etapa")?.allowedRoles.includes(userRole) ?? isAdmin;
 
   const initDefaultStagesMutation = useMutation({
     mutationFn: async () => {
@@ -1240,7 +1362,7 @@ export default function RoutesPage() {
                                 </Button>
                                 {route.status === "pendiente" && (
                                   <>
-                                    {canEdit("routes") && (
+                                    {canStartRoute && canEdit("routes") && (
                                       <>
                                         <Button
                                           variant="ghost"
@@ -1278,6 +1400,7 @@ export default function RoutesPage() {
                                 )}
                                 {route.status === "en_progreso" && (
                                   <>
+                                    {canCompleteRoute && (
                                     <Button
                                       variant="ghost"
                                       size="icon"
@@ -1290,6 +1413,7 @@ export default function RoutesPage() {
                                     >
                                       <CheckCircle2 className="h-4 w-4 text-green-500" />
                                     </Button>
+                                    )}
                                     <Button
                                       variant="ghost"
                                       size="icon"
@@ -1673,7 +1797,7 @@ export default function RoutesPage() {
                           <History className="h-4 w-4" />
                           Historial
                         </Button>
-                        {selectedRoute.status !== "completada" && selectedRoute.status !== "cancelada" && (
+                        {canAdvanceStage && selectedRoute.status !== "completada" && selectedRoute.status !== "cancelada" && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -2331,52 +2455,27 @@ export default function RoutesPage() {
                   <p className="text-xs text-muted-foreground">Crea etapas personalizadas o usa las predeterminadas</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {[...routeStages].sort((a, b) => a.sortOrder - b.sortOrder).map((stage, idx, arr) => (
-                    <div
-                      key={stage.id}
-                      className="flex items-center gap-3 p-3 rounded-lg border bg-card"
-                      data-testid={`config-stage-${stage.id}`}
-                    >
-                      <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <div
-                        className="w-4 h-4 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: stage.color }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium text-sm">{stage.name}</p>
-                          {stage.isDefault && <Badge variant="outline" className="text-xs">Inicial</Badge>}
-                          {stage.isTerminal && <Badge variant="outline" className="text-xs">Terminal</Badge>}
-                          {stage.slaHours && (
-                            <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs gap-1">
-                              <Timer className="h-3 w-3" />
-                              SLA {stage.slaHours}h
-                            </Badge>
-                          )}
-                          {stage.alertOnSlaExpired && (
-                            <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-xs gap-1">
-                              <Bell className="h-3 w-3" />Alerta
-                            </Badge>
-                          )}
-                        </div>
-                        {stage.slaHours && (
-                          <p className="text-xs text-muted-foreground">
-                            Umbral: {stage.slaAlertThresholdPct ?? 80}%
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenStageForm(stage)} data-testid={`button-edit-stage-${stage.id}`}>
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => { setStageToDelete(stage); setIsDeleteStageOpen(true); }} data-testid={`button-delete-stage-${stage.id}`}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                <DndContext
+                  sensors={dndSensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleStageDragEnd}
+                >
+                  <SortableContext
+                    items={[...routeStages].sort((a, b) => a.sortOrder - b.sortOrder).map(s => s.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-2">
+                      {[...routeStages].sort((a, b) => a.sortOrder - b.sortOrder).map((stage) => (
+                        <SortableStageItem
+                          key={stage.id}
+                          stage={stage}
+                          onEdit={handleOpenStageForm}
+                          onDelete={(s) => { setStageToDelete(s); setIsDeleteStageOpen(true); }}
+                        />
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </SortableContext>
+                </DndContext>
               )}
             </TabsContent>
 
