@@ -2637,36 +2637,41 @@ export class DatabaseStorage implements IStorage {
     if (!newStage) return undefined;
     
     const now = new Date();
-    
-    // Cerrar entrada de log anterior
-    await this.closeRouteStageLogEntry(routeId, now);
-    
-    // La nueva etapa empieza con slaStatus "dentro_tiempo" (acaba de comenzar)
     const slaHours = newStage.slaHours ? Number(newStage.slaHours) : null;
     const slaStatus = slaHours && slaHours > 0 ? "dentro_tiempo" : "sin_sla";
-    
-    // Actualizar ruta con nueva etapa; resetear lastAlertedSlaStatus para trigger por transición
-    const [updated] = await db.update(routes)
-      .set({
-        currentStageId: newStageId,
-        currentStageEnteredAt: now,
-        slaStatus,
-        lastAlertedSlaStatus: null,
-        lastAlertSentAt: null,
-      })
-      .where(eq(routes.id, routeId))
-      .returning();
-    
-    // Crear nueva entrada en el log
-    await db.insert(routeStageLog).values({
-      routeId,
-      tenantId: route.tenantId,
-      stageId: newStageId,
-      stageName: newStage.name,
-      enteredAt: now,
-      slaHours: newStage.slaHours,
-      changedBy,
-      notes,
+
+    // ── Transacción atómica: cerrar log anterior + actualizar ruta + insertar nuevo log ──
+    let updated: Route | undefined;
+    await db.transaction(async (tx) => {
+      // Cerrar entrada de log anterior
+      await tx.update(routeStageLog)
+        .set({ exitedAt: now })
+        .where(and(eq(routeStageLog.routeId, routeId), isNull(routeStageLog.exitedAt)));
+
+      // Actualizar ruta con nueva etapa; resetear lastAlertedSlaStatus para trigger por transición
+      const [updatedRow] = await tx.update(routes)
+        .set({
+          currentStageId: newStageId,
+          currentStageEnteredAt: now,
+          slaStatus,
+          lastAlertedSlaStatus: null,
+          lastAlertSentAt: null,
+        })
+        .where(eq(routes.id, routeId))
+        .returning();
+      updated = updatedRow;
+
+      // Crear nueva entrada en el log
+      await tx.insert(routeStageLog).values({
+        routeId,
+        tenantId: route.tenantId,
+        stageId: newStageId,
+        stageName: newStage.name,
+        enteredAt: now,
+        slaHours: newStage.slaHours,
+        changedBy,
+        notes,
+      });
     });
     
     return updated;

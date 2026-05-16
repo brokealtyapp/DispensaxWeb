@@ -2240,9 +2240,16 @@ export default function RoutesPage() {
                   <SelectValue placeholder="Seleccionar etapa..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {routeStages
-                    .filter(s => s.id !== selectedRoute?.currentStageId)
-                    .map(stage => (
+                  {(() => {
+                    const sortedAll = [...routeStages].sort((a, b) => a.sortOrder - b.sortOrder);
+                    const currentIdx = selectedRoute?.currentStageId
+                      ? sortedAll.findIndex(s => s.id === selectedRoute.currentStageId)
+                      : -1;
+                    // Admin puede saltar a cualquier etapa; resto solo a la siguiente por sortOrder
+                    const available = isAdmin
+                      ? sortedAll.filter(s => s.id !== selectedRoute?.currentStageId)
+                      : sortedAll.slice(currentIdx + 1).slice(0, 1); // solo la inmediata siguiente
+                    return available.map(stage => (
                       <SelectItem key={stage.id} value={stage.id}>
                         <div className="flex items-center gap-2">
                           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color }} />
@@ -2252,7 +2259,8 @@ export default function RoutesPage() {
                           )}
                         </div>
                       </SelectItem>
-                    ))}
+                    ));
+                  })()}
                 </SelectContent>
               </Select>
             </div>
