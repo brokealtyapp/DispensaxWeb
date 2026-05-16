@@ -764,7 +764,8 @@ export default function RoutesPage() {
   const canStartRoute   = actionPermissions.find(p => p.action === "iniciar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
   const canCompleteRoute = actionPermissions.find(p => p.action === "terminar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
   const canEditRoute    = actionPermissions.find(p => p.action === "editar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
-  const canCancelRoute  = actionPermissions.find(p => p.action === "cancelar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
+  // Cancelar usa el mismo permiso que editar (spec: Cancelar → editar_ruta)
+  const canCancelRoute  = actionPermissions.find(p => p.action === "editar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
   const canAdvanceStage = actionPermissions.find(p => p.action === "avanzar_etapa")?.allowedRoles.includes(userRole) ?? isAdmin;
   const canConfigModule = actionPermissions.find(p => p.action === "configurar_modulo")?.allowedRoles.includes(userRole) ?? isAdmin;
   // Eliminar rutas es exclusivo del rol admin (spec: "siempre admin")

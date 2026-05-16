@@ -2426,7 +2426,7 @@ export async function registerRoutes(
   // Roles permitidos: admin, supervisor, abastecedor
 
   // Rutas
-  app.get("/api/supplier/routes", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/supplier/routes", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { date, status, page, pageSize, supplierId, search } = req.query;
       // Abastecedor solo ve sus propias rutas
@@ -2449,7 +2449,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/supplier/routes/stats", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/supplier/routes/stats", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const effectiveUserId = getEffectiveUserId(req, "userId");
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
@@ -2461,7 +2461,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/supplier/routes/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/supplier/routes/:id", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyRouteTenant(req.params.id, req, res)) return;
       
@@ -2500,12 +2500,15 @@ export async function registerRoutes(
 
       // Asignar etapa por defecto y crear entrada inicial en el log
       const stages = await storage.getRouteStages(tenantId);
-      const defaultStage = stages.sort((a, b) => a.sortOrder - b.sortOrder).find(s => s.isDefault) ?? stages.sort((a, b) => a.sortOrder - b.sortOrder)[0];
+      const sortedStages = [...stages].sort((a, b) => a.sortOrder - b.sortOrder);
+      const defaultStage = sortedStages.find(s => s.isDefault) ?? sortedStages[0];
       if (defaultStage) {
         await storage.advanceRouteStage(route.id, defaultStage.id, req.user!.userId, "Ruta creada");
       }
 
-      res.status(201).json(route);
+      // Retornar ruta actualizada (con currentStageId/slaStatus ya asignados)
+      const freshRoute = await storage.getRoute(route.id);
+      res.status(201).json(freshRoute ?? route);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
@@ -2595,15 +2598,22 @@ export async function registerRoutes(
       }
       const route = await storage.startRoute(req.params.id);
 
-      // Avanzar a etapa "En Ruta" si existe
+      // Avanzar a la siguiente etapa por sortOrder (la 2da etapa no-terminal)
       const stages = await storage.getRouteStages(tenantId);
-      const enRutaStage = stages.find(s => s.name.toLowerCase().includes("en ruta") || s.name.toLowerCase().includes("en_ruta"));
-      if (enRutaStage && route) {
-        await storage.advanceRouteStage(req.params.id, enRutaStage.id, req.user!.userId, "Ruta iniciada");
+      const sortedStages = [...stages].sort((a, b) => a.sortOrder - b.sortOrder);
+      const currentStageId = route?.currentStageId;
+      const currentIdx = currentStageId ? sortedStages.findIndex(s => s.id === currentStageId) : 0;
+      // Buscar la siguiente etapa no-terminal a partir de la posición actual
+      const nextStage = sortedStages.slice(currentIdx + 1).find(s => !s.isTerminal)
+        ?? sortedStages.find(s => !s.isDefault && !s.isTerminal);
+      if (nextStage && route) {
+        await storage.advanceRouteStage(req.params.id, nextStage.id, req.user!.userId, "Ruta iniciada");
         checkAndSendRouteAlerts(tenantId).catch(console.error);
       }
 
-      res.json(route);
+      // Retornar ruta actualizada con etapa y SLA actuales
+      const freshRoute = await storage.getRoute(req.params.id);
+      res.json(freshRoute ?? route);
     } catch (error) {
       console.error("Error al iniciar ruta:", error);
       res.status(500).json({ error: "Error al iniciar ruta" });
@@ -3021,7 +3031,7 @@ export async function registerRoutes(
 
   // ── Historial y transición de etapa de ruta ────────────────────────────────
 
-  app.get("/api/supplier/routes/:id/stage-log", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/supplier/routes/:id/stage-log", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyRouteTenant(req.params.id, req, res)) return;
       const log = await storage.getRouteStageLog(req.params.id);
