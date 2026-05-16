@@ -331,6 +331,8 @@ export default function RoutesPage() {
   const [advanceStageNotes, setAdvanceStageNotes] = useState("");
   const [targetStageId, setTargetStageId] = useState("");
   const [isStageLogOpen, setIsStageLogOpen] = useState(false);
+  const [quickStageLogRouteId, setQuickStageLogRouteId] = useState<string | null>(null);
+  const [quickStageLogRoute, setQuickStageLogRoute] = useState<RouteData | null>(null);
   const [alertConfig, setAlertConfig] = useState<RouteModuleAlertConfig | null>(null);
 
   // Formulario de etapa
@@ -478,6 +480,11 @@ export default function RoutesPage() {
   const { data: stageLog = [], isLoading: stageLogLoading } = useQuery<RouteStageLogEntry[]>({
     queryKey: ["/api/supplier/routes", selectedRoute?.id, "stage-log"],
     enabled: !!selectedRoute?.id && isStageLogOpen,
+  });
+
+  const { data: quickStageLog = [], isLoading: quickStageLogLoading } = useQuery<RouteStageLogEntry[]>({
+    queryKey: ["/api/supplier/routes", quickStageLogRouteId, "stage-log"],
+    enabled: !!quickStageLogRouteId,
   });
 
   const { data: fetchedAlertConfig } = useQuery<RouteModuleAlertConfig>({
@@ -1384,6 +1391,20 @@ export default function RoutesPage() {
                                 >
                                   <Eye className="h-4 w-4" />
                                 </Button>
+                                {routeStages.length > 0 && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setQuickStageLogRouteId(route.id);
+                                      setQuickStageLogRoute(route);
+                                    }}
+                                    data-testid={`button-stage-history-${route.id}`}
+                                    title="Ver historial de etapas"
+                                  >
+                                    <History className="h-4 w-4 text-muted-foreground" />
+                                  </Button>
+                                )}
                                 {route.status === "pendiente" && (
                                   <>
                                     {canStartRoute && (
@@ -2345,6 +2366,94 @@ export default function RoutesPage() {
                         Entrada: {formatDate(new Date(entry.enteredAt))}{" "}
                         {entry.exitedAt && `→ ${formatDate(new Date(entry.exitedAt))}`}
                       </p>
+                      {entry.changedByUser && (
+                        <p className="text-xs text-muted-foreground">
+                          Por: {entry.changedByUser.fullName || entry.changedByUser.username}
+                        </p>
+                      )}
+                      {entry.notes && (
+                        <p className="text-xs text-muted-foreground italic">"{entry.notes}"</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Historial de Etapas (acceso rápido desde tabla) ─────── */}
+      <Dialog
+        open={!!quickStageLogRouteId}
+        onOpenChange={(open) => { if (!open) { setQuickStageLogRouteId(null); setQuickStageLogRoute(null); } }}
+      >
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Historial de Etapas
+            </DialogTitle>
+            {quickStageLogRoute && (
+              <DialogDescription>
+                {formatDateShort(new Date(quickStageLogRoute.date))} — {quickStageLogRoute.supplierName || quickStageLogRoute.supplierId}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          {quickStageLogLoading ? (
+            <div className="space-y-2">
+              {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14" />)}
+            </div>
+          ) : quickStageLog.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <History className="h-10 w-10 mx-auto mb-2 opacity-40" />
+              <p>Sin historial de etapas registrado</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {quickStageLog.map((entry, idx) => {
+                const stage = stageMap.get(entry.stageId);
+                const endTime = entry.exitedAt ? new Date(entry.exitedAt).getTime() : Date.now();
+                const elapsed = Math.round((endTime - new Date(entry.enteredAt).getTime()) / 60_000);
+                const isLast = idx === quickStageLog.length - 1;
+                const slaMins = entry.slaHours ? Number(entry.slaHours) * 60 : null;
+                const exceededSla = slaMins !== null && elapsed > slaMins;
+                const isOngoing = !entry.exitedAt;
+                return (
+                  <div
+                    key={entry.id}
+                    className={`relative flex gap-3 pb-4 ${isLast ? "" : "border-l-2 border-muted ml-4 pl-4"} ${exceededSla ? "rounded-md bg-red-50/60 dark:bg-red-900/10 px-2" : ""}`}
+                    data-testid={`quick-stage-log-entry-${entry.id}`}
+                  >
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0 mt-1 -ml-5 border-2 border-background"
+                      style={{ backgroundColor: stage?.color ?? "#6B7280" }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <p className={`font-medium text-sm flex items-center gap-1 ${exceededSla ? "text-destructive" : ""}`}>
+                          {entry.stageName}
+                          {exceededSla && <AlertTriangle className="h-3 w-3 text-destructive" />}
+                        </p>
+                        {isOngoing ? (
+                          <Badge variant={exceededSla ? "destructive" : "secondary"} className="text-xs">
+                            En curso · {elapsed >= 60 ? `${Math.floor(elapsed / 60)}h ${elapsed % 60}m` : `${elapsed}m`}
+                          </Badge>
+                        ) : (
+                          <Badge variant={exceededSla ? "destructive" : "outline"} className="text-xs">
+                            {elapsed >= 60 ? `${Math.floor(elapsed / 60)}h ${elapsed % 60}m` : `${elapsed}m`}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Entrada: {formatDate(new Date(entry.enteredAt))}{" "}
+                        {entry.exitedAt && `→ ${formatDate(new Date(entry.exitedAt))}`}
+                      </p>
+                      {entry.slaHours && (
+                        <p className={`text-xs ${exceededSla ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                          SLA: {Number(entry.slaHours)}h{exceededSla ? " — Superado" : ""}
+                        </p>
+                      )}
                       {entry.changedByUser && (
                         <p className="text-xs text-muted-foreground">
                           Por: {entry.changedByUser.fullName || entry.changedByUser.username}
