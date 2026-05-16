@@ -2628,16 +2628,23 @@ export async function registerRoutes(
       if (!existingRoute.startTime) {
         return res.status(400).json({ error: "La ruta no puede finalizarse porque no ha sido iniciada" });
       }
-      const route = await storage.completeRoute(req.params.id);
+      // Capturar slaStatus terminal antes de avanzar etapa
+      const completedRoute = await storage.completeRoute(req.params.id);
+      const finalSlaStatus = completedRoute?.slaStatus;
 
       // Avanzar a etapa terminal si existe
       const stages = await storage.getRouteStages(tenantId);
       const terminalStage = stages.find(s => s.isTerminal);
-      if (terminalStage && route) {
+      if (terminalStage && completedRoute) {
         await storage.advanceRouteStage(req.params.id, terminalStage.id, req.user!.userId, "Ruta finalizada");
+        // Restaurar el slaStatus terminal calculado (advanceRouteStage lo resetea a sin_sla)
+        if (finalSlaStatus && (finalSlaStatus === "finalizada_a_tiempo" || finalSlaStatus === "finalizada_fuera_de_tiempo")) {
+          await db.update(routesTable).set({ slaStatus: finalSlaStatus }).where(eq(routesTable.id, req.params.id));
+        }
       }
 
-      res.json(route);
+      const finalRoute = await storage.getRoute(req.params.id);
+      res.json(finalRoute);
     } catch (error) {
       console.error("Error al completar ruta:", error);
       res.status(500).json({ error: "Error al completar ruta" });

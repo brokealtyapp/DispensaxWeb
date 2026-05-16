@@ -446,6 +446,17 @@ export default function RoutesPage() {
     queryKey: ["/api/users", { role: "supervisor" }],
   });
 
+  const { data: admins = [] } = useQuery<User[]>({
+    queryKey: ["/api/users", { role: "admin" }],
+  });
+
+  // ── Tick cada 30s para refrescar timers en vivo ──────────────────────────────
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const { data: machines = [] } = useQuery<Machine[]>({
     queryKey: ["/api/machines"],
   });
@@ -1819,24 +1830,55 @@ export default function RoutesPage() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+                    <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                       {selectedRoute.currentStageId ? (
                         <>
-                          <div
-                            className="w-3 h-3 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: stageMap.get(selectedRoute.currentStageId)?.color ?? "#6B7280" }}
-                          />
-                          <div className="flex-1">
-                            <p className="font-medium">{stageMap.get(selectedRoute.currentStageId)?.name ?? "—"}</p>
-                            {selectedRoute.currentStageEnteredAt && (
-                              <p className="text-xs text-muted-foreground">
-                                Desde: {formatDate(new Date(selectedRoute.currentStageEnteredAt))} · Tiempo: {computeSlaElapsed(selectedRoute.currentStageEnteredAt)}
-                              </p>
-                            )}
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="w-3 h-3 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: stageMap.get(selectedRoute.currentStageId)?.color ?? "#6B7280" }}
+                            />
+                            <div className="flex-1">
+                              <p className="font-medium">{stageMap.get(selectedRoute.currentStageId)?.name ?? "—"}</p>
+                              {selectedRoute.currentStageEnteredAt && (
+                                <p className="text-xs text-muted-foreground">
+                                  Desde: {formatDate(new Date(selectedRoute.currentStageEnteredAt))}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex gap-1">
+                              {getSlaStatusBadge(selectedRoute.slaStatus)}
+                            </div>
                           </div>
-                          <div className="flex gap-1">
-                            {getSlaStatusBadge(selectedRoute.slaStatus)}
-                          </div>
+                          {/* ── SLA progress bar en vivo ── */}
+                          {(() => {
+                            const stage = stageMap.get(selectedRoute.currentStageId);
+                            const enteredAt = selectedRoute.currentStageEnteredAt;
+                            if (!stage?.slaHours || !enteredAt) return null;
+                            void tick; // fuerza re-render cada 30s
+                            const slaMs = Number(stage.slaHours) * 3_600_000;
+                            const elapsedMs = Date.now() - new Date(enteredAt).getTime();
+                            const pct = Math.min(100, Math.round((elapsedMs / slaMs) * 100));
+                            const elapsedH = Math.floor(elapsedMs / 3_600_000);
+                            const elapsedM = Math.floor((elapsedMs % 3_600_000) / 60_000);
+                            const elapsedLabel = elapsedH > 0 ? `${elapsedH}h ${elapsedM}m` : `${elapsedM}m`;
+                            const slaLabel = `${Number(stage.slaHours)}h`;
+                            const barColor = pct >= 100 ? "bg-destructive" : pct >= (stage.slaAlertThresholdPct ?? 80) ? "bg-amber-500" : "bg-emerald-500";
+                            return (
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1"><Timer className="h-3 w-3" /> {elapsedLabel} transcurridos</span>
+                                  <span>SLA: {slaLabel} ({pct}%)</span>
+                                </div>
+                                <div className="relative h-2 rounded-full bg-muted overflow-hidden">
+                                  <div
+                                    className={`absolute left-0 top-0 h-full rounded-full transition-all duration-500 ${barColor}`}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </>
                       ) : (
                         <p className="text-sm text-muted-foreground">Sin etapa asignada</p>
@@ -2508,18 +2550,62 @@ export default function RoutesPage() {
                   />
                 </div>
                 <Separator />
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <Label>Destinatarios de alertas</Label>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    JSON array de IDs de usuario o "all_admins" para enviar a todos los administradores
-                  </p>
-                  <Textarea
-                    value={alertConfig?.alertRecipientsJson ?? '["all_admins"]'}
-                    onChange={(e) => setAlertConfig(prev => prev ? { ...prev, alertRecipientsJson: e.target.value } : { tenantId: "", alertRecipientsJson: e.target.value })}
-                    rows={2}
-                    placeholder='["all_admins"]'
-                    data-testid="input-alert-recipients"
-                  />
+                  {/* Selector visual de destinatarios */}
+                  {(() => {
+                    let selected: string[] = [];
+                    try { selected = JSON.parse(alertConfig?.alertRecipientsJson ?? '["all_admins"]'); } catch { selected = ["all_admins"]; }
+                    const isAllAdmins = selected.includes("all_admins");
+                    const adminUsers: User[] = admins;
+                    const supervisorUsers: User[] = supervisores;
+                    const allSelectableUsers = [...adminUsers, ...supervisorUsers];
+                    const toggleAllAdmins = (checked: boolean) => {
+                      const next = checked ? ["all_admins"] : [];
+                      setAlertConfig(prev => prev ? { ...prev, alertRecipientsJson: JSON.stringify(next) } : { tenantId: "", alertRecipientsJson: JSON.stringify(next) });
+                    };
+                    const toggleUser = (userId: string, checked: boolean) => {
+                      const withoutAll = selected.filter(s => s !== "all_admins");
+                      const next = checked ? [...withoutAll, userId] : withoutAll.filter(s => s !== userId);
+                      setAlertConfig(prev => prev ? { ...prev, alertRecipientsJson: JSON.stringify(next) } : { tenantId: "", alertRecipientsJson: JSON.stringify(next) });
+                    };
+                    return (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 p-2 rounded-md border bg-background">
+                          <Checkbox
+                            id="chk-all-admins"
+                            checked={isAllAdmins}
+                            onCheckedChange={(v) => toggleAllAdmins(!!v)}
+                            data-testid="checkbox-all-admins"
+                          />
+                          <label htmlFor="chk-all-admins" className="text-sm cursor-pointer select-none">
+                            Todos los administradores
+                          </label>
+                        </div>
+                        {!isAllAdmins && (
+                          <div className="space-y-1 pl-1">
+                            <p className="text-xs text-muted-foreground mb-1">Selecciona usuarios específicos:</p>
+                            {allSelectableUsers.length === 0 ? (
+                              <p className="text-xs text-muted-foreground italic">Sin usuarios admin/supervisor</p>
+                            ) : allSelectableUsers.map(u => (
+                              <div key={u.id} className="flex items-center gap-2 p-2 rounded-md border bg-background">
+                                <Checkbox
+                                  id={`chk-user-${u.id}`}
+                                  checked={selected.includes(u.id)}
+                                  onCheckedChange={(v) => toggleUser(u.id, !!v)}
+                                  data-testid={`checkbox-recipient-${u.id}`}
+                                />
+                                <label htmlFor={`chk-user-${u.id}`} className="text-sm cursor-pointer select-none">
+                                  {u.fullName ?? u.username}
+                                  <span className="ml-1 text-xs text-muted-foreground">({u.role})</span>
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="flex justify-end">
                   <Button

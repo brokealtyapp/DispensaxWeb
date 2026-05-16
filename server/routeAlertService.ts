@@ -120,11 +120,19 @@ export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {
     const stages = await storage.getRouteStages(tenantId);
     const stageMap = new Map(stages.map(s => [s.id, s]));
 
-    const routesResult = await storage.getRoutes(undefined, undefined, undefined, tenantId, 1, 200);
-    const activeRoutes = routesResult.data.filter(
-      (r: { status: string; currentStageId?: string | null; currentStageEnteredAt?: Date | null }) =>
-        r.status !== "completada" && r.status !== "cancelada" && r.currentStageId && r.currentStageEnteredAt
-    );
+    // Paginar todas las rutas activas del tenant para no perder ninguna con SLA vencido
+    const activeRoutes: import("@shared/schema").Route[] = [];
+    let page = 1;
+    while (true) {
+      const batch = await storage.getRoutes(undefined, undefined, "en_progreso", tenantId, page, 100);
+      activeRoutes.push(
+        ...(batch.data as import("@shared/schema").Route[]).filter(
+          (r) => r.currentStageId && r.currentStageEnteredAt
+        )
+      );
+      if (batch.data.length < 100) break;
+      page++;
+    }
 
     if (activeRoutes.length === 0) return;
 
@@ -163,7 +171,8 @@ export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {
 
       const now = new Date();
 
-      const supplierName = route.supplier?.fullName || route.supplier?.username || "Sin abastecedor";
+      const supplierUser = route.supplierId ? await storage.getUser(route.supplierId) : undefined;
+      const supplierName = supplierUser?.fullName || supplierUser?.username || "Sin abastecedor";
       const routeDate = new Date(route.date).toLocaleDateString("es-DO", { timeZone: "America/Santo_Domingo" });
       const elapsedMinutes = computeRouteElapsedMinutes(enteredAt);
 
