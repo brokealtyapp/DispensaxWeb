@@ -48,7 +48,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npx tsx --test server/checklistDefaults.test.ts"
+args = "npx tsx --test server/checklistDefaults.test.ts server/routeStages.test.ts"
 
 [workflows.workflow.metadata]
 isValidation = true
