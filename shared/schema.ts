@@ -781,6 +781,10 @@ export const routes = pgTable("routes", {
   startTime: timestamp("start_time"),
   endTime: timestamp("end_time"),
   notes: text("notes"),
+  currentStageId: varchar("current_stage_id"),
+  slaStatus: varchar("sla_status"),
+  currentStageEnteredAt: timestamp("current_stage_entered_at"),
+  lastAlertSentAt: timestamp("last_alert_sent_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -791,6 +795,10 @@ export const insertRouteSchema = createInsertSchema(routes).omit({
   actualDuration: true,
   startTime: true,
   endTime: true,
+  currentStageId: true,
+  slaStatus: true,
+  currentStageEnteredAt: true,
+  lastAlertSentAt: true,
 });
 
 export type InsertRoute = z.infer<typeof insertRouteSchema>;
@@ -828,6 +836,72 @@ export const insertRouteStopSchema = createInsertSchema(routeStops).omit({
 
 export type InsertRouteStop = z.infer<typeof insertRouteStopSchema>;
 export type RouteStop = typeof routeStops.$inferSelect;
+
+// ── Etapas configurables de ruta ──────────────────────────────────────────────
+export const routeStages = pgTable("route_stages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  color: varchar("color", { length: 20 }).default("#6B7280"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isDefault: boolean("is_default").default(false),
+  isTerminal: boolean("is_terminal").default(false),
+  slaHours: decimal("sla_hours"),
+  slaAlertThresholdPct: integer("sla_alert_threshold_pct").default(80),
+  alertOnSlaWarning: boolean("alert_on_sla_warning").default(false),
+  alertOnSlaExpired: boolean("alert_on_sla_expired").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertRouteStageSchema = createInsertSchema(routeStages).omit({ id: true, createdAt: true });
+export type InsertRouteStage = z.infer<typeof insertRouteStageSchema>;
+export type RouteStage = typeof routeStages.$inferSelect;
+
+// ── Log de cambios de etapa de ruta ──────────────────────────────────────────
+export const routeStageLog = pgTable("route_stage_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  routeId: varchar("route_id").references(() => routes.id).notNull(),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  stageId: varchar("stage_id"),
+  stageName: varchar("stage_name").notNull(),
+  enteredAt: timestamp("entered_at").notNull(),
+  exitedAt: timestamp("exited_at"),
+  slaHours: decimal("sla_hours"),
+  changedBy: varchar("changed_by").references(() => users.id),
+  notes: text("notes"),
+});
+
+export const insertRouteStageLogSchema = createInsertSchema(routeStageLog).omit({ id: true });
+export type InsertRouteStageLog = z.infer<typeof insertRouteStageLogSchema>;
+export type RouteStageLogEntry = typeof routeStageLog.$inferSelect;
+
+// ── Configuración de alertas del módulo de rutas ─────────────────────────────
+export const routeModuleAlertConfig = pgTable("route_module_alert_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull().unique(),
+  alertRecipientsJson: text("alert_recipients_json").default('["all_admins"]'),
+  globalAlertOnExpiry: boolean("global_alert_on_expiry").default(true),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertRouteModuleAlertConfigSchema = createInsertSchema(routeModuleAlertConfig).omit({ id: true });
+export type InsertRouteModuleAlertConfig = z.infer<typeof insertRouteModuleAlertConfigSchema>;
+export type RouteModuleAlertConfig = typeof routeModuleAlertConfig.$inferSelect;
+
+// ── Permisos por acción en rutas ──────────────────────────────────────────────
+export const routeActionPermissions = pgTable("route_action_permissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  action: varchar("action", { length: 50 }).notNull(),
+  allowedRoles: text("allowed_roles").array().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  uniq: uniqueIndex("route_action_permissions_tenant_action_idx").on(t.tenantId, t.action),
+}));
+
+export const insertRouteActionPermissionsSchema = createInsertSchema(routeActionPermissions).omit({ id: true });
+export type InsertRouteActionPermissions = z.infer<typeof insertRouteActionPermissionsSchema>;
+export type RouteActionPermission = typeof routeActionPermissions.$inferSelect;
 
 export const serviceTypeEnum = pgEnum("service_type", [
   "abastecimiento",
@@ -1146,6 +1220,22 @@ export const routesRelations = relations(routes, ({ one, many }) => ({
     relationName: "supervisorRoutes",
   }),
   stops: many(routeStops),
+  currentStage: one(routeStages, {
+    fields: [routes.currentStageId],
+    references: [routeStages.id],
+  }),
+  stageLog: many(routeStageLog),
+}));
+
+export const routeStagesRelations = relations(routeStages, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [routeStages.tenantId], references: [tenants.id] }),
+  routes: many(routes),
+}));
+
+export const routeStageLogRelations = relations(routeStageLog, ({ one }) => ({
+  route: one(routes, { fields: [routeStageLog.routeId], references: [routes.id] }),
+  tenant: one(tenants, { fields: [routeStageLog.tenantId], references: [tenants.id] }),
+  changedByUser: one(users, { fields: [routeStageLog.changedBy], references: [users.id] }),
 }));
 
 export const routeStopsRelations = relations(routeStops, ({ one, many }) => ({

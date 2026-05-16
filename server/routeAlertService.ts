@@ -1,0 +1,174 @@
+import { storage } from "./storage";
+import { isEmailConfigured } from "./email";
+import nodemailer from "nodemailer";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
+import { users as usersTable } from "@shared/schema";
+
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: parseInt(process.env.SMTP_PORT || "587"),
+  secure: process.env.SMTP_PORT === "465",
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASSWORD,
+  },
+});
+
+export function computeRouteSlaStatus(
+  enteredAt: Date,
+  slaHours: number | null,
+  thresholdPct: number = 80,
+  exitedAt?: Date | null
+): string {
+  if (!slaHours || slaHours <= 0) return "sin_sla";
+  const now = exitedAt ? new Date(exitedAt) : new Date();
+  const elapsedH = (now.getTime() - new Date(enteredAt).getTime()) / 3_600_000;
+  const pct = (elapsedH / slaHours) * 100;
+  if (exitedAt) return pct <= 100 ? "finalizada_a_tiempo" : "finalizada_fuera_de_tiempo";
+  if (pct >= 100) return "vencido";
+  if (pct >= thresholdPct) return "proximo_vencer";
+  return "dentro_tiempo";
+}
+
+export function computeRouteElapsedMinutes(enteredAt: Date | null, exitedAt?: Date | null): number {
+  if (!enteredAt) return 0;
+  const end = exitedAt ? new Date(exitedAt) : new Date();
+  return Math.round((end.getTime() - new Date(enteredAt).getTime()) / 60_000);
+}
+
+interface RouteAlertEmailParams {
+  recipients: string[];
+  routeDate: string;
+  supplierName: string;
+  stageName: string;
+  slaStatus: "proximo_vencer" | "vencido";
+  slaHours: number;
+  elapsedMinutes: number;
+}
+
+async function sendRouteAlertEmail(params: RouteAlertEmailParams): Promise<boolean> {
+  if (!isEmailConfigured()) {
+    console.log(`[SLA-Rutas] SMTP no configurado. Alerta para ruta ${params.routeDate} / ${params.supplierName}`);
+    return false;
+  }
+  const toAddresses = params.recipients.join(", ");
+  if (!toAddresses) return false;
+
+  const statusLabel = params.slaStatus === "vencido" ? "Vencida" : "Próxima a vencer";
+  const elapsedH = (params.elapsedMinutes / 60).toFixed(1);
+  const subject = `[Dispensax] Alerta SLA Ruta – ${params.routeDate} / ${params.supplierName} – ${statusLabel}`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="background: linear-gradient(135deg, #E84545 0%, #d63939 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0; font-size: 24px;">Dispensax</h1>
+        <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0;">Alerta de SLA – Gestión de Rutas</p>
+      </div>
+      <div style="background: #fff8f8; border: 1px solid #fca5a5; border-top: none; padding: 24px;">
+        <h2 style="color: #b91c1c; margin-top: 0;">SLA de Ruta ${statusLabel}</h2>
+        <p>Una ruta ha ${params.slaStatus === "vencido" ? "superado" : "alcanzado el umbral de"} el tiempo SLA configurado para la etapa actual.</p>
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+          <tr><td style="padding: 6px 0; color: #666; width: 40%;">Fecha de ruta:</td><td style="padding: 6px 0;"><strong>${params.routeDate}</strong></td></tr>
+          <tr><td style="padding: 6px 0; color: #666;">Abastecedor:</td><td style="padding: 6px 0;"><strong>${params.supplierName}</strong></td></tr>
+          <tr><td style="padding: 6px 0; color: #666;">Etapa actual:</td><td style="padding: 6px 0;"><strong>${params.stageName}</strong></td></tr>
+          <tr><td style="padding: 6px 0; color: #666;">Tiempo transcurrido:</td><td style="padding: 6px 0;"><strong>${elapsedH} h</strong></td></tr>
+          <tr><td style="padding: 6px 0; color: #666;">SLA configurado:</td><td style="padding: 6px 0;"><strong>${params.slaHours} h</strong></td></tr>
+        </table>
+        <p style="color: #991b1b; font-weight: bold;">Por favor, revise esta ruta a la brevedad posible.</p>
+      </div>
+      <div style="background: #f5f5f5; padding: 16px; text-align: center; border-radius: 0 0 10px 10px; border: 1px solid #e0e0e0; border-top: none;">
+        <p style="color: #999; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Dispensax. Todos los derechos reservados.</p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER,
+      to: toAddresses,
+      subject,
+      html,
+      text: `Alerta SLA Ruta ${statusLabel}\n\nRuta: ${params.routeDate} / ${params.supplierName}\nEtapa: ${params.stageName}\nTiempo transcurrido: ${elapsedH} h\nSLA configurado: ${params.slaHours} h\n\nPor favor, revise esta ruta a la brevedad posible.\n\nDispensax`,
+    });
+    console.log(`[SLA-Rutas] Alerta enviada para ruta ${params.routeDate} / ${params.supplierName} → ${toAddresses}`);
+    return true;
+  } catch (error) {
+    console.error(`[SLA-Rutas] Error enviando alerta:`, error);
+    return false;
+  }
+}
+
+export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {
+  try {
+    const alertConfig = await storage.getRouteModuleAlertConfig(tenantId);
+    if (!alertConfig?.globalAlertOnExpiry) return;
+
+    const stages = await storage.getRouteStages(tenantId);
+    const stageMap = new Map(stages.map(s => [s.id, s]));
+
+    const routesResult = await storage.getRoutes(undefined, undefined, undefined, tenantId, 1, 200);
+    const activeRoutes = routesResult.data.filter(r => r.status !== "completada" && r.status !== "cancelada" && r.currentStageId && r.currentStageEnteredAt);
+
+    if (activeRoutes.length === 0) return;
+
+    const recipientJson = alertConfig.alertRecipientsJson ?? '["all_admins"]';
+    let recipientIds: string[] = [];
+    try {
+      recipientIds = JSON.parse(recipientJson);
+    } catch {
+      recipientIds = ["all_admins"];
+    }
+
+    const resolvedEmails: string[] = [];
+    if (recipientIds.includes("all_admins")) {
+      const admins = await db.select({ email: usersTable.email })
+        .from(usersTable)
+        .where(eq(usersTable.tenantId, tenantId));
+      admins.forEach(u => u.email && resolvedEmails.push(u.email));
+    }
+
+    for (const route of activeRoutes) {
+      const stage = route.currentStageId ? stageMap.get(route.currentStageId) : undefined;
+      if (!stage) continue;
+
+      const slaHours = stage.slaHours ? Number(stage.slaHours) : null;
+      const thresholdPct = stage.slaAlertThresholdPct ?? 80;
+      const enteredAt = route.currentStageEnteredAt ? new Date(route.currentStageEnteredAt) : null;
+      if (!enteredAt || !slaHours) continue;
+
+      const slaStatus = computeRouteSlaStatus(enteredAt, slaHours, thresholdPct);
+
+      const shouldAlertWarning = slaStatus === "proximo_vencer" && stage.alertOnSlaWarning;
+      const shouldAlertExpired = slaStatus === "vencido" && stage.alertOnSlaExpired;
+
+      if (!shouldAlertWarning && !shouldAlertExpired) continue;
+
+      const lastAlert = route.lastAlertSentAt ? new Date(route.lastAlertSentAt) : null;
+      const now = new Date();
+      if (lastAlert && (now.getTime() - lastAlert.getTime()) < 60 * 60 * 1000) continue;
+
+      const supplierName = route.supplier?.fullName || route.supplier?.username || "Sin abastecedor";
+      const routeDate = new Date(route.date).toLocaleDateString("es-DO", { timeZone: "America/Santo_Domingo" });
+      const elapsedMinutes = computeRouteElapsedMinutes(enteredAt);
+
+      await sendRouteAlertEmail({
+        recipients: resolvedEmails,
+        routeDate,
+        supplierName,
+        stageName: stage.name,
+        slaStatus: slaStatus as "proximo_vencer" | "vencido",
+        slaHours,
+        elapsedMinutes,
+      });
+
+      await storage.updateRoute(route.id, { lastAlertSentAt: now } as any);
+    }
+  } catch (error) {
+    console.error("[SLA-Rutas] Error en checkAndSendRouteAlerts:", error);
+  }
+}

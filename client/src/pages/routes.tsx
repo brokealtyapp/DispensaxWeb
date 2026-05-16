@@ -10,8 +10,12 @@ import { formatDateShort, formatDate, formatTime, getDateKeyInTimezone, getToday
 import { 
   Route, MapPin, Plus, Search, Edit2, Trash2, Eye, 
   Calendar, Clock, CheckCircle2, XCircle, Play, Truck,
-  ChevronUp, ChevronDown
+  ChevronUp, ChevronDown, Settings, ArrowRight, Bell, 
+  Shield, AlertTriangle, Timer, GripVertical, History,
+  Layers, Save, RefreshCw, ChevronRight, Info
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,7 +51,70 @@ interface RouteData {
   supplierName?: string;
   supervisorName?: string;
   stops?: RouteStop[];
+  currentStageId?: string;
+  slaStatus?: string;
+  currentStageEnteredAt?: string;
+  supplier?: { fullName?: string; username: string };
 }
+
+interface RouteStage {
+  id: string;
+  tenantId: string;
+  name: string;
+  color: string;
+  sortOrder: number;
+  isDefault: boolean;
+  isTerminal: boolean;
+  slaHours?: string | null;
+  slaAlertThresholdPct?: number;
+  alertOnSlaWarning?: boolean;
+  alertOnSlaExpired?: boolean;
+  createdAt?: string;
+}
+
+interface RouteStageLogEntry {
+  id: string;
+  routeId: string;
+  stageId: string;
+  stageName: string;
+  enteredAt: string;
+  exitedAt?: string | null;
+  slaHours?: string | null;
+  changedBy?: string;
+  notes?: string;
+  changedByUser?: { username: string; fullName?: string | null };
+}
+
+interface RouteModuleAlertConfig {
+  id?: string;
+  tenantId: string;
+  globalAlertOnExpiry?: boolean;
+  alertRecipientsJson?: string;
+  updatedAt?: string;
+}
+
+interface RouteActionPermission {
+  id: string;
+  tenantId: string;
+  action: string;
+  allowedRoles: string[];
+  updatedAt?: string;
+}
+
+const AVAILABLE_ROLES = [
+  { value: "admin", label: "Administrador" },
+  { value: "supervisor", label: "Supervisor" },
+  { value: "operacional", label: "Operacional" },
+  { value: "abastecedor", label: "Abastecedor" },
+];
+
+const ACTION_LABELS: Record<string, string> = {
+  iniciar_ruta: "Iniciar Ruta",
+  terminar_ruta: "Terminar Ruta",
+  editar_ruta: "Editar Ruta",
+  avanzar_etapa: "Avanzar Etapa",
+  configurar_modulo: "Configurar Módulo",
+};
 
 interface RouteStop {
   id: string;
@@ -166,6 +233,46 @@ export default function RoutesPage() {
   const [deleteNotes, setDeleteNotes] = useState("");
   const [bulkDeleteNotes, setBulkDeleteNotes] = useState("");
 
+  // Estado para etapas y configuración
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [configTab, setConfigTab] = useState<"stages" | "alerts" | "permissions">("stages");
+  const [isStageFormOpen, setIsStageFormOpen] = useState(false);
+  const [editingStage, setEditingStage] = useState<RouteStage | null>(null);
+  const [isDeleteStageOpen, setIsDeleteStageOpen] = useState(false);
+  const [stageToDelete, setStageToDelete] = useState<RouteStage | null>(null);
+  const [isAdvanceStageOpen, setIsAdvanceStageOpen] = useState(false);
+  const [advanceStageNotes, setAdvanceStageNotes] = useState("");
+  const [targetStageId, setTargetStageId] = useState("");
+  const [isStageLogOpen, setIsStageLogOpen] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<RouteModuleAlertConfig | null>(null);
+
+  // Formulario de etapa
+  const stageFormSchema = z.object({
+    name: z.string().min(1, "El nombre es requerido"),
+    color: z.string().min(1, "El color es requerido"),
+    slaHours: z.string().optional(),
+    slaAlertThresholdPct: z.coerce.number().min(1).max(100).optional(),
+    alertOnSlaWarning: z.boolean().optional(),
+    alertOnSlaExpired: z.boolean().optional(),
+    isDefault: z.boolean().optional(),
+    isTerminal: z.boolean().optional(),
+  });
+  type StageFormData = z.infer<typeof stageFormSchema>;
+
+  const stageForm = useForm<StageFormData>({
+    resolver: zodResolver(stageFormSchema),
+    defaultValues: {
+      name: "",
+      color: "#6B7280",
+      slaHours: "",
+      slaAlertThresholdPct: 80,
+      alertOnSlaWarning: false,
+      alertOnSlaExpired: false,
+      isDefault: false,
+      isTerminal: false,
+    },
+  });
+
   const routeForm = useForm<RouteFormData>({
     resolver: zodResolver(routeFormSchema),
     defaultValues: {
@@ -262,6 +369,34 @@ export default function RoutesPage() {
   });
 
   const busyMachineIds = new Set(busyMachines.map(bm => bm.machineId));
+
+  // ── Queries de etapas y configuración ──────────────────────────────────────
+
+  const { data: routeStages = [] } = useQuery<RouteStage[]>({
+    queryKey: ["/api/supplier/route-stages"],
+    staleTime: 60000,
+  });
+
+  const { data: stageLog = [], isLoading: stageLogLoading } = useQuery<RouteStageLogEntry[]>({
+    queryKey: ["/api/supplier/routes", selectedRoute?.id, "stage-log"],
+    enabled: !!selectedRoute?.id && isStageLogOpen,
+  });
+
+  const { data: fetchedAlertConfig } = useQuery<RouteModuleAlertConfig>({
+    queryKey: ["/api/supplier/route-config/alerts"],
+    enabled: isConfigOpen && configTab === "alerts",
+  });
+
+  useEffect(() => {
+    if (fetchedAlertConfig) setAlertConfig(fetchedAlertConfig);
+  }, [fetchedAlertConfig]);
+
+  const { data: actionPermissions = [] } = useQuery<RouteActionPermission[]>({
+    queryKey: ["/api/supplier/route-config/permissions"],
+    enabled: isConfigOpen && configTab === "permissions",
+  });
+
+  const stageMap = useMemo(() => new Map(routeStages.map(s => [s.id, s])), [routeStages]);
 
   const stats = {
     total: routeStats?.total ?? 0,
@@ -448,6 +583,115 @@ export default function RoutesPage() {
     },
   });
 
+  // ── Mutations de etapas ─────────────────────────────────────────────────────
+
+  const createStageMutation = useMutation({
+    mutationFn: async (data: StageFormData) => {
+      const res = await apiRequest("POST", "/api/supplier/route-stages", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/route-stages"] });
+      toast({ title: "Etapa creada", description: "La etapa se ha creado correctamente" });
+      setIsStageFormOpen(false);
+      stageForm.reset();
+    },
+    onError: (error) => {
+      toast({ title: "Error al crear etapa", description: getApiErrorMessage(error), variant: "destructive" });
+    },
+  });
+
+  const updateStageMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<StageFormData> }) => {
+      const res = await apiRequest("PATCH", `/api/supplier/route-stages/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/route-stages"] });
+      toast({ title: "Etapa actualizada" });
+      setIsStageFormOpen(false);
+      setEditingStage(null);
+    },
+    onError: (error) => {
+      toast({ title: "Error al actualizar etapa", description: getApiErrorMessage(error), variant: "destructive" });
+    },
+  });
+
+  const deleteStageMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/supplier/route-stages/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/route-stages"] });
+      toast({ title: "Etapa eliminada" });
+      setIsDeleteStageOpen(false);
+      setStageToDelete(null);
+    },
+    onError: (error) => {
+      toast({ title: "Error al eliminar etapa", description: getApiErrorMessage(error), variant: "destructive" });
+    },
+  });
+
+  const initDefaultStagesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/supplier/route-stages/init-defaults", {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/route-stages"] });
+      toast({ title: "Etapas inicializadas", description: "Se crearon las etapas por defecto" });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: getApiErrorMessage(error), variant: "destructive" });
+    },
+  });
+
+  const advanceStageMutation = useMutation({
+    mutationFn: async ({ routeId, newStageId, notes }: { routeId: string; newStageId: string; notes?: string }) => {
+      const res = await apiRequest("POST", `/api/supplier/routes/${routeId}/advance-stage`, { newStageId, notes });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes", selectedRoute?.id, "stage-log"] });
+      toast({ title: "Etapa avanzada", description: "La ruta ha avanzado a la siguiente etapa" });
+      setIsAdvanceStageOpen(false);
+      setAdvanceStageNotes("");
+      setTargetStageId("");
+    },
+    onError: (error) => {
+      toast({ title: "Error al avanzar etapa", description: getApiErrorMessage(error), variant: "destructive" });
+    },
+  });
+
+  const updateAlertConfigMutation = useMutation({
+    mutationFn: async (data: Partial<RouteModuleAlertConfig>) => {
+      const res = await apiRequest("PUT", "/api/supplier/route-config/alerts", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/route-config/alerts"] });
+      toast({ title: "Configuración de alertas guardada" });
+    },
+    onError: (error) => {
+      toast({ title: "Error al guardar configuración", description: getApiErrorMessage(error), variant: "destructive" });
+    },
+  });
+
+  const updatePermissionMutation = useMutation({
+    mutationFn: async ({ action, allowedRoles }: { action: string; allowedRoles: string[] }) => {
+      const res = await apiRequest("PUT", "/api/supplier/route-config/permissions", { action, allowedRoles });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier/route-config/permissions"] });
+      toast({ title: "Permiso actualizado" });
+    },
+    onError: (error) => {
+      toast({ title: "Error al guardar permiso", description: getApiErrorMessage(error), variant: "destructive" });
+    },
+  });
+
   const bulkCancelMutation = useMutation({
     mutationFn: async (ids: string[]) => {
       for (const id of ids) {
@@ -501,6 +745,98 @@ export default function RoutesPage() {
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
+  };
+
+  const getSlaStatusBadge = (slaStatus?: string) => {
+    if (!slaStatus || slaStatus === "sin_sla" || slaStatus === "dentro_tiempo") return null;
+    switch (slaStatus) {
+      case "proximo_vencer":
+        return (
+          <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 gap-1">
+            <Timer className="h-3 w-3" />
+            Por vencer
+          </Badge>
+        );
+      case "vencido":
+        return (
+          <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 gap-1">
+            <AlertTriangle className="h-3 w-3" />
+            Vencido
+          </Badge>
+        );
+      case "finalizada_a_tiempo":
+        return (
+          <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 gap-1">
+            <CheckCircle2 className="h-3 w-3" />
+            A tiempo
+          </Badge>
+        );
+      case "finalizada_fuera_de_tiempo":
+        return (
+          <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 gap-1">
+            <AlertTriangle className="h-3 w-3" />
+            Fuera de tiempo
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const getStageBadge = (stageId?: string) => {
+    if (!stageId) return null;
+    const stage = stageMap.get(stageId);
+    if (!stage) return null;
+    return (
+      <Badge
+        style={{ backgroundColor: stage.color + "20", color: stage.color, borderColor: stage.color + "40" }}
+        className="border text-xs"
+      >
+        {stage.name}
+      </Badge>
+    );
+  };
+
+  const computeSlaElapsed = (enteredAt?: string) => {
+    if (!enteredAt) return "";
+    const ms = Date.now() - new Date(enteredAt).getTime();
+    const h = Math.floor(ms / 3_600_000);
+    const m = Math.floor((ms % 3_600_000) / 60_000);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  };
+
+  const handleOpenStageForm = (stage?: RouteStage) => {
+    if (stage) {
+      setEditingStage(stage);
+      stageForm.reset({
+        name: stage.name,
+        color: stage.color,
+        slaHours: stage.slaHours ?? "",
+        slaAlertThresholdPct: stage.slaAlertThresholdPct ?? 80,
+        alertOnSlaWarning: stage.alertOnSlaWarning ?? false,
+        alertOnSlaExpired: stage.alertOnSlaExpired ?? false,
+        isDefault: stage.isDefault ?? false,
+        isTerminal: stage.isTerminal ?? false,
+      });
+    } else {
+      setEditingStage(null);
+      stageForm.reset();
+    }
+    setIsStageFormOpen(true);
+  };
+
+  const handleSubmitStageForm = (data: StageFormData) => {
+    if (editingStage) {
+      updateStageMutation.mutate({ id: editingStage.id, data });
+    } else {
+      createStageMutation.mutate(data);
+    }
+  };
+
+  const togglePermissionRole = (perm: RouteActionPermission, role: string) => {
+    const current = perm.allowedRoles ?? [];
+    const next = current.includes(role) ? current.filter(r => r !== role) : [...current, role];
+    updatePermissionMutation.mutate({ action: perm.action, allowedRoles: next });
   };
 
   const handleCreateRoute = (data: RouteFormData) => {
@@ -601,17 +937,30 @@ export default function RoutesPage() {
 
   return (
     <div className="flex-1 space-y-4 p-4 md:p-6 pt-4" data-testid="routes-page">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Gestión de Rutas</h1>
           <p className="text-muted-foreground">Planifica y administra las rutas de abastecimiento</p>
         </div>
-        {canCreate("routes") && (
-          <Button onClick={() => setIsNewRouteOpen(true)} className="gap-2" data-testid="button-new-route">
-            <Plus className="h-4 w-4" />
-            Nueva Ruta
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {user?.role === "admin" && (
+            <Button
+              variant="outline"
+              onClick={() => { setIsConfigOpen(true); setConfigTab("stages"); }}
+              className="gap-2"
+              data-testid="button-route-config"
+            >
+              <Settings className="h-4 w-4" />
+              Configuración
+            </Button>
+          )}
+          {canCreate("routes") && (
+            <Button onClick={() => setIsNewRouteOpen(true)} className="gap-2" data-testid="button-new-route">
+              <Plus className="h-4 w-4" />
+              Nueva Ruta
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
@@ -809,6 +1158,7 @@ export default function RoutesPage() {
                         <TableHead>Paradas</TableHead>
                         <TableHead>Progreso</TableHead>
                         <TableHead>Estado</TableHead>
+                        {routeStages.length > 0 && <TableHead>Etapa / SLA</TableHead>}
                         <TableHead>Duración</TableHead>
                         <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
@@ -855,6 +1205,20 @@ export default function RoutesPage() {
                               </div>
                             </TableCell>
                             <TableCell>{getStatusBadge(route.status)}</TableCell>
+                            {routeStages.length > 0 && (
+                              <TableCell>
+                                <div className="flex flex-col gap-1">
+                                  {getStageBadge(route.currentStageId)}
+                                  {getSlaStatusBadge(route.slaStatus)}
+                                  {route.currentStageEnteredAt && route.status === "en_progreso" && (
+                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                      <Clock className="h-3 w-3" />
+                                      {computeSlaElapsed(route.currentStageEnteredAt)}
+                                    </span>
+                                  )}
+                                </div>
+                              </TableCell>
+                            )}
                             <TableCell>
                               {route.actualDuration ? (
                                 <span>{route.actualDuration} min</span>
@@ -1287,6 +1651,68 @@ export default function RoutesPage() {
                   </p>
                 </div>
               </div>
+
+              {/* Sección de etapa actual + SLA */}
+              {routeStages.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <Layers className="h-4 w-4" />
+                        Etapa Actual
+                      </h4>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => setIsStageLogOpen(true)}
+                          data-testid="button-view-stage-log"
+                        >
+                          <History className="h-4 w-4" />
+                          Historial
+                        </Button>
+                        {selectedRoute.status !== "completada" && selectedRoute.status !== "cancelada" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1"
+                            onClick={() => { setIsAdvanceStageOpen(true); setTargetStageId(""); setAdvanceStageNotes(""); }}
+                            data-testid="button-advance-stage"
+                          >
+                            <ArrowRight className="h-4 w-4" />
+                            Avanzar Etapa
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+                      {selectedRoute.currentStageId ? (
+                        <>
+                          <div
+                            className="w-3 h-3 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: stageMap.get(selectedRoute.currentStageId)?.color ?? "#6B7280" }}
+                          />
+                          <div className="flex-1">
+                            <p className="font-medium">{stageMap.get(selectedRoute.currentStageId)?.name ?? "—"}</p>
+                            {selectedRoute.currentStageEnteredAt && (
+                              <p className="text-xs text-muted-foreground">
+                                Desde: {formatDate(new Date(selectedRoute.currentStageEnteredAt))} · Tiempo: {computeSlaElapsed(selectedRoute.currentStageEnteredAt)}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex gap-1">
+                            {getSlaStatusBadge(selectedRoute.slaStatus)}
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Sin etapa asignada</p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
               
               <Separator />
               
@@ -1609,6 +2035,457 @@ export default function RoutesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Avanzar Etapa ─────────────────────────────────────── */}
+      <Dialog open={isAdvanceStageOpen} onOpenChange={setIsAdvanceStageOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRight className="h-5 w-5" />
+              Avanzar Etapa
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona la siguiente etapa para esta ruta
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nueva Etapa</Label>
+              <Select value={targetStageId} onValueChange={setTargetStageId}>
+                <SelectTrigger data-testid="select-target-stage">
+                  <SelectValue placeholder="Seleccionar etapa..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {routeStages
+                    .filter(s => s.id !== selectedRoute?.currentStageId)
+                    .map(stage => (
+                      <SelectItem key={stage.id} value={stage.id}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color }} />
+                          {stage.name}
+                          {stage.isTerminal && (
+                            <Badge variant="outline" className="text-xs ml-1">Terminal</Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Notas (opcional)</Label>
+              <Textarea
+                placeholder="Motivo del cambio de etapa..."
+                value={advanceStageNotes}
+                onChange={(e) => setAdvanceStageNotes(e.target.value)}
+                data-testid="input-advance-stage-notes"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAdvanceStageOpen(false)}>Cancelar</Button>
+            <Button
+              disabled={!targetStageId || advanceStageMutation.isPending}
+              onClick={() => selectedRoute && advanceStageMutation.mutate({
+                routeId: selectedRoute.id,
+                newStageId: targetStageId,
+                notes: advanceStageNotes || undefined,
+              })}
+              data-testid="button-confirm-advance-stage"
+            >
+              {advanceStageMutation.isPending ? "Avanzando..." : "Confirmar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Historial de Etapas ───────────────────────────────── */}
+      <Dialog open={isStageLogOpen} onOpenChange={setIsStageLogOpen}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Historial de Etapas
+            </DialogTitle>
+            <DialogDescription>
+              Registro de todas las transiciones de etapa de esta ruta
+            </DialogDescription>
+          </DialogHeader>
+          {stageLogLoading ? (
+            <div className="space-y-2">
+              {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14" />)}
+            </div>
+          ) : stageLog.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <History className="h-10 w-10 mx-auto mb-2 opacity-40" />
+              <p>Sin historial de etapas registrado</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {stageLog.map((entry, idx) => {
+                const stage = stageMap.get(entry.stageId);
+                const elapsed = entry.exitedAt
+                  ? Math.round((new Date(entry.exitedAt).getTime() - new Date(entry.enteredAt).getTime()) / 60_000)
+                  : null;
+                const isLast = idx === stageLog.length - 1;
+                return (
+                  <div
+                    key={entry.id}
+                    className={`relative flex gap-3 pb-4 ${isLast ? "" : "border-l-2 border-muted ml-4 pl-4"}`}
+                    data-testid={`stage-log-entry-${entry.id}`}
+                  >
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0 mt-1 -ml-5 border-2 border-background"
+                      style={{ backgroundColor: stage?.color ?? "#6B7280" }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <p className="font-medium text-sm">{entry.stageName}</p>
+                        {entry.exitedAt ? (
+                          <Badge variant="outline" className="text-xs">
+                            {elapsed !== null ? (elapsed >= 60 ? `${Math.floor(elapsed / 60)}h ${elapsed % 60}m` : `${elapsed}m`) : "—"}
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs">En curso</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Entrada: {formatDate(new Date(entry.enteredAt))}{" "}
+                        {entry.exitedAt && `→ ${formatDate(new Date(entry.exitedAt))}`}
+                      </p>
+                      {entry.changedByUser && (
+                        <p className="text-xs text-muted-foreground">
+                          Por: {entry.changedByUser.fullName || entry.changedByUser.username}
+                        </p>
+                      )}
+                      {entry.notes && (
+                        <p className="text-xs text-muted-foreground italic">"{entry.notes}"</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Formulario Crear/Editar Etapa ─────────────────────── */}
+      <Dialog open={isStageFormOpen} onOpenChange={(open) => { setIsStageFormOpen(open); if (!open) { setEditingStage(null); stageForm.reset(); }}}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingStage ? "Editar Etapa" : "Nueva Etapa"}</DialogTitle>
+            <DialogDescription>
+              {editingStage ? "Modifica los datos de la etapa" : "Crea una nueva etapa para el flujo de rutas"}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...stageForm}>
+            <form onSubmit={stageForm.handleSubmit(handleSubmitStageForm)} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={stageForm.control} name="name" render={({ field }) => (
+                  <FormItem className="col-span-2">
+                    <FormLabel>Nombre</FormLabel>
+                    <FormControl><Input {...field} placeholder="Ej: En Ruta" data-testid="input-stage-name" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={stageForm.control} name="color" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Color</FormLabel>
+                    <FormControl>
+                      <div className="flex gap-2 items-center">
+                        <input type="color" value={field.value} onChange={field.onChange} className="w-10 h-9 rounded cursor-pointer border" data-testid="input-stage-color" />
+                        <Input {...field} placeholder="#6B7280" className="flex-1" />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={stageForm.control} name="slaHours" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>SLA (horas)</FormLabel>
+                    <FormControl><Input {...field} type="number" placeholder="Ej: 8" data-testid="input-stage-sla" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <FormField control={stageForm.control} name="slaAlertThresholdPct" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Umbral de alerta SLA (%)</FormLabel>
+                  <FormControl><Input {...field} type="number" min={1} max={100} placeholder="80" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={stageForm.control} name="alertOnSlaWarning" render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 space-y-0">
+                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                    <FormLabel className="font-normal">Alerta por vencer</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={stageForm.control} name="alertOnSlaExpired" render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 space-y-0">
+                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                    <FormLabel className="font-normal">Alerta al vencer</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={stageForm.control} name="isDefault" render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 space-y-0">
+                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                    <FormLabel className="font-normal">Etapa inicial</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={stageForm.control} name="isTerminal" render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 space-y-0">
+                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                    <FormLabel className="font-normal">Etapa terminal</FormLabel>
+                  </FormItem>
+                )} />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsStageFormOpen(false)}>Cancelar</Button>
+                <Button type="submit" disabled={createStageMutation.isPending || updateStageMutation.isPending}>
+                  {(createStageMutation.isPending || updateStageMutation.isPending) ? "Guardando..." : "Guardar"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Eliminar Etapa ────────────────────────────────────── */}
+      <AlertDialog open={isDeleteStageOpen} onOpenChange={setIsDeleteStageOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar etapa?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminará la etapa <strong>"{stageToDelete?.name}"</strong>. No podrá eliminarse si hay rutas activas en ella.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => stageToDelete && deleteStageMutation.mutate(stageToDelete.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteStageMutation.isPending ? "Eliminando..." : "Eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Panel de Configuración ────────────────────────────── */}
+      <Dialog open={isConfigOpen} onOpenChange={setIsConfigOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Configuración de Rutas
+            </DialogTitle>
+            <DialogDescription>
+              Administra etapas del flujo, configuración de alertas SLA y permisos por acción
+            </DialogDescription>
+          </DialogHeader>
+
+          <Tabs value={configTab} onValueChange={(v) => setConfigTab(v as any)}>
+            <TabsList className="grid grid-cols-3 w-full">
+              <TabsTrigger value="stages" className="gap-2">
+                <Layers className="h-4 w-4" />Etapas
+              </TabsTrigger>
+              <TabsTrigger value="alerts" className="gap-2">
+                <Bell className="h-4 w-4" />Alertas
+              </TabsTrigger>
+              <TabsTrigger value="permissions" className="gap-2">
+                <Shield className="h-4 w-4" />Permisos
+              </TabsTrigger>
+            </TabsList>
+
+            {/* ── Tab Etapas ── */}
+            <TabsContent value="stages" className="mt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">Define las etapas del flujo de trabajo de rutas</p>
+                <div className="flex gap-2">
+                  {routeStages.length === 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => initDefaultStagesMutation.mutate()}
+                      disabled={initDefaultStagesMutation.isPending}
+                      className="gap-1"
+                      data-testid="button-init-default-stages"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Usar Predeterminadas
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={() => handleOpenStageForm()} className="gap-1" data-testid="button-new-stage">
+                    <Plus className="h-4 w-4" />
+                    Nueva Etapa
+                  </Button>
+                </div>
+              </div>
+              {routeStages.length === 0 ? (
+                <div className="text-center py-12 border rounded-lg border-dashed">
+                  <Layers className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+                  <p className="text-muted-foreground mb-2">No hay etapas configuradas</p>
+                  <p className="text-xs text-muted-foreground">Crea etapas personalizadas o usa las predeterminadas</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {[...routeStages].sort((a, b) => a.sortOrder - b.sortOrder).map((stage, idx, arr) => (
+                    <div
+                      key={stage.id}
+                      className="flex items-center gap-3 p-3 rounded-lg border bg-card"
+                      data-testid={`config-stage-${stage.id}`}
+                    >
+                      <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <div
+                        className="w-4 h-4 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: stage.color }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium text-sm">{stage.name}</p>
+                          {stage.isDefault && <Badge variant="outline" className="text-xs">Inicial</Badge>}
+                          {stage.isTerminal && <Badge variant="outline" className="text-xs">Terminal</Badge>}
+                          {stage.slaHours && (
+                            <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs gap-1">
+                              <Timer className="h-3 w-3" />
+                              SLA {stage.slaHours}h
+                            </Badge>
+                          )}
+                          {stage.alertOnSlaExpired && (
+                            <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-xs gap-1">
+                              <Bell className="h-3 w-3" />Alerta
+                            </Badge>
+                          )}
+                        </div>
+                        {stage.slaHours && (
+                          <p className="text-xs text-muted-foreground">
+                            Umbral: {stage.slaAlertThresholdPct ?? 80}%
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenStageForm(stage)} data-testid={`button-edit-stage-${stage.id}`}>
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => { setStageToDelete(stage); setIsDeleteStageOpen(true); }} data-testid={`button-delete-stage-${stage.id}`}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ── Tab Alertas ── */}
+            <TabsContent value="alerts" className="mt-4 space-y-6">
+              <div className="space-y-1">
+                <h4 className="font-medium">Configuración Global de Alertas</h4>
+                <p className="text-sm text-muted-foreground">Define quién recibe las alertas SLA de rutas</p>
+              </div>
+              <div className="space-y-4 p-4 rounded-lg border">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Alertas globales de SLA</Label>
+                    <p className="text-xs text-muted-foreground">Enviar email cuando una ruta supere su SLA</p>
+                  </div>
+                  <Switch
+                    checked={alertConfig?.globalAlertOnExpiry ?? true}
+                    onCheckedChange={(v) => {
+                      setAlertConfig(prev => prev ? { ...prev, globalAlertOnExpiry: v } : { tenantId: "", globalAlertOnExpiry: v });
+                    }}
+                    data-testid="switch-global-alert"
+                  />
+                </div>
+                <Separator />
+                <div className="space-y-2">
+                  <Label>Destinatarios de alertas</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    JSON array de IDs de usuario o "all_admins" para enviar a todos los administradores
+                  </p>
+                  <Textarea
+                    value={alertConfig?.alertRecipientsJson ?? '["all_admins"]'}
+                    onChange={(e) => setAlertConfig(prev => prev ? { ...prev, alertRecipientsJson: e.target.value } : { tenantId: "", alertRecipientsJson: e.target.value })}
+                    rows={2}
+                    placeholder='["all_admins"]'
+                    data-testid="input-alert-recipients"
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => alertConfig && updateAlertConfigMutation.mutate({
+                      globalAlertOnExpiry: alertConfig.globalAlertOnExpiry,
+                      alertRecipientsJson: alertConfig.alertRecipientsJson,
+                    })}
+                    disabled={updateAlertConfigMutation.isPending}
+                    className="gap-1"
+                    data-testid="button-save-alert-config"
+                  >
+                    <Save className="h-4 w-4" />
+                    {updateAlertConfigMutation.isPending ? "Guardando..." : "Guardar"}
+                  </Button>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+                <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <p>Las alertas por etapa específica se configuran en cada etapa (umbral de % y activación). Esta sección controla el comportamiento global del módulo.</p>
+              </div>
+            </TabsContent>
+
+            {/* ── Tab Permisos ── */}
+            <TabsContent value="permissions" className="mt-4 space-y-4">
+              <div className="space-y-1">
+                <h4 className="font-medium">Permisos por Acción</h4>
+                <p className="text-sm text-muted-foreground">Define qué roles pueden ejecutar cada acción del módulo de rutas</p>
+              </div>
+              {actionPermissions.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <Shield className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                  <p>Cargando permisos...</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {actionPermissions.map(perm => (
+                    <div key={perm.action} className="p-4 rounded-lg border space-y-3" data-testid={`perm-${perm.action}`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-sm">{ACTION_LABELS[perm.action] ?? perm.action}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {perm.allowedRoles.length > 0
+                              ? `Permitido: ${perm.allowedRoles.map(r => AVAILABLE_ROLES.find(x => x.value === r)?.label ?? r).join(", ")}`
+                              : "Sin acceso (nadie puede ejecutar esta acción)"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        {AVAILABLE_ROLES.map(role => (
+                          <button
+                            key={role.value}
+                            type="button"
+                            onClick={() => togglePermissionRole(perm, role.value)}
+                            disabled={updatePermissionMutation.isPending}
+                            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                              perm.allowedRoles.includes(role.value)
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-background text-muted-foreground border-border"
+                            }`}
+                            data-testid={`perm-role-${perm.action}-${role.value}`}
+                          >
+                            {role.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

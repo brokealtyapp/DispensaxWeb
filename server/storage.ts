@@ -68,7 +68,11 @@ import {
   type NayaxTransaction,
   users, locations, products, machines, machineInventory, machineAlerts, machineVisits, machineSales,
   suppliers, warehouseInventory, productLots, warehouseMovements,
-  routes, routeStops, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
+  routes, routeStops, routeStages, routeStageLog, routeModuleAlertConfig, routeActionPermissions, serviceRecords, cashCollections, productLoads, issueReports, supplierInventory,
+  type RouteStage, type InsertRouteStage,
+  type RouteStageLogEntry, type InsertRouteStageLog,
+  type RouteModuleAlertConfig, type InsertRouteModuleAlertConfig,
+  type RouteActionPermission,
   laneChangeEvents, trayAudits, nayaxTransactions,
   cashMovements, bankDeposits, productTransfers, shrinkageRecords,
   pettyCashExpenses, pettyCashFund, pettyCashTransactions,
@@ -319,6 +323,25 @@ export interface IStorage {
   updateRoute(id: string, route: Partial<InsertRoute>): Promise<Route | undefined>;
   startRoute(id: string): Promise<Route | undefined>;
   completeRoute(id: string): Promise<Route | undefined>;
+  // Etapas configurables de ruta
+  getRouteStages(tenantId: string): Promise<RouteStage[]>;
+  getRouteStage(id: string, tenantId: string): Promise<RouteStage | undefined>;
+  createRouteStage(data: InsertRouteStage): Promise<RouteStage>;
+  updateRouteStage(id: string, data: Partial<InsertRouteStage>, tenantId: string): Promise<RouteStage | undefined>;
+  deleteRouteStage(id: string, tenantId: string): Promise<boolean>;
+  reorderRouteStages(ids: string[], tenantId: string): Promise<void>;
+  // Log de etapas de ruta
+  getRouteStageLog(routeId: string): Promise<RouteStageLogEntry[]>;
+  createRouteStageLogEntry(data: InsertRouteStageLog): Promise<RouteStageLogEntry>;
+  closeRouteStageLogEntry(routeId: string, exitedAt: Date): Promise<void>;
+  advanceRouteStage(routeId: string, newStageId: string, changedBy: string, notes?: string): Promise<Route | undefined>;
+  // Configuración de alertas de rutas
+  getRouteModuleAlertConfig(tenantId: string): Promise<RouteModuleAlertConfig | null>;
+  upsertRouteModuleAlertConfig(tenantId: string, data: Partial<InsertRouteModuleAlertConfig>): Promise<RouteModuleAlertConfig>;
+  // Permisos por acción de rutas
+  getRouteActionPermissions(tenantId: string): Promise<RouteActionPermission[]>;
+  upsertRouteActionPermission(tenantId: string, action: string, allowedRoles: string[]): Promise<RouteActionPermission>;
+  initDefaultRouteActionPermissions(tenantId: string): Promise<void>;
   
   // Paradas de Ruta
   getRouteStops(routeId: string): Promise<any[]>;
@@ -2460,6 +2483,193 @@ export class DatabaseStorage implements IStorage {
       .where(eq(routes.id, id))
       .returning();
     return updated;
+  }
+
+  // ── Etapas configurables de ruta ─────────────────────────────────────────────
+
+  async getRouteStages(tenantId: string): Promise<RouteStage[]> {
+    return db.select().from(routeStages)
+      .where(eq(routeStages.tenantId, tenantId))
+      .orderBy(asc(routeStages.sortOrder), asc(routeStages.createdAt));
+  }
+
+  async getRouteStage(id: string, tenantId: string): Promise<RouteStage | undefined> {
+    const [row] = await db.select().from(routeStages)
+      .where(and(eq(routeStages.id, id), eq(routeStages.tenantId, tenantId)));
+    return row;
+  }
+
+  async createRouteStage(data: InsertRouteStage): Promise<RouteStage> {
+    const [row] = await db.insert(routeStages).values(data).returning();
+    return row;
+  }
+
+  async updateRouteStage(id: string, data: Partial<InsertRouteStage>, tenantId: string): Promise<RouteStage | undefined> {
+    const [row] = await db.update(routeStages)
+      .set(data)
+      .where(and(eq(routeStages.id, id), eq(routeStages.tenantId, tenantId)))
+      .returning();
+    return row;
+  }
+
+  async deleteRouteStage(id: string, tenantId: string): Promise<boolean> {
+    // Verificar que no haya rutas activas en esta etapa
+    const [active] = await db.select({ count: sql<number>`count(*)` })
+      .from(routes)
+      .where(and(eq(routes.currentStageId, id), eq(routes.tenantId, tenantId)));
+    if (Number(active?.count ?? 0) > 0) {
+      throw new HttpError(409, "No se puede eliminar una etapa que tiene rutas activas en ella");
+    }
+    const result = await db.delete(routeStages)
+      .where(and(eq(routeStages.id, id), eq(routeStages.tenantId, tenantId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async reorderRouteStages(ids: string[], tenantId: string): Promise<void> {
+    for (let i = 0; i < ids.length; i++) {
+      await db.update(routeStages)
+        .set({ sortOrder: i })
+        .where(and(eq(routeStages.id, ids[i]), eq(routeStages.tenantId, tenantId)));
+    }
+  }
+
+  // ── Log de etapas de ruta ────────────────────────────────────────────────────
+
+  async getRouteStageLog(routeId: string): Promise<RouteStageLogEntry[]> {
+    const logEntries = await db.select().from(routeStageLog)
+      .where(eq(routeStageLog.routeId, routeId))
+      .orderBy(asc(routeStageLog.enteredAt));
+    
+    if (logEntries.length === 0) return [];
+    
+    // Enriquecer con nombre del usuario que hizo el cambio
+    const userIds = Array.from(new Set(logEntries.filter(e => e.changedBy).map(e => e.changedBy!)));
+    const usersMap = new Map<string, { username: string; fullName?: string | null }>();
+    if (userIds.length > 0) {
+      const usersData = await db.select({ id: users.id, username: users.username, fullName: users.fullName })
+        .from(users)
+        .where(inArray(users.id, userIds));
+      usersData.forEach(u => usersMap.set(u.id, u));
+    }
+    
+    return logEntries.map(e => ({
+      ...e,
+      changedByUser: e.changedBy ? usersMap.get(e.changedBy) : undefined,
+    })) as any[];
+  }
+
+  async createRouteStageLogEntry(data: InsertRouteStageLog): Promise<RouteStageLogEntry> {
+    const [row] = await db.insert(routeStageLog).values(data).returning();
+    return row;
+  }
+
+  async closeRouteStageLogEntry(routeId: string, exitedAt: Date): Promise<void> {
+    await db.update(routeStageLog)
+      .set({ exitedAt })
+      .where(and(eq(routeStageLog.routeId, routeId), isNull(routeStageLog.exitedAt)));
+  }
+
+  async advanceRouteStage(routeId: string, newStageId: string, changedBy: string, notes?: string): Promise<Route | undefined> {
+    const [route] = await db.select().from(routes).where(eq(routes.id, routeId));
+    if (!route) return undefined;
+    
+    const [newStage] = await db.select().from(routeStages).where(eq(routeStages.id, newStageId));
+    if (!newStage) return undefined;
+    
+    const now = new Date();
+    
+    // Cerrar entrada de log anterior
+    await this.closeRouteStageLogEntry(routeId, now);
+    
+    // Calcular SLA status para la nueva etapa
+    const slaStatus = "dentro_tiempo";
+    
+    // Actualizar ruta con nueva etapa
+    const [updated] = await db.update(routes)
+      .set({
+        currentStageId: newStageId,
+        currentStageEnteredAt: now,
+        slaStatus,
+      })
+      .where(eq(routes.id, routeId))
+      .returning();
+    
+    // Crear nueva entrada en el log
+    await db.insert(routeStageLog).values({
+      routeId,
+      tenantId: route.tenantId,
+      stageId: newStageId,
+      stageName: newStage.name,
+      enteredAt: now,
+      slaHours: newStage.slaHours,
+      changedBy,
+      notes,
+    });
+    
+    return updated;
+  }
+
+  // ── Configuración de alertas de rutas ────────────────────────────────────────
+
+  async getRouteModuleAlertConfig(tenantId: string): Promise<RouteModuleAlertConfig | null> {
+    const [row] = await db.select().from(routeModuleAlertConfig)
+      .where(eq(routeModuleAlertConfig.tenantId, tenantId));
+    return row ?? null;
+  }
+
+  async upsertRouteModuleAlertConfig(tenantId: string, data: Partial<InsertRouteModuleAlertConfig>): Promise<RouteModuleAlertConfig> {
+    const existing = await this.getRouteModuleAlertConfig(tenantId);
+    if (existing) {
+      const [updated] = await db.update(routeModuleAlertConfig)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(routeModuleAlertConfig.tenantId, tenantId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(routeModuleAlertConfig)
+      .values({ tenantId, ...data })
+      .returning();
+    return created;
+  }
+
+  // ── Permisos por acción de rutas ─────────────────────────────────────────────
+
+  async getRouteActionPermissions(tenantId: string): Promise<RouteActionPermission[]> {
+    return db.select().from(routeActionPermissions)
+      .where(eq(routeActionPermissions.tenantId, tenantId));
+  }
+
+  async upsertRouteActionPermission(tenantId: string, action: string, allowedRoles: string[]): Promise<RouteActionPermission> {
+    const [existing] = await db.select().from(routeActionPermissions)
+      .where(and(eq(routeActionPermissions.tenantId, tenantId), eq(routeActionPermissions.action, action)));
+    if (existing) {
+      const [updated] = await db.update(routeActionPermissions)
+        .set({ allowedRoles, updatedAt: new Date() })
+        .where(and(eq(routeActionPermissions.tenantId, tenantId), eq(routeActionPermissions.action, action)))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(routeActionPermissions)
+      .values({ tenantId, action, allowedRoles })
+      .returning();
+    return created;
+  }
+
+  async initDefaultRouteActionPermissions(tenantId: string): Promise<void> {
+    const defaults = [
+      { action: "iniciar_ruta", allowedRoles: ["admin", "supervisor"] },
+      { action: "terminar_ruta", allowedRoles: ["admin", "supervisor"] },
+      { action: "editar_ruta", allowedRoles: ["admin", "supervisor"] },
+      { action: "avanzar_etapa", allowedRoles: ["admin", "supervisor"] },
+      { action: "configurar_modulo", allowedRoles: ["admin"] },
+    ];
+    for (const d of defaults) {
+      const [existing] = await db.select().from(routeActionPermissions)
+        .where(and(eq(routeActionPermissions.tenantId, tenantId), eq(routeActionPermissions.action, d.action)));
+      if (!existing) {
+        await db.insert(routeActionPermissions).values({ tenantId, action: d.action, allowedRoles: d.allowedRoles });
+      }
+    }
   }
 
   // Paradas de Ruta

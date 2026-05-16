@@ -125,9 +125,14 @@ import {
   workOrderStages as workOrderStagesTable,
   type TrayAudit,
   type WorkOrderStage,
+  insertRouteStageSchema,
+  insertRouteModuleAlertConfigSchema,
+  routeStages as routeStagesTable,
+  routeActionPermissions as routeActionPermissionsTable,
 } from "@shared/schema";
 import { z, ZodError } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection, enqueueLaneChangeForNayax, syncNayaxSalesForTenant, categorizePaymentMethod } from "./nayax";
+import { checkAndSendRouteAlerts } from "./routeAlertService";
 
 // =====================
 // DATABASE ERROR HELPERS
@@ -2536,17 +2541,40 @@ export async function registerRoutes(
   app.post("/api/supplier/routes/:id/start", authenticateJWT, authorizeAction("routes", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyRouteTenant(req.params.id, req, res)) return;
-      // Verificar ownership para abastecedor
       const existingRoute = await storage.getRoute(req.params.id);
-      if (!existingRoute) {
-        return res.status(404).json({ error: "Ruta no encontrada" });
-      }
+      if (!existingRoute) return res.status(404).json({ error: "Ruta no encontrada" });
       if (req.user?.role === "abastecedor" && existingRoute.supplierId !== req.user.userId) {
         return res.status(403).json({ error: "No tienes permiso para iniciar esta ruta" });
       }
+      // Validar permisos configurables
+      const tenantId = req.user!.tenantId;
+      const perms = await storage.getRouteActionPermissions(tenantId);
+      const initPerm = perms.find(p => p.action === "iniciar_ruta");
+      if (initPerm && !initPerm.allowedRoles.includes(req.user!.role)) {
+        return res.status(403).json({ error: "No tienes permiso para iniciar rutas" });
+      }
+      // Validar que tenga abastecedor
+      if (!existingRoute.supplierId) {
+        return res.status(400).json({ error: "La ruta no tiene un abastecedor asignado" });
+      }
+      // Validar que tenga al menos 1 parada
+      const stops = await storage.getRouteStops(req.params.id);
+      if (!stops || stops.length === 0) {
+        return res.status(400).json({ error: "La ruta debe tener al menos una parada asignada" });
+      }
       const route = await storage.startRoute(req.params.id);
+
+      // Avanzar a etapa "En Ruta" si existe
+      const stages = await storage.getRouteStages(tenantId);
+      const enRutaStage = stages.find(s => s.name.toLowerCase().includes("en ruta") || s.name.toLowerCase().includes("en_ruta"));
+      if (enRutaStage && route) {
+        await storage.advanceRouteStage(req.params.id, enRutaStage.id, req.user!.userId, "Ruta iniciada");
+        checkAndSendRouteAlerts(tenantId).catch(console.error);
+      }
+
       res.json(route);
     } catch (error) {
+      console.error("Error al iniciar ruta:", error);
       res.status(500).json({ error: "Error al iniciar ruta" });
     }
   });
@@ -2554,17 +2582,34 @@ export async function registerRoutes(
   app.post("/api/supplier/routes/:id/complete", authenticateJWT, authorizeAction("routes", "edit"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!await verifyRouteTenant(req.params.id, req, res)) return;
-      // Verificar ownership para abastecedor
       const existingRoute = await storage.getRoute(req.params.id);
-      if (!existingRoute) {
-        return res.status(404).json({ error: "Ruta no encontrada" });
-      }
+      if (!existingRoute) return res.status(404).json({ error: "Ruta no encontrada" });
       if (req.user?.role === "abastecedor" && existingRoute.supplierId !== req.user.userId) {
         return res.status(403).json({ error: "No tienes permiso para completar esta ruta" });
       }
+      // Validar permisos configurables
+      const tenantId = req.user!.tenantId;
+      const perms = await storage.getRouteActionPermissions(tenantId);
+      const termPerm = perms.find(p => p.action === "terminar_ruta");
+      if (termPerm && !termPerm.allowedRoles.includes(req.user!.role)) {
+        return res.status(403).json({ error: "No tienes permiso para terminar rutas" });
+      }
+      // Validar que fue iniciada
+      if (!existingRoute.startTime) {
+        return res.status(400).json({ error: "La ruta no puede finalizarse porque no ha sido iniciada" });
+      }
       const route = await storage.completeRoute(req.params.id);
+
+      // Avanzar a etapa terminal si existe
+      const stages = await storage.getRouteStages(tenantId);
+      const terminalStage = stages.find(s => s.isTerminal);
+      if (terminalStage && route) {
+        await storage.advanceRouteStage(req.params.id, terminalStage.id, req.user!.userId, "Ruta finalizada");
+      }
+
       res.json(route);
     } catch (error) {
+      console.error("Error al completar ruta:", error);
       res.status(500).json({ error: "Error al completar ruta" });
     }
   });
@@ -2844,6 +2889,186 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Error al eliminar parada" });
+    }
+  });
+
+  // ── Etapas configurables de ruta ───────────────────────────────────────────
+
+  app.get("/api/supplier/route-stages", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor", "operacional"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      const stages = await storage.getRouteStages(tenantId);
+      res.json(stages);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener etapas de ruta" });
+    }
+  });
+
+  app.post("/api/supplier/route-stages", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      const data = insertRouteStageSchema.omit({ tenantId: true }).parse(req.body);
+      const stage = await storage.createRouteStage({ ...data, tenantId });
+      res.status(201).json(stage);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      res.status(500).json({ error: "Error al crear etapa" });
+    }
+  });
+
+  app.patch("/api/supplier/route-stages/:id", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      const data = insertRouteStageSchema.partial().parse(req.body);
+      const stage = await storage.updateRouteStage(req.params.id, data, tenantId);
+      if (!stage) return res.status(404).json({ error: "Etapa no encontrada" });
+      res.json(stage);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      res.status(500).json({ error: "Error al actualizar etapa" });
+    }
+  });
+
+  app.delete("/api/supplier/route-stages/:id", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      const ok = await storage.deleteRouteStage(req.params.id, tenantId);
+      if (!ok) return res.status(404).json({ error: "Etapa no encontrada" });
+      res.json({ success: true });
+    } catch (error: any) {
+      if (error?.statusCode === 409) return res.status(409).json({ error: error.message });
+      res.status(500).json({ error: "Error al eliminar etapa" });
+    }
+  });
+
+  app.post("/api/supplier/route-stages/reorder", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      const { ids } = z.object({ ids: z.array(z.string()) }).parse(req.body);
+      await storage.reorderRouteStages(ids, tenantId);
+      res.json({ success: true });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      res.status(500).json({ error: "Error al reordenar etapas" });
+    }
+  });
+
+  app.post("/api/supplier/route-stages/init-defaults", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      const existing = await storage.getRouteStages(tenantId);
+      if (existing.length > 0) return res.status(400).json({ error: "Ya existen etapas configuradas" });
+      const defaults = [
+        { tenantId, name: "Pendiente", color: "#6B7280", sortOrder: 0, isDefault: true, isTerminal: false, slaAlertThresholdPct: 80, alertOnSlaWarning: false, alertOnSlaExpired: false },
+        { tenantId, name: "Programada", color: "#3B82F6", sortOrder: 1, isDefault: false, isTerminal: false, slaHours: "2", slaAlertThresholdPct: 80, alertOnSlaWarning: true, alertOnSlaExpired: false },
+        { tenantId, name: "En Ruta", color: "#F59E0B", sortOrder: 2, isDefault: false, isTerminal: false, slaHours: "8", slaAlertThresholdPct: 80, alertOnSlaWarning: true, alertOnSlaExpired: true },
+        { tenantId, name: "Finalizada", color: "#10B981", sortOrder: 3, isDefault: false, isTerminal: true, slaAlertThresholdPct: 80, alertOnSlaWarning: false, alertOnSlaExpired: false },
+      ];
+      const created = await Promise.all(defaults.map(d => storage.createRouteStage(d as any)));
+      res.status(201).json(created);
+    } catch (error) {
+      res.status(500).json({ error: "Error al inicializar etapas por defecto" });
+    }
+  });
+
+  // ── Historial y transición de etapa de ruta ────────────────────────────────
+
+  app.get("/api/supplier/routes/:id/stage-log", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!await verifyRouteTenant(req.params.id, req, res)) return;
+      const log = await storage.getRouteStageLog(req.params.id);
+      res.json(log);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener historial de etapas" });
+    }
+  });
+
+  app.post("/api/supplier/routes/:id/advance-stage", authenticateJWT, authorizeRoles("admin", "supervisor", "operacional"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!await verifyRouteTenant(req.params.id, req, res)) return;
+      const { newStageId, notes } = z.object({
+        newStageId: z.string().min(1, "Se requiere la etapa destino"),
+        notes: z.string().optional(),
+      }).parse(req.body);
+
+      const tenantId = req.user!.tenantId;
+      const userId = req.user!.userId;
+
+      // Verificar permisos configurables
+      const perms = await storage.getRouteActionPermissions(tenantId);
+      const advancePerm = perms.find(p => p.action === "avanzar_etapa");
+      if (advancePerm && !advancePerm.allowedRoles.includes(req.user!.role)) {
+        return res.status(403).json({ error: "No tienes permiso para avanzar la etapa" });
+      }
+
+      const existingRoute = await storage.getRoute(req.params.id);
+      if (!existingRoute) return res.status(404).json({ error: "Ruta no encontrada" });
+
+      const newStage = await storage.getRouteStage(newStageId, tenantId);
+      if (!newStage) return res.status(404).json({ error: "Etapa no encontrada" });
+
+      const route = await storage.advanceRouteStage(req.params.id, newStageId, userId, notes);
+      if (!route) return res.status(404).json({ error: "Ruta no encontrada" });
+
+      // Disparar verificación de alertas en background
+      checkAndSendRouteAlerts(tenantId).catch(console.error);
+
+      res.json(route);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      res.status(500).json({ error: "Error al avanzar etapa" });
+    }
+  });
+
+  // ── Configuración de alertas de rutas ─────────────────────────────────────
+
+  app.get("/api/supplier/route-config/alerts", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      const config = await storage.getRouteModuleAlertConfig(tenantId);
+      res.json(config ?? { tenantId, alertRecipientsJson: '["all_admins"]', globalAlertOnExpiry: true });
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener configuración de alertas" });
+    }
+  });
+
+  app.put("/api/supplier/route-config/alerts", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      const data = insertRouteModuleAlertConfigSchema.omit({ tenantId: true }).partial().parse(req.body);
+      const config = await storage.upsertRouteModuleAlertConfig(tenantId, data);
+      res.json(config);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      res.status(500).json({ error: "Error al guardar configuración de alertas" });
+    }
+  });
+
+  // ── Configuración de permisos por acción ──────────────────────────────────
+
+  app.get("/api/supplier/route-config/permissions", authenticateJWT, authorizeRoles("admin", "supervisor"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      await storage.initDefaultRouteActionPermissions(tenantId);
+      const perms = await storage.getRouteActionPermissions(tenantId);
+      res.json(perms);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener permisos" });
+    }
+  });
+
+  app.put("/api/supplier/route-config/permissions", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId;
+      const { action, allowedRoles } = z.object({
+        action: z.string().min(1),
+        allowedRoles: z.array(z.string()),
+      }).parse(req.body);
+      const perm = await storage.upsertRouteActionPermission(tenantId, action, allowedRoles);
+      res.json(perm);
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      res.status(500).json({ error: "Error al guardar permiso" });
     }
   });
 
