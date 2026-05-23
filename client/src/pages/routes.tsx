@@ -13,7 +13,11 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
+  useDraggable,
+  DragOverlay,
   DragEndEvent,
+  DragStartEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -29,7 +33,7 @@ import {
   Calendar, Clock, CheckCircle2, XCircle, Play, Truck,
   ChevronUp, ChevronDown, Settings, ArrowRight, Bell, 
   Shield, AlertTriangle, Timer, GripVertical, History,
-  Layers, Save, RefreshCw, ChevronRight, Info
+  Layers, Save, RefreshCw, ChevronRight, Info, LayoutGrid
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -279,6 +283,240 @@ function SortableStageItem({
   );
 }
 
+// ── Helpers Kanban ──────────────────────────────────────────────────────────
+
+function computeSlaBar(route: RouteData, stage: RouteStage | undefined): { pct: number; color: string } | null {
+  if (!stage?.slaHours || !route.currentStageEnteredAt) return null;
+  const slaHours = parseFloat(stage.slaHours);
+  if (!slaHours) return null;
+  const elapsed = (Date.now() - new Date(route.currentStageEnteredAt).getTime()) / 3_600_000;
+  const threshold = stage.slaAlertThresholdPct ?? 80;
+  const pct = Math.min(100, (elapsed / slaHours) * 100);
+  const color = pct >= 100 ? "bg-red-500" : pct >= threshold ? "bg-yellow-500" : "bg-green-500";
+  return { pct, color };
+}
+
+// ── Tarjeta Kanban de ruta ────────────────────────────────────────────────────
+function RouteKanbanCard({
+  route,
+  stage,
+  sortedStages,
+  canAdvanceStage,
+  onViewDetail,
+  onAdvance,
+}: {
+  route: RouteData;
+  stage: RouteStage | undefined;
+  sortedStages: RouteStage[];
+  canAdvanceStage: boolean;
+  onViewDetail: (route: RouteData) => void;
+  onAdvance: (routeId: string, stageId: string) => void;
+}) {
+  const { setNodeRef, attributes, listeners, transform, isDragging } = useDraggable({
+    id: route.id,
+    disabled: !canAdvanceStage,
+  });
+  const style: React.CSSProperties = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 50 }
+    : {};
+
+  const progress = route.totalStops > 0 ? Math.round((route.completedStops / route.totalStops) * 100) : 0;
+  const slaBar = computeSlaBar(route, stage);
+
+  const currentIdx = stage ? sortedStages.findIndex(s => s.id === stage.id) : -1;
+  const nextStage = currentIdx >= 0 && currentIdx < sortedStages.length - 1 ? sortedStages[currentIdx + 1] : null;
+  const advanceTarget = nextStage ?? (sortedStages.length > 0 && !stage ? sortedStages[0] : null);
+
+  const statusColors: Record<string, string> = {
+    pendiente: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+    en_progreso: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  };
+  const statusLabels: Record<string, string> = {
+    pendiente: "Pendiente",
+    en_progreso: "En Progreso",
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`bg-card border rounded-md p-3 space-y-2 select-none transition-opacity ${isDragging ? "opacity-40" : ""}`}
+      data-testid={`kanban-card-route-${route.id}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-1 text-sm font-medium">
+          <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+          <span>{formatDateShort(new Date(route.date))}</span>
+        </div>
+        <Badge className={`no-default-hover-elevate no-default-active-elevate text-xs ${statusColors[route.status] ?? ""}`}>
+          {statusLabels[route.status] ?? route.status}
+        </Badge>
+      </div>
+
+      <div className="flex items-center gap-1 text-sm text-muted-foreground">
+        <Truck className="h-3.5 w-3.5" />
+        <span className="truncate">{route.supplierName ?? route.supplierId}</span>
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <MapPin className="h-3 w-3" />
+          {route.completedStops}/{route.totalStops} paradas
+        </span>
+        {route.estimatedDuration ? (
+          <span className="flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            ~{route.estimatedDuration} min
+          </span>
+        ) : null}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Progress value={progress} className="h-1.5 flex-1" />
+        <span className="text-xs text-muted-foreground w-8 text-right">{progress}%</span>
+      </div>
+
+      {slaBar && (
+        <div className="space-y-0.5">
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>SLA</span>
+            <span>{Math.round(slaBar.pct)}%</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${slaBar.color}`}
+              style={{ width: `${slaBar.pct}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between pt-0.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => onViewDetail(route)}
+          data-testid={`kanban-button-view-${route.id}`}
+          title="Ver detalle"
+        >
+          <Eye className="h-3.5 w-3.5" />
+        </Button>
+        <div className="flex items-center gap-1">
+          {canAdvanceStage && (
+            <button
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing p-1 rounded text-muted-foreground hover:text-foreground focus:outline-none"
+              title="Arrastrar a otra etapa"
+              data-testid={`kanban-drag-${route.id}`}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          )}
+          {canAdvanceStage && advanceTarget && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => onAdvance(route.id, advanceTarget.id)}
+              data-testid={`kanban-button-advance-${route.id}`}
+              title={`Avanzar a: ${advanceTarget.name}`}
+            >
+              <ArrowRight className="h-3.5 w-3.5 text-primary" />
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Vista previa de arrastre Kanban ──────────────────────────────────────────
+function RouteKanbanCardPreview({ route }: { route: RouteData }) {
+  const progress = route.totalStops > 0 ? Math.round((route.completedStops / route.totalStops) * 100) : 0;
+  return (
+    <div className="bg-card border rounded-md p-3 space-y-2 shadow-lg w-72 opacity-95">
+      <div className="flex items-center gap-1 text-sm font-medium">
+        <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+        <span>{formatDateShort(new Date(route.date))}</span>
+      </div>
+      <div className="flex items-center gap-1 text-sm text-muted-foreground">
+        <Truck className="h-3.5 w-3.5" />
+        <span className="truncate">{route.supplierName ?? route.supplierId}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <Progress value={progress} className="h-1.5 flex-1" />
+        <span className="text-xs text-muted-foreground w-8 text-right">{progress}%</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Columna Kanban ────────────────────────────────────────────────────────────
+function RouteKanbanColumn({
+  id,
+  title,
+  color,
+  routes,
+  stageMap,
+  sortedStages,
+  canAdvanceStage,
+  onViewDetail,
+  onAdvance,
+}: {
+  id: string;
+  title: string;
+  color: string;
+  routes: RouteData[];
+  stageMap: Map<string, RouteStage>;
+  sortedStages: RouteStage[];
+  canAdvanceStage: boolean;
+  onViewDetail: (route: RouteData) => void;
+  onAdvance: (routeId: string, stageId: string) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex flex-col w-72 flex-shrink-0 rounded-lg border bg-muted/20 transition-all ${isOver ? "ring-2 ring-primary bg-primary/5" : ""}`}
+      data-testid={`kanban-column-${id}`}
+    >
+      <div
+        className="flex items-center justify-between px-3 py-2.5 rounded-t-lg"
+        style={{ backgroundColor: color + "25", borderBottom: `2px solid ${color}` }}
+      >
+        <div className="flex items-center gap-2">
+          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+          <span className="font-semibold text-sm">{title}</span>
+        </div>
+        <Badge className="no-default-hover-elevate no-default-active-elevate text-xs">
+          {routes.length}
+        </Badge>
+      </div>
+      <div className="flex flex-col gap-2 p-2 min-h-[200px]">
+        {routes.length === 0 ? (
+          <div className="flex items-center justify-center h-24 text-xs text-muted-foreground italic">
+            Sin rutas en esta etapa
+          </div>
+        ) : (
+          routes.map(route => (
+            <RouteKanbanCard
+              key={route.id}
+              route={route}
+              stage={stageMap.get(route.currentStageId ?? "")}
+              sortedStages={sortedStages}
+              canAdvanceStage={canAdvanceStage}
+              onViewDetail={onViewDetail}
+              onAdvance={onAdvance}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function RoutesPage() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -334,6 +572,7 @@ export default function RoutesPage() {
   const [quickStageLogRouteId, setQuickStageLogRouteId] = useState<string | null>(null);
   const [quickStageLogRoute, setQuickStageLogRoute] = useState<RouteData | null>(null);
   const [alertConfig, setAlertConfig] = useState<RouteModuleAlertConfig | null>(null);
+  const [boardDragRoute, setBoardDragRoute] = useState<RouteData | null>(null);
 
   // Formulario de etapa
   const stageFormSchema = z.object({
@@ -422,8 +661,16 @@ export default function RoutesPage() {
 
   const { data: routesData, isLoading: routesLoading } = useQuery<{ data: RouteData[], total: number, page: number, pageSize: number }>({
     queryKey: ["/api/supplier/routes", { ...serverFilters, page: currentPage, pageSize: ITEMS_PER_PAGE }],
+    enabled: activeTab !== "board",
     staleTime: 30000,
     refetchInterval: 60000,
+  });
+
+  const { data: boardRoutesData, isLoading: boardLoading } = useQuery<{ data: RouteData[], total: number }>({
+    queryKey: ["/api/supplier/routes", { page: 1, pageSize: 500 }],
+    enabled: activeTab === "board",
+    staleTime: 30000,
+    refetchInterval: activeTab === "board" ? 60000 : false,
   });
 
   const paginatedRoutes = routesData?.data ?? [];
@@ -501,6 +748,11 @@ export default function RoutesPage() {
   });
 
   const stageMap = useMemo(() => new Map(routeStages.map(s => [s.id, s])), [routeStages]);
+  const sortedStages = useMemo(() => [...routeStages].sort((a, b) => a.sortOrder - b.sortOrder), [routeStages]);
+  const boardRoutes = useMemo(() => {
+    const all = boardRoutesData?.data ?? [];
+    return all.filter(r => r.status === "pendiente" || r.status === "en_progreso");
+  }, [boardRoutesData]);
 
   const stats = {
     total: routeStats?.total ?? 0,
@@ -767,6 +1019,34 @@ export default function RoutesPage() {
     const reordered = arrayMove(sorted, oldIndex, newIndex);
     reorderStagesMutation.mutate(reordered.map(s => s.id));
   }, [routeStages, reorderStagesMutation]);
+
+  // ── Sensores y handlers del tablero Kanban ──────────────────────────────────
+  const boardSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+
+  const handleBoardDragStart = useCallback((event: DragStartEvent) => {
+    const route = boardRoutes.find(r => r.id === event.active.id);
+    setBoardDragRoute(route ?? null);
+  }, [boardRoutes]);
+
+  const handleBoardDragEnd = useCallback((event: DragEndEvent) => {
+    setBoardDragRoute(null);
+    const { active, over } = event;
+    if (!over) return;
+    const routeId = active.id as string;
+    const targetColumnId = over.id as string;
+    const route = boardRoutes.find(r => r.id === routeId);
+    if (!route) return;
+    const currentColId = route.currentStageId ?? "no-stage";
+    if (targetColumnId === currentColId) return;
+    if (targetColumnId === "no-stage") return;
+    advanceStageMutation.mutate({ routeId, newStageId: targetColumnId });
+  }, [boardRoutes, advanceStageMutation]);
+
+  const handleBoardAdvance = useCallback((routeId: string, stageId: string) => {
+    advanceStageMutation.mutate({ routeId, newStageId: stageId });
+  }, [advanceStageMutation]);
 
   // ── Permisos de acción de ruta basados en configuración DB ──
   const userRole = user?.role ?? "";
@@ -1221,8 +1501,88 @@ export default function RoutesPage() {
           <TabsTrigger value="pending" data-testid="tab-pending">Pendientes</TabsTrigger>
           <TabsTrigger value="active" data-testid="tab-active">Activas</TabsTrigger>
           <TabsTrigger value="completed" data-testid="tab-completed">Completadas</TabsTrigger>
+          <TabsTrigger value="board" className="gap-1.5" data-testid="tab-board">
+            <LayoutGrid className="h-3.5 w-3.5" />
+            Tablero
+          </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="board" className="mt-4">
+          {routeStages.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <Layers className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium mb-2">No hay etapas configuradas</h3>
+                <p className="text-muted-foreground mb-4">
+                  Configura las etapas del flujo de rutas para usar el tablero Kanban
+                </p>
+                {canConfigModule && (
+                  <Button
+                    variant="outline"
+                    onClick={() => { setIsConfigOpen(true); setConfigTab("stages"); }}
+                    className="gap-2"
+                    data-testid="button-board-go-config"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Ir a Configuración
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ) : boardLoading ? (
+            <div className="flex gap-4 overflow-x-auto pb-4">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="w-72 flex-shrink-0 rounded-lg border bg-muted/20">
+                  <Skeleton className="h-10 w-full rounded-t-lg" />
+                  <div className="p-2 space-y-2">
+                    {[...Array(3)].map((_, j) => (
+                      <Skeleton key={j} className="h-32 w-full rounded-md" />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <DndContext
+              sensors={boardSensors}
+              onDragStart={handleBoardDragStart}
+              onDragEnd={handleBoardDragEnd}
+            >
+              <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]" data-testid="kanban-board">
+                <RouteKanbanColumn
+                  id="no-stage"
+                  title="Sin etapa"
+                  color="#6B7280"
+                  routes={boardRoutes.filter(r => !r.currentStageId)}
+                  stageMap={stageMap}
+                  sortedStages={sortedStages}
+                  canAdvanceStage={canAdvanceStage}
+                  onViewDetail={handleViewDetail}
+                  onAdvance={handleBoardAdvance}
+                />
+                {sortedStages.map(stage => (
+                  <RouteKanbanColumn
+                    key={stage.id}
+                    id={stage.id}
+                    title={stage.name}
+                    color={stage.color}
+                    routes={boardRoutes.filter(r => r.currentStageId === stage.id)}
+                    stageMap={stageMap}
+                    sortedStages={sortedStages}
+                    canAdvanceStage={canAdvanceStage}
+                    onViewDetail={handleViewDetail}
+                    onAdvance={handleBoardAdvance}
+                  />
+                ))}
+              </div>
+              <DragOverlay>
+                {boardDragRoute && <RouteKanbanCardPreview route={boardDragRoute} />}
+              </DragOverlay>
+            </DndContext>
+          )}
+        </TabsContent>
+
+        {activeTab !== "board" && (
         <TabsContent value={activeTab} className="mt-4">
           <Card>
             <CardHeader>
@@ -1518,6 +1878,7 @@ export default function RoutesPage() {
             </CardContent>
           </Card>
         </TabsContent>
+        )}
       </Tabs>
 
       <Dialog open={isNewRouteOpen} onOpenChange={setIsNewRouteOpen}>
