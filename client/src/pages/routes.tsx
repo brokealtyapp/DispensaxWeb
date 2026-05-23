@@ -691,7 +691,8 @@ export default function RoutesPage() {
 
   const createStageMutation = useMutation({
     mutationFn: async (data: StageFormData) => {
-      const res = await apiRequest("POST", "/api/supplier/route-stages", data);
+      const payload = { ...data, slaHours: data.slaHours === "" ? undefined : data.slaHours };
+      const res = await apiRequest("POST", "/api/supplier/route-stages", payload);
       return res.json();
     },
     onSuccess: () => {
@@ -707,7 +708,8 @@ export default function RoutesPage() {
 
   const updateStageMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<StageFormData> }) => {
-      const res = await apiRequest("PATCH", `/api/supplier/route-stages/${id}`, data);
+      const payload = { ...data, slaHours: data.slaHours === "" ? undefined : data.slaHours };
+      const res = await apiRequest("PATCH", `/api/supplier/route-stages/${id}`, payload);
       return res.json();
     },
     onSuccess: () => {
