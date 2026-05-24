@@ -677,11 +677,21 @@ export default function RoutesPage() {
     return params;
   }, [boardSupplierFilter, boardDateFilter]);
 
+  // Detectar visibilidad de la pestaña para ajustar el intervalo de refresco
+  const [isTabVisible, setIsTabVisible] = useState(() => !document.hidden);
+  useEffect(() => {
+    const handleVisibilityChange = () => setIsTabVisible(!document.hidden);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
   const { data: boardRoutesData, isLoading: boardLoading } = useQuery<{ data: RouteData[], total: number }>({
     queryKey: ["/api/supplier/routes", boardQueryParams],
     enabled: activeTab === "board",
     staleTime: 30000,
-    refetchInterval: activeTab === "board" ? 60000 : false,
+    // Cuando la pestaña está activa y el tablero está visible: refresca cada 10s
+    // Cuando la pestaña está oculta: pausa el refresco para no saturar el servidor
+    refetchInterval: activeTab === "board" && isTabVisible ? 10000 : false,
   });
 
   const paginatedRoutes = routesData?.data ?? [];
