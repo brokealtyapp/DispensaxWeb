@@ -49,6 +49,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
@@ -199,6 +200,7 @@ const routeFormSchema = z.object({
   supervisorId: z.string().optional(),
   estimatedDuration: z.coerce.number().optional(),
   notes: z.string().optional(),
+  startingStageId: z.string().optional(),
 });
 
 type RouteFormData = z.infer<typeof routeFormSchema>;
@@ -343,6 +345,12 @@ function RouteKanbanCard({
       className={`bg-card border rounded-md p-3 space-y-2 select-none transition-opacity ${isDragging ? "opacity-40" : ""}`}
       data-testid={`kanban-card-route-${route.id}`}
     >
+      {!stage && (
+        <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 rounded px-2 py-1">
+          <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+          <span>Sin etapa — arrastra o usa la flecha</span>
+        </div>
+      )}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-1 text-sm font-medium">
           <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
@@ -476,6 +484,7 @@ function RouteKanbanColumn({
   onAdvance: (routeId: string, stageId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
+  const isNoStage = id === "no-stage";
   return (
     <div
       ref={setNodeRef}
@@ -489,6 +498,16 @@ function RouteKanbanColumn({
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
           <span className="font-semibold text-sm">{title}</span>
+          {isNoStage && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-500 cursor-help flex-shrink-0" />
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs">
+                <p>Estas rutas no tienen etapa asignada. Arrástralas a una etapa o usa el botón de avanzar para asignarles una.</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
         <Badge className="no-default-hover-elevate no-default-active-elevate text-xs">
           {routes.length}
@@ -613,6 +632,7 @@ export default function RoutesPage() {
       supervisorId: "",
       estimatedDuration: 480,
       notes: "",
+      startingStageId: "",
     },
   });
 
@@ -770,6 +790,14 @@ export default function RoutesPage() {
 
   const stageMap = useMemo(() => new Map(routeStages.map(s => [s.id, s])), [routeStages]);
   const sortedStages = useMemo(() => [...routeStages].sort((a, b) => a.sortOrder - b.sortOrder), [routeStages]);
+
+  // Auto-seleccionar la etapa por defecto cuando se abre el dialog de Nueva Ruta
+  useEffect(() => {
+    if (isNewRouteOpen && sortedStages.length > 0 && !routeForm.getValues("startingStageId")) {
+      const defaultStage = sortedStages.find(s => s.isDefault) ?? sortedStages[0];
+      if (defaultStage) routeForm.setValue("startingStageId", defaultStage.id);
+    }
+  }, [isNewRouteOpen, sortedStages]);
   const boardRoutes = useMemo(() => {
     const all = boardRoutesData?.data ?? [];
     return all.filter(r => r.status === "pendiente" || r.status === "en_progreso");
@@ -793,6 +821,7 @@ export default function RoutesPage() {
         estimatedDuration: data.estimatedDuration,
         notes: data.notes,
         status: "pendiente",
+        startingStageId: data.startingStageId || undefined,
       };
       
       const response = await apiRequest("POST", "/api/supplier/routes", routeData);
@@ -1304,6 +1333,22 @@ export default function RoutesPage() {
       });
       return;
     }
+    if (sortedStages.length === 0) {
+      toast({
+        title: "Sin etapas configuradas",
+        description: "Configure al menos una etapa de ruta en Configuración antes de crear rutas.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!data.startingStageId) {
+      toast({
+        title: "Etapa requerida",
+        description: "Seleccione la etapa inicial de la ruta.",
+        variant: "destructive",
+      });
+      return;
+    }
     createRouteMutation.mutate({ ...data, stops: pendingStops });
   };
 
@@ -1608,17 +1653,19 @@ export default function RoutesPage() {
               onDragEnd={handleBoardDragEnd}
             >
               <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]" data-testid="kanban-board">
-                <RouteKanbanColumn
-                  id="no-stage"
-                  title="Sin etapa"
-                  color="#6B7280"
-                  routes={boardRoutes.filter(r => !r.currentStageId)}
-                  stageMap={stageMap}
-                  sortedStages={sortedStages}
-                  canAdvanceStage={canAdvanceStage}
-                  onViewDetail={handleViewDetail}
-                  onAdvance={handleBoardAdvance}
-                />
+                {boardRoutes.some(r => !r.currentStageId) && (
+                  <RouteKanbanColumn
+                    id="no-stage"
+                    title="Sin etapa"
+                    color="#6B7280"
+                    routes={boardRoutes.filter(r => !r.currentStageId)}
+                    stageMap={stageMap}
+                    sortedStages={sortedStages}
+                    canAdvanceStage={canAdvanceStage}
+                    onViewDetail={handleViewDetail}
+                    onAdvance={handleBoardAdvance}
+                  />
+                )}
                 {sortedStages.map(stage => (
                   <RouteKanbanColumn
                     key={stage.id}
@@ -2045,7 +2092,54 @@ export default function RoutesPage() {
                   </FormItem>
                 )}
               />
-              
+
+              <FormField
+                control={routeForm.control}
+                name="startingStageId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Etapa inicial <span className="text-destructive">*</span>
+                    </FormLabel>
+                    {sortedStages.length === 0 ? (
+                      <div className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400 p-3 bg-amber-50 dark:bg-amber-950/40 rounded-md border border-amber-200 dark:border-amber-800">
+                        <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span>
+                          No hay etapas configuradas. Ve a{" "}
+                          <strong>Configuración → Etapas de Ruta</strong> para
+                          crear una antes de registrar rutas.
+                        </span>
+                      </div>
+                    ) : (
+                      <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-route-stage">
+                            <SelectValue placeholder="Seleccionar etapa inicial" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {sortedStages.map(stage => (
+                            <SelectItem key={stage.id} value={stage.id}>
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: stage.color ?? "#6B7280" }}
+                                />
+                                <span>{stage.name}</span>
+                                {stage.isDefault && (
+                                  <span className="text-xs text-muted-foreground">(por defecto)</span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <Separator />
               
               <div>
@@ -2116,7 +2210,7 @@ export default function RoutesPage() {
                 </Button>
                 <Button 
                   type="submit" 
-                  disabled={createRouteMutation.isPending || pendingStops.length === 0}
+                  disabled={createRouteMutation.isPending || pendingStops.length === 0 || sortedStages.length === 0}
                   data-testid="button-save-route"
                 >
                   {createRouteMutation.isPending ? "Guardando..." : "Crear Ruta"}

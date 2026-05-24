@@ -2497,13 +2497,19 @@ export async function registerRoutes(
   app.post("/api/supplier/routes", authenticateJWT, authorizeAction("routes", "create"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId;
+      // Extraer startingStageId antes de parsear con insertRouteSchema (currentStageId está omitido del schema)
+      const requestedStageId = typeof req.body.startingStageId === "string" && req.body.startingStageId
+        ? req.body.startingStageId
+        : null;
+
       const data = insertRouteSchema.omit({ tenantId: true }).extend({ date: z.coerce.date() }).parse(req.body);
       const route = await storage.createRoute({ ...data, tenantId });
 
-      // Asignar etapa por defecto y crear entrada inicial en el log
+      // Asignar etapa inicial: usar la solicitada si pertenece al tenant, sino la etapa por defecto
       const stages = await storage.getRouteStages(tenantId);
       const sortedStages = [...stages].sort((a, b) => a.sortOrder - b.sortOrder);
-      const defaultStage = sortedStages.find(s => s.isDefault) ?? sortedStages[0];
+      const requestedStage = requestedStageId ? stages.find(s => s.id === requestedStageId) : null;
+      const defaultStage = requestedStage ?? sortedStages.find(s => s.isDefault) ?? sortedStages[0];
       if (defaultStage) {
         await storage.advanceRouteStage(route.id, defaultStage.id, req.user!.userId, "Ruta creada");
       }
