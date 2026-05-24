@@ -535,6 +535,10 @@ export default function RoutesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<string>("");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
+
+  // Filtros independientes del tablero Kanban
+  const [boardSupplierFilter, setBoardSupplierFilter] = useState<string>("all");
+  const [boardDateFilter, setBoardDateFilter] = useState<string>("");
   
   const [isNewRouteOpen, setIsNewRouteOpen] = useState(false);
   const [isEditRouteOpen, setIsEditRouteOpen] = useState(false);
@@ -666,8 +670,15 @@ export default function RoutesPage() {
     refetchInterval: 60000,
   });
 
+  const boardQueryParams = useMemo(() => {
+    const params: Record<string, string | number> = { page: 1, pageSize: 500 };
+    if (boardSupplierFilter !== "all") params.supplierId = boardSupplierFilter;
+    if (boardDateFilter) params.date = boardDateFilter;
+    return params;
+  }, [boardSupplierFilter, boardDateFilter]);
+
   const { data: boardRoutesData, isLoading: boardLoading } = useQuery<{ data: RouteData[], total: number }>({
-    queryKey: ["/api/supplier/routes", { page: 1, pageSize: 500 }],
+    queryKey: ["/api/supplier/routes", boardQueryParams],
     enabled: activeTab === "board",
     staleTime: 30000,
     refetchInterval: activeTab === "board" ? 60000 : false,
@@ -1508,6 +1519,44 @@ export default function RoutesPage() {
         </TabsList>
 
         <TabsContent value="board" className="mt-4">
+          {/* Barra de filtros independiente del tablero Kanban */}
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <Select
+              value={boardSupplierFilter}
+              onValueChange={setBoardSupplierFilter}
+            >
+              <SelectTrigger className="w-[200px]" data-testid="select-board-filter-supplier">
+                <SelectValue placeholder="Abastecedor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los abastecedores</SelectItem>
+                {abastecedores.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.fullName || u.username}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              type="date"
+              value={boardDateFilter}
+              onChange={(e) => setBoardDateFilter(e.target.value)}
+              className="w-40"
+              data-testid="input-board-filter-date"
+            />
+            {(boardSupplierFilter !== "all" || boardDateFilter) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setBoardSupplierFilter("all"); setBoardDateFilter(""); }}
+                data-testid="button-board-clear-filters"
+              >
+                <XCircle className="h-4 w-4 mr-1" />
+                Limpiar
+              </Button>
+            )}
+          </div>
+
           {routeStages.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16 text-center">
