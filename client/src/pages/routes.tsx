@@ -1041,34 +1041,6 @@ export default function RoutesPage() {
     reorderStagesMutation.mutate(reordered.map(s => s.id));
   }, [routeStages, reorderStagesMutation]);
 
-  // ── Sensores y handlers del tablero Kanban ──────────────────────────────────
-  const boardSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-  );
-
-  const handleBoardDragStart = useCallback((event: DragStartEvent) => {
-    const route = boardRoutes.find(r => r.id === event.active.id);
-    setBoardDragRoute(route ?? null);
-  }, [boardRoutes]);
-
-  const handleBoardDragEnd = useCallback((event: DragEndEvent) => {
-    setBoardDragRoute(null);
-    const { active, over } = event;
-    if (!over) return;
-    const routeId = active.id as string;
-    const targetColumnId = over.id as string;
-    const route = boardRoutes.find(r => r.id === routeId);
-    if (!route) return;
-    const currentColId = route.currentStageId ?? "no-stage";
-    if (targetColumnId === currentColId) return;
-    if (targetColumnId === "no-stage") return;
-    advanceStageMutation.mutate({ routeId, newStageId: targetColumnId });
-  }, [boardRoutes, advanceStageMutation]);
-
-  const handleBoardAdvance = useCallback((routeId: string, stageId: string) => {
-    advanceStageMutation.mutate({ routeId, newStageId: stageId });
-  }, [advanceStageMutation]);
-
   // ── Permisos de acción de ruta basados en configuración DB ──
   const userRole = user?.role ?? "";
   const canStartRoute   = actionPermissions.find(p => p.action === "iniciar_ruta")?.allowedRoles.includes(userRole) ?? isAdmin;
@@ -1112,6 +1084,34 @@ export default function RoutesPage() {
       toast({ title: "Error al avanzar etapa", description: getApiErrorMessage(error), variant: "destructive" });
     },
   });
+
+  // ── Sensores y handlers del tablero Kanban ──────────────────────────────────
+  const boardSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+
+  const handleBoardDragStart = useCallback((event: DragStartEvent) => {
+    const route = boardRoutes.find(r => r.id === event.active.id);
+    setBoardDragRoute(route ?? null);
+  }, [boardRoutes]);
+
+  const handleBoardDragEnd = useCallback((event: DragEndEvent) => {
+    setBoardDragRoute(null);
+    const { active, over } = event;
+    if (!over) return;
+    const routeId = active.id as string;
+    const targetColumnId = over.id as string;
+    const route = boardRoutes.find(r => r.id === routeId);
+    if (!route) return;
+    const currentColId = route.currentStageId ?? "no-stage";
+    if (targetColumnId === currentColId) return;
+    if (targetColumnId === "no-stage") return;
+    advanceStageMutation.mutate({ routeId, newStageId: targetColumnId });
+  }, [boardRoutes, advanceStageMutation]);
+
+  const handleBoardAdvance = useCallback((routeId: string, stageId: string) => {
+    advanceStageMutation.mutate({ routeId, newStageId: stageId });
+  }, [advanceStageMutation]);
 
   const updateAlertConfigMutation = useMutation({
     mutationFn: async (data: Partial<RouteModuleAlertConfig>) => {
