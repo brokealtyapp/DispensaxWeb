@@ -2505,14 +2505,21 @@ export async function registerRoutes(
       const data = insertRouteSchema.omit({ tenantId: true }).extend({ date: z.coerce.date() }).parse(req.body);
       const route = await storage.createRoute({ ...data, tenantId });
 
-      // Asignar etapa inicial: usar la solicitada si pertenece al tenant, sino la etapa por defecto
+      // Asignar etapa inicial: la etapa es obligatoria cuando existen etapas configuradas
       const stages = await storage.getRouteStages(tenantId);
       const sortedStages = [...stages].sort((a, b) => a.sortOrder - b.sortOrder);
-      const requestedStage = requestedStageId ? stages.find(s => s.id === requestedStageId) : null;
-      const defaultStage = requestedStage ?? sortedStages.find(s => s.isDefault) ?? sortedStages[0];
-      if (defaultStage) {
-        await storage.advanceRouteStage(route.id, defaultStage.id, req.user!.userId, "Ruta creada");
+
+      if (sortedStages.length > 0) {
+        // Hay etapas — startingStageId es obligatorio y debe pertenecer al tenant
+        const requestedStage = requestedStageId ? stages.find(s => s.id === requestedStageId) : null;
+        if (!requestedStage) {
+          // Eliminar la ruta recién creada y rechazar con 400
+          await storage.deleteRoute(route.id);
+          return res.status(400).json({ error: "La etapa de ruta es requerida" });
+        }
+        await storage.advanceRouteStage(route.id, requestedStage.id, req.user!.userId, "Ruta creada");
       }
+      // Si no hay etapas configuradas, la ruta queda sin etapa (currentStageId null)
 
       // Retornar ruta actualizada (con currentStageId/slaStatus ya asignados)
       const freshRoute = await storage.getRoute(route.id);
@@ -2537,24 +2544,54 @@ export async function registerRoutes(
         return res.status(403).json({ error: "No tienes permiso para editar rutas" });
       }
 
+      // Extraer stageId antes del parse (currentStageId está omitido del insertRouteSchema)
+      const requestedStageId = typeof req.body.stageId === "string" && req.body.stageId
+        ? req.body.stageId
+        : null;
+
+      // Siempre obtener la ruta existente (necesario para check de etapa y terminal)
+      const existingRoute = await storage.getRoute(req.params.id);
+      if (!existingRoute) {
+        return res.status(404).json({ error: "Ruta no encontrada" });
+      }
+
       // Bloquear edición si la ruta está en una etapa terminal (excepto admin)
-      if (req.user!.role !== "admin") {
-        const existingRoute = await storage.getRoute(req.params.id);
-        if (existingRoute?.currentStage?.isTerminal) {
-          return res.status(403).json({ error: "No se puede editar una ruta que está en una etapa terminal" });
+      if (req.user!.role !== "admin" && existingRoute.currentStage?.isTerminal) {
+        return res.status(403).json({ error: "No se puede editar una ruta que está en una etapa terminal" });
+      }
+
+      // Si la ruta no tiene etapa asignada, es obligatorio proveer stageId
+      if (!existingRoute.currentStageId && !requestedStageId) {
+        return res.status(400).json({ error: "La etapa de ruta es requerida" });
+      }
+
+      // Validar que la etapa pertenece al tenant (ownership check)
+      if (requestedStageId) {
+        const tenantId = req.user!.tenantId;
+        const stages = await storage.getRouteStages(tenantId);
+        const validStage = stages.find(s => s.id === requestedStageId);
+        if (!validStage) {
+          return res.status(400).json({ error: "La etapa seleccionada no es válida para este tenant" });
         }
       }
-      
+
       const data = insertRouteSchema.extend({ date: z.coerce.date().optional() }).partial().parse(req.body);
       const route = await storage.updateRoute(req.params.id, data);
       if (!route) {
         return res.status(404).json({ error: "Ruta no encontrada" });
       }
+
+      // Avanzar etapa si cambió (o si la ruta no tenía etapa y ahora se asigna una)
+      if (requestedStageId && requestedStageId !== existingRoute.currentStageId) {
+        await storage.advanceRouteStage(req.params.id, requestedStageId, req.user!.userId, "Etapa cambiada al editar ruta");
+      }
+
       // Cascada: al cancelar ruta, cancelar también las paradas pendientes/en progreso
       if (data.status === "cancelada") {
         await storage.cancelRouteStops(req.params.id);
       }
-      res.json(route);
+      const freshRoute = await storage.getRoute(req.params.id);
+      res.json(freshRoute ?? route);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });

@@ -194,16 +194,25 @@ function getApiErrorMessage(error: unknown): string {
   }
 }
 
-const routeFormSchema = z.object({
+// Schema para CREAR ruta — etapa inicial requerida
+const routeCreateSchema = z.object({
   date: z.string().min(1, "La fecha es requerida"),
   supplierId: z.string().min(1, "Seleccione un abastecedor"),
   supervisorId: z.string().optional(),
   estimatedDuration: z.coerce.number().optional(),
   notes: z.string().optional(),
-  startingStageId: z.string().optional(),
+  startingStageId: z.string().min(1, "La etapa es requerida"),
 });
+type RouteCreateData = z.infer<typeof routeCreateSchema>;
 
-type RouteFormData = z.infer<typeof routeFormSchema>;
+// Schema para EDITAR ruta — stageId opcional en schema, requerida en runtime si la ruta no tiene una
+const routeEditSchema = z.object({
+  date: z.string().min(1, "La fecha es requerida"),
+  supplierId: z.string().min(1, "Seleccione un abastecedor"),
+  notes: z.string().optional(),
+  stageId: z.string().optional(),
+});
+type RouteEditData = z.infer<typeof routeEditSchema>;
 
 const stopFormSchema = z.object({
   machineId: z.string().min(1, "Seleccione una máquina"),
@@ -306,6 +315,7 @@ function RouteKanbanCard({
   canAdvanceStage,
   onViewDetail,
   onAdvance,
+  onEdit,
 }: {
   route: RouteData;
   stage: RouteStage | undefined;
@@ -313,6 +323,7 @@ function RouteKanbanCard({
   canAdvanceStage: boolean;
   onViewDetail: (route: RouteData) => void;
   onAdvance: (routeId: string, stageId: string) => void;
+  onEdit?: (route: RouteData) => void;
 }) {
   const { setNodeRef, attributes, listeners, transform, isDragging } = useDraggable({
     id: route.id,
@@ -346,9 +357,20 @@ function RouteKanbanCard({
       data-testid={`kanban-card-route-${route.id}`}
     >
       {!stage && (
-        <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 rounded px-2 py-1">
-          <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-          <span>Sin etapa — arrastra o usa la flecha</span>
+        <div className="flex items-center justify-between gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 rounded px-2 py-1">
+          <div className="flex items-center gap-1.5">
+            <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+            <span>Sin etapa asignada</span>
+          </div>
+          {onEdit && (
+            <button
+              onClick={() => onEdit(route)}
+              className="underline font-medium hover:text-amber-800 dark:hover:text-amber-300 focus:outline-none"
+              data-testid={`kanban-button-assign-stage-${route.id}`}
+            >
+              Asignar etapa
+            </button>
+          )}
         </div>
       )}
       <div className="flex items-start justify-between gap-2">
@@ -472,6 +494,7 @@ function RouteKanbanColumn({
   canAdvanceStage,
   onViewDetail,
   onAdvance,
+  onEdit,
 }: {
   id: string;
   title: string;
@@ -482,6 +505,7 @@ function RouteKanbanColumn({
   canAdvanceStage: boolean;
   onViewDetail: (route: RouteData) => void;
   onAdvance: (routeId: string, stageId: string) => void;
+  onEdit?: (route: RouteData) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const isNoStage = id === "no-stage";
@@ -528,6 +552,7 @@ function RouteKanbanColumn({
               canAdvanceStage={canAdvanceStage}
               onViewDetail={onViewDetail}
               onAdvance={onAdvance}
+              onEdit={onEdit}
             />
           ))
         )}
@@ -624,8 +649,8 @@ export default function RoutesPage() {
     },
   });
 
-  const routeForm = useForm<RouteFormData>({
-    resolver: zodResolver(routeFormSchema),
+  const routeCreateForm = useForm<RouteCreateData>({
+    resolver: zodResolver(routeCreateSchema),
     defaultValues: {
       date: getDateKeyInTimezone(getTodayInTimezone()),
       supplierId: "",
@@ -633,6 +658,16 @@ export default function RoutesPage() {
       estimatedDuration: 480,
       notes: "",
       startingStageId: "",
+    },
+  });
+
+  const routeEditForm = useForm<RouteEditData>({
+    resolver: zodResolver(routeEditSchema),
+    defaultValues: {
+      date: getDateKeyInTimezone(getTodayInTimezone()),
+      supplierId: "",
+      notes: "",
+      stageId: "",
     },
   });
 
@@ -793,9 +828,9 @@ export default function RoutesPage() {
 
   // Auto-seleccionar la etapa por defecto cuando se abre el dialog de Nueva Ruta
   useEffect(() => {
-    if (isNewRouteOpen && sortedStages.length > 0 && !routeForm.getValues("startingStageId")) {
+    if (isNewRouteOpen && sortedStages.length > 0 && !routeCreateForm.getValues("startingStageId")) {
       const defaultStage = sortedStages.find(s => s.isDefault) ?? sortedStages[0];
-      if (defaultStage) routeForm.setValue("startingStageId", defaultStage.id);
+      if (defaultStage) routeCreateForm.setValue("startingStageId", defaultStage.id);
     }
   }, [isNewRouteOpen, sortedStages]);
   const boardRoutes = useMemo(() => {
@@ -813,7 +848,7 @@ export default function RoutesPage() {
   };
 
   const createRouteMutation = useMutation({
-    mutationFn: async (data: RouteFormData & { stops: typeof pendingStops }) => {
+    mutationFn: async (data: RouteCreateData & { stops: typeof pendingStops }) => {
       const routeData = {
         date: new Date(data.date).toISOString(),
         supplierId: data.supplierId,
@@ -821,7 +856,7 @@ export default function RoutesPage() {
         estimatedDuration: data.estimatedDuration,
         notes: data.notes,
         status: "pendiente",
-        startingStageId: data.startingStageId || undefined,
+        startingStageId: data.startingStageId,
       };
       
       const response = await apiRequest("POST", "/api/supplier/routes", routeData);
@@ -843,7 +878,7 @@ export default function RoutesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/busy-machines"] });
       toast({ title: "Ruta creada", description: "La ruta se ha creado correctamente" });
       setIsNewRouteOpen(false);
-      routeForm.reset();
+      routeCreateForm.reset();
       setPendingStops([]);
     },
     onError: (error) => {
@@ -853,10 +888,12 @@ export default function RoutesPage() {
   });
 
   const updateRouteMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<RouteFormData> }) => {
-      return apiRequest("PATCH", `/api/supplier/routes/${id}`, {
-        ...data,
+    mutationFn: async ({ id, data }: { id: string; data: RouteEditData; prevStageId?: string | null }) => {
+      await apiRequest("PATCH", `/api/supplier/routes/${id}`, {
         date: data.date ? new Date(data.date).toISOString() : undefined,
+        supplierId: data.supplierId,
+        notes: data.notes,
+        stageId: data.stageId || undefined,
       });
     },
     onSuccess: () => {
@@ -1324,7 +1361,7 @@ export default function RoutesPage() {
     updatePermissionMutation.mutate({ action: perm.action, allowedRoles: next });
   };
 
-  const handleCreateRoute = (data: RouteFormData) => {
+  const handleCreateRoute = (data: RouteCreateData) => {
     if (pendingStops.length === 0) {
       toast({ 
         title: "Sin paradas", 
@@ -1333,33 +1370,16 @@ export default function RoutesPage() {
       });
       return;
     }
-    if (sortedStages.length === 0) {
-      toast({
-        title: "Sin etapas configuradas",
-        description: "Configure al menos una etapa de ruta en Configuración antes de crear rutas.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (!data.startingStageId) {
-      toast({
-        title: "Etapa requerida",
-        description: "Seleccione la etapa inicial de la ruta.",
-        variant: "destructive",
-      });
-      return;
-    }
     createRouteMutation.mutate({ ...data, stops: pendingStops });
   };
 
   const handleEditRoute = (route: RouteData) => {
     setSelectedRoute(route);
-    routeForm.reset({
+    routeEditForm.reset({
       date: getDateKeyInTimezone(route.date),
       supplierId: route.supplierId,
-      supervisorId: route.supervisorId || "",
-      estimatedDuration: route.estimatedDuration || 480,
       notes: route.notes || "",
+      stageId: route.currentStageId || "",
     });
     setIsEditRouteOpen(true);
   };
@@ -1664,6 +1684,7 @@ export default function RoutesPage() {
                     canAdvanceStage={canAdvanceStage}
                     onViewDetail={handleViewDetail}
                     onAdvance={handleBoardAdvance}
+                    onEdit={handleEditRoute}
                   />
                 )}
                 {sortedStages.map(stage => (
@@ -1678,6 +1699,7 @@ export default function RoutesPage() {
                     canAdvanceStage={canAdvanceStage}
                     onViewDetail={handleViewDetail}
                     onAdvance={handleBoardAdvance}
+                    onEdit={handleEditRoute}
                   />
                 ))}
               </div>
@@ -1996,11 +2018,11 @@ export default function RoutesPage() {
             </DialogDescription>
           </DialogHeader>
           
-          <Form {...routeForm}>
-            <form onSubmit={routeForm.handleSubmit(handleCreateRoute)} className="space-y-6">
+          <Form {...routeCreateForm}>
+            <form onSubmit={routeCreateForm.handleSubmit(handleCreateRoute)} className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <FormField
-                  control={routeForm.control}
+                  control={routeCreateForm.control}
                   name="date"
                   render={({ field }) => (
                     <FormItem>
@@ -2013,7 +2035,7 @@ export default function RoutesPage() {
                   )}
                 />
                 <FormField
-                  control={routeForm.control}
+                  control={routeCreateForm.control}
                   name="supplierId"
                   render={({ field }) => (
                     <FormItem>
@@ -2040,7 +2062,7 @@ export default function RoutesPage() {
               
               <div className="grid grid-cols-2 gap-4">
                 <FormField
-                  control={routeForm.control}
+                  control={routeCreateForm.control}
                   name="supervisorId"
                   render={({ field }) => (
                     <FormItem>
@@ -2065,7 +2087,7 @@ export default function RoutesPage() {
                   )}
                 />
                 <FormField
-                  control={routeForm.control}
+                  control={routeCreateForm.control}
                   name="estimatedDuration"
                   render={({ field }) => (
                     <FormItem>
@@ -2080,7 +2102,7 @@ export default function RoutesPage() {
               </div>
               
               <FormField
-                control={routeForm.control}
+                control={routeCreateForm.control}
                 name="notes"
                 render={({ field }) => (
                   <FormItem>
@@ -2094,7 +2116,7 @@ export default function RoutesPage() {
               />
 
               <FormField
-                control={routeForm.control}
+                control={routeCreateForm.control}
                 name="startingStageId"
                 render={({ field }) => (
                   <FormItem>
@@ -2204,7 +2226,7 @@ export default function RoutesPage() {
                 <Button type="button" variant="outline" onClick={() => {
                   setIsNewRouteOpen(false);
                   setPendingStops([]);
-                  routeForm.reset();
+                  routeCreateForm.reset();
                 }}>
                   Cancelar
                 </Button>
@@ -2230,15 +2252,23 @@ export default function RoutesPage() {
             </DialogDescription>
           </DialogHeader>
           
-          <Form {...routeForm}>
-            <form onSubmit={routeForm.handleSubmit((data) => {
-              if (selectedRoute) {
-                updateRouteMutation.mutate({ id: selectedRoute.id, data });
+          <Form {...routeEditForm}>
+            <form onSubmit={routeEditForm.handleSubmit((data) => {
+              if (!selectedRoute) return;
+              // Validación runtime: si la ruta no tiene etapa, stageId es obligatoria
+              if (!selectedRoute.currentStageId && !data.stageId) {
+                routeEditForm.setError("stageId", { message: "La etapa es requerida para esta ruta" });
+                return;
               }
+              updateRouteMutation.mutate({
+                id: selectedRoute.id,
+                data,
+                prevStageId: selectedRoute.currentStageId,
+              });
             })} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <FormField
-                  control={routeForm.control}
+                  control={routeEditForm.control}
                   name="date"
                   render={({ field }) => (
                     <FormItem>
@@ -2251,7 +2281,7 @@ export default function RoutesPage() {
                   )}
                 />
                 <FormField
-                  control={routeForm.control}
+                  control={routeEditForm.control}
                   name="supplierId"
                   render={({ field }) => (
                     <FormItem>
@@ -2275,9 +2305,52 @@ export default function RoutesPage() {
                   )}
                 />
               </div>
+
+              <FormField
+                control={routeEditForm.control}
+                name="stageId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Etapa{!selectedRoute?.currentStageId && <span className="text-destructive"> *</span>}
+                    </FormLabel>
+                    {sortedStages.length === 0 ? (
+                      <div className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400 p-3 bg-amber-50 dark:bg-amber-950/40 rounded-md border border-amber-200 dark:border-amber-800">
+                        <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span>No hay etapas configuradas. Ve a <strong>Configuración → Etapas de Ruta</strong>.</span>
+                      </div>
+                    ) : (
+                      <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-edit-route-stage">
+                            <SelectValue placeholder="Seleccionar etapa" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {sortedStages.map(stage => (
+                            <SelectItem key={stage.id} value={stage.id}>
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: stage.color ?? "#6B7280" }}
+                                />
+                                <span>{stage.name}</span>
+                                {stage.isDefault && (
+                                  <span className="text-xs text-muted-foreground">(por defecto)</span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               
               <FormField
-                control={routeForm.control}
+                control={routeEditForm.control}
                 name="notes"
                 render={({ field }) => (
                   <FormItem>
