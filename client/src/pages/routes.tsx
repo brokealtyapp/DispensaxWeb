@@ -205,12 +205,12 @@ const routeCreateSchema = z.object({
 });
 type RouteCreateData = z.infer<typeof routeCreateSchema>;
 
-// Schema para EDITAR ruta — stageId opcional en schema, requerida en runtime si la ruta no tiene una
+// Schema para EDITAR ruta — stageId requerida (se pre-rellena con etapa actual o vacío para rutas legacy)
 const routeEditSchema = z.object({
   date: z.string().min(1, "La fecha es requerida"),
   supplierId: z.string().min(1, "Seleccione un abastecedor"),
   notes: z.string().optional(),
-  stageId: z.string().optional(),
+  stageId: z.string().min(1, "La etapa es requerida"),
 });
 type RouteEditData = z.infer<typeof routeEditSchema>;
 
@@ -966,8 +966,11 @@ export default function RoutesPage() {
   });
 
   const cancelRouteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return apiRequest("PATCH", `/api/supplier/routes/${id}`, { status: "cancelada" });
+    mutationFn: async ({ id, stageId }: { id: string; stageId?: string | null }) => {
+      return apiRequest("PATCH", `/api/supplier/routes/${id}`, {
+        status: "cancelada",
+        stageId: stageId || undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
@@ -1208,9 +1211,12 @@ export default function RoutesPage() {
   });
 
   const bulkCancelMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      for (const id of ids) {
-        await apiRequest("PATCH", `/api/supplier/routes/${id}`, { status: "cancelada" });
+    mutationFn: async (routes: { id: string; stageId?: string | null }[]) => {
+      for (const r of routes) {
+        await apiRequest("PATCH", `/api/supplier/routes/${r.id}`, {
+          status: "cancelada",
+          stageId: r.stageId || undefined,
+        });
       }
     },
     onSuccess: () => {
@@ -1451,9 +1457,10 @@ export default function RoutesPage() {
     const s = paginatedRoutes.find(r => r.id === id)?.status;
     return s === "pendiente" || s === "cancelada" || s === "completada";
   });
-  const bulkCancellableIds = Array.from(selectedRouteIds).filter(id => {
-    const s = paginatedRoutes.find(r => r.id === id)?.status;
-    return s === "pendiente" || s === "en_progreso";
+  const bulkCancellableRoutes = Array.from(selectedRouteIds).flatMap(id => {
+    const route = paginatedRoutes.find(r => r.id === id);
+    if (!route || !["pendiente", "en_progreso"].includes(route.status)) return [];
+    return [{ id: route.id, stageId: route.currentStageId }];
   });
 
   return (
@@ -1750,7 +1757,7 @@ export default function RoutesPage() {
                     <div className="flex items-center gap-3 mb-3 p-3 rounded-md bg-muted border">
                       <span className="text-sm font-medium">{selectedRouteIds.size} ruta(s) seleccionada(s)</span>
                       <div className="flex gap-2 ml-auto">
-                        {bulkCancellableIds.length > 0 && (
+                        {bulkCancellableRoutes.length > 0 && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -1759,7 +1766,7 @@ export default function RoutesPage() {
                             data-testid="button-bulk-cancel"
                           >
                             <XCircle className="h-4 w-4" />
-                            Cancelar ({bulkCancellableIds.length})
+                            Cancelar ({bulkCancellableRoutes.length})
                           </Button>
                         )}
                         {bulkDeletableIds.length > 0 && canDeleteRoute && (
@@ -2255,11 +2262,6 @@ export default function RoutesPage() {
           <Form {...routeEditForm}>
             <form onSubmit={routeEditForm.handleSubmit((data) => {
               if (!selectedRoute) return;
-              // Validación runtime: si la ruta no tiene etapa, stageId es obligatoria
-              if (!selectedRoute.currentStageId && !data.stageId) {
-                routeEditForm.setError("stageId", { message: "La etapa es requerida para esta ruta" });
-                return;
-              }
               updateRouteMutation.mutate({
                 id: selectedRoute.id,
                 data,
@@ -2748,7 +2750,7 @@ export default function RoutesPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Volver</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => selectedRoute && cancelRouteMutation.mutate(selectedRoute.id)}
+              onClick={() => selectedRoute && cancelRouteMutation.mutate({ id: selectedRoute.id, stageId: selectedRoute.currentStageId })}
               className="bg-orange-500 text-white hover:bg-orange-600"
               data-testid="button-confirm-cancel-route"
             >
@@ -2782,7 +2784,7 @@ export default function RoutesPage() {
       <AlertDialog open={isBulkCancelOpen} onOpenChange={setIsBulkCancelOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Cancelar {bulkCancellableIds.length} ruta(s)?</AlertDialogTitle>
+            <AlertDialogTitle>¿Cancelar {bulkCancellableRoutes.length} ruta(s)?</AlertDialogTitle>
             <AlertDialogDescription>
               Las rutas seleccionadas serán marcadas como canceladas y sus paradas pendientes también se cancelarán.
             </AlertDialogDescription>
@@ -2790,7 +2792,7 @@ export default function RoutesPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Volver</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => bulkCancelMutation.mutate(bulkCancellableIds)}
+              onClick={() => bulkCancelMutation.mutate(bulkCancellableRoutes)}
               className="bg-orange-500 text-white hover:bg-orange-600"
               data-testid="button-confirm-bulk-cancel"
             >

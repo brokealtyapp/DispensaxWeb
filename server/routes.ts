@@ -2502,24 +2502,17 @@ export async function registerRoutes(
         ? req.body.startingStageId
         : null;
 
+      // Validar etapa ANTES de crear la ruta (sin crear-y-borrar)
+      const stages = await storage.getRouteStages(tenantId);
+      const requestedStage = requestedStageId ? stages.find(s => s.id === requestedStageId) : null;
+      if (!requestedStage) {
+        return res.status(400).json({ error: "La etapa de ruta es requerida" });
+      }
+
       const data = insertRouteSchema.omit({ tenantId: true }).extend({ date: z.coerce.date() }).parse(req.body);
       const route = await storage.createRoute({ ...data, tenantId });
 
-      // Asignar etapa inicial: la etapa es obligatoria cuando existen etapas configuradas
-      const stages = await storage.getRouteStages(tenantId);
-      const sortedStages = [...stages].sort((a, b) => a.sortOrder - b.sortOrder);
-
-      if (sortedStages.length > 0) {
-        // Hay etapas — startingStageId es obligatorio y debe pertenecer al tenant
-        const requestedStage = requestedStageId ? stages.find(s => s.id === requestedStageId) : null;
-        if (!requestedStage) {
-          // Eliminar la ruta recién creada y rechazar con 400
-          await storage.deleteRoute(route.id);
-          return res.status(400).json({ error: "La etapa de ruta es requerida" });
-        }
-        await storage.advanceRouteStage(route.id, requestedStage.id, req.user!.userId, "Ruta creada");
-      }
-      // Si no hay etapas configuradas, la ruta queda sin etapa (currentStageId null)
+      await storage.advanceRouteStage(route.id, requestedStage.id, req.user!.userId, "Ruta creada");
 
       // Retornar ruta actualizada (con currentStageId/slaStatus ya asignados)
       const freshRoute = await storage.getRoute(route.id);
@@ -2560,19 +2553,15 @@ export async function registerRoutes(
         return res.status(403).json({ error: "No se puede editar una ruta que está en una etapa terminal" });
       }
 
-      // Si la ruta no tiene etapa asignada, es obligatorio proveer stageId
-      if (!existingRoute.currentStageId && !requestedStageId) {
+      // stageId es siempre obligatorio en PATCH — verifica que pertenece al tenant
+      if (!requestedStageId) {
         return res.status(400).json({ error: "La etapa de ruta es requerida" });
       }
-
-      // Validar que la etapa pertenece al tenant (ownership check)
-      if (requestedStageId) {
-        const tenantId = req.user!.tenantId;
-        const stages = await storage.getRouteStages(tenantId);
-        const validStage = stages.find(s => s.id === requestedStageId);
-        if (!validStage) {
-          return res.status(400).json({ error: "La etapa seleccionada no es válida para este tenant" });
-        }
+      const patchTenantId = req.user!.tenantId;
+      const patchStages = await storage.getRouteStages(patchTenantId);
+      const validStage = patchStages.find(s => s.id === requestedStageId);
+      if (!validStage) {
+        return res.status(400).json({ error: "La etapa seleccionada no es válida para este tenant" });
       }
 
       const data = insertRouteSchema.extend({ date: z.coerce.date().optional() }).partial().parse(req.body);
