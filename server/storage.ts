@@ -319,6 +319,7 @@ export interface IStorage {
   getRouteStats(userId?: string, tenantId?: string): Promise<{ total: number, today: number, pending: number, active: number, completed: number }>;
   cancelRouteStops(routeId: string): Promise<void>;
   incrementRouteRecorridos(routeId: string): Promise<void>;
+  deactivateRouteAtomic(id: string, data: Partial<InsertRoute>): Promise<Route | undefined>;
   getRoute(id: string): Promise<Route & { currentStage?: RouteStage; stageLog?: unknown[]; elapsedMinutes?: number } | undefined>;
   getTodayRoute(userId: string): Promise<Route | undefined>;
   createRoute(route: InsertRoute): Promise<Route>;
@@ -2447,6 +2448,16 @@ export class DatabaseStorage implements IStorage {
     await db.execute(sql`UPDATE routes SET recorridos = recorridos + 1 WHERE id = ${routeId}`);
   }
 
+  async deactivateRouteAtomic(id: string, data: Partial<InsertRoute>): Promise<Route | undefined> {
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx.update(routes).set(data).where(eq(routes.id, id)).returning();
+      if (!updated) return undefined;
+      await tx.execute(sql`UPDATE routes SET recorridos = recorridos + 1 WHERE id = ${id}`);
+      const [final] = await tx.select().from(routes).where(eq(routes.id, id));
+      return final;
+    });
+  }
+
   async getRoute(id: string): Promise<any> {
     const [route] = await db.select().from(routes).where(eq(routes.id, id));
     if (!route) return undefined;
@@ -2581,7 +2592,7 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(routes.currentStageId, id),
         eq(routes.tenantId, tenantId),
-        sql`${routes.status} NOT IN ('completada', 'cancelada')`
+        eq(routes.status, "activa")
       ));
     if (Number(active?.count ?? 0) > 0) {
       throw new HttpError(409, "No se puede eliminar una etapa que tiene rutas activas en ella");
@@ -5446,7 +5457,7 @@ export class DatabaseStorage implements IStorage {
       totalFuelCost,
       totalPettyCash,
       machineCount: allMachines.length,
-      activeRoutes: allRoutes.filter(r => r.status === 'en_progreso' || r.status === 'pendiente').length,
+      activeRoutes: allRoutes.filter(r => r.status === 'activa').length,
       productCount: allProducts.length,
       lowStockAlerts: lowStockProducts.length,
       pendingOrders,

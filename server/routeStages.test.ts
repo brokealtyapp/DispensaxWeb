@@ -244,14 +244,14 @@ test("deleteRouteStage: lanza error 409 si hay rutas activas en la etapa", async
       sortOrder: 0,
     });
 
-    // Crear ruta en progreso asignada a esta etapa
+    // Crear ruta activa asignada a esta etapa
     const [route] = await db
       .insert(routes)
       .values({
         tenantId: tenant.id,
         date: new Date(),
         supplierId: user.id,
-        status: "en_progreso",
+        status: "activa",
         currentStageId: stage.id,
       })
       .returning();

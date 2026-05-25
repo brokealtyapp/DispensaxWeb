@@ -2564,8 +2564,18 @@ export async function registerRoutes(
         return res.status(400).json({ error: "La etapa seleccionada no es válida para este tenant" });
       }
 
-      const data = insertRouteSchema.extend({ date: z.coerce.date().optional() }).partial().parse(req.body);
-      const route = await storage.updateRoute(req.params.id, data);
+      const data = insertRouteSchema.extend({
+        date: z.coerce.date().optional(),
+        status: z.enum(["activa", "inactiva"]).optional(),
+      }).partial().parse(req.body);
+
+      // Transición activa→inactiva: actualización y recorridos++ en una sola transacción atómica
+      let route: Route | undefined;
+      if (data.status === "inactiva" && existingRoute.status === "activa") {
+        route = await storage.deactivateRouteAtomic(req.params.id, data);
+      } else {
+        route = await storage.updateRoute(req.params.id, data);
+      }
       if (!route) {
         return res.status(404).json({ error: "Ruta no encontrada" });
       }
@@ -2576,12 +2586,8 @@ export async function registerRoutes(
       }
 
       // Cascada: al desactivar ruta (inactiva), cancelar también las paradas pendientes/en progreso
-      // y si venía de activa → inactiva, incrementar recorridos atómicamente
       if (data.status === "inactiva") {
         await storage.cancelRouteStops(req.params.id);
-        if (existingRoute.status === "activa") {
-          await storage.incrementRouteRecorridos(req.params.id);
-        }
       }
       const freshRoute = await storage.getRoute(req.params.id);
       res.json(freshRoute ?? route);
@@ -2776,7 +2782,7 @@ export async function registerRoutes(
   app.get("/api/supplier/busy-machines", authenticateJWT, authorizeRoles("admin", "supervisor", "abastecedor"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
-      const conditions: SQL[] = [inArray(routesTable.status, ["pendiente", "en_progreso"])];
+      const conditions: SQL[] = [eq(routesTable.status, "activa")];
       if (tenantId) conditions.push(eq(routesTable.tenantId, tenantId));
 
       const busyMachines = await db
@@ -2817,7 +2823,7 @@ export async function registerRoutes(
         .where(and(
           eq(routeStops.machineId, data.machineId),
           eq(routesTable.tenantId, currentRoute.tenantId),
-          inArray(routesTable.status, ["pendiente", "en_progreso"]),
+          eq(routesTable.status, "activa"),
           ne(routeStops.routeId, req.params.routeId)
         ))
         .limit(1);
@@ -2950,8 +2956,8 @@ export async function registerRoutes(
       if (!route) {
         return res.status(404).json({ error: "Ruta no encontrada" });
       }
-      if (route.status === "en_progreso") {
-        return res.status(400).json({ error: "No se pueden eliminar rutas en progreso" });
+      if (route.status === "activa") {
+        return res.status(400).json({ error: "No se pueden eliminar rutas activas" });
       }
       const { notes } = req.body || {};
       console.log(`[Audit] Ruta eliminada: id=${req.params.id}, status=${route.status}, user=${req.user!.id}, tenant=${req.user!.tenantId}${notes ? `, motivo: ${notes}` : ""}`);
