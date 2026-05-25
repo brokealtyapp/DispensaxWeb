@@ -2631,6 +2631,10 @@ export async function registerRoutes(
       if (!canStart) {
         return res.status(403).json({ error: "No tienes permiso para iniciar rutas" });
       }
+      // Validar que esté inactiva antes de activar
+      if (existingRoute.status !== "inactiva") {
+        return res.status(400).json({ error: "Solo se puede iniciar una ruta que esté inactiva" });
+      }
       // Validar que tenga abastecedor
       if (!existingRoute.supplierId) {
         return res.status(400).json({ error: "La ruta no tiene un abastecedor asignado" });
@@ -2676,6 +2680,10 @@ export async function registerRoutes(
       const canComplete = await checkRouteActionPermission(tenantId, "terminar_ruta", req.user!.role);
       if (!canComplete) {
         return res.status(403).json({ error: "No tienes permiso para terminar rutas" });
+      }
+      // Validar que esté activa antes de completar
+      if (existingRoute.status !== "activa") {
+        return res.status(400).json({ error: "Solo se puede finalizar una ruta que esté activa" });
       }
       // Validar que fue iniciada
       if (!existingRoute.startTime) {

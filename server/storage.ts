@@ -2667,7 +2667,10 @@ export class DatabaseStorage implements IStorage {
 
       // Actualizar ruta con nueva etapa; resetear lastAlertedSlaStatus para trigger por transición
       const terminalSet = newStage.isTerminal
-        ? { status: "inactiva", recorridos: sql`${routes.recorridos} + 1` }
+        ? {
+            status: "inactiva" as const,
+            ...(route.status === "activa" ? { recorridos: sql`${routes.recorridos} + 1` } : {}),
+          }
         : {};
       const [updatedRow] = await tx.update(routes)
         .set({
