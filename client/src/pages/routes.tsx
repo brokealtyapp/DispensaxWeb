@@ -2122,52 +2122,16 @@ export default function RoutesPage() {
                 )}
               />
 
-              <FormField
-                control={routeCreateForm.control}
-                name="startingStageId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Etapa inicial <span className="text-destructive">*</span>
-                    </FormLabel>
-                    {sortedStages.length === 0 ? (
-                      <div className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400 p-3 bg-amber-50 dark:bg-amber-950/40 rounded-md border border-amber-200 dark:border-amber-800">
-                        <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                        <span>
-                          No hay etapas configuradas. Ve a{" "}
-                          <strong>Configuración → Etapas de Ruta</strong> para
-                          crear una antes de registrar rutas.
-                        </span>
-                      </div>
-                    ) : (
-                      <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-route-stage">
-                            <SelectValue placeholder="Seleccionar etapa inicial" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {sortedStages.map(stage => (
-                            <SelectItem key={stage.id} value={stage.id}>
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                  style={{ backgroundColor: stage.color ?? "#6B7280" }}
-                                />
-                                <span>{stage.name}</span>
-                                {stage.isDefault && (
-                                  <span className="text-xs text-muted-foreground">(por defecto)</span>
-                                )}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {sortedStages.length === 0 && (
+                <div className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400 p-3 bg-amber-50 dark:bg-amber-950/40 rounded-md border border-amber-200 dark:border-amber-800">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <span>
+                    No hay etapas configuradas. Ve a{" "}
+                    <strong>Configuración → Etapas de Ruta</strong> para
+                    crear una antes de registrar rutas.
+                  </span>
+                </div>
+              )}
 
               <Separator />
               
