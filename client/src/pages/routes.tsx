@@ -1016,7 +1016,10 @@ export default function RoutesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
-      toast({ title: "Ruta activada", description: "La ruta está ahora activa" });
+      // Forzar refetch del tablero aunque esté deshabilitado (para evitar el edge case de staleTime)
+      queryClient.resetQueries({ queryKey: ["/api/supplier/routes", boardQueryParams] });
+      setActiveTab("board");
+      toast({ title: "Ruta activada", description: "La ruta está ahora activa en el Tablero" });
     },
     onError: (error) => {
       const detail = getApiErrorMessage(error);

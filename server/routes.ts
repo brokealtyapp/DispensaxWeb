@@ -2649,7 +2649,11 @@ export async function registerRoutes(
       // Siempre colocar la ruta en la primera etapa configurada al activar
       const stages = await storage.getRouteStages(tenantId);
       const sortedStages = [...stages].sort((a, b) => a.sortOrder - b.sortOrder);
-      const firstStage = sortedStages.find(s => s.isDefault) ?? sortedStages.find(s => !s.isTerminal) ?? sortedStages[0];
+      // Excluir explícitamente las etapas terminales al buscar la primera etapa activa
+      const firstStage =
+        sortedStages.find(s => s.isDefault && !s.isTerminal) ??
+        sortedStages.find(s => !s.isTerminal) ??
+        sortedStages[0];
       if (firstStage && route) {
         await storage.advanceRouteStage(req.params.id, firstStage.id, req.user!.userId, "Ruta activada");
       }
