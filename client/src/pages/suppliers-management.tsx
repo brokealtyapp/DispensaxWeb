@@ -196,16 +196,12 @@ export function SuppliersManagementPage() {
       });
   }, [suppliers, routes, routeStopsMap, cashCollections, productLoads]);
 
-  const activeSuppliers = suppliersWithRoutes.filter(s => 
-    s.todayRoute?.status === "en_progreso"
+  const activeSuppliers = suppliersWithRoutes.filter(s =>
+    s.todayRoute?.status === "activa"
   );
 
-  const pendingSuppliers = suppliersWithRoutes.filter(s => 
-    s.todayRoute?.status === "pendiente"
-  );
-
-  const completedSuppliers = suppliersWithRoutes.filter(s => 
-    s.todayRoute?.status === "completada"
+  const inactiveWithRouteSuppliers = suppliersWithRoutes.filter(s =>
+    s.todayRoute?.status === "inactiva"
   );
 
   const noRouteSuppliers = suppliersWithRoutes.filter(s => !s.todayRoute);
@@ -223,9 +219,8 @@ export function SuppliersManagementPage() {
 
     if (statusFilter !== "todos") {
       filtered = filtered.filter(s => {
-        if (statusFilter === "en_progreso") return s.todayRoute?.status === "en_progreso";
-        if (statusFilter === "pendiente") return s.todayRoute?.status === "pendiente";
-        if (statusFilter === "completada") return s.todayRoute?.status === "completada";
+        if (statusFilter === "activa") return s.todayRoute?.status === "activa";
+        if (statusFilter === "inactiva") return s.todayRoute?.status === "inactiva";
         if (statusFilter === "sin_ruta") return !s.todayRoute;
         return true;
       });
@@ -238,13 +233,12 @@ export function SuppliersManagementPage() {
     return {
       totalSuppliers: suppliersWithRoutes.length,
       activeNow: activeSuppliers.length,
-      completedToday: completedSuppliers.length,
-      pendingToday: pendingSuppliers.length,
+      inactiveWithRoute: inactiveWithRouteSuppliers.length,
       totalCashCollected: suppliersWithRoutes.reduce((acc, s) => acc + (s.stats?.cashCollected || 0), 0),
       totalMachinesAttended: suppliersWithRoutes.reduce((acc, s) => acc + (s.stats?.machinesAttended || 0), 0),
       totalMachinesPlanned: suppliersWithRoutes.reduce((acc, s) => acc + (s.stats?.totalMachines || 0), 0),
     };
-  }, [suppliersWithRoutes, activeSuppliers, completedSuppliers, pendingSuppliers]);
+  }, [suppliersWithRoutes, activeSuppliers, inactiveWithRouteSuppliers]);
 
   const isLoading = loadingSuppliers || loadingRoutes;
   const isLoadingDetails = loadingStops || loadingCash || loadingLoads;
@@ -276,14 +270,11 @@ export function SuppliersManagementPage() {
       return <Badge variant="outline" className="bg-gray-100 dark:bg-gray-800">Sin ruta</Badge>;
     }
     const status = supplier.todayRoute.status;
-    if (status === "en_progreso") {
+    if (status === "activa") {
       return <Badge className="bg-green-500">En ruta</Badge>;
     }
-    if (status === "pendiente") {
-      return <Badge variant="outline" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Pendiente</Badge>;
-    }
-    if (status === "completada") {
-      return <Badge className="bg-blue-500">Completada</Badge>;
+    if (status === "inactiva") {
+      return <Badge variant="outline">Inactiva</Badge>;
     }
     return <Badge variant="outline">{status}</Badge>;
   };
@@ -439,9 +430,8 @@ export function SuppliersManagementPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="en_progreso">En ruta</SelectItem>
-                <SelectItem value="pendiente">Pendientes</SelectItem>
-                <SelectItem value="completada">Completados</SelectItem>
+                <SelectItem value="activa">En ruta</SelectItem>
+                <SelectItem value="inactiva">Inactiva</SelectItem>
                 <SelectItem value="sin_ruta">Sin ruta</SelectItem>
               </SelectContent>
             </Select>
@@ -522,14 +512,14 @@ export function SuppliersManagementPage() {
             </div>
           )}
 
-          {pendingSuppliers.length > 0 && (
+          {inactiveWithRouteSuppliers.length > 0 && (
             <div className="space-y-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
-                <Clock className="w-5 h-5 text-amber-500" />
-                Pendientes de iniciar ({pendingSuppliers.length})
+                <Clock className="w-5 h-5 text-muted-foreground" />
+                Rutas Inactivas ({inactiveWithRouteSuppliers.length})
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {pendingSuppliers.map((supplier) => (
+                {inactiveWithRouteSuppliers.map((supplier) => (
                   <Card key={supplier.id}>
                     <CardContent className="pt-4">
                       <div className="flex items-center gap-3">
@@ -744,8 +734,8 @@ export function SuppliersManagementPage() {
                   <p className="text-sm text-muted-foreground">Progreso General</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-amber-600">{totalStats.completedToday}</p>
-                  <p className="text-sm text-muted-foreground">Rutas Completadas</p>
+                  <p className="text-3xl font-bold text-amber-600">{totalStats.inactiveWithRoute}</p>
+                  <p className="text-sm text-muted-foreground">Rutas Inactivas</p>
                 </div>
               </div>
             </CardContent>
@@ -776,8 +766,8 @@ export function SuppliersManagementPage() {
                     size="sm"
                     onClick={() => {
                       const filteredData = filteredRoutesByPeriod
-                        .filter(r => r.status === "completada" || r.status === "en_progreso");
-                      
+                        .filter(r => r.status === "inactiva");
+
                       if (filteredData.length === 0) {
                         return;
                       }
@@ -804,7 +794,7 @@ export function SuppliersManagementPage() {
                       a.click();
                       URL.revokeObjectURL(url);
                     }}
-                    disabled={filteredRoutesByPeriod.filter(r => r.status === "completada" || r.status === "en_progreso").length === 0}
+                    disabled={filteredRoutesByPeriod.filter(r => r.status === "inactiva").length === 0}
                     data-testid="button-export-history"
                   >
                     <Download className="w-4 h-4 mr-2" />
@@ -827,7 +817,7 @@ export function SuppliersManagementPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredRoutesByPeriod
-                    .filter(r => r.status === "completada" || r.status === "en_progreso")
+                    .filter(r => r.status === "inactiva")
                     .slice(0, 20)
                     .map((route) => {
                       const supplier = suppliers.find(s => s.id === route.supplierId);
@@ -849,7 +839,7 @@ export function SuppliersManagementPage() {
                             {route.completedStops}/{route.totalStops}
                           </TableCell>
                           <TableCell>
-                            {route.actualDurationMinutes 
+                            {route.actualDurationMinutes
                               ? `${Math.floor(route.actualDurationMinutes / 60)}h ${route.actualDurationMinutes % 60}m`
                               : route.estimatedDurationMinutes
                                 ? `~${Math.floor(route.estimatedDurationMinutes / 60)}h`
@@ -857,9 +847,7 @@ export function SuppliersManagementPage() {
                             }
                           </TableCell>
                           <TableCell>
-                            <Badge variant={route.status === "completada" ? "default" : "outline"}>
-                              {route.status === "completada" ? "Completada" : "En progreso"}
-                            </Badge>
+                            <Badge variant="default">Inactiva</Badge>
                           </TableCell>
                         </TableRow>
                       );

@@ -702,8 +702,8 @@ export function SupervisorsPage() {
                               <span className="text-sm text-muted-foreground">
                                 {route.completedStops}/{route.totalStops} paradas
                               </span>
-                              <Badge variant={route.status === "completada" ? "default" : "secondary"}>
-                                {route.status}
+                              <Badge variant={route.status === "activa" ? "secondary" : "default"}>
+                                {route.status === "activa" ? "Activa" : "Inactiva"}
                               </Badge>
                             </div>
                           </div>

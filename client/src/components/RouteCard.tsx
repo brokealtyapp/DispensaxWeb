@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { MapPin, Clock, Navigation } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export type RouteStatus = "pendiente" | "en_progreso" | "completada";
+export type RouteStatus = "activa" | "inactiva";
 
 interface RouteCardProps {
   id: string;
@@ -18,15 +18,13 @@ interface RouteCardProps {
 }
 
 const statusLabels: Record<RouteStatus, string> = {
-  pendiente: "Pendiente",
-  en_progreso: "En Progreso",
-  completada: "Completada",
+  activa: "Activa",
+  inactiva: "Inactiva",
 };
 
 const statusColors: Record<RouteStatus, string> = {
-  pendiente: "bg-muted text-muted-foreground",
-  en_progreso: "bg-primary text-primary-foreground",
-  completada: "bg-emerald-500 text-white",
+  activa: "bg-green-500 text-white",
+  inactiva: "bg-muted text-muted-foreground",
 };
 
 export function RouteCard({
@@ -72,27 +70,25 @@ export function RouteCard({
                 </div>
               )}
             </div>
-            {status !== "completada" && (
-              <div className="flex items-center gap-2 pt-2">
-                {status === "pendiente" && (
-                  <Button
-                    size="sm"
-                    onClick={onStartService}
-                    data-testid={`button-start-route-${id}`}
-                  >
-                    Iniciar Servicio
-                  </Button>
-                )}
+            <div className="flex items-center gap-2 pt-2">
+              {status === "inactiva" && (
                 <Button
                   size="sm"
-                  variant="outline"
-                  onClick={onViewDetails}
-                  data-testid={`button-details-route-${id}`}
+                  onClick={onStartService}
+                  data-testid={`button-start-route-${id}`}
                 >
-                  Ver Detalles
+                  Iniciar Servicio
                 </Button>
-              </div>
-            )}
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onViewDetails}
+                data-testid={`button-details-route-${id}`}
+              >
+                Ver Detalles
+              </Button>
+            </div>
           </div>
         </div>
       </CardContent>

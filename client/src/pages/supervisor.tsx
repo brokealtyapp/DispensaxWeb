@@ -263,13 +263,13 @@ export function SupervisorPage() {
                     className="flex items-center gap-4 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
                   >
                     <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-                      route.status === "completada" ? "bg-green-100 dark:bg-green-900/30" :
-                      route.status === "en_progreso" ? "bg-blue-100 dark:bg-blue-900/30" :
+                      route.status === "inactiva" ? "bg-green-100 dark:bg-green-900/30" :
+                      route.status === "activa" ? "bg-blue-100 dark:bg-blue-900/30" :
                       "bg-gray-100 dark:bg-gray-800"
                     }`}>
-                      {route.status === "completada" ? (
+                      {route.status === "inactiva" ? (
                         <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
-                      ) : route.status === "en_progreso" ? (
+                      ) : route.status === "activa" ? (
                         <Truck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                       ) : (
                         <Clock className="h-5 w-5 text-gray-600 dark:text-gray-400" />
@@ -282,11 +282,11 @@ export function SupervisorPage() {
                       </p>
                     </div>
                     <Badge variant={
-                      route.status === "completada" ? "default" :
-                      route.status === "en_progreso" ? "secondary" : "outline"
+                      route.status === "inactiva" ? "default" :
+                      route.status === "activa" ? "secondary" : "outline"
                     }>
-                      {route.status === "completada" ? "Completada" :
-                       route.status === "en_progreso" ? "En progreso" : "Pendiente"}
+                      {route.status === "inactiva" ? "Inactiva" :
+                       route.status === "activa" ? "Activa" : "Sin estado"}
                     </Badge>
                   </div>
                 ))}

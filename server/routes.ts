@@ -7984,7 +7984,7 @@ export async function registerRoutes(
       const [routeStats, todayStops, serviceStats, todayRoutes] = await Promise.all([
         db.select({
           total: count(),
-          active: sql<number>`count(*) filter (where ${routesTable.status} in ('en_progreso', 'activa'))`,
+          active: sql<number>`count(*) filter (where ${routesTable.status} = 'activa')`,
         }).from(routesTable).where(routeConditions.length ? and(...routeConditions) : undefined),
         db.select({
           total: count(),
@@ -8020,7 +8020,7 @@ export async function registerRoutes(
           id: r.id,
           name: r.supplierId ? `Ruta de ${userNames.get(r.supplierId) || 'Desconocido'}` : `Ruta ${r.id.slice(-4)}`,
           date: r.date?.toISOString() || new Date().toISOString(),
-          status: r.status || 'pendiente',
+          status: r.status || 'inactiva',
           stopsCount: r.totalStops || 0,
         })),
       });
