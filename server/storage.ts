@@ -2543,16 +2543,17 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    const setData: Partial<typeof routes.$inferInsert> & { startTime?: Date } = {
+    const setData: Record<string, unknown> = {
       status: "inactiva",
       endTime,
       actualDuration,
+      recorridos: sql`${routes.recorridos} + 1`,
       ...(terminalSlaStatus ? { slaStatus: terminalSlaStatus } : {}),
     };
     if (!route.startTime) setData.startTime = effectiveStartTime;
     
     const [updated] = await db.update(routes)
-      .set(setData)
+      .set(setData as Parameters<ReturnType<typeof db.update>["set"]>[0])
       .where(eq(routes.id, id))
       .returning();
     return updated;
