@@ -2646,15 +2646,12 @@ export async function registerRoutes(
       }
       const route = await storage.startRoute(req.params.id);
 
-      // Si estaba en etapa terminal (reactivación tras ciclo completado), volver a la etapa inicial
+      // Siempre colocar la ruta en la primera etapa configurada al activar
       const stages = await storage.getRouteStages(tenantId);
       const sortedStages = [...stages].sort((a, b) => a.sortOrder - b.sortOrder);
-      const currentStage = route?.currentStageId ? stages.find(s => s.id === route.currentStageId) : null;
-      if (currentStage?.isTerminal) {
-        const firstStage = sortedStages.find(s => s.isDefault) ?? sortedStages.find(s => !s.isTerminal) ?? sortedStages[0];
-        if (firstStage && route) {
-          await storage.advanceRouteStage(req.params.id, firstStage.id, req.user!.userId, "Ruta reactivada");
-        }
+      const firstStage = sortedStages.find(s => s.isDefault) ?? sortedStages.find(s => !s.isTerminal) ?? sortedStages[0];
+      if (firstStage && route) {
+        await storage.advanceRouteStage(req.params.id, firstStage.id, req.user!.userId, "Ruta activada");
       }
       checkAndSendRouteAlerts(tenantId).catch(console.error);
 

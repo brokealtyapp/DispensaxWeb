@@ -267,9 +267,10 @@ test("HTTP POST /api/supplier/routes/:id/advance-stage: tenantB no puede avanzar
       .insert(routes)
       .values({
         tenantId: tA.id,
+        name: "Ruta Advance Test",
         date: new Date(),
         supplierId: userA.id,
-        status: "en_progreso",
+        status: "activa",
       })
       .returning();
 
@@ -307,9 +308,10 @@ test("HTTP POST advance-stage: bloquea avance si la etapa no pertenece al tenant
       .insert(routes)
       .values({
         tenantId: tA.id,
+        name: "Ruta Cross Test",
         date: new Date(),
         supplierId: userA.id,
-        status: "en_progreso",
+        status: "activa",
       })
       .returning();
 

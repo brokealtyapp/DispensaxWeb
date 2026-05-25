@@ -42,9 +42,10 @@ async function makeRoute(tenantId: string, supplierId: string) {
     .insert(routes)
     .values({
       tenantId,
+      name: "Ruta Test",
       date: new Date(),
       supplierId,
-      status: "en_progreso",
+      status: "activa",
     })
     .returning();
   return route;
@@ -249,6 +250,7 @@ test("deleteRouteStage: lanza error 409 si hay rutas activas en la etapa", async
       .insert(routes)
       .values({
         tenantId: tenant.id,
+        name: "Ruta Activa Test",
         date: new Date(),
         supplierId: user.id,
         status: "activa",

@@ -97,9 +97,10 @@ async function makeRoute(
     .insert(routes)
     .values({
       tenantId,
+      name: "Ruta Alerta Test",
       date: new Date(),
       supplierId,
-      status: "en_progreso",
+      status: "activa",
       currentStageId: stageId,
       currentStageEnteredAt: enteredAt,
       lastAlertedSlaStatus: lastAlertedSlaStatus ?? null,
@@ -377,9 +378,10 @@ test("checkAndSendRouteAlerts: no procesa rutas sin currentStageId o currentStag
       .insert(routes)
       .values({
         tenantId: tenant.id,
+        name: "Ruta Sin Etapa",
         date: new Date(),
         supplierId: admin.id,
-        status: "en_progreso",
+        status: "activa",
         currentStageId: null,
         currentStageEnteredAt: null,
       })

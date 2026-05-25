@@ -761,10 +761,6 @@ export const suppliersRelations = relations(suppliers, ({ many }) => ({
 // ==================== MÓDULO ABASTECEDOR ====================
 
 export const routeStatusEnum = pgEnum("route_status", [
-  "pendiente",
-  "en_progreso",
-  "completada",
-  "cancelada",
   "activa",
   "inactiva"
 ]);
@@ -772,7 +768,7 @@ export const routeStatusEnum = pgEnum("route_status", [
 export const routes = pgTable("routes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
-  name: varchar("name").notNull().default(""),
+  name: varchar("name").notNull(),
   date: timestamp("date").notNull(),
   supplierId: varchar("supplier_id").references(() => users.id).notNull(),
   supervisorId: varchar("supervisor_id").references(() => users.id),

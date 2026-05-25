@@ -124,7 +124,7 @@ export async function checkAndSendRouteAlerts(tenantId: string): Promise<void> {
     const activeRoutes: import("@shared/schema").Route[] = [];
     let page = 1;
     while (true) {
-      const batch = await storage.getRoutes(undefined, undefined, "en_progreso", tenantId, page, 100);
+      const batch = await storage.getRoutes(undefined, undefined, "activa", tenantId, page, 100);
       activeRoutes.push(
         ...(batch.data as import("@shared/schema").Route[]).filter(
           (r) => r.currentStageId && r.currentStageEnteredAt
