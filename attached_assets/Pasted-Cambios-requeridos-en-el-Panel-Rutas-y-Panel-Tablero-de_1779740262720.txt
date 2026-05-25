@@ -1,0 +1,59 @@
+Cambios requeridos en el Panel Rutas y Panel Tablero del módulo Gestión de Rutas
+
+1.⁠ ⁠Agregar nombre a la ruta
+
+•⁠  ⁠En el botón “Agregar Nueva Ruta” debe existir un campo obligatorio para agregar el nombre de la ruta.
+•⁠  ⁠Este nombre permitirá identificar cada ruta de forma más clara.
+
+2.⁠ ⁠Nuevas columnas en el Panel Rutas
+    Agregar las siguientes categorías/columnas:
+
+•⁠  ⁠Nombre:
+    Mostrar el nombre asignado a la ruta.
+•⁠  ⁠Recorridos:
+    Contabilizar cuántas veces la ruta ha sido realizada.
+
+3.⁠ ⁠Mostrar abastecedor en Panel Tablero
+
+•⁠  ⁠Actualmente el abastecedor se visualiza en el Panel Rutas, pero no en el Panel Tablero.
+•⁠  ⁠Es necesario que en el Panel Tablero también se muestre:
+    * Nombre de la ruta
+    * Abastecedor asignado
+
+4.⁠ ⁠Activar/Iniciar ruta desde el visor de Acciones
+
+•⁠  ⁠En el recuadro/modal que aparece al hacer clic en el botón/icono “Visor” dentro de la columna Acciones del Panel Rutas, debe agregarse la opción:
+    * “Activar Ruta” o “Iniciar Ruta”.
+•⁠  ⁠Al ejecutar esta acción:
+    * La ruta debe cambiar automáticamente a estado “Activa”.
+    * La ruta debe crearse automáticamente en la primera etapa del Panel Tablero.
+    * Debe comenzar el flujo operativo normal de la ruta.
+
+•⁠  ⁠Cuando una ruta sea finalizada en el Panel Tablero:
+    * Debe cambiar automáticamente a estado “Inactiva” en el Panel Rutas.
+
+5.⁠ ⁠Estados simplificados en Panel Rutas
+    En la categoría Estado solo deben existir 2 estados:
+
+•⁠  ⁠Activa
+•⁠  ⁠Inactiva
+
+Eliminar cualquier otro estado adicional.
+
+6.⁠ ⁠Modificación de categoría “Etapa/SLA”
+
+•⁠  ⁠Cambiar el nombre de la categoría:
+    * De: Etapa/SLA
+    * A: Etapa
+•⁠  ⁠Esta columna debe mostrar la etapa actual de la ruta utilizando las mismas etapas configuradas en el Panel Tablero.
+•⁠  ⁠Importante:
+    * Si la ruta está Activa → mostrar la etapa correspondiente.
+    * Si la ruta está Inactiva → no mostrar ninguna etapa.
+
+7.⁠ ⁠Lógica de contabilización de “Recorridos”
+    La categoría “Recorridos” debe aumentar automáticamente cuando ocurra lo siguiente:
+
+•⁠  ⁠La ruta pase de:
+    * Activa → Inactiva
+
+Cada ciclo completado contará como 1 recorrido realizado.
