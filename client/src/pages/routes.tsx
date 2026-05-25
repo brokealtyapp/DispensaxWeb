@@ -378,11 +378,14 @@ function RouteKanbanCard({
         </div>
       )}
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-1 text-sm font-medium">
-          <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-          <span>{formatDateShort(new Date(route.date))}</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{route.name || <span className="italic text-muted-foreground">Sin nombre</span>}</p>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+            <Calendar className="h-3 w-3" />
+            <span>{formatDateShort(new Date(route.date))}</span>
+          </div>
         </div>
-        <Badge className={`no-default-hover-elevate no-default-active-elevate text-xs ${statusColors[route.status] ?? ""}`}>
+        <Badge className={`no-default-hover-elevate no-default-active-elevate text-xs flex-shrink-0 ${statusColors[route.status] ?? ""}`}>
           {statusLabels[route.status] ?? route.status}
         </Badge>
       </div>
@@ -1863,22 +1866,9 @@ export default function RoutesPage() {
                             </TableCell>
                             {routeStages.length > 0 && (
                               <TableCell>
-                                <div className="flex flex-col gap-1">
-                                  {route.status === "activa" ? (
-                                    <>
-                                      {getStageBadge(route.currentStageId)}
-                                      {getSlaStatusBadge(route.slaStatus)}
-                                      {route.currentStageEnteredAt && (
-                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                          <Clock className="h-3 w-3" />
-                                          {computeSlaElapsed(route.currentStageEnteredAt)}
-                                        </span>
-                                      )}
-                                    </>
-                                  ) : (
-                                    <span className="text-muted-foreground text-xs">—</span>
-                                  )}
-                                </div>
+                                {route.status === "activa"
+                                  ? getStageBadge(route.currentStageId)
+                                  : <span className="text-muted-foreground text-xs">—</span>}
                               </TableCell>
                             )}
                             <TableCell>

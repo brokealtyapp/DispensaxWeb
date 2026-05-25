@@ -318,6 +318,7 @@ export interface IStorage {
   getRoutes(userId?: string, date?: Date, status?: string, tenantId?: string, page?: number, pageSize?: number, supplierIdFilter?: string, search?: string): Promise<{ data: Route[], total: number, page: number, pageSize: number }>;
   getRouteStats(userId?: string, tenantId?: string): Promise<{ total: number, today: number, pending: number, active: number, completed: number }>;
   cancelRouteStops(routeId: string): Promise<void>;
+  incrementRouteRecorridos(routeId: string): Promise<void>;
   getRoute(id: string): Promise<Route & { currentStage?: RouteStage; stageLog?: unknown[]; elapsedMinutes?: number } | undefined>;
   getTodayRoute(userId: string): Promise<Route | undefined>;
   createRoute(route: InsertRoute): Promise<Route>;
@@ -2440,6 +2441,10 @@ export class DatabaseStorage implements IStorage {
         eq(routeStops.routeId, routeId),
         sql`${routeStops.status} IN ('pendiente', 'en_progreso')`
       ));
+  }
+
+  async incrementRouteRecorridos(routeId: string): Promise<void> {
+    await db.execute(sql`UPDATE routes SET recorridos = recorridos + 1 WHERE id = ${routeId}`);
   }
 
   async getRoute(id: string): Promise<any> {

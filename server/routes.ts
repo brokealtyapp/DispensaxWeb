@@ -2576,8 +2576,12 @@ export async function registerRoutes(
       }
 
       // Cascada: al desactivar ruta (inactiva), cancelar también las paradas pendientes/en progreso
+      // y si venía de activa → inactiva, incrementar recorridos atómicamente
       if (data.status === "inactiva") {
         await storage.cancelRouteStops(req.params.id);
+        if (existingRoute.status === "activa") {
+          await storage.incrementRouteRecorridos(req.params.id);
+        }
       }
       const freshRoute = await storage.getRoute(req.params.id);
       res.json(freshRoute ?? route);

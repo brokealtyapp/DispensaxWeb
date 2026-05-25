@@ -764,7 +764,9 @@ export const routeStatusEnum = pgEnum("route_status", [
   "pendiente",
   "en_progreso",
   "completada",
-  "cancelada"
+  "cancelada",
+  "activa",
+  "inactiva"
 ]);
 
 export const routes = pgTable("routes", {
@@ -804,6 +806,8 @@ export const insertRouteSchema = createInsertSchema(routes).omit({
   currentStageEnteredAt: true,
   lastAlertSentAt: true,
   lastAlertedSlaStatus: true,
+}).extend({
+  name: z.string().min(1, "El nombre de la ruta es requerido"),
 });
 
 export type InsertRoute = z.infer<typeof insertRouteSchema>;
