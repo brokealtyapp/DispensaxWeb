@@ -59,10 +59,12 @@ import { DataPagination } from "@/components/DataPagination";
 
 interface RouteData {
   id: string;
+  name?: string;
   date: string;
   supplierId: string;
   supervisorId?: string;
   status: string;
+  recorridos?: number;
   totalStops: number;
   completedStops: number;
   estimatedDuration?: number;
@@ -196,6 +198,7 @@ function getApiErrorMessage(error: unknown): string {
 
 // Schema para CREAR ruta — etapa inicial requerida
 const routeCreateSchema = z.object({
+  name: z.string().min(1, "El nombre de la ruta es requerido"),
   date: z.string().min(1, "La fecha es requerida"),
   supplierId: z.string().min(1, "Seleccione un abastecedor"),
   supervisorId: z.string().optional(),
@@ -207,6 +210,7 @@ type RouteCreateData = z.infer<typeof routeCreateSchema>;
 
 // Schema para EDITAR ruta — stageId requerida (se pre-rellena con etapa actual o vacío para rutas legacy)
 const routeEditSchema = z.object({
+  name: z.string().min(1, "El nombre de la ruta es requerido"),
   date: z.string().min(1, "La fecha es requerida"),
   supplierId: z.string().min(1, "Seleccione un abastecedor"),
   notes: z.string().optional(),
@@ -341,12 +345,12 @@ function RouteKanbanCard({
   const advanceTarget = nextStage ?? (sortedStages.length > 0 && !stage ? sortedStages[0] : null);
 
   const statusColors: Record<string, string> = {
-    pendiente: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-    en_progreso: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+    activa: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+    inactiva: "bg-muted text-muted-foreground",
   };
   const statusLabels: Record<string, string> = {
-    pendiente: "Pendiente",
-    en_progreso: "En Progreso",
+    activa: "Activa",
+    inactiva: "Inactiva",
   };
 
   return (
@@ -652,6 +656,7 @@ export default function RoutesPage() {
   const routeCreateForm = useForm<RouteCreateData>({
     resolver: zodResolver(routeCreateSchema),
     defaultValues: {
+      name: "",
       date: getDateKeyInTimezone(getTodayInTimezone()),
       supplierId: "",
       supervisorId: "",
@@ -664,6 +669,7 @@ export default function RoutesPage() {
   const routeEditForm = useForm<RouteEditData>({
     resolver: zodResolver(routeEditSchema),
     defaultValues: {
+      name: "",
       date: getDateKeyInTimezone(getTodayInTimezone()),
       supplierId: "",
       notes: "",
@@ -685,12 +691,10 @@ export default function RoutesPage() {
     const filters: Record<string, string> = {};
 
     // Status: tab takes priority, then statusFilter dropdown
-    if (activeTab === "pending") {
-      filters.status = "pendiente";
-    } else if (activeTab === "active") {
-      filters.status = "en_progreso";
-    } else if (activeTab === "completed") {
-      filters.status = "completada";
+    if (activeTab === "active") {
+      filters.status = "activa";
+    } else if (activeTab === "inactive") {
+      filters.status = "inactiva";
     } else if (statusFilter !== "all") {
       filters.status = statusFilter;
     }
@@ -835,7 +839,7 @@ export default function RoutesPage() {
   }, [isNewRouteOpen, sortedStages]);
   const boardRoutes = useMemo(() => {
     const all = boardRoutesData?.data ?? [];
-    return all.filter(r => r.status === "pendiente" || r.status === "en_progreso");
+    return all.filter(r => r.status === "activa");
   }, [boardRoutesData]);
 
   const stats = {
@@ -850,12 +854,12 @@ export default function RoutesPage() {
   const createRouteMutation = useMutation({
     mutationFn: async (data: RouteCreateData & { stops: typeof pendingStops }) => {
       const routeData = {
+        name: data.name,
         date: new Date(data.date).toISOString(),
         supplierId: data.supplierId,
         supervisorId: data.supervisorId === "none" ? undefined : data.supervisorId || undefined,
         estimatedDuration: data.estimatedDuration,
         notes: data.notes,
-        status: "pendiente",
         startingStageId: data.startingStageId,
       };
       
@@ -890,6 +894,7 @@ export default function RoutesPage() {
   const updateRouteMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: RouteEditData; prevStageId?: string | null }) => {
       await apiRequest("PATCH", `/api/supplier/routes/${id}`, {
+        name: data.name,
         date: data.date ? new Date(data.date).toISOString() : undefined,
         supplierId: data.supplierId,
         notes: data.notes,
@@ -968,20 +973,20 @@ export default function RoutesPage() {
   const cancelRouteMutation = useMutation({
     mutationFn: async ({ id, stageId }: { id: string; stageId?: string | null }) => {
       return apiRequest("PATCH", `/api/supplier/routes/${id}`, {
-        status: "cancelada",
+        status: "inactiva",
         stageId: stageId || undefined,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/busy-machines"] });
-      toast({ title: "Ruta cancelada", description: "La ruta ha sido cancelada" });
+      toast({ title: "Ruta desactivada", description: "La ruta ha sido desactivada" });
       setIsCancelRouteOpen(false);
       setSelectedRoute(null);
     },
     onError: (error) => {
       const detail = getApiErrorMessage(error);
-      toast({ title: "Error al cancelar ruta", description: detail || "No se pudo cancelar la ruta", variant: "destructive" });
+      toast({ title: "Error al desactivar ruta", description: detail || "No se pudo desactivar la ruta", variant: "destructive" });
     },
   });
 
@@ -992,13 +997,13 @@ export default function RoutesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/busy-machines"] });
-      toast({ title: "Ruta completada", description: "La ruta ha sido marcada como completada" });
+      toast({ title: "Ruta finalizada", description: "La ruta ha sido marcada como inactiva y el recorrido contabilizado" });
       setIsCompleteRouteOpen(false);
       setSelectedRoute(null);
     },
     onError: (error) => {
       const detail = getApiErrorMessage(error);
-      toast({ title: "Error al completar ruta", description: detail || "No se pudo completar la ruta", variant: "destructive" });
+      toast({ title: "Error al finalizar ruta", description: detail || "No se pudo finalizar la ruta", variant: "destructive" });
     },
   });
 
@@ -1008,11 +1013,11 @@ export default function RoutesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
-      toast({ title: "Ruta iniciada", description: "La ruta ha sido puesta en progreso" });
+      toast({ title: "Ruta activada", description: "La ruta está ahora activa" });
     },
     onError: (error) => {
       const detail = getApiErrorMessage(error);
-      toast({ title: "Error al iniciar ruta", description: detail || "No se pudo iniciar la ruta", variant: "destructive" });
+      toast({ title: "Error al activar ruta", description: detail || "No se pudo activar la ruta", variant: "destructive" });
     },
   });
 
@@ -1214,7 +1219,7 @@ export default function RoutesPage() {
     mutationFn: async (routes: { id: string; stageId?: string | null }[]) => {
       for (const r of routes) {
         await apiRequest("PATCH", `/api/supplier/routes/${r.id}`, {
-          status: "cancelada",
+          status: "inactiva",
           stageId: r.stageId || undefined,
         });
       }
@@ -1222,13 +1227,13 @@ export default function RoutesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/routes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/supplier/busy-machines"] });
-      toast({ title: "Rutas canceladas", description: `${selectedRouteIds.size} ruta(s) cancelada(s)` });
+      toast({ title: "Rutas desactivadas", description: `${selectedRouteIds.size} ruta(s) desactivada(s)` });
       setSelectedRouteIds(new Set());
       setIsBulkCancelOpen(false);
     },
     onError: (error) => {
       const detail = getApiErrorMessage(error);
-      toast({ title: "Error al cancelar rutas", description: detail || "No se pudieron cancelar algunas rutas", variant: "destructive" });
+      toast({ title: "Error al desactivar rutas", description: detail || "No se pudieron desactivar algunas rutas", variant: "destructive" });
     },
   });
 
@@ -1255,14 +1260,10 @@ export default function RoutesPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "completada":
-        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">Completada</Badge>;
-      case "en_progreso":
-        return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">En Progreso</Badge>;
-      case "pendiente":
-        return <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">Pendiente</Badge>;
-      case "cancelada":
-        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">Cancelada</Badge>;
+      case "activa":
+        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">Activa</Badge>;
+      case "inactiva":
+        return <Badge className="bg-muted text-muted-foreground">Inactiva</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -1382,6 +1383,7 @@ export default function RoutesPage() {
   const handleEditRoute = (route: RouteData) => {
     setSelectedRoute(route);
     routeEditForm.reset({
+      name: route.name || "",
       date: getDateKeyInTimezone(route.date),
       supplierId: route.supplierId,
       notes: route.notes || "",
@@ -1455,11 +1457,11 @@ export default function RoutesPage() {
 
   const bulkDeletableIds = Array.from(selectedRouteIds).filter(id => {
     const s = paginatedRoutes.find(r => r.id === id)?.status;
-    return s === "pendiente" || s === "cancelada" || s === "completada";
+    return s === "inactiva";
   });
   const bulkCancellableRoutes = Array.from(selectedRouteIds).flatMap(id => {
     const route = paginatedRoutes.find(r => r.id === id);
-    if (!route || !["pendiente", "en_progreso"].includes(route.status)) return [];
+    if (!route || route.status !== "activa") return [];
     return [{ id: route.id, stageId: route.currentStageId }];
   });
 
@@ -1513,8 +1515,8 @@ export default function RoutesPage() {
         </Card>
         <Card data-testid="stat-pending-routes">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-500" />
+            <CardTitle className="text-sm font-medium">Inactivas</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.pending}</div>
@@ -1522,8 +1524,8 @@ export default function RoutesPage() {
         </Card>
         <Card data-testid="stat-active-routes">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">En Progreso</CardTitle>
-            <Play className="h-4 w-4 text-blue-500" />
+            <CardTitle className="text-sm font-medium">Activas</CardTitle>
+            <Play className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.active}</div>
@@ -1531,8 +1533,8 @@ export default function RoutesPage() {
         </Card>
         <Card data-testid="stat-completed-routes">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completadas</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-green-500" />
+            <CardTitle className="text-sm font-medium">Recorridos</CardTitle>
+            <CheckCircle2 className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.completed}</div>
@@ -1565,10 +1567,8 @@ export default function RoutesPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="pendiente">Pendiente</SelectItem>
-              <SelectItem value="en_progreso">En Progreso</SelectItem>
-              <SelectItem value="completada">Completada</SelectItem>
-              <SelectItem value="cancelada">Cancelada</SelectItem>
+              <SelectItem value="activa">Activa</SelectItem>
+              <SelectItem value="inactiva">Inactiva</SelectItem>
             </SelectContent>
           </Select>
           <Select value={supplierFilter} onValueChange={setSupplierFilter}>
@@ -1591,9 +1591,8 @@ export default function RoutesPage() {
         <TabsList>
           <TabsTrigger value="all" data-testid="tab-all">Todas</TabsTrigger>
           <TabsTrigger value="today" data-testid="tab-today">Hoy</TabsTrigger>
-          <TabsTrigger value="pending" data-testid="tab-pending">Pendientes</TabsTrigger>
           <TabsTrigger value="active" data-testid="tab-active">Activas</TabsTrigger>
-          <TabsTrigger value="completed" data-testid="tab-completed">Completadas</TabsTrigger>
+          <TabsTrigger value="inactive" data-testid="tab-inactive">Inactivas</TabsTrigger>
           <TabsTrigger value="board" className="gap-1.5" data-testid="tab-board">
             <LayoutGrid className="h-3.5 w-3.5" />
             Tablero
@@ -1724,9 +1723,8 @@ export default function RoutesPage() {
               <CardTitle>Rutas ({serverTotal})</CardTitle>
               <CardDescription>
                 {activeTab === "today" && "Rutas programadas para hoy"}
-                {activeTab === "pending" && "Rutas pendientes de iniciar"}
-                {activeTab === "active" && "Rutas actualmente en progreso"}
-                {activeTab === "completed" && "Rutas completadas"}
+                {activeTab === "active" && "Rutas actualmente activas"}
+                {activeTab === "inactive" && "Rutas inactivas"}
                 {activeTab === "all" && "Todas las rutas del sistema"}
               </CardDescription>
             </CardHeader>
@@ -1803,12 +1801,14 @@ export default function RoutesPage() {
                             data-testid="checkbox-select-all"
                           />
                         </TableHead>
+                        <TableHead>Nombre</TableHead>
                         <TableHead>Fecha</TableHead>
                         <TableHead>Abastecedor</TableHead>
                         <TableHead>Paradas</TableHead>
                         <TableHead>Progreso</TableHead>
                         <TableHead>Estado</TableHead>
-                        {routeStages.length > 0 && <TableHead>Etapa / SLA</TableHead>}
+                        <TableHead className="text-center">Recorridos</TableHead>
+                        {routeStages.length > 0 && <TableHead>Etapa</TableHead>}
                         <TableHead>Duración</TableHead>
                         <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
@@ -1829,6 +1829,9 @@ export default function RoutesPage() {
                                 aria-label={`Seleccionar ruta ${route.id}`}
                                 data-testid={`checkbox-route-${route.id}`}
                               />
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-medium text-sm">{route.name || <span className="text-muted-foreground italic">Sin nombre</span>}</span>
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
@@ -1855,16 +1858,25 @@ export default function RoutesPage() {
                               </div>
                             </TableCell>
                             <TableCell>{getStatusBadge(route.status)}</TableCell>
+                            <TableCell className="text-center">
+                              <span className="font-medium">{route.recorridos ?? 0}</span>
+                            </TableCell>
                             {routeStages.length > 0 && (
                               <TableCell>
                                 <div className="flex flex-col gap-1">
-                                  {getStageBadge(route.currentStageId)}
-                                  {getSlaStatusBadge(route.slaStatus)}
-                                  {route.currentStageEnteredAt && route.status === "en_progreso" && (
-                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                      <Clock className="h-3 w-3" />
-                                      {computeSlaElapsed(route.currentStageEnteredAt)}
-                                    </span>
+                                  {route.status === "activa" ? (
+                                    <>
+                                      {getStageBadge(route.currentStageId)}
+                                      {getSlaStatusBadge(route.slaStatus)}
+                                      {route.currentStageEnteredAt && (
+                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                          <Clock className="h-3 w-3" />
+                                          {computeSlaElapsed(route.currentStageEnteredAt)}
+                                        </span>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">—</span>
                                   )}
                                 </div>
                               </TableCell>
@@ -1902,7 +1914,7 @@ export default function RoutesPage() {
                                     <History className="h-4 w-4 text-muted-foreground" />
                                   </Button>
                                 )}
-                                {route.status === "pendiente" && (
+                                {route.status === "inactiva" && (
                                   <>
                                     {canStartRoute && (
                                       <Button
@@ -1911,9 +1923,9 @@ export default function RoutesPage() {
                                         onClick={() => startRouteMutation.mutate(route.id)}
                                         disabled={startRouteMutation.isPending}
                                         data-testid={`button-start-route-${route.id}`}
-                                        title="Iniciar ruta"
+                                        title="Activar ruta"
                                       >
-                                        <Play className="h-4 w-4 text-blue-500" />
+                                        <Play className="h-4 w-4 text-green-500" />
                                       </Button>
                                     )}
                                     {canEditRoute && (
@@ -1927,23 +1939,9 @@ export default function RoutesPage() {
                                         <Edit2 className="h-4 w-4" />
                                       </Button>
                                     )}
-                                    {canCancelRoute && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => {
-                                          setSelectedRoute(route);
-                                          setIsCancelRouteOpen(true);
-                                        }}
-                                        data-testid={`button-cancel-route-${route.id}`}
-                                        title="Cancelar ruta"
-                                      >
-                                        <XCircle className="h-4 w-4 text-orange-500" />
-                                      </Button>
-                                    )}
                                   </>
                                 )}
-                                {route.status === "en_progreso" && (
+                                {route.status === "activa" && (
                                   <>
                                     {canCompleteRoute && (
                                       <Button
@@ -1954,9 +1952,9 @@ export default function RoutesPage() {
                                           setIsCompleteRouteOpen(true);
                                         }}
                                         data-testid={`button-complete-route-${route.id}`}
-                                        title="Completar ruta"
+                                        title="Finalizar ruta"
                                       >
-                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                        <CheckCircle2 className="h-4 w-4 text-primary" />
                                       </Button>
                                     )}
                                     {canCancelRoute && (
@@ -1968,14 +1966,14 @@ export default function RoutesPage() {
                                           setIsCancelRouteOpen(true);
                                         }}
                                         data-testid={`button-cancel-active-route-${route.id}`}
-                                        title="Cancelar ruta"
+                                        title="Desactivar ruta"
                                       >
                                         <XCircle className="h-4 w-4 text-orange-500" />
                                       </Button>
                                     )}
                                   </>
                                 )}
-                                {route.status !== "en_progreso" && canDeleteRoute && (
+                                {route.status !== "activa" && canDeleteRoute && (
                                   <Button
                                     variant="ghost"
                                     size="icon"
@@ -2027,6 +2025,19 @@ export default function RoutesPage() {
           
           <Form {...routeCreateForm}>
             <form onSubmit={routeCreateForm.handleSubmit(handleCreateRoute)} className="space-y-6">
+              <FormField
+                control={routeCreateForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre de la ruta</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Ej: Ruta Norte – Lunes" data-testid="input-route-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={routeCreateForm.control}
@@ -2232,6 +2243,19 @@ export default function RoutesPage() {
                 prevStageId: selectedRoute.currentStageId,
               });
             })} className="space-y-4">
+              <FormField
+                control={routeEditForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre de la ruta</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Ej: Ruta Norte – Lunes" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={routeEditForm.control}
@@ -2347,7 +2371,7 @@ export default function RoutesPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Route className="h-5 w-5" />
-              Detalle de Ruta
+              {selectedRoute?.name || "Detalle de Ruta"}
             </DialogTitle>
             <DialogDescription>
               {selectedRoute && formatDate(new Date(selectedRoute.date))}
@@ -2356,6 +2380,20 @@ export default function RoutesPage() {
           
           {selectedRoute && (
             <div className="space-y-6">
+              {selectedRoute.status === "inactiva" && canStartRoute && (
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    className="gap-1"
+                    onClick={() => { startRouteMutation.mutate(selectedRoute.id); setIsRouteDetailOpen(false); }}
+                    disabled={startRouteMutation.isPending}
+                    data-testid="button-activate-route-viewer"
+                  >
+                    <Play className="h-4 w-4" />
+                    Activar Ruta
+                  </Button>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Abastecedor</p>
@@ -2402,7 +2440,7 @@ export default function RoutesPage() {
                           <History className="h-4 w-4" />
                           Historial
                         </Button>
-                        {canAdvanceStage && selectedRoute.status !== "completada" && selectedRoute.status !== "cancelada" && (
+                        {canAdvanceStage && selectedRoute.status !== "inactiva" && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -2479,7 +2517,7 @@ export default function RoutesPage() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="font-medium">Paradas ({routeStops.length})</h4>
-                  {selectedRoute.status === "pendiente" && (
+                  {selectedRoute.status === "inactiva" && (
                     <Button 
                       variant="outline" 
                       size="sm" 
@@ -2518,7 +2556,7 @@ export default function RoutesPage() {
                           data-testid={`stop-${stop.id}`}
                         >
                           <div className="flex items-center gap-3">
-                            {selectedRoute.status === "pendiente" && (
+                            {selectedRoute.status === "inactiva" && (
                               <div className="flex flex-col gap-0.5">
                                 <Button
                                   variant="ghost"
@@ -2563,7 +2601,7 @@ export default function RoutesPage() {
                           </div>
                           <div className="flex items-center gap-2">
                             {getStatusBadge(stop.status)}
-                            {selectedRoute.status === "pendiente" && (
+                            {selectedRoute.status === "inactiva" && (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -2706,9 +2744,9 @@ export default function RoutesPage() {
       <AlertDialog open={isCancelRouteOpen} onOpenChange={setIsCancelRouteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Cancelar ruta?</AlertDialogTitle>
+            <AlertDialogTitle>¿Desactivar ruta?</AlertDialogTitle>
             <AlertDialogDescription>
-              La ruta será marcada como cancelada y no podrá ser ejecutada.
+              La ruta será marcada como inactiva. Podrá activarse de nuevo cuando sea necesario.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2718,7 +2756,7 @@ export default function RoutesPage() {
               className="bg-orange-500 text-white hover:bg-orange-600"
               data-testid="button-confirm-cancel-route"
             >
-              {cancelRouteMutation.isPending ? "Cancelando..." : "Cancelar Ruta"}
+              {cancelRouteMutation.isPending ? "Desactivando..." : "Desactivar Ruta"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2727,19 +2765,19 @@ export default function RoutesPage() {
       <AlertDialog open={isCompleteRouteOpen} onOpenChange={setIsCompleteRouteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Completar ruta manualmente?</AlertDialogTitle>
+            <AlertDialogTitle>¿Finalizar ruta?</AlertDialogTitle>
             <AlertDialogDescription>
-              La ruta será marcada como completada. Use esta opción solo si la ruta fue ejecutada pero no se registró correctamente.
+              La ruta quedará marcada como inactiva y el recorrido será contabilizado. Use esta opción para cerrar el ciclo de la ruta.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Volver</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => selectedRoute && completeRouteMutation.mutate(selectedRoute.id)}
-              className="bg-green-500 text-white hover:bg-green-600"
+              className="bg-primary text-primary-foreground"
               data-testid="button-confirm-complete-route"
             >
-              {completeRouteMutation.isPending ? "Completando..." : "Completar Ruta"}
+              {completeRouteMutation.isPending ? "Finalizando..." : "Finalizar Ruta"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2748,9 +2786,9 @@ export default function RoutesPage() {
       <AlertDialog open={isBulkCancelOpen} onOpenChange={setIsBulkCancelOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Cancelar {bulkCancellableRoutes.length} ruta(s)?</AlertDialogTitle>
+            <AlertDialogTitle>¿Desactivar {bulkCancellableRoutes.length} ruta(s)?</AlertDialogTitle>
             <AlertDialogDescription>
-              Las rutas seleccionadas serán marcadas como canceladas y sus paradas pendientes también se cancelarán.
+              Las rutas seleccionadas serán marcadas como inactivas. Podrán activarse de nuevo cuando sea necesario.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2760,7 +2798,7 @@ export default function RoutesPage() {
               className="bg-orange-500 text-white hover:bg-orange-600"
               data-testid="button-confirm-bulk-cancel"
             >
-              {bulkCancelMutation.isPending ? "Cancelando..." : "Cancelar Rutas"}
+              {bulkCancelMutation.isPending ? "Desactivando..." : "Desactivar Rutas"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -2314,6 +2314,7 @@ export class DatabaseStorage implements IStorage {
       conditions.push(
         or(
           sql`lower(${routes.id}) like ${term}`,
+          sql`lower(${routes.name}) like ${term}`,
           sql`${routes.supplierId} in (select id from users where lower(name) like ${term} or lower(username) like ${term})`
         )!
       );
@@ -2415,20 +2416,20 @@ export class DatabaseStorage implements IStorage {
     const todayConditions = [...conditions, gte(routes.date, todayStart), lte(routes.date, todayEnd)];
     const todayWhere = and(...todayConditions);
 
-    const [totalRes, todayRes, pendingRes, activeRes, completedRes] = await Promise.all([
+    const [totalRes, todayRes, inactivaRes, activaRes, recorridosRes] = await Promise.all([
       db.select({ count: sql<number>`count(*)` }).from(routes).where(whereClause),
       db.select({ count: sql<number>`count(*)` }).from(routes).where(todayWhere),
-      db.select({ count: sql<number>`count(*)` }).from(routes).where(and(...conditions, eq(routes.status, "pendiente"))),
-      db.select({ count: sql<number>`count(*)` }).from(routes).where(and(...conditions, eq(routes.status, "en_progreso"))),
-      db.select({ count: sql<number>`count(*)` }).from(routes).where(and(...conditions, eq(routes.status, "completada"))),
+      db.select({ count: sql<number>`count(*)` }).from(routes).where(and(...conditions, eq(routes.status, "inactiva"))),
+      db.select({ count: sql<number>`count(*)` }).from(routes).where(and(...conditions, eq(routes.status, "activa"))),
+      db.select({ count: sql<number>`coalesce(sum(recorridos), 0)` }).from(routes).where(whereClause),
     ]);
 
     return {
       total: Number(totalRes[0]?.count ?? 0),
       today: Number(todayRes[0]?.count ?? 0),
-      pending: Number(pendingRes[0]?.count ?? 0),
-      active: Number(activeRes[0]?.count ?? 0),
-      completed: Number(completedRes[0]?.count ?? 0),
+      pending: Number(inactivaRes[0]?.count ?? 0),
+      active: Number(activaRes[0]?.count ?? 0),
+      completed: Number(recorridosRes[0]?.count ?? 0),
     };
   }
 
@@ -2501,7 +2502,7 @@ export class DatabaseStorage implements IStorage {
 
   async startRoute(id: string): Promise<Route | undefined> {
     const [updated] = await db.update(routes)
-      .set({ status: "en_progreso", startTime: new Date() })
+      .set({ status: "activa", startTime: new Date() })
       .where(eq(routes.id, id))
       .returning();
     return updated;
@@ -2527,7 +2528,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     const setData: Partial<typeof routes.$inferInsert> & { startTime?: Date } = {
-      status: "completada",
+      status: "inactiva",
       endTime,
       actualDuration,
       ...(terminalSlaStatus ? { slaStatus: terminalSlaStatus } : {}),
@@ -2649,6 +2650,9 @@ export class DatabaseStorage implements IStorage {
         .where(and(eq(routeStageLog.routeId, routeId), isNull(routeStageLog.exitedAt)));
 
       // Actualizar ruta con nueva etapa; resetear lastAlertedSlaStatus para trigger por transición
+      const terminalSet = newStage.isTerminal
+        ? { status: "inactiva", recorridos: sql`${routes.recorridos} + 1` }
+        : {};
       const [updatedRow] = await tx.update(routes)
         .set({
           currentStageId: newStageId,
@@ -2656,6 +2660,7 @@ export class DatabaseStorage implements IStorage {
           slaStatus,
           lastAlertedSlaStatus: null,
           lastAlertSentAt: null,
+          ...terminalSet,
         })
         .where(eq(routes.id, routeId))
         .returning();

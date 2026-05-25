@@ -2510,7 +2510,7 @@ export async function registerRoutes(
       }
 
       const data = insertRouteSchema.omit({ tenantId: true }).extend({ date: z.coerce.date() }).parse(req.body);
-      const route = await storage.createRoute({ ...data, tenantId });
+      const route = await storage.createRoute({ ...data, tenantId, status: "inactiva" });
 
       await storage.advanceRouteStage(route.id, requestedStage.id, req.user!.userId, "Ruta creada");
 
@@ -2575,8 +2575,8 @@ export async function registerRoutes(
         await storage.advanceRouteStage(req.params.id, requestedStageId, req.user!.userId, "Etapa cambiada al editar ruta");
       }
 
-      // Cascada: al cancelar ruta, cancelar también las paradas pendientes/en progreso
-      if (data.status === "cancelada") {
+      // Cascada: al desactivar ruta (inactiva), cancelar también las paradas pendientes/en progreso
+      if (data.status === "inactiva") {
         await storage.cancelRouteStops(req.params.id);
       }
       const freshRoute = await storage.getRoute(req.params.id);
@@ -2632,18 +2632,17 @@ export async function registerRoutes(
       }
       const route = await storage.startRoute(req.params.id);
 
-      // Avanzar a la siguiente etapa por sortOrder (la 2da etapa no-terminal)
+      // Si estaba en etapa terminal (reactivación tras ciclo completado), volver a la etapa inicial
       const stages = await storage.getRouteStages(tenantId);
       const sortedStages = [...stages].sort((a, b) => a.sortOrder - b.sortOrder);
-      const currentStageId = route?.currentStageId;
-      const currentIdx = currentStageId ? sortedStages.findIndex(s => s.id === currentStageId) : 0;
-      // Buscar la siguiente etapa no-terminal a partir de la posición actual
-      const nextStage = sortedStages.slice(currentIdx + 1).find(s => !s.isTerminal)
-        ?? sortedStages.find(s => !s.isDefault && !s.isTerminal);
-      if (nextStage && route) {
-        await storage.advanceRouteStage(req.params.id, nextStage.id, req.user!.userId, "Ruta iniciada");
-        checkAndSendRouteAlerts(tenantId).catch(console.error);
+      const currentStage = route?.currentStageId ? stages.find(s => s.id === route.currentStageId) : null;
+      if (currentStage?.isTerminal) {
+        const firstStage = sortedStages.find(s => s.isDefault) ?? sortedStages.find(s => !s.isTerminal) ?? sortedStages[0];
+        if (firstStage && route) {
+          await storage.advanceRouteStage(req.params.id, firstStage.id, req.user!.userId, "Ruta reactivada");
+        }
       }
+      checkAndSendRouteAlerts(tenantId).catch(console.error);
 
       // Retornar ruta actualizada con etapa y SLA actuales
       const freshRoute = await storage.getRoute(req.params.id);
