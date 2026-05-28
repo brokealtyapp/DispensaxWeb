@@ -456,8 +456,8 @@ export function DashboardPage() {
             </Card>
           </Link>
 
-          {/* Panel derecho: 4 KPIs en cuadrícula 2×2 */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Panel derecho: 4 KPIs en cuadrícula 2×2 (apilado en móvil) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
             {/* KPI: Máquinas Activas */}
             <Card>
