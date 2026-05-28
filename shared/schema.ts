@@ -3484,6 +3484,8 @@ export const supplierPayments = pgTable("supplier_payments", {
   paymentDate: timestamp("payment_date").notNull().defaultNow(),
   reference: text("reference"),
   notes: text("notes"),
+  cancelledAt: timestamp("cancelled_at"),
+  cancelledBy: varchar("cancelled_by").references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 });

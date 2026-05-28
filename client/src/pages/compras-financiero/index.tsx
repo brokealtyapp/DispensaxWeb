@@ -10,7 +10,7 @@ import {
   FileText, CreditCard, RefreshCw, AlertCircle, Plus, Search,
   Edit2, Trash2, Eye, Check, X, ChevronDown, Building2, Landmark,
   Calendar, DollarSign, Clock, CheckCircle2, XCircle, TrendingDown,
-  SplitSquareHorizontal,
+  SplitSquareHorizontal, Download,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -103,6 +103,7 @@ const INVOICE_STATUSES = [
 
 const invoiceFormSchema = z.object({
   supplierId: z.string().optional(),
+  orderId: z.string().optional(),
   invoiceNumber: z.string().min(1, "Número de factura requerido"),
   description: z.string().min(1, "Descripción requerida"),
   subtotal: z.coerce.number().min(0),
@@ -315,16 +316,42 @@ export default function ComprasFinancieroPage() {
     enabled: !!viewingInvoice?.id,
   });
 
+  const { data: ordenesCompra = [] } = useQuery<{ id: string; orderNumber: string; supplierId: string; total: string | null; status: string }[]>({
+    queryKey: ["/api/purchases/fin/ordenes"],
+    queryFn: () => apiRequest("GET", "/api/purchases/fin/ordenes").then(r => r.json()),
+  });
+
+  const [importingOrder, setImportingOrder] = useState(false);
+  const handleImportarOrden = async () => {
+    const ordId = invoiceForm.getValues("orderId");
+    if (!ordId || ordId === SENTINEL) return;
+    setImportingOrder(true);
+    try {
+      const res = await apiRequest("GET", `/api/purchases/fin/ordenes/${ordId}/items`);
+      const data = await res.json();
+      const { orden, items } = data as { orden: { supplierId: string; total: string; subtotal: string; taxAmount: string }; items: { description: string; quantity: string; unitPrice: string; subtotal: string }[] };
+      const desc = items.map(i => `${i.description} (x${i.quantity})`).join(", ");
+      invoiceForm.setValue("supplierId", orden.supplierId ?? SENTINEL);
+      invoiceForm.setValue("description", desc || invoiceForm.getValues("description"));
+      invoiceForm.setValue("subtotal", parseFloat(orden.subtotal ?? "0"));
+      invoiceForm.setValue("taxAmount", parseFloat(orden.taxAmount ?? "0"));
+      invoiceForm.setValue("totalAmount", parseFloat(orden.total ?? "0"));
+    } finally {
+      setImportingOrder(false);
+    }
+  };
+
   // ─── Invoice form ────────────────────────────────────────────────────────────
   const invoiceForm = useForm<InvoiceFormData>({
     resolver: zodResolver(invoiceFormSchema),
     defaultValues: {
-      supplierId: SENTINEL, invoiceNumber: "", description: "", subtotal: 0,
+      supplierId: SENTINEL, orderId: SENTINEL, invoiceNumber: "", description: "", subtotal: 0,
       discountAmount: 0, taxAmount: 0, withholdingAmount: 0, totalAmount: 0,
       currency: "DOP", ncfType: SENTINEL, ncfNumber: "", issueDate: today(),
       dueDate: "", status: "borrador", notes: "",
     },
   });
+  const watchedOrderId = invoiceForm.watch("orderId");
 
   const paymentForm = useForm<PaymentFormData>({
     resolver: zodResolver(paymentFormSchema),
@@ -594,7 +621,7 @@ export default function ComprasFinancieroPage() {
     setEditingInvoice(null);
     setInvoiceItems([]);
     invoiceForm.reset({
-      supplierId: SENTINEL, invoiceNumber: "", description: "", subtotal: 0,
+      supplierId: SENTINEL, orderId: SENTINEL, invoiceNumber: "", description: "", subtotal: 0,
       discountAmount: 0, taxAmount: 0, withholdingAmount: 0, totalAmount: 0,
       currency: "DOP", ncfType: SENTINEL, ncfNumber: "", issueDate: today(),
       dueDate: "", status: "borrador", notes: "",
@@ -606,6 +633,7 @@ export default function ComprasFinancieroPage() {
     setEditingInvoice(inv);
     invoiceForm.reset({
       supplierId: inv.supplierId ?? SENTINEL,
+      orderId: (inv as any).orderId ?? SENTINEL,
       invoiceNumber: inv.invoiceNumber,
       description: inv.description,
       subtotal: parseFloat(inv.subtotal),
@@ -1150,6 +1178,43 @@ export default function ComprasFinancieroPage() {
           </DialogHeader>
           <Form {...invoiceForm}>
             <form onSubmit={invoiceForm.handleSubmit(d => editingInvoice ? updateInvoiceMutation.mutate(d) : createInvoiceMutation.mutate(d))} className="space-y-4">
+              {/* Orden de Compra (vincular e importar) */}
+              {!editingInvoice && (
+                <div className="flex gap-2 items-end">
+                  <FormField control={invoiceForm.control} name="orderId" render={({ field }) => (
+                    <FormItem className="flex-1">
+                      <FormLabel>Orden de Compra (opcional)</FormLabel>
+                      <Select value={field.value ?? SENTINEL} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-order-invoice">
+                            <SelectValue placeholder="Vincular a OC aprobada" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value={SENTINEL}>Sin orden de compra</SelectItem>
+                          {ordenesCompra.map(o => (
+                            <SelectItem key={o.id} value={o.id}>
+                              {o.orderNumber} — {formatCurrency(parseFloat(o.total ?? "0"))}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!watchedOrderId || watchedOrderId === SENTINEL || importingOrder}
+                    onClick={handleImportarOrden}
+                    data-testid="button-import-po-items"
+                  >
+                    <Download className="w-4 h-4 mr-1" />
+                    {importingOrder ? "Importando…" : "Importar ítems"}
+                  </Button>
+                </div>
+              )}
+
               {/* Proveedor + Número */}
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={invoiceForm.control} name="supplierId" render={({ field }) => (

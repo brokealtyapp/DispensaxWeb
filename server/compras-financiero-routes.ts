@@ -14,6 +14,8 @@ import {
   bankAccounts as bankAccountsTable,
   bankTransactions as bankTransactionsTable,
   users,
+  purchaseOrders,
+  purchaseOrderItems,
 } from "@shared/schema";
 import { z } from "zod";
 import { avanzarProximaFecha, calcEstadoFijo, type Frecuencia } from "./egreso-helpers";
@@ -1127,11 +1129,19 @@ export function registerComprasFinancieroRoutes(app: Express) {
         const [pago] = await db.select().from(supplierPayments)
           .where(and(eq(supplierPayments.id, id), eq(supplierPayments.tenantId, tenantId)));
         if (!pago) return res.status(404).json({ error: "Pago no encontrado" });
-        if ((pago as any).status === "anulado") {
-          return res.status(400).json({ error: "El pago ya está anulado" });
+        if (pago.cancelledAt !== null) {
+          return res.status(409).json({ error: "El pago ya está anulado" });
         }
 
+        const { userId } = req as AuthenticatedRequest;
+        const now = new Date();
+
         await db.transaction(async (tx) => {
+          // Marcar el pago como anulado dentro de la misma transacción (idempotencia)
+          await tx.update(supplierPayments)
+            .set({ cancelledAt: now, cancelledBy: userId ?? null })
+            .where(eq(supplierPayments.id, id));
+
           if (pago.invoiceId) {
             const [inv] = await tx
               .select({ paidAmount: supplierInvoices.paidAmount })
@@ -1140,7 +1150,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
             if (inv) {
               const newPaid = Math.max(0, parseDecimal(inv.paidAmount) - parseDecimal(pago.amount));
               await tx.update(supplierInvoices)
-                .set({ paidAmount: String(newPaid), updatedAt: new Date() })
+                .set({ paidAmount: String(newPaid), updatedAt: now })
                 .where(eq(supplierInvoices.id, pago.invoiceId));
               await recalcInvoiceStatus(tx, pago.invoiceId, tenantId);
             }
@@ -1155,7 +1165,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
               if (inv) {
                 const newPaid = Math.max(0, parseDecimal(inv.paidAmount) - parseDecimal(alloc.allocatedAmount));
                 await tx.update(supplierInvoices)
-                  .set({ paidAmount: String(newPaid), updatedAt: new Date() })
+                  .set({ paidAmount: String(newPaid), updatedAt: now })
                   .where(eq(supplierInvoices.id, alloc.invoiceId));
                 await recalcInvoiceStatus(tx, alloc.invoiceId, tenantId);
               }
@@ -1169,7 +1179,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
             if (cuenta) {
               const saldoRevertido = parseDecimal(cuenta.balance) + parseDecimal(pago.amount);
               await tx.update(bankAccountsTable)
-                .set({ balance: String(saldoRevertido), updatedAt: new Date() })
+                .set({ balance: String(saldoRevertido), updatedAt: now })
                 .where(eq(bankAccountsTable.id, pago.bankAccountId));
             }
           }
@@ -1796,6 +1806,76 @@ export function registerComprasFinancieroRoutes(app: Express) {
       } catch (e) {
         console.error("DELETE /api/purchases/fin/notas-debito/:id:", e);
         res.status(500).json({ error: "Error al eliminar nota de débito" });
+      }
+    }
+  );
+
+  // ─── Órdenes de Compra (para vincular a facturas) ──────────────────────────
+
+  // GET /api/purchases/fin/ordenes — lista OC aprobadas/recibidas del tenant
+  app.get(
+    "/api/purchases/fin/ordenes",
+    authenticateJWT,
+    authorizeRoles(...ROLES_CF),
+    async (req: Request, res: Response) => {
+      try {
+        const { tenantId } = req as AuthenticatedRequest;
+        if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+
+        const ordenes = await db
+          .select({
+            id: purchaseOrders.id,
+            orderNumber: purchaseOrders.orderNumber,
+            supplierId: purchaseOrders.supplierId,
+            status: purchaseOrders.status,
+            issueDate: purchaseOrders.issueDate,
+            total: purchaseOrders.total,
+            notes: purchaseOrders.notes,
+          })
+          .from(purchaseOrders)
+          .where(
+            and(
+              eq(purchaseOrders.tenantId, tenantId),
+              inArray(purchaseOrders.status, ["aprobada", "recibida_parcial", "recibida"])
+            )
+          )
+          .orderBy(desc(purchaseOrders.issueDate));
+
+        res.json(ordenes);
+      } catch (e) {
+        console.error("GET /api/purchases/fin/ordenes:", e);
+        res.status(500).json({ error: "Error al obtener órdenes de compra" });
+      }
+    }
+  );
+
+  // GET /api/purchases/fin/ordenes/:id/items — ítems de una OC para importar a factura
+  app.get(
+    "/api/purchases/fin/ordenes/:id/items",
+    authenticateJWT,
+    authorizeRoles(...ROLES_CF),
+    async (req: Request, res: Response) => {
+      try {
+        const { tenantId } = req as AuthenticatedRequest;
+        if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+        const { id } = req.params;
+
+        const [orden] = await db
+          .select({ id: purchaseOrders.id, supplierId: purchaseOrders.supplierId, total: purchaseOrders.total, subtotal: purchaseOrders.subtotal, taxAmount: purchaseOrders.taxAmount })
+          .from(purchaseOrders)
+          .where(and(eq(purchaseOrders.id, id), eq(purchaseOrders.tenantId, tenantId)));
+
+        if (!orden) return res.status(404).json({ error: "Orden de compra no encontrada" });
+
+        const items = await db
+          .select()
+          .from(purchaseOrderItems)
+          .where(and(eq(purchaseOrderItems.orderId, id), eq(purchaseOrderItems.tenantId, tenantId)));
+
+        res.json({ orden, items });
+      } catch (e) {
+        console.error("GET /api/purchases/fin/ordenes/:id/items:", e);
+        res.status(500).json({ error: "Error al obtener ítems de la orden" });
       }
     }
   );
