@@ -222,9 +222,9 @@ CREATE TABLE nayax_config (
   tenant_id   TEXT NOT NULL UNIQUE,
   api_token   TEXT,
   is_enabled  BOOLEAN DEFAULT false,
-  auto_sync_sales    BOOLEAN DEFAULT false,
-  auto_sync_machines BOOLEAN DEFAULT false,
-  sync_interval_minutes INTEGER DEFAULT 60,
+  auto_sync_sales    BOOLEAN DEFAULT true,
+  auto_sync_machines BOOLEAN DEFAULT true,
+  sync_interval_minutes INTEGER DEFAULT 30,
   last_sync_at TIMESTAMP
 );
 ```
@@ -277,6 +277,7 @@ nayax_linked_at    TIMESTAMP,  -- Fecha de vinculación
 
 | Método | Ruta | Roles | Descripción |
 |--------|------|-------|-------------|
+| `GET` | `/api/nayax/sync-status` | todos | Estado de sincronización del tenant (configurado, última sync, transacciones semana, semáforo ok/warning/error) |
 | `GET` | `/api/nayax/config` | admin | Obtiene configuración Nayax del tenant |
 | `POST` | `/api/nayax/config` | admin | Guarda/actualiza configuración |
 | `POST` | `/api/nayax/test-connection` | admin | Prueba la conexión con Lynx |
@@ -285,7 +286,7 @@ nayax_linked_at    TIMESTAMP,  -- Fecha de vinculación
 | `POST` | `/api/nayax/link-machine` | admin | Vincula máquina Dispensax ↔ Nayax |
 | `POST` | `/api/nayax/unlink-machine` | admin | Desvincula máquina |
 | `GET` | `/api/nayax/linked-machines` | admin, supervisor | Lista máquinas vinculadas |
-| `POST` | `/api/nayax/sync-sales` | admin, supervisor | Ejecuta sincronización manual de ventas |
+| `POST` | `/api/nayax/sync-sales` | admin, supervisor | Ejecuta sincronización manual de ventas y actualiza `last_sync_at` si no hubo errores |
 
 ---
 
@@ -348,10 +349,12 @@ nayax_linked_at    TIMESTAMP,  -- Fecha de vinculación
 
 **Qué falta:**
 - Un job periódico (cron o setInterval) que llame a `syncNayaxSalesForTenant` para todos los tenants que tengan `autoSyncSales = true`
-- Actualizar `lastSyncAt` en `nayax_config` tras cada sync
 - Manejar errores por tenant sin afectar a otros
 
-**Impacto:** Sin esto, el sync es 100% manual.
+**Ya implementado:**
+- `POST /api/nayax/sync-sales` actualiza `last_sync_at` en `nayax_config` al finalizar un sync exitoso (sin errores por máquina). Si el sync falla, `last_sync_at` no se actualiza, lo que permite al widget del dashboard mostrar el estado real.
+
+**Impacto:** Sin el scheduler, el sync sigue siendo 100% manual.
 
 #### 7.2 Sincronización con rango de fechas
 **Estado:** Actualmente se usa el endpoint `/lastSales` de Nayax, que devuelve solo las últimas N transacciones sin filtro de fecha.
