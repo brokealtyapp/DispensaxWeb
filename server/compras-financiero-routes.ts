@@ -269,28 +269,31 @@ export function registerComprasFinancieroRoutes(app: Express) {
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-        const rows = await db
-          .select({
-            status: supplierInvoices.status,
-            totalAmount: supplierInvoices.totalAmount,
-            paidAmount: supplierInvoices.paidAmount,
-            updatedAt: supplierInvoices.updatedAt,
-          })
-          .from(supplierInvoices)
-          .where(and(
-            eq(supplierInvoices.tenantId, tenantId),
-            sql`${supplierInvoices.status} != 'anulada'`
-          ));
+        const [rows, paymentsThisMonth] = await Promise.all([
+          db
+            .select({
+              status: supplierInvoices.status,
+              totalAmount: supplierInvoices.totalAmount,
+              paidAmount: supplierInvoices.paidAmount,
+            })
+            .from(supplierInvoices)
+            .where(and(
+              eq(supplierInvoices.tenantId, tenantId),
+              sql`${supplierInvoices.status} != 'anulada'`
+            )),
+          // Pagado este mes: suma de pagos a proveedores con paymentDate en el mes actual y no cancelados
+          db
+            .select({ amount: supplierPayments.amount })
+            .from(supplierPayments)
+            .where(and(
+              eq(supplierPayments.tenantId, tenantId),
+              gte(supplierPayments.paymentDate, startOfMonth),
+              lte(supplierPayments.paymentDate, endOfMonth),
+              sql`${supplierPayments.cancelledAt} IS NULL`
+            )),
+        ]);
 
-        // pagadoEsteMes: facturas cuyo paidAmount > 0 y fueron actualizadas este mes
-        // (proxy: updatedAt en el mes actual y status pagada/parcial)
-        const pagadoEsteMes = rows
-          .filter(r => {
-            if (!r.updatedAt) return false;
-            const upd = new Date(r.updatedAt);
-            return upd >= startOfMonth && upd <= endOfMonth && parseDecimal(r.paidAmount) > 0;
-          })
-          .reduce((s, r) => s + parseDecimal(r.paidAmount), 0);
+        const pagadoEsteMes = paymentsThisMonth.reduce((s, p) => s + parseDecimal(p.amount), 0);
 
         const stats = {
           totalFacturas: rows.length,
