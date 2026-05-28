@@ -2618,19 +2618,19 @@ export function WorkOrdersPage() {
     queryKey: ["/api/machines"],
   });
 
-  const { data: routesData } = useQuery<{ routes: RouteBasic[] }>({
+  const { data: routesData } = useQuery<{ data: RouteBasic[] }>({
     queryKey: ["/api/supplier/routes"],
     queryFn: async () => {
       const token = await getAccessToken();
       const res = await fetch("/api/supplier/routes?pageSize=100", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!res.ok) return { routes: [] };
+      if (!res.ok) return { data: [] };
       return res.json();
     },
     staleTime: 30000,
   });
-  const availableRoutes = routesData?.routes ?? [];
+  const availableRoutes = routesData?.data ?? [];
 
   const { data: users = [] } = useQuery<UserInfo[]>({
     queryKey: ["/api/users"],

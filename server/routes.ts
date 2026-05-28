@@ -2691,53 +2691,57 @@ export async function registerRoutes(
           const slaDeadline = calculateSlaDeadline("medio", slaConf || undefined);
 
           for (const stop of stops) {
-            const machine = await storage.getMachine(stop.machineId);
-            const machineName = machine
-              ? (machine.code ? `${machine.code} - ${machine.name}` : machine.name)
-              : stop.machineId;
-            const description = `Orden generada automáticamente al activar la ruta "${existingRoute.name}" — ${machineName}`;
+            try {
+              const machine = await storage.getMachine(stop.machineId);
+              const machineName = machine
+                ? (machine.code ? `${machine.code} - ${machine.name}` : machine.name)
+                : stop.machineId;
+              const description = `Orden generada automáticamente al activar la ruta "${existingRoute.name}" — ${machineName}`;
 
-            for (let attempt = 0; attempt < 5; attempt++) {
-              const orderNumber = await storage.generateOrderNumber(tenantId, attempt);
-              const parsed = insertWorkOrderSchema.parse({
-                tenantId,
-                orderNumber,
-                machineId: stop.machineId,
-                type: effectiveTypeKey,
-                priority: "medio",
-                status: "pendiente",
-                assignedUserId: existingRoute.supplierId,
-                description,
-                routeId: existingRoute.id,
-                slaDeadline,
-                slaStatus: "dentro_tiempo",
-              });
-              try {
-                const order = await storage.createWorkOrder(parsed);
-                const defaultItems = await getChecklistItemsForTenant(tenantId, order.type);
-                if (defaultItems.length > 0) {
-                  await storage.createChecklistItems(
-                    defaultItems.map((item, idx) => ({
-                      workOrderId: order.id,
-                      tenantId,
-                      label: item.label,
-                      sortOrder: idx,
-                      isCompleted: false,
-                      requiresPhoto: item.requiresPhoto,
-                      itemType: item.itemType,
-                      options: item.options,
-                    }))
-                  );
+              for (let attempt = 0; attempt < 5; attempt++) {
+                const orderNumber = await storage.generateOrderNumber(tenantId, attempt);
+                const parsed = insertWorkOrderSchema.parse({
+                  tenantId,
+                  orderNumber,
+                  machineId: stop.machineId,
+                  type: effectiveTypeKey,
+                  priority: "medio",
+                  status: "pendiente",
+                  assignedUserId: existingRoute.supplierId,
+                  description,
+                  routeId: existingRoute.id,
+                  slaDeadline,
+                  slaStatus: "dentro_tiempo",
+                });
+                try {
+                  const order = await storage.createWorkOrder(parsed);
+                  const defaultItems = await getChecklistItemsForTenant(tenantId, order.type);
+                  if (defaultItems.length > 0) {
+                    await storage.createChecklistItems(
+                      defaultItems.map((item, idx) => ({
+                        workOrderId: order.id,
+                        tenantId,
+                        label: item.label,
+                        sortOrder: idx,
+                        isCompleted: false,
+                        requiresPhoto: item.requiresPhoto,
+                        itemType: item.itemType,
+                        options: item.options,
+                      }))
+                    );
+                  }
+                  break;
+                } catch (err) {
+                  if (isUniqueViolation(err) && attempt < 4) continue;
+                  throw err;
                 }
-                break;
-              } catch (err) {
-                if (isUniqueViolation(err) && attempt < 4) continue;
-                throw err;
               }
+            } catch (stopErr) {
+              console.error(`[route-start] Error al crear orden para parada ${stop.machineId}:`, stopErr instanceof Error ? stopErr.message : stopErr);
             }
           }
         } catch (autoCreateErr) {
-          console.error("[route-start] Error al crear órdenes automáticas:", autoCreateErr instanceof Error ? autoCreateErr.message : autoCreateErr);
+          console.error("[route-start] Error en auto-creación de órdenes:", autoCreateErr instanceof Error ? autoCreateErr.message : autoCreateErr);
         }
       })();
 
