@@ -242,6 +242,7 @@ export function DashboardPage() {
 
   interface EstablishmentStats {
     total: number;
+    converted: number;
     activeWithContract: number;
     inPipeline: number;
     newThisWeek: number;
