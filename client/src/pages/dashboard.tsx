@@ -413,19 +413,20 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {/* Fila superior: Highlight Card + 4 KPIs */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
-          {/* Highlight Card — ocupa 2 columnas en desktop */}
-          <Link href={highlightInfo.href} className="lg:col-span-2">
+        {/* Fila superior: Highlight Card (izquierda) + 4 KPIs 2×2 (derecha) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+
+          {/* Highlight Card — lado izquierdo, altura total del bloque */}
+          <Link href={highlightInfo.href} className="flex">
             <Card
-              className={`h-full cursor-pointer hover-elevate ${
+              className={`w-full cursor-pointer hover-elevate ${
                 highlightInfo.type === 'urgent'
                   ? 'bg-destructive text-destructive-foreground border-destructive'
                   : 'bg-primary text-primary-foreground border-primary'
               }`}
               data-testid="card-highlight"
             >
-              <CardContent className="p-6 flex flex-col justify-between h-full gap-6">
+              <CardContent className="p-6 flex flex-col justify-between h-full gap-6 min-h-[180px]">
                 <div className="flex items-start gap-4">
                   <div className="h-12 w-12 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
                     {highlightInfo.type === 'urgent' ? (
@@ -455,111 +456,116 @@ export function DashboardPage() {
             </Card>
           </Link>
 
-          {/* KPI: Máquinas Activas */}
-          <Card>
-            <CardContent className="p-4 h-full flex flex-col justify-between">
-              <div className="flex items-start justify-between">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Máquinas Activas</p>
-                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <Box className="h-4 w-4 text-primary" />
-                </div>
-              </div>
-              <div>
-                <p className="text-3xl font-bold mt-2" data-testid="stat-active-machines">
-                  {machinesSummary?.statusCounts?.operando ?? machines.filter((m: any) => m.status === "operando").length}
-                </p>
-                <div className="flex items-center gap-1 mt-1">
-                  {machinesDelta >= 0 ? (
-                    <ArrowUpRight className="h-3 w-3 text-primary" />
-                  ) : (
-                    <ArrowDownRight className="h-3 w-3 text-destructive" />
-                  )}
-                  <p className={`text-xs ${machinesDelta >= 0 ? 'text-primary' : 'text-destructive'}`}>
-                    {machinesDelta >= 0 ? '100% operatividad' : `${Math.abs(machinesDelta)}% fuera de serv.`}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Panel derecho: 4 KPIs en cuadrícula 2×2 */}
+          <div className="grid grid-cols-2 gap-4">
 
-          {/* KPI: Ventas Hoy */}
-          <Card>
-            <CardContent className="p-4 h-full flex flex-col justify-between">
-              <div className="flex items-start justify-between">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Ventas Hoy</p>
-                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <DollarSign className="h-4 w-4 text-primary" />
+            {/* KPI: Máquinas Activas */}
+            <Card>
+              <CardContent className="p-4 h-full flex flex-col justify-between">
+                <div className="flex items-start justify-between">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Máquinas Activas</p>
+                  <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <Box className="h-4 w-4 text-primary" />
+                  </div>
                 </div>
-              </div>
-              <div>
-                <p className="text-3xl font-bold mt-2" data-testid="stat-sales-today">
-                  {formatCurrency(accountingSummary?.salesToday || 0)}
-                </p>
-                <div className="flex items-center gap-1 mt-1">
-                  {salesTodayDelta >= 0 ? (
-                    <ArrowUpRight className="h-3 w-3 text-primary" />
-                  ) : (
-                    <ArrowDownRight className="h-3 w-3 text-destructive" />
-                  )}
-                  <p className={`text-xs ${salesTodayDelta >= 0 ? 'text-primary' : 'text-destructive'}`}>
-                    {Math.abs(salesTodayDelta)}% vs prom. sem.
+                <div>
+                  <p className="text-3xl font-bold mt-2" data-testid="stat-active-machines">
+                    {machinesSummary?.statusCounts?.operando ?? machines.filter((m: any) => m.status === "operando").length}
                   </p>
+                  <div className="flex items-center gap-1 mt-1">
+                    {machinesDelta >= 0 ? (
+                      <ArrowUpRight className="h-3 w-3 text-primary" />
+                    ) : (
+                      <ArrowDownRight className="h-3 w-3 text-destructive" />
+                    )}
+                    <p className={`text-xs ${machinesDelta >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                      {machinesDelta >= 0 ? '100% operatividad' : `${Math.abs(machinesDelta)}% fuera de serv.`}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          {/* KPI: Alertas Activas */}
-          <Card>
-            <CardContent className="p-4 h-full flex flex-col justify-between">
-              <div className="flex items-start justify-between">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Alertas Activas</p>
-                <div className="h-9 w-9 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
-                  <AlertTriangle className="h-4 w-4 text-destructive" />
+            {/* KPI: Ventas Hoy */}
+            <Card>
+              <CardContent className="p-4 h-full flex flex-col justify-between">
+                <div className="flex items-start justify-between">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Ventas Hoy</p>
+                  <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <DollarSign className="h-4 w-4 text-primary" />
+                  </div>
                 </div>
-              </div>
-              <div>
-                <p className="text-3xl font-bold mt-2" data-testid="stat-active-alerts">{activeAlerts}</p>
-                <div className="flex items-center gap-1 mt-1">
-                  {(kpiSummary?.alertsDelta ?? 0) <= 0 ? (
-                    <ArrowDownRight className="h-3 w-3 text-primary" />
-                  ) : (
-                    <ArrowUpRight className="h-3 w-3 text-destructive" />
-                  )}
-                  <p className={`text-xs ${(kpiSummary?.alertsDelta ?? 0) <= 0 ? 'text-primary' : 'text-destructive'}`}>
-                    {Math.abs(kpiSummary?.alertsDelta ?? 0)}% vs sem. ant.
+                <div>
+                  <p className="text-3xl font-bold mt-2" data-testid="stat-sales-today">
+                    {formatCurrency(accountingSummary?.salesToday || 0)}
                   </p>
+                  <div className="flex items-center gap-1 mt-1">
+                    {salesTodayDelta >= 0 ? (
+                      <ArrowUpRight className="h-3 w-3 text-primary" />
+                    ) : (
+                      <ArrowDownRight className="h-3 w-3 text-destructive" />
+                    )}
+                    <p className={`text-xs ${salesTodayDelta >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                      {Math.abs(salesTodayDelta)}% vs prom. sem.
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          {/* KPI: Tareas Hoy */}
-          <Card>
-            <CardContent className="p-4 h-full flex flex-col justify-between">
-              <div className="flex items-start justify-between">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Tareas Hoy</p>
-                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
+            {/* KPI: Alertas Activas */}
+            <Card>
+              <CardContent className="p-4 h-full flex flex-col justify-between">
+                <div className="flex items-start justify-between">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Alertas Activas</p>
+                  <div className="h-9 w-9 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="h-4 w-4 text-destructive" />
+                  </div>
                 </div>
-              </div>
-              <div>
-                <p className="text-3xl font-bold mt-2" data-testid="stat-today-tasks">{todayTasks.length}</p>
-                <div className="flex items-center gap-1 mt-1">
-                  {(kpiSummary?.tasksDelta ?? 0) >= 0 ? (
-                    <ArrowUpRight className="h-3 w-3 text-primary" />
-                  ) : (
-                    <ArrowDownRight className="h-3 w-3 text-destructive" />
-                  )}
-                  <p className={`text-xs ${(kpiSummary?.tasksDelta ?? 0) >= 0 ? 'text-primary' : 'text-destructive'}`}>
-                    {kpiSummary?.tasksDelta !== undefined
-                      ? `${kpiSummary.tasksDelta >= 0 ? '+' : ''}${kpiSummary.tasksDelta}pp vs sem. ant.`
-                      : `${completedCount}/${todayTasks.length} completadas`}
-                  </p>
+                <div>
+                  <p className="text-3xl font-bold mt-2" data-testid="stat-active-alerts">{activeAlerts}</p>
+                  <div className="flex items-center gap-1 mt-1">
+                    {(kpiSummary?.alertsDelta ?? 0) <= 0 ? (
+                      <ArrowDownRight className="h-3 w-3 text-primary" />
+                    ) : (
+                      <ArrowUpRight className="h-3 w-3 text-destructive" />
+                    )}
+                    <p className={`text-xs ${(kpiSummary?.alertsDelta ?? 0) <= 0 ? 'text-primary' : 'text-destructive'}`}>
+                      {Math.abs(kpiSummary?.alertsDelta ?? 0)}% vs sem. ant.
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+
+            {/* KPI: Tareas Hoy */}
+            <Card>
+              <CardContent className="p-4 h-full flex flex-col justify-between">
+                <div className="flex items-start justify-between">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Tareas Hoy</p>
+                  <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="h-4 w-4 text-primary" />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-3xl font-bold mt-2" data-testid="stat-today-tasks">{todayTasks.length}</p>
+                  <div className="flex items-center gap-1 mt-1">
+                    {(kpiSummary?.tasksDelta ?? 0) >= 0 ? (
+                      <ArrowUpRight className="h-3 w-3 text-primary" />
+                    ) : (
+                      <ArrowDownRight className="h-3 w-3 text-destructive" />
+                    )}
+                    <p className={`text-xs ${(kpiSummary?.tasksDelta ?? 0) >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                      {kpiSummary?.tasksDelta !== undefined
+                        ? `${kpiSummary.tasksDelta >= 0 ? '+' : ''}${kpiSummary.tasksDelta}pp vs sem. ant.`
+                        : `${completedCount}/${todayTasks.length} completadas`}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+          </div>
         </div>
 
         <div className="mb-6">
