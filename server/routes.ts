@@ -133,6 +133,8 @@ import {
   bankTransactions as bankTransactionsTable,
   insertBankAccountSchema,
   insertBankTransactionSchema,
+  egresosRegistros as egresosRegistrosTable,
+  ingresosRegistros as ingresosRegistrosTable,
 } from "@shared/schema";
 import { z, ZodError } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection, enqueueLaneChangeForNayax, syncNayaxSalesForTenant, categorizePaymentMethod } from "./nayax";
@@ -8302,6 +8304,48 @@ export async function registerRoutes(
       if (res.headersSent) return;
       console.error("Error in fuel summary:", error);
       res.status(500).json({ error: "Error al obtener resumen de combustible" });
+    }
+  });
+
+  // Income/Expenses Summary
+  app.get("/api/summary/income-expenses", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const monthStart = getStartOfMonthInTimezone();
+
+      const ingCond = tenantId
+        ? and(eq(ingresosRegistrosTable.tenantId, tenantId), gte(ingresosRegistrosTable.fecha, monthStart))
+        : gte(ingresosRegistrosTable.fecha, monthStart);
+      const egCond = tenantId
+        ? and(eq(egresosRegistrosTable.tenantId, tenantId), gte(egresosRegistrosTable.fecha, monthStart))
+        : gte(egresosRegistrosTable.fecha, monthStart);
+
+      const [ingStats, egStats] = await Promise.all([
+        db.select({
+          totalMes: sql<number>`coalesce(sum(${ingresosRegistrosTable.monto}::numeric), 0)`,
+          count: count(),
+        }).from(ingresosRegistrosTable).where(ingCond),
+        db.select({
+          totalMes: sql<number>`coalesce(sum(${egresosRegistrosTable.monto}::numeric), 0)`,
+          count: count(),
+        }).from(egresosRegistrosTable).where(egCond),
+      ]);
+
+      const ingresosMes = Number(ingStats[0]?.totalMes) || 0;
+      const egresosMes = Number(egStats[0]?.totalMes) || 0;
+
+      res.json({
+        ingresosMes,
+        egresosMes,
+        balanceNeto: ingresosMes - egresosMes,
+        egresosRatio: ingresosMes > 0 ? Math.min(Math.round((egresosMes / ingresosMes) * 100), 100) : 0,
+        countIngresos: Number(ingStats[0]?.count) || 0,
+        countEgresos: Number(egStats[0]?.count) || 0,
+      });
+    } catch (error) {
+      if (res.headersSent) return;
+      console.error("Error in income-expenses summary:", error);
+      res.status(500).json({ error: "Error al obtener resumen de ingresos/egresos" });
     }
   });
 

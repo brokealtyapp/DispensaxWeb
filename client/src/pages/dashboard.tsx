@@ -286,6 +286,19 @@ export function DashboardPage() {
     queryKey: ["/api/summary/banks"],
   });
 
+  interface IncomeExpensesSummary {
+    ingresosMes: number;
+    egresosMes: number;
+    balanceNeto: number;
+    egresosRatio: number;
+    countIngresos: number;
+    countEgresos: number;
+  }
+
+  const { data: incomeExpenses } = useQuery<IncomeExpensesSummary>({
+    queryKey: ["/api/summary/income-expenses"],
+  });
+
   const formatRelativeTime = (dateStr: string | Date | null | undefined): string => {
     if (!dateStr) return '';
     const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
@@ -1079,6 +1092,48 @@ export function DashboardPage() {
                       <span className="text-muted-foreground">Pagado este mes</span>
                       <span className="font-medium text-primary">{formatCurrency(facturasStats?.pagadoEsteMes ?? 0)}</span>
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/ingresos">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-income-expenses">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <TrendingUp className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Ingresos / Egresos</h3>
+                      <p className="text-xs text-muted-foreground">Balance del mes</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Ingresos mes</span>
+                      <span className="font-medium text-primary">{formatCurrency(incomeExpenses?.ingresosMes ?? 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Egresos mes</span>
+                      <span className="font-medium text-destructive">{formatCurrency(incomeExpenses?.egresosMes ?? 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Balance neto</span>
+                      <span className={`font-medium ${(incomeExpenses?.balanceNeto ?? 0) >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                        {formatCurrency(incomeExpenses?.balanceNeto ?? 0)}
+                      </span>
+                    </div>
+                    {(incomeExpenses?.ingresosMes ?? 0) > 0 && (
+                      <div className="pt-1">
+                        <Progress
+                          value={incomeExpenses?.egresosRatio ?? 0}
+                          className="h-1.5"
+                          data-testid="progress-egresos-ratio"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">{incomeExpenses?.egresosRatio ?? 0}% de ingresos en egresos</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
