@@ -8131,6 +8131,22 @@ export async function registerRoutes(
         }
       });
       
+      // Daily sales breakdown for last 7 days
+      const dailySalesMap = new Map<string, number>();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        dailySalesMap.set(getDateKeyInTimezone(d), 0);
+      }
+      machineSales.forEach((sale) => {
+        if (!sale.saleDate) return;
+        const key = getDateKeyFromDateOnly(new Date(sale.saleDate));
+        if (dailySalesMap.has(key)) {
+          dailySalesMap.set(key, (dailySalesMap.get(key) || 0) + parseFloat(sale.totalAmount || "0"));
+        }
+      });
+      const dailySales = Array.from(dailySalesMap.entries()).map(([date, amount]) => ({ date, amount: Math.round(amount) }));
+
       const weekCashMovements = cashMovements.filter(c => new Date(c.createdAt || 0) >= weekStart);
       const cashInflow = weekCashMovements.filter(c => c.type === "ingreso" || c.type === "recoleccion").reduce((s, c) => s + parseFloat(c.amount || "0"), 0);
       const cashOutflow = weekCashMovements.filter(c => c.type === "egreso").reduce((s, c) => s + parseFloat(c.amount || "0"), 0);
@@ -8147,6 +8163,7 @@ export async function registerRoutes(
         netCashFlow: cashInflow - cashOutflow,
         weekDeposits: totalDeposits,
         pendingDeposits: bankDeposits.filter(d => d.status === "pendiente").length,
+        dailySales,
         recentMovements: cashMovements.slice(0, 5).map(m => ({
           id: m.id,
           type: m.type,

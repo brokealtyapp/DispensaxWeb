@@ -16,8 +16,9 @@ import {
   Route, Warehouse, DollarSign, Wallet, ShoppingCart, Fuel, UserCheck, FileText,
   Package, Clock, ArrowUpRight, ArrowDownRight, Truck, CircleDollarSign, MapPin,
   CheckCircle2, XCircle, BarChart3, Calendar, ChevronLeft, ChevronRight, PanelRightClose, PanelRightOpen,
-  ClipboardList,
+  ClipboardList, Zap, TrendingDown, Activity,
 } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { Link } from "wouter";
 import type { Task, Machine } from "@shared/schema";
 
@@ -59,6 +60,7 @@ interface SummaryAccounting {
   netCashFlow: number;
   weekDeposits: number;
   pendingDeposits: number;
+  dailySales: { date: string; amount: number }[];
 }
 
 interface SummaryPettyCash {
@@ -304,6 +306,56 @@ export function DashboardPage() {
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   };
 
+  const machineStatusData = useMemo(() => {
+    if (!machinesSummary) return [];
+    return [
+      { name: 'Operando', value: machinesSummary.statusCounts?.operando || 0, color: 'hsl(var(--primary))' },
+      { name: 'Servicio', value: machinesSummary.statusCounts?.necesita_servicio || 0, color: 'hsl(var(--muted-foreground))' },
+      { name: 'Mant.', value: machinesSummary.statusCounts?.mantenimiento || 0, color: '#6b7280' },
+      { name: 'Fuera', value: machinesSummary.statusCounts?.fuera_servicio || 0, color: 'hsl(var(--destructive))' },
+    ].filter(d => d.value > 0);
+  }, [machinesSummary]);
+
+  const dailyAvgSales = (accountingSummary?.salesWeek || 0) / 7;
+  const salesTodayDelta = dailyAvgSales > 0
+    ? Math.round(((accountingSummary?.salesToday || 0) / dailyAvgSales - 1) * 100)
+    : 0;
+
+  const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const formatDayLabel = (dateStr: string) => {
+    const d = new Date(dateStr + 'T12:00:00');
+    return DAY_NAMES[d.getDay()];
+  };
+
+  const highlightInfo = useMemo(() => {
+    if (woStats && woStats.slaBreached > 0) {
+      return {
+        type: 'urgent' as const,
+        title: `${woStats.slaBreached} orden${woStats.slaBreached !== 1 ? 'es' : ''} con SLA vencido`,
+        subtitle: 'Requieren atención inmediata',
+        href: '/ordenes-trabajo',
+        cta: 'Ir a Órdenes de Trabajo',
+      };
+    }
+    const unresolvedAlerts = alerts.filter((a: any) => !a.isResolved);
+    if (unresolvedAlerts.length >= 3) {
+      return {
+        type: 'warning' as const,
+        title: `${unresolvedAlerts.length} alertas activas en máquinas`,
+        subtitle: 'Revisar máquinas para continuar operaciones',
+        href: '/maquinas',
+        cta: 'Revisar Máquinas',
+      };
+    }
+    return {
+      type: 'positive' as const,
+      title: `${machinesSummary?.operativityRate || 0}% de operatividad`,
+      subtitle: `${machinesSummary?.statusCounts?.operando || 0} máquinas operando hoy`,
+      href: '/maquinas',
+      cta: 'Ver Máquinas',
+    };
+  }, [woStats, alerts, machinesSummary]);
+
   const formatTaskTime = (task: Task) => {
     if (task.startTime && task.endTime) {
       return `${task.startTime} - ${task.endTime}`;
@@ -317,17 +369,18 @@ export function DashboardPage() {
   return (
     <div className="flex h-full">
       <div className="flex-1 p-6 overflow-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Máquinas Activas</p>
                   <p className="text-3xl font-bold" data-testid="stat-active-machines">
-                    {machines.filter((m: any) => m.status === "operando").length}
+                    {machinesSummary?.statusCounts?.operando ?? machines.filter((m: any) => m.status === "operando").length}
                   </p>
+                  <p className="text-xs text-muted-foreground mt-1">{machinesSummary?.operativityRate || 0}% operatividad</p>
                 </div>
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                   <Box className="h-5 w-5 text-primary" />
                 </div>
               </div>
@@ -335,12 +388,15 @@ export function DashboardPage() {
           </Card>
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Alertas Activas</p>
                   <p className="text-3xl font-bold" data-testid="stat-active-alerts">{activeAlerts}</p>
+                  <p className={`text-xs mt-1 ${(machinesSummary?.criticalAlerts || 0) > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                    {machinesSummary?.criticalAlerts || 0} críticas
+                  </p>
                 </div>
-                <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center">
+                <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
                   <AlertTriangle className="h-5 w-5 text-destructive" />
                 </div>
               </div>
@@ -348,14 +404,24 @@ export function DashboardPage() {
           </Card>
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Ventas Hoy</p>
                   <p className="text-3xl font-bold" data-testid="stat-sales-today">
                     {formatCurrency(accountingSummary?.salesToday || 0)}
                   </p>
+                  <div className="flex items-center gap-1 mt-1">
+                    {salesTodayDelta >= 0 ? (
+                      <ArrowUpRight className="h-3 w-3 text-primary" />
+                    ) : (
+                      <ArrowDownRight className="h-3 w-3 text-destructive" />
+                    )}
+                    <p className={`text-xs ${salesTodayDelta >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                      {Math.abs(salesTodayDelta)}% vs prom. sem.
+                    </p>
+                  </div>
                 </div>
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                   <DollarSign className="h-5 w-5 text-primary" />
                 </div>
               </div>
@@ -363,18 +429,52 @@ export function DashboardPage() {
           </Card>
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Tareas Hoy</p>
                   <p className="text-3xl font-bold" data-testid="stat-today-tasks">{todayTasks.length}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{completedCount}/{todayTasks.length} completadas</p>
                 </div>
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                   <CheckCircle2 className="h-5 w-5 text-primary" />
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Highlight Card */}
+        <Link href={highlightInfo.href}>
+          <Card className={`mb-6 cursor-pointer hover-elevate ${
+            highlightInfo.type === 'urgent'
+              ? 'bg-destructive text-destructive-foreground border-destructive'
+              : 'bg-primary text-primary-foreground border-primary'
+          }`} data-testid="card-highlight">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                    {highlightInfo.type === 'urgent' ? (
+                      <Zap className="h-5 w-5" />
+                    ) : highlightInfo.type === 'warning' ? (
+                      <AlertTriangle className="h-5 w-5" />
+                    ) : (
+                      <Activity className="h-5 w-5" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="font-semibold">{highlightInfo.title}</p>
+                    <p className="text-sm opacity-80">{highlightInfo.subtitle}</p>
+                  </div>
+                </div>
+                <Button variant="secondary" size="sm" className="shrink-0 bg-white/20 text-inherit border-white/30" data-testid="button-highlight-cta">
+                  {highlightInfo.cta}
+                  <ArrowUpRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
 
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -455,12 +555,15 @@ export function DashboardPage() {
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Activas</span>
+                      <span className="text-muted-foreground">Activas hoy</span>
                       <span className="font-medium text-primary">{routesSummary?.activeRoutes || 0}</span>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Paradas hoy</span>
-                      <span className="font-medium">{routesSummary?.todayStops || 0}</span>
+                    <div>
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="text-muted-foreground">Progreso paradas</span>
+                        <span className="font-medium">{routesSummary?.completedStops || 0}/{routesSummary?.todayStops || 0}</span>
+                      </div>
+                      <Progress value={routesSummary?.todayStops ? ((routesSummary.completedStops || 0) / routesSummary.todayStops) * 100 : 0} className="h-1.5" />
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Tiempo prom.</span>
@@ -496,6 +599,16 @@ export function DashboardPage() {
                       <span className="text-muted-foreground">Movimientos sem.</span>
                       <span className="font-medium">{warehouseSummary?.weekMovements || 0}</span>
                     </div>
+                    {warehouseSummary?.lowStockProducts && warehouseSummary.lowStockProducts.length > 0 && (
+                      <div className="pt-1.5 border-t space-y-1">
+                        {warehouseSummary.lowStockProducts.slice(0, 3).map((p: any) => (
+                          <div key={p.id} className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground truncate max-w-[110px]">{p.name}</span>
+                            <Badge variant="destructive" className="text-[9px] px-1">{p.currentStock}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -530,6 +643,79 @@ export function DashboardPage() {
                 </CardContent>
               </Card>
             </Link>
+          </div>
+        </div>
+
+        {/* Sección Análisis */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold">Análisis</h2>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <Card className="lg:col-span-3">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" />
+                  Ventas — Últimos 7 días
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">Ingreso diario acumulado (RD$)</p>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={accountingSummary?.dailySales || []} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={formatDayLabel} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : String(v)} axisLine={false} tickLine={false} width={36} />
+                    <Tooltip
+                      formatter={(value: number) => [formatCurrency(value), 'Ventas']}
+                      labelFormatter={(label: string) => {
+                        const d = new Date(label + 'T12:00:00');
+                        return d.toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'short' });
+                      }}
+                      contentStyle={{ fontSize: 12 }}
+                    />
+                    <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+            <Card className="lg:col-span-1">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Box className="h-4 w-4" />
+                  Estado Flota
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">{machinesSummary?.totalMachines || 0} máquinas</p>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center gap-2">
+                {machineStatusData.length > 0 ? (
+                  <>
+                    <ResponsiveContainer width="100%" height={120}>
+                      <PieChart>
+                        <Pie data={machineStatusData} cx="50%" cy="50%" innerRadius={36} outerRadius={54} dataKey="value" strokeWidth={0}>
+                          {machineStatusData.map((entry, index) => (
+                            <Cell key={index} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(v: number) => [v, 'Máquinas']} contentStyle={{ fontSize: 12 }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="space-y-1 w-full">
+                      {machineStatusData.map((item) => (
+                        <div key={item.name} className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                            <span className="text-muted-foreground">{item.name}</span>
+                          </div>
+                          <span className="font-medium">{item.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground py-10 text-center">Sin datos de flota</p>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
 
@@ -725,9 +911,13 @@ export function DashboardPage() {
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">SLA vencidas</span>
-                        <span className={`font-medium ${woStats.slaBreached > 0 ? "text-destructive" : "text-primary"}`}>
-                          {woStats.slaBreached}
-                        </span>
+                        {woStats.slaBreached > 0 ? (
+                          <Badge variant="destructive" className="text-[10px] px-1.5">
+                            {woStats.slaBreached} vencida{woStats.slaBreached !== 1 ? 's' : ''}
+                          </Badge>
+                        ) : (
+                          <span className="font-medium text-primary">0</span>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -746,23 +936,29 @@ export function DashboardPage() {
                     <p className="text-xs text-muted-foreground">Accesos rápidos</p>
                   </div>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1">
+                  <Link href="/ordenes-trabajo">
+                    <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" data-testid="link-quick-work-order">
+                      <ClipboardList className="h-4 w-4 mr-2 text-primary" />
+                      Nueva Orden de Trabajo
+                    </Button>
+                  </Link>
+                  <Link href="/tareas">
+                    <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" data-testid="link-quick-task">
+                      <CheckCircle2 className="h-4 w-4 mr-2 text-primary" />
+                      Nueva Tarea
+                    </Button>
+                  </Link>
+                  <Link href="/maquinas">
+                    <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" data-testid="link-quick-alerts">
+                      <AlertTriangle className="h-4 w-4 mr-2 text-muted-foreground" />
+                      Ver Alertas de Máquinas
+                    </Button>
+                  </Link>
                   <Link href="/contabilidad">
-                    <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" data-testid="link-report-sales">
-                      <TrendingUp className="h-4 w-4 mr-2" />
+                    <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" data-testid="link-quick-sales">
+                      <TrendingUp className="h-4 w-4 mr-2 text-muted-foreground" />
                       Ventas por período
-                    </Button>
-                  </Link>
-                  <Link href="/almacen">
-                    <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" data-testid="link-report-inventory">
-                      <Package className="h-4 w-4 mr-2" />
-                      Rotación de inventario
-                    </Button>
-                  </Link>
-                  <Link href="/combustible">
-                    <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" data-testid="link-report-fuel">
-                      <Fuel className="h-4 w-4 mr-2" />
-                      Eficiencia combustible
                     </Button>
                   </Link>
                 </div>
@@ -873,6 +1069,44 @@ export function DashboardPage() {
             </Card>
           </div>
         </div>
+
+        {/* Feed de Alertas Activas */}
+        {alerts.filter((a: any) => !a.isResolved).length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3 gap-2">
+              <h2 className="text-xl font-bold">Alertas Activas</h2>
+              <Link href="/maquinas">
+                <Button variant="ghost" size="sm" data-testid="button-view-all-alerts">
+                  Ver todas
+                  <ArrowUpRight className="h-4 w-4 ml-1" />
+                </Button>
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {alerts.filter((a: any) => !a.isResolved).slice(0, 6).map((alert: any) => (
+                <Card key={alert.id} data-testid={`card-alert-${alert.id}`}>
+                  <CardContent className="p-3 flex items-start gap-3">
+                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                      alert.priority === 'critica' ? 'bg-destructive/10' : 'bg-muted'
+                    }`}>
+                      <AlertTriangle className={`h-4 w-4 ${alert.priority === 'critica' ? 'text-destructive' : 'text-muted-foreground'}`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-sm truncate">{alert.machineName || 'Máquina desconocida'}</p>
+                      <p className="text-xs text-muted-foreground truncate">{alert.message || alert.type}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant={alert.priority === 'critica' ? 'destructive' : 'secondary'} className="text-[10px] px-1.5">
+                          {alert.priority || 'media'}
+                        </Badge>
+                        <span className="text-[10px] text-muted-foreground">{alert.type}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between mb-4">
           <div>

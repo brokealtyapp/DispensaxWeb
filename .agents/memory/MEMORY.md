@@ -1,0 +1,1 @@
+- [Dashboard recharts imports](dashboard-recharts.md) — usar alias para evitar conflictos si alguna vez se añade shadcn Tooltip al dashboard; actualmente sin conflicto.
