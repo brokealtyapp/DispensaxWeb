@@ -908,6 +908,53 @@ export function registerEgresoRoutes(app: Express) {
   );
 
   // ============================
+  // POR MONEDA
+  // ============================
+
+  app.get(
+    "/api/egresos/por-moneda",
+    authenticateJWT,
+    authorizeRoles(...ROLES_EGRESOS),
+    async (req: Request, res: Response) => {
+      try {
+        const { tenantId } = req as AuthenticatedRequest;
+        if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+
+        const hoy = new Date();
+        const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+        const finMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0, 23, 59, 59);
+
+        const rows = await db
+          .select({
+            moneda: egresosRegistros.moneda,
+            totalMes: sql<string>`COALESCE(SUM(${egresosRegistros.monto}::numeric), 0)`,
+            cantidad: sql<number>`COUNT(*)::int`,
+          })
+          .from(egresosRegistros)
+          .where(
+            and(
+              eq(egresosRegistros.tenantId, tenantId),
+              gte(egresosRegistros.fecha, inicioMes),
+              lte(egresosRegistros.fecha, finMes)
+            )
+          )
+          .groupBy(egresosRegistros.moneda);
+
+        res.json(
+          rows.map((r) => ({
+            moneda: r.moneda,
+            totalMes: parseFloat(r.totalMes),
+            cantidad: r.cantidad,
+          }))
+        );
+      } catch (e) {
+        console.error("GET /api/egresos/por-moneda:", e);
+        res.status(500).json({ error: "Error al obtener totales por moneda" });
+      }
+    }
+  );
+
+  // ============================
   // CUENTAS BANCARIAS (para selects)
   // ============================
 
@@ -923,7 +970,7 @@ export function registerEgresoRoutes(app: Express) {
         const cuentas = await db
           .select({
             id: bankAccountsTable.id,
-            nombre: bankAccountsTable.nombre,
+            nombre: bankAccountsTable.name,
             tipo: bankAccountsTable.accountType,
             moneda: bankAccountsTable.currency,
             saldo: bankAccountsTable.balance,

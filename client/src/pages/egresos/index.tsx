@@ -400,11 +400,14 @@ export default function EgresosPage() {
     setFijoModal({ open: true, editando: fijo });
   };
 
+  const cleanSentinel = (v: string | undefined | null) =>
+    !v || v === "__none__" || v === "__all__" ? null : v;
+
   const handleSubmitFijo = fijoForm.handleSubmit((data) => {
     const payload = {
       ...data,
-      categoriaId: data.categoriaId || null,
-      cuentaBancariaId: data.cuentaBancariaId || null,
+      categoriaId: cleanSentinel(data.categoriaId),
+      cuentaBancariaId: cleanSentinel(data.cuentaBancariaId),
       fechaFin: data.fechaFin || null,
     };
     if (fijoModal.editando) {
@@ -420,7 +423,7 @@ export default function EgresosPage() {
       id: pagoSheet.fijo.id,
       data: {
         ...data,
-        cuentaBancariaId: data.cuentaBancariaId || null,
+        cuentaBancariaId: cleanSentinel(data.cuentaBancariaId),
       },
     });
   });
@@ -758,7 +761,7 @@ export default function EgresosPage() {
                     crearVariableMut.mutate({
                       ...data,
                       categoriaId: data.categoriaId,
-                      cuentaBancariaId: data.cuentaBancariaId || null,
+                      cuentaBancariaId: cleanSentinel(data.cuentaBancariaId),
                       fecha: data.fecha,
                     })
                   )}
