@@ -80,7 +80,7 @@ const priorityConfig = {
 
 const statusConfig = {
   pendiente: { label: "Pendiente", color: "bg-slate-500 text-white", icon: Circle },
-  en_progreso: { label: "En Progreso", color: "bg-blue-500 text-white", icon: PlayCircle },
+  en_progreso: { label: "En Progreso", color: "bg-primary text-primary-foreground", icon: PlayCircle },
   completada: { label: "Completada", color: "bg-green-500 text-white", icon: CheckCircle2 },
   cancelada: { label: "Cancelada", color: "bg-red-500 text-white", icon: XCircle },
 };
@@ -370,8 +370,8 @@ export function TasksPage() {
           <Card className="hover-elevate">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                  <PlayCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <PlayCircle className="h-5 w-5 text-primary" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold" data-testid="text-stat-in-progress">{stats?.inProgress || 0}</p>

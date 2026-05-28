@@ -89,7 +89,7 @@ const statusColors: Record<string, string> = {
   necesita_servicio: "bg-amber-500 text-white",
   vacia: "bg-destructive text-destructive-foreground",
   fuera_de_linea: "bg-muted text-muted-foreground",
-  mantenimiento: "bg-blue-500 text-white",
+  mantenimiento: "bg-primary text-primary-foreground",
 };
 
 const alertTypeLabels: Record<string, string> = {
@@ -102,7 +102,7 @@ const alertTypeLabels: Record<string, string> = {
 };
 
 const alertPriorityColors: Record<string, string> = {
-  baja: "bg-blue-500",
+  baja: "bg-muted",
   media: "bg-amber-500",
   alta: "bg-orange-500",
   critica: "bg-destructive",
@@ -1206,8 +1206,8 @@ export function MachineDetailPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-500/10 rounded-lg">
-                <Clock className="h-5 w-5 text-blue-500" />
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Clock className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Última Visita</p>
@@ -1979,8 +1979,8 @@ export function MachineDetailPage() {
                 <div className="space-y-3">
                   {machine.recentVisits.map((visit) => (
                     <div key={visit.id} className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg" data-testid={`visit-item-${visit.id}`}>
-                      <div className="p-2 bg-blue-500/10 rounded-lg">
-                        <User className="h-5 w-5 text-blue-500" />
+                      <div className="p-2 bg-muted rounded-lg">
+                        <User className="h-5 w-5 text-muted-foreground" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
@@ -2060,7 +2060,7 @@ export function MachineDetailPage() {
                   {machineOrders.map((order) => {
                     const priorityColors: Record<string, string> = {
                       critica: "bg-red-500", alta: "bg-orange-500",
-                      media: "bg-yellow-500", baja: "bg-blue-500",
+                      media: "bg-yellow-500", baja: "bg-muted",
                     };
                     const statusLabels: Record<string, string> = {
                       pendiente: "Pendiente", asignada: "Asignada", en_proceso: "En proceso",

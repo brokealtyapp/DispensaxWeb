@@ -202,7 +202,7 @@ function StageBadge({ stage }: { stage: EstablishmentStageInfo | null }) {
 function DocumentStatusBadge({ status }: { status: string }) {
   const config: Record<string, { label: string; className: string }> = {
     pendiente: { label: "Pendiente", className: "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400" },
-    enviado: { label: "Enviado", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+    enviado: { label: "Enviado", className: "bg-primary/10 text-primary" },
     recibido: { label: "Recibido", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
     firmado: { label: "Firmado", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
     rechazado: { label: "Rechazado", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
@@ -1421,7 +1421,7 @@ function ContractStatusBadge({ status, endDate }: { status: string; endDate?: st
     activo: { label: "Activo", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
     por_vencer: { label: "Por Vencer", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
     vencido: { label: "Vencido", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-    renovado: { label: "Renovado", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+    renovado: { label: "Renovado", className: "bg-muted text-muted-foreground" },
     cancelado: { label: "Cancelado", className: "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400" },
   };
   const c = config[effectiveStatus] || config.activo;
@@ -2602,7 +2602,7 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
                             <span className="font-medium">{m.code}</span>
                             <span className="text-muted-foreground">— {m.name}</span>
                             {isPreselected && (
-                              <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 text-xs">
+                              <Badge variant="secondary" className="bg-muted text-muted-foreground text-xs">
                                 En este establecimiento
                               </Badge>
                             )}
@@ -2705,8 +2705,8 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
         <Card data-testid="card-viewer-coverage">
           <CardContent className="p-4 flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-md bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                <Eye className="h-5 w-5 text-purple-700 dark:text-purple-400" />
+              <div className="h-10 w-10 rounded-md bg-primary/10 flex items-center justify-center">
+                <Eye className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <p className="text-sm font-medium" data-testid="text-viewer-coverage">
@@ -2785,7 +2785,7 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                  <Badge variant="secondary" className="bg-primary/10 text-primary">
                     {est.machineCount} máquina{est.machineCount !== 1 ? "s" : ""}
                   </Badge>
                   {est.activeContract ? (
@@ -2800,7 +2800,7 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
                       data-testid={`link-viewer-${est.id}`}
                       className="appearance-none p-0 bg-transparent border-0"
                     >
-                      <Badge variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 cursor-pointer hover-elevate">
+                      <Badge variant="secondary" className="bg-muted text-muted-foreground cursor-pointer hover-elevate">
                         <Eye className="h-3 w-3 mr-1" /> Visor: {viewerByEstablishment.get(est.id)?.user?.username || "asignado"}
                       </Badge>
                     </button>
@@ -3809,7 +3809,7 @@ export function EstablishmentsPage() {
           </Card>
           <Card>
             <CardContent className="pt-4 pb-3">
-              <p className="text-2xl font-bold text-blue-600" data-testid="text-stat-in-pipeline">{(stats.total || 0) - (stats.converted || 0)}</p>
+              <p className="text-2xl font-bold text-primary" data-testid="text-stat-in-pipeline">{(stats.total || 0) - (stats.converted || 0)}</p>
               <p className="text-xs text-muted-foreground">En Pipeline</p>
             </CardContent>
           </Card>

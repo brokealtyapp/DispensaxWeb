@@ -73,11 +73,11 @@ interface CalendarDayItem {
 }
 
 const eventTypeConfig: Record<string, { label: string; icon: any; color: string; bgColor: string }> = {
-  tarea: { label: "Tarea", icon: ListTodo, color: "bg-blue-500", bgColor: "bg-blue-100 dark:bg-blue-900/30" },
+  tarea: { label: "Tarea", icon: ListTodo, color: "bg-primary", bgColor: "bg-primary/10" },
   mantenimiento: { label: "Mantenimiento", icon: Wrench, color: "bg-orange-500", bgColor: "bg-orange-100 dark:bg-orange-900/30" },
   abastecimiento: { label: "Abastecimiento", icon: Package, color: "bg-green-500", bgColor: "bg-green-100 dark:bg-green-900/30" },
-  recoleccion: { label: "Recolección", icon: Truck, color: "bg-purple-500", bgColor: "bg-purple-100 dark:bg-purple-900/30" },
-  revision: { label: "Revisión", icon: ClipboardList, color: "bg-cyan-500", bgColor: "bg-cyan-100 dark:bg-cyan-900/30" },
+  recoleccion: { label: "Recolección", icon: Truck, color: "bg-muted-foreground", bgColor: "bg-muted" },
+  revision: { label: "Revisión", icon: ClipboardList, color: "bg-muted-foreground", bgColor: "bg-muted" },
   otro: { label: "Otro", color: "bg-gray-500", icon: CalendarIcon, bgColor: "bg-gray-100 dark:bg-gray-800" },
 };
 

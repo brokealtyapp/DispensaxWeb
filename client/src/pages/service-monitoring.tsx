@@ -115,7 +115,7 @@ export function ServiceMonitoringPage() {
       case "service_start":
         return <Play className="h-3 w-3 text-emerald-500" />;
       case "product_load":
-        return <Package className="h-3 w-3 text-blue-500" />;
+        return <Package className="h-3 w-3 text-muted-foreground" />;
       case "cash_collection":
         return <DollarSign className="h-3 w-3 text-amber-500" />;
       case "issue_report":
@@ -235,8 +235,8 @@ export function ServiceMonitoringPage() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="p-2 rounded-lg bg-blue-500/10">
-                    <Package className="h-4 w-4 mx-auto text-blue-500 mb-1" />
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <Package className="h-4 w-4 mx-auto text-primary mb-1" />
                     <p className="text-sm font-bold">{service.totalProductsLoaded}</p>
                     <p className="text-[10px] text-muted-foreground">Productos</p>
                   </div>
@@ -311,8 +311,8 @@ export function ServiceMonitoringPage() {
                     <p className="text-lg font-bold">{formatDuration(serviceDetail.duration)}</p>
                     <p className="text-xs text-muted-foreground">Duración</p>
                   </div>
-                  <div className="p-3 rounded-lg bg-blue-500/10 text-center">
-                    <Package className="h-5 w-5 mx-auto text-blue-500 mb-1" />
+                  <div className="p-3 rounded-lg bg-primary/10 text-center">
+                    <Package className="h-5 w-5 mx-auto text-primary mb-1" />
                     <p className="text-lg font-bold">{serviceDetail.totalProductsLoaded}</p>
                     <p className="text-xs text-muted-foreground">Productos</p>
                   </div>

@@ -271,7 +271,7 @@ export function PettyCashPage() {
   const getStatusBadge = (status: string) => {
     const styles: Record<string, { class: string; icon: JSX.Element }> = {
       pendiente: { class: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200", icon: <Clock className="h-3 w-3 mr-1" /> },
-      aprobado: { class: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200", icon: <CheckCircle2 className="h-3 w-3 mr-1" /> },
+      aprobado: { class: "bg-primary/10 text-primary", icon: <CheckCircle2 className="h-3 w-3 mr-1" /> },
       rechazado: { class: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200", icon: <XCircle className="h-3 w-3 mr-1" /> },
       pagado: { class: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200", icon: <CheckCircle2 className="h-3 w-3 mr-1" /> },
     };

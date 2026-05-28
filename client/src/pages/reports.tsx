@@ -524,8 +524,8 @@ export function ReportsPage() {
                       </div>
                     )}
                   </div>
-                  <div className="rounded-lg p-2 bg-purple-500/10">
-                    <Wallet className="h-6 w-6 text-purple-600" />
+                  <div className="rounded-lg p-2 bg-primary/10">
+                    <Wallet className="h-6 w-6 text-primary" />
                   </div>
                 </div>
               </CardContent>
@@ -562,7 +562,7 @@ export function ReportsPage() {
                     <p className="text-sm text-muted-foreground">Rutas Activas</p>
                     <p className="text-2xl font-bold">{overview?.activeRoutes || 0}</p>
                   </div>
-                  <Truck className="h-8 w-8 text-blue-500 opacity-80" />
+                  <Truck className="h-8 w-8 text-muted-foreground opacity-80" />
                 </div>
               </CardContent>
             </Card>
@@ -674,7 +674,7 @@ export function ReportsPage() {
         <Card data-testid="card-purchases-breakdown">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5 text-blue-500" />
+              <ShoppingCart className="h-5 w-5 text-primary" />
               Compras por Proveedor
             </CardTitle>
           </CardHeader>
@@ -714,7 +714,7 @@ export function ReportsPage() {
         <Card data-testid="card-petty-cash-breakdown">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Wallet className="h-5 w-5 text-purple-500" />
+              <Wallet className="h-5 w-5 text-primary" />
               Caja Chica por Categoría
             </CardTitle>
           </CardHeader>

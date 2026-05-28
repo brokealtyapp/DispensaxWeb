@@ -28,7 +28,7 @@ const alertColors: Record<AlertType, string> = {
   producto: "text-amber-500 bg-amber-500/10",
   falla: "text-destructive bg-destructive/10",
   dinero: "text-emerald-500 bg-emerald-500/10",
-  mantenimiento: "text-purple-500 bg-purple-500/10",
+  mantenimiento: "text-primary bg-primary/10",
 };
 
 const priorityColors: Record<AlertPriority, string> = {

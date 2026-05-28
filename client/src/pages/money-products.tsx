@@ -615,7 +615,7 @@ export function MoneyProductsPage() {
   const getChangeFundStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
       activo: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-      usado: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+      usado: "bg-muted text-muted-foreground",
       devuelto: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
     };
     return <Badge className={styles[status] || ""} data-testid={`badge-fund-status-${status}`}>{status}</Badge>;
@@ -632,9 +632,9 @@ export function MoneyProductsPage() {
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
       pendiente: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-      entregado: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+      entregado: "bg-muted text-muted-foreground",
       depositado: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-      conciliado: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+      conciliado: "bg-muted text-muted-foreground",
       aprobado: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
     };
     return <Badge className={styles[status] || ""} data-testid={`badge-status-${status}`}>{status}</Badge>;
@@ -1173,8 +1173,8 @@ export function MoneyProductsPage() {
                       >
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-full bg-orange-100 dark:bg-orange-900 flex items-center justify-center">
-                              <UserCheck className="h-5 w-5 text-orange-600" />
+                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                              <UserCheck className="h-5 w-5 text-primary" />
                             </div>
                             <div>
                               <p className="font-medium" data-testid={`text-fund-supplier-${fund.id}`}>
@@ -1649,7 +1649,7 @@ export function MoneyProductsPage() {
               <div className="p-3 bg-muted rounded-lg">
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium">Total fondo:</span>
-                  <span className="text-lg font-bold text-orange-600" data-testid="text-fund-total">{formatCurrency(changeFundTotal)}</span>
+                  <span className="text-lg font-bold text-primary" data-testid="text-fund-total">{formatCurrency(changeFundTotal)}</span>
                 </div>
               </div>
               <DialogFooter>

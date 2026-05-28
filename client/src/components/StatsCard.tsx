@@ -18,7 +18,7 @@ const iconColorClasses = {
   success: "bg-emerald-500/10 text-emerald-500",
   warning: "bg-amber-500/10 text-amber-500",
   destructive: "bg-destructive/10 text-destructive",
-  purple: "bg-purple-500/10 text-purple-500",
+  purple: "bg-primary/10 text-primary",
 };
 
 export function StatsCard({ title, value, subtitle, trend, icon: Icon, iconColor = "primary" }: StatsCardProps) {

@@ -302,9 +302,9 @@ function PriorityBadge({ priority }: { priority: string }) {
 function StatusBadge({ status, labels = STATUS_LABELS }: { status: string; labels?: Record<string, string> }) {
   const variants: Record<string, string> = {
     pendiente: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",
-    asignada: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-    en_proceso: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
-    en_ruta: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+    asignada: "bg-muted text-muted-foreground",
+    en_proceso: "bg-primary/10 text-primary",
+    en_ruta: "bg-primary/15 text-primary",
     completada: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
     cerrada: "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400",
     cancelada: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
@@ -1066,7 +1066,7 @@ function OrderDetailView({
                           {item.label}
                         </span>
                         {effectiveRequiresPhoto && !item.isCompleted && !isPhotoType && (
-                          <Badge className="ml-2 no-default-hover-elevate no-default-active-elevate text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+                          <Badge className="ml-2 no-default-hover-elevate no-default-active-elevate text-xs bg-primary/10 text-primary">
                             <Camera className="h-2.5 w-2.5 mr-1" />
                             Requiere foto
                           </Badge>
@@ -2467,11 +2467,11 @@ function KanbanBoard({
 
 const ITEM_TYPE_META: Record<ChecklistItemType, { label: string; icon: React.ElementType; color: string }> = {
   checkbox: { label: "Casilla", icon: SquareCheck, color: "text-muted-foreground" },
-  multiple_choice: { label: "Selección única", icon: CircleDot, color: "text-blue-600" },
-  multi_select: { label: "Selección múltiple", icon: ListChecks, color: "text-violet-600" },
-  open_question: { label: "Pregunta abierta", icon: MessageSquare, color: "text-amber-600" },
-  numeric: { label: "Numérico", icon: Hash, color: "text-green-600" },
-  photo: { label: "Foto obligatoria", icon: ImageIcon, color: "text-pink-600" },
+  multiple_choice: { label: "Selección única", icon: CircleDot, color: "text-muted-foreground" },
+  multi_select: { label: "Selección múltiple", icon: ListChecks, color: "text-muted-foreground" },
+  open_question: { label: "Pregunta abierta", icon: MessageSquare, color: "text-muted-foreground" },
+  numeric: { label: "Numérico", icon: Hash, color: "text-muted-foreground" },
+  photo: { label: "Foto obligatoria", icon: ImageIcon, color: "text-primary" },
 };
 
 const ITEM_TYPE_OPTIONS: ChecklistItemType[] = ["checkbox", "multiple_choice", "multi_select", "open_question", "numeric", "photo"];
@@ -3615,7 +3615,7 @@ export function WorkOrdersPage() {
                                         <TypeIcon className={`h-3.5 w-3.5 shrink-0 ${meta.color}`} title={meta.label} />
                                         <span className="text-sm leading-tight line-clamp-2">{item.label}</span>
                                         {item.requiresPhoto && itype !== "photo" && (
-                                          <Camera className="h-3 w-3 text-blue-600 flex-shrink-0" title="Requiere foto" />
+                                          <Camera className="h-3 w-3 text-muted-foreground flex-shrink-0" title="Requiere foto" />
                                         )}
                                       </div>
                                     )}
@@ -3638,7 +3638,7 @@ export function WorkOrdersPage() {
                                           data-testid={`button-toggle-photo-${item.id}`}
                                           title={item.requiresPhoto ? "Quitar requisito de foto" : "Requerir foto para completar"}
                                         >
-                                          <Camera className={`h-3.5 w-3.5 ${item.requiresPhoto ? "text-blue-600" : "text-muted-foreground"}`} />
+                                          <Camera className={`h-3.5 w-3.5 ${item.requiresPhoto ? "text-primary" : "text-muted-foreground"}`} />
                                         </Button>
                                       )}
                                       <Button
@@ -3878,7 +3878,7 @@ export function WorkOrdersPage() {
         <Card>
           <CardContent className="pt-4 pb-3">
             <div className="flex items-center gap-2">
-              <ClipboardList className="h-5 w-5 text-blue-500" />
+              <ClipboardList className="h-5 w-5 text-primary" />
               <div>
                 <p className="text-2xl font-bold" data-testid="text-active-orders">{activeOrders}</p>
                 <p className="text-xs text-muted-foreground">Órdenes Activas</p>
@@ -3889,7 +3889,7 @@ export function WorkOrdersPage() {
         <Card>
           <CardContent className="pt-4 pb-3">
             <div className="flex items-center gap-2">
-              <TicketCheck className="h-5 w-5 text-purple-500" />
+              <TicketCheck className="h-5 w-5 text-primary" />
               <div>
                 <p className="text-2xl font-bold" data-testid="text-pending-tickets">{pendingTickets}</p>
                 <p className="text-xs text-muted-foreground">Tickets Pendientes</p>

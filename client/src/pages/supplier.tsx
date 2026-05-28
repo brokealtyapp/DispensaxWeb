@@ -1226,7 +1226,7 @@ export function SupplierPage() {
       case "completada":
         return <Badge className="bg-emerald-500">Completada</Badge>;
       case "en_progreso":
-        return <Badge className="bg-blue-500">En progreso</Badge>;
+        return <Badge className="bg-primary">En progreso</Badge>;
       default:
         return <Badge variant="secondary">Pendiente</Badge>;
     }
@@ -1332,7 +1332,7 @@ export function SupplierPage() {
         </Card>
         <Card data-testid="card-stat-products">
           <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
-            <div className="p-2 md:p-3 rounded-lg bg-purple-500/10 text-purple-500">
+            <div className="p-2 md:p-3 rounded-lg bg-primary/10 text-primary">
               <Package className="h-4 w-4 md:h-5 md:w-5" />
             </div>
             <div>
@@ -1971,11 +1971,11 @@ export function SupplierPage() {
 
                 {/* Info del contacto durante servicio */}
                 {currentStop.machine?.location?.contactPhone && (
-                  <Card className="bg-blue-500/10 border-blue-500/20">
+                  <Card className="bg-primary/10 border-primary/20">
                     <CardContent className="p-4">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-full bg-blue-500/20">
-                          <Phone className="h-4 w-4 text-blue-500" />
+                        <div className="p-2 rounded-full bg-primary/20">
+                          <Phone className="h-4 w-4 text-primary" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">
@@ -2248,16 +2248,16 @@ export function SupplierPage() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/20 rounded-xl p-4 text-center">
+                    <div className="bg-primary/10 rounded-xl p-4 text-center">
                       <div className="flex items-center justify-center mb-2">
-                        <div className="p-2 bg-blue-500/20 rounded-full">
-                          <ClipboardCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        <div className="p-2 bg-primary/20 rounded-full">
+                          <ClipboardCheck className="h-5 w-5 text-primary" />
                         </div>
                       </div>
-                      <p className="text-2xl md:text-3xl font-bold text-blue-700 dark:text-blue-300">
+                      <p className="text-2xl md:text-3xl font-bold text-primary">
                         {weeklyStats?.servicesCompleted || 0}
                       </p>
-                      <p className="text-xs md:text-sm text-blue-600/80 dark:text-blue-400/80">Servicios completados</p>
+                      <p className="text-xs md:text-sm text-primary/80">Servicios completados</p>
                     </div>
                     
                     <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/20 rounded-xl p-4 text-center">
@@ -2272,16 +2272,16 @@ export function SupplierPage() {
                       <p className="text-xs md:text-sm text-emerald-600/80 dark:text-emerald-400/80">Máquinas atendidas</p>
                     </div>
                     
-                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/30 dark:to-purple-900/20 rounded-xl p-4 text-center">
+                    <div className="bg-muted rounded-xl p-4 text-center">
                       <div className="flex items-center justify-center mb-2">
-                        <div className="p-2 bg-purple-500/20 rounded-full">
-                          <Package className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                        <div className="p-2 bg-primary/10 rounded-full">
+                          <Package className="h-5 w-5 text-primary" />
                         </div>
                       </div>
-                      <p className="text-2xl md:text-3xl font-bold text-purple-700 dark:text-purple-300">
+                      <p className="text-2xl md:text-3xl font-bold">
                         {weeklyStats?.productsLoaded || 0}
                       </p>
-                      <p className="text-xs md:text-sm text-purple-600/80 dark:text-purple-400/80">Productos cargados</p>
+                      <p className="text-xs md:text-sm text-muted-foreground">Productos cargados</p>
                     </div>
                     
                     <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/20 rounded-xl p-4 text-center">
@@ -2385,17 +2385,17 @@ export function SupplierPage() {
             <div className="space-y-6">
               {/* Resumen de estadísticas */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/20">
+                <Card className="bg-primary/10">
                   <CardContent className="p-4 text-center">
                     <div className="flex items-center justify-center mb-2">
-                      <div className="p-2 bg-blue-500/20 rounded-full">
-                        <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      <div className="p-2 bg-primary/20 rounded-full">
+                        <Target className="h-5 w-5 text-primary" />
                       </div>
                     </div>
-                    <p className="text-2xl md:text-3xl font-bold text-blue-700 dark:text-blue-300">
+                    <p className="text-2xl md:text-3xl font-bold text-primary">
                       {monthlyStats?.machinesVisited || 0}
                     </p>
-                    <p className="text-xs md:text-sm text-blue-600/80">Máquinas este mes</p>
+                    <p className="text-xs md:text-sm text-primary/80">Máquinas este mes</p>
                   </CardContent>
                 </Card>
                 <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/20">
@@ -2424,17 +2424,17 @@ export function SupplierPage() {
                     <p className="text-xs md:text-sm text-amber-600/80">Efectivo este mes</p>
                   </CardContent>
                 </Card>
-                <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/30 dark:to-purple-900/20">
+                <Card>
                   <CardContent className="p-4 text-center">
                     <div className="flex items-center justify-center mb-2">
-                      <div className="p-2 bg-purple-500/20 rounded-full">
-                        <Package className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                      <div className="p-2 bg-primary/10 rounded-full">
+                        <Package className="h-5 w-5 text-primary" />
                       </div>
                     </div>
-                    <p className="text-2xl md:text-3xl font-bold text-purple-700 dark:text-purple-300">
+                    <p className="text-2xl md:text-3xl font-bold">
                       {monthlyStats?.productsLoaded || 0}
                     </p>
-                    <p className="text-xs md:text-sm text-purple-600/80">Productos cargados</p>
+                    <p className="text-xs md:text-sm text-muted-foreground">Productos cargados</p>
                   </CardContent>
                 </Card>
               </div>
@@ -2459,12 +2459,12 @@ export function SupplierPage() {
                               <div className="flex items-center gap-3">
                                 <div className={`p-2 rounded-full ${
                                   route.status === "completada" ? "bg-emerald-500/10" :
-                                  route.status === "en_progreso" ? "bg-blue-500/10" :
+                                  route.status === "en_progreso" ? "bg-primary/10" :
                                   "bg-muted"
                                 }`}>
                                   <Navigation className={`h-4 w-4 ${
                                     route.status === "completada" ? "text-emerald-500" :
-                                    route.status === "en_progreso" ? "text-blue-500" :
+                                    route.status === "en_progreso" ? "text-primary" :
                                     "text-muted-foreground"
                                   }`} />
                                 </div>
@@ -3035,7 +3035,7 @@ export function SupplierPage() {
                         </p>
                       )}
                       {loadDialogMode === "standard" && surplus > 0 && (
-                        <p className="text-xs text-blue-600 dark:text-blue-400" data-testid={`text-surplus-${product.productId}`}>
+                        <p className="text-xs text-primary" data-testid={`text-surplus-${product.productId}`}>
                           Sobran {surplus} sobre el estándar (no requiere carga)
                         </p>
                       )}
@@ -3145,7 +3145,7 @@ export function SupplierPage() {
             )}
 
             {currentStop?.machine?.notes && (
-              <div className="p-3 rounded-lg bg-blue-500/10">
+              <div className="p-3 rounded-lg bg-muted">
                 <p className="text-sm text-muted-foreground">Notas</p>
                 <p className="text-sm">{currentStop.machine.notes}</p>
               </div>
@@ -3403,9 +3403,9 @@ export function SupplierPage() {
 
             {/* Productos cargados */}
             {loadedProducts.length > 0 && (
-              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+              <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
                 <p className="text-sm font-medium mb-2 flex items-center gap-2">
-                  <Package className="h-4 w-4 text-blue-500" />
+                  <Package className="h-4 w-4 text-primary" />
                   Productos Cargados ({loadedProducts.reduce((sum: number, p: any) => sum + p.quantity, 0)} unidades)
                 </p>
                 <div className="space-y-1">

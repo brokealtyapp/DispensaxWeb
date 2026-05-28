@@ -122,7 +122,7 @@ function SuperAdminLayout() {
 
   return (
     <SidebarProvider style={sidebarStyle as React.CSSProperties}>
-      <div className="flex h-screen w-full bg-muted/30">
+      <div className="flex h-screen w-full bg-background">
         <SuperAdminSidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
           <header className="flex items-center justify-between gap-4 px-6 py-4 bg-background sticky top-0 z-50">
@@ -266,7 +266,7 @@ function TenantLayout() {
 
   return (
     <SidebarProvider style={sidebarStyle as React.CSSProperties}>
-      <div className="flex h-screen w-full bg-muted/30">
+      <div className="flex h-screen w-full bg-background">
         <AppSidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
           <header className="flex items-center justify-between gap-4 px-6 py-4 bg-background sticky top-0 z-50">

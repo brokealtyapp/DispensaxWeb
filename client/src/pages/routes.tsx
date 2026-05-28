@@ -271,7 +271,7 @@ function SortableStageItem({
           {stage.isDefault && <Badge variant="outline" className="text-xs">Inicial</Badge>}
           {stage.isTerminal && <Badge variant="outline" className="text-xs">Terminal</Badge>}
           {stage.slaHours && (
-            <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs gap-1">
+            <Badge className="bg-primary/10 text-primary text-xs gap-1">
               <Timer className="h-3 w-3" />
               SLA {stage.slaHours}h
             </Badge>
@@ -2543,7 +2543,7 @@ export default function RoutesPage() {
                           key={stop.id} 
                           className={`flex items-center justify-between p-3 rounded-lg border ${
                             stop.status === "completada" ? "bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800" :
-                            stop.status === "en_progreso" ? "bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800" :
+                            stop.status === "en_progreso" ? "bg-primary/5 border-primary/20" :
                             "bg-muted/50"
                           }`}
                           data-testid={`stop-${stop.id}`}
@@ -2577,7 +2577,7 @@ export default function RoutesPage() {
                             )}
                             <span className={`flex items-center justify-center w-7 h-7 rounded-full text-sm font-medium ${
                               stop.status === "completada" ? "bg-green-500 text-white" :
-                              stop.status === "en_progreso" ? "bg-blue-500 text-white" :
+                              stop.status === "en_progreso" ? "bg-primary text-primary-foreground" :
                               "bg-muted-foreground/20 text-muted-foreground"
                             }`}>
                               {stop.order}
@@ -2945,7 +2945,7 @@ export default function RoutesPage() {
                             {elapsed !== null ? (elapsed >= 60 ? `${Math.floor(elapsed / 60)}h ${elapsed % 60}m` : `${elapsed}m`) : "—"}
                           </Badge>
                         ) : (
-                          <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs">En curso</Badge>
+                          <Badge className="bg-primary/10 text-primary text-xs">En curso</Badge>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">

@@ -88,10 +88,10 @@ const categoryLabels: Record<string, string> = {
 };
 
 const categoryColors: Record<string, string> = {
-  bebidas_frias: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  bebidas_frias: "bg-primary/10 text-primary",
   bebidas_calientes: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
   snacks: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  dulces: "bg-pink-500/10 text-pink-600 dark:text-pink-400",
+  dulces: "bg-muted text-muted-foreground",
   otros: "bg-gray-500/10 text-gray-600 dark:text-gray-400",
 };
 
@@ -108,13 +108,13 @@ const movementTypeLabels: Record<string, string> = {
 
 const movementTypeColors: Record<string, string> = {
   entrada_compra: "bg-emerald-500 text-white",
-  entrada_devolucion: "bg-blue-500 text-white",
+  entrada_devolucion: "bg-muted text-muted-foreground",
   salida_abastecedor: "bg-amber-500 text-white",
   salida_merma: "bg-destructive text-destructive-foreground",
   salida_caducidad: "bg-orange-500 text-white",
   salida_danio: "bg-red-500 text-white",
-  ajuste_inventario: "bg-purple-500 text-white",
-  transferencia: "bg-indigo-500 text-white",
+  ajuste_inventario: "bg-muted text-muted-foreground",
+  transferencia: "bg-muted text-muted-foreground",
 };
 
 export function ProductsPage() {
@@ -388,8 +388,8 @@ export function ProductsPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-purple-500/10">
-                <Tag className="h-5 w-5 text-purple-500" />
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Tag className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <p className="text-2xl font-bold" data-testid="text-categories-count">

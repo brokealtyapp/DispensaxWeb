@@ -202,8 +202,8 @@ export default function MiVehiculoPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900/30">
-                <ClipboardList className="w-6 h-6 text-blue-600" />
+              <div className="p-3 rounded-full bg-primary/10">
+                <ClipboardList className="w-6 h-6 text-primary" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Unidades Totales</p>

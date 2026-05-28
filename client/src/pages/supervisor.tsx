@@ -134,8 +134,8 @@ export function SupervisorPage() {
         <Card data-testid="stat-routes-progress">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                <Route className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Route className="h-5 w-5 text-primary" />
               </div>
               <Badge variant="secondary" className="text-xs">
                 {routesSummary?.activeRoutes || 0} activas
@@ -157,10 +157,10 @@ export function SupervisorPage() {
         <Card data-testid="stat-machines-status">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                <Box className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Box className="h-5 w-5 text-primary" />
               </div>
-              <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+              <Badge variant="secondary" className="text-xs">
                 {Math.round((machineSummary.active / Math.max(machineSummary.total, 1)) * 100)}% operativas
               </Badge>
             </div>
@@ -176,7 +176,7 @@ export function SupervisorPage() {
                   <p className="text-muted-foreground">Offline</p>
                 </div>
                 <div className="text-center">
-                  <p className="font-medium text-yellow-600">{machineSummary.lowStock}</p>
+                  <p className="font-medium text-muted-foreground">{machineSummary.lowStock}</p>
                   <p className="text-muted-foreground">Vacías</p>
                 </div>
               </div>
@@ -187,8 +187,8 @@ export function SupervisorPage() {
         <Card data-testid="stat-alerts">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <div className="h-10 w-10 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                <AlertTriangle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+              <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
               </div>
               {criticalAlerts.length > 0 && (
                 <Badge variant="destructive" className="text-xs animate-pulse">
@@ -217,8 +217,8 @@ export function SupervisorPage() {
         <Card data-testid="stat-technicians">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <div className="h-10 w-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Users className="h-5 w-5 text-primary" />
               </div>
               <Badge variant="secondary" className="text-xs">
                 {hrSummary?.weekVisits || 0} visitas
@@ -264,15 +264,15 @@ export function SupervisorPage() {
                   >
                     <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
                       route.status === "inactiva" ? "bg-green-100 dark:bg-green-900/30" :
-                      route.status === "activa" ? "bg-blue-100 dark:bg-blue-900/30" :
-                      "bg-gray-100 dark:bg-gray-800"
+                      route.status === "activa" ? "bg-primary/10" :
+                      "bg-muted"
                     }`}>
                       {route.status === "inactiva" ? (
                         <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
                       ) : route.status === "activa" ? (
-                        <Truck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        <Truck className="h-5 w-5 text-primary" />
                       ) : (
-                        <Clock className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                        <Clock className="h-5 w-5 text-muted-foreground" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -322,9 +322,9 @@ export function SupervisorPage() {
                     <div className="relative">
                       <Avatar className="h-10 w-10">
                         <AvatarFallback className={`${
-                          idx === 0 ? "bg-yellow-100 text-yellow-700" :
-                          idx === 1 ? "bg-gray-100 text-gray-700" :
-                          idx === 2 ? "bg-amber-100 text-amber-700" :
+                          idx === 0 ? "bg-primary/15 text-primary" :
+                          idx === 1 ? "bg-muted text-muted-foreground" :
+                          idx === 2 ? "bg-muted text-muted-foreground" :
                           "bg-muted"
                         }`}>
                           {getInitials(tech.name)}
@@ -332,9 +332,9 @@ export function SupervisorPage() {
                       </Avatar>
                       {idx < 3 && (
                         <div className={`absolute -top-1 -right-1 h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                          idx === 0 ? "bg-yellow-400 text-yellow-900" :
-                          idx === 1 ? "bg-gray-300 text-gray-700" :
-                          "bg-amber-400 text-amber-900"
+                          idx === 0 ? "bg-primary text-primary-foreground" :
+                          idx === 1 ? "bg-muted text-muted-foreground" :
+                          "bg-muted/80 text-muted-foreground"
                         }`}>
                           {idx + 1}
                         </div>
@@ -423,7 +423,7 @@ export function SupervisorPage() {
               </div>
             ) : (
               <div className="text-center py-8">
-                <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-3" />
+                <CheckCircle2 className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
                 <p className="text-muted-foreground">No hay alertas activas</p>
                 <p className="text-xs text-muted-foreground mt-1">Todas las máquinas operan con normalidad</p>
               </div>
@@ -450,15 +450,15 @@ export function SupervisorPage() {
                       task.status === "completada" 
                         ? "bg-green-100 dark:bg-green-900/30"
                         : task.status === "en_progreso"
-                        ? "bg-blue-100 dark:bg-blue-900/30"
-                        : "bg-gray-100 dark:bg-gray-800"
+                        ? "bg-primary/10"
+                        : "bg-muted"
                     }`}>
                       {task.status === "completada" ? (
                         <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
                       ) : task.status === "en_progreso" ? (
-                        <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                        <Clock className="h-4 w-4 text-primary" />
                       ) : (
-                        <XCircle className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                        <XCircle className="h-4 w-4 text-muted-foreground" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -490,7 +490,7 @@ export function SupervisorPage() {
               </div>
             ) : (
               <div className="text-center py-8">
-                <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-3" />
+                <CheckCircle2 className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
                 <p className="text-muted-foreground">No hay tareas pendientes</p>
               </div>
             )}

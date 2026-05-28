@@ -22,12 +22,12 @@ import { Link } from "wouter";
 import type { Task, Machine } from "@shared/schema";
 
 const zoneColors = [
-  "bg-[#2F6FED]",
-  "bg-[#1D1D1D]",
-  "bg-[#FF6B3D]",
-  "bg-[#8E59FF]",
-  "bg-[#4ECB71]",
   "bg-[#E84545]",
+  "bg-[#c43535]",
+  "bg-[#f07070]",
+  "bg-[#1a0808]",
+  "bg-[#6b6b6b]",
+  "bg-[#3d3d3d]",
 ];
 
 interface SummaryRoutes {
@@ -318,51 +318,59 @@ export function DashboardPage() {
     <div className="flex h-full">
       <div className="flex-1 p-6 overflow-auto">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0">
+          <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-white/70">Máquinas Activas</p>
-                  <p className="text-2xl font-bold" data-testid="stat-active-machines">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Máquinas Activas</p>
+                  <p className="text-3xl font-bold" data-testid="stat-active-machines">
                     {machines.filter((m: any) => m.status === "operando").length}
                   </p>
                 </div>
-                <Box className="h-8 w-8 text-white/70" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-white/70">Alertas Activas</p>
-                  <p className="text-2xl font-bold" data-testid="stat-active-alerts">{activeAlerts}</p>
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Box className="h-5 w-5 text-primary" />
                 </div>
-                <AlertTriangle className="h-8 w-8 text-white/70" />
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0">
+          <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-white/70">Ventas Hoy</p>
-                  <p className="text-2xl font-bold" data-testid="stat-sales-today">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Alertas Activas</p>
+                  <p className="text-3xl font-bold" data-testid="stat-active-alerts">{activeAlerts}</p>
+                </div>
+                <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Ventas Hoy</p>
+                  <p className="text-3xl font-bold" data-testid="stat-sales-today">
                     {formatCurrency(accountingSummary?.salesToday || 0)}
                   </p>
                 </div>
-                <DollarSign className="h-8 w-8 text-white/70" />
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <DollarSign className="h-5 w-5 text-primary" />
+                </div>
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0">
+          <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-white/70">Tareas Hoy</p>
-                  <p className="text-2xl font-bold" data-testid="stat-today-tasks">{todayTasks.length}</p>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Tareas Hoy</p>
+                  <p className="text-3xl font-bold" data-testid="stat-today-tasks">{todayTasks.length}</p>
                 </div>
-                <CheckCircle2 className="h-8 w-8 text-white/70" />
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -377,8 +385,8 @@ export function DashboardPage() {
               <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-machines">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                      <Box className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Box className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <h3 className="font-semibold">Máquinas</h3>
@@ -407,8 +415,8 @@ export function DashboardPage() {
               <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-products">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="h-10 w-10 rounded-lg bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center">
-                      <Package className="h-5 w-5 text-pink-600 dark:text-pink-400" />
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Package className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <h3 className="font-semibold">Productos</h3>
@@ -437,8 +445,8 @@ export function DashboardPage() {
               <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-routes">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="h-10 w-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
-                      <Route className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Route className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <h3 className="font-semibold">Rutas</h3>
@@ -467,8 +475,8 @@ export function DashboardPage() {
               <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-warehouse">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="h-10 w-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                      <Warehouse className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Warehouse className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <h3 className="font-semibold">Almacén</h3>
@@ -497,8 +505,8 @@ export function DashboardPage() {
               <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-purchases">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="h-10 w-10 rounded-lg bg-cyan-100 dark:bg-cyan-900/30 flex items-center justify-center">
-                      <ShoppingCart className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <ShoppingCart className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <h3 className="font-semibold">Compras</h3>
@@ -508,7 +516,7 @@ export function DashboardPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Abiertas</span>
-                      <span className="font-medium text-blue-600">{purchasesSummary?.openOrders || 0}</span>
+                      <span className="font-medium">{purchasesSummary?.openOrders || 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Por recibir</span>
@@ -534,8 +542,8 @@ export function DashboardPage() {
               <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-accounting">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                      <CircleDollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <CircleDollarSign className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <h3 className="font-semibold">Contabilidad</h3>
@@ -566,8 +574,8 @@ export function DashboardPage() {
               <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-petty-cash">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="h-10 w-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
-                      <Wallet className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Wallet className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <h3 className="font-semibold">Caja Chica</h3>
@@ -596,8 +604,8 @@ export function DashboardPage() {
               <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-fuel">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="h-10 w-10 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
-                      <Fuel className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Fuel className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <h3 className="font-semibold">Combustible</h3>
@@ -626,8 +634,8 @@ export function DashboardPage() {
               <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-reconciliation">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="h-10 w-10 rounded-lg bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
-                      <BarChart3 className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <BarChart3 className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <h3 className="font-semibold">Conciliación</h3>
@@ -663,8 +671,8 @@ export function DashboardPage() {
               <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-hr">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="h-10 w-10 rounded-lg bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center">
-                      <Users className="h-5 w-5 text-pink-600 dark:text-pink-400" />
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Users className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <h3 className="font-semibold">Recursos Humanos</h3>
@@ -694,8 +702,8 @@ export function DashboardPage() {
                 <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-work-orders">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3 mb-3">
-                      <div className="h-10 w-10 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                        <ClipboardList className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <ClipboardList className="h-5 w-5 text-primary" />
                       </div>
                       <div>
                         <h3 className="font-semibold">Órdenes de Trabajo</h3>
@@ -711,7 +719,7 @@ export function DashboardPage() {
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">En proceso</span>
-                        <span className="font-medium text-blue-600">
+                        <span className="font-medium">
                           {(woStats.byStatus?.en_proceso || 0) + (woStats.byStatus?.en_ruta || 0)}
                         </span>
                       </div>
@@ -730,8 +738,8 @@ export function DashboardPage() {
             <Card className="h-full" data-testid="widget-reports">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-900/30 flex items-center justify-center">
-                    <FileText className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+                  <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                    <FileText className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <div>
                     <h3 className="font-semibold">Reportes</h3>
@@ -788,10 +796,10 @@ export function DashboardPage() {
                       {day.totalCount > 0 && (
                         <div className="flex justify-center gap-0.5 mt-1">
                           {day.taskCount > 0 && (
-                            <span className={`w-1.5 h-1.5 rounded-full ${day.isToday ? "bg-white" : "bg-blue-500"}`} />
+                            <span className={`w-1.5 h-1.5 rounded-full ${day.isToday ? "bg-white" : "bg-primary"}`} />
                           )}
                           {day.eventCount > 0 && (
-                            <span className={`w-1.5 h-1.5 rounded-full ${day.isToday ? "bg-white" : "bg-green-500"}`} />
+                            <span className={`w-1.5 h-1.5 rounded-full ${day.isToday ? "bg-white" : "bg-primary/60"}`} />
                           )}
                         </div>
                       )}
@@ -813,7 +821,7 @@ export function DashboardPage() {
                     {selectedDayData.tasks.length > 0 && (
                       <div className="space-y-1">
                         <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-blue-500" />
+                          <span className="w-2 h-2 rounded-full bg-primary" />
                           Tareas ({selectedDayData.taskCount})
                         </p>
                         {selectedDayData.tasks.slice(0, 3).map((task: Task) => (
@@ -837,7 +845,7 @@ export function DashboardPage() {
                     {selectedDayData.events.length > 0 && (
                       <div className="space-y-1">
                         <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-green-500" />
+                          <span className="w-2 h-2 rounded-full bg-primary/60" />
                           Eventos ({selectedDayData.eventCount})
                         </p>
                         {selectedDayData.events.slice(0, 3).map((event: any) => (

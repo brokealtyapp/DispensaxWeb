@@ -13,7 +13,7 @@ const colorClasses = {
   primary: "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground",
   success: "bg-emerald-500/10 text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white",
   warning: "bg-amber-500/10 text-amber-500 group-hover:bg-amber-500 group-hover:text-white",
-  purple: "bg-purple-500/10 text-purple-500 group-hover:bg-purple-500 group-hover:text-white",
+  purple: "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground",
   orange: "bg-orange-500/10 text-orange-500 group-hover:bg-orange-500 group-hover:text-white",
 };
 

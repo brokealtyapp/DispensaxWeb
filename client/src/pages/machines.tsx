@@ -69,7 +69,7 @@ const statusColors: Record<string, string> = {
   necesita_servicio: "bg-amber-500 text-white",
   vacia: "bg-destructive text-destructive-foreground",
   fuera_de_linea: "bg-muted text-muted-foreground",
-  mantenimiento: "bg-blue-500 text-white",
+  mantenimiento: "bg-primary text-primary-foreground",
 };
 
 const colorVariants = [

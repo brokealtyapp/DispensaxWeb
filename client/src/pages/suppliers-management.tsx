@@ -328,8 +328,8 @@ export function SuppliersManagementPage() {
                   {totalStats.totalSuppliers}
                 </p>
               </div>
-              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-                <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <div className="p-3 bg-primary/10 rounded-full">
+                <Users className="w-6 h-6 text-primary" />
               </div>
             </div>
           </CardContent>
@@ -360,8 +360,8 @@ export function SuppliersManagementPage() {
                   {totalStats.totalMachinesAttended}/{totalStats.totalMachinesPlanned}
                 </p>
               </div>
-              <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-full">
-                <Package className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+              <div className="p-3 bg-primary/10 rounded-full">
+                <Package className="w-6 h-6 text-primary" />
               </div>
             </div>
             <Progress 
@@ -672,7 +672,7 @@ export function SuppliersManagementPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Target className="w-5 h-5 text-blue-500" />
+                  <Target className="w-5 h-5 text-primary" />
                   Eficiencia de Tiempo
                 </CardTitle>
                 <CardDescription>Tiempo promedio por máquina atendida</CardDescription>
@@ -718,7 +718,7 @@ export function SuppliersManagementPage() {
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-blue-600">{totalStats.totalMachinesAttended}</p>
+                  <p className="text-3xl font-bold text-primary">{totalStats.totalMachinesAttended}</p>
                   <p className="text-sm text-muted-foreground">Máquinas Atendidas</p>
                 </div>
                 <div className="text-center">
@@ -726,7 +726,7 @@ export function SuppliersManagementPage() {
                   <p className="text-sm text-muted-foreground">Efectivo Total</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-purple-600">
+                  <p className="text-3xl font-bold text-primary">
                     {totalStats.totalMachinesPlanned > 0 
                       ? Math.round((totalStats.totalMachinesAttended / totalStats.totalMachinesPlanned) * 100) 
                       : 0}%

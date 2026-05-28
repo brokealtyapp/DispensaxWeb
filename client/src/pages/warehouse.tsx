@@ -123,14 +123,14 @@ const movementTypeLabels: Record<string, string> = {
 
 const movementTypeColors: Record<string, string> = {
   entrada_compra: "bg-emerald-500 text-white",
-  entrada_devolucion: "bg-blue-500 text-white",
+  entrada_devolucion: "bg-muted text-muted-foreground",
   salida_abastecedor: "bg-amber-500 text-white",
-  salida_maquina: "bg-cyan-600 text-white",
+  salida_maquina: "bg-muted text-muted-foreground",
   salida_merma: "bg-destructive text-destructive-foreground",
   salida_caducidad: "bg-orange-500 text-white",
   salida_danio: "bg-red-600 text-white",
   ajuste_inventario: "bg-muted text-muted-foreground",
-  transferencia: "bg-purple-500 text-white",
+  transferencia: "bg-muted text-muted-foreground",
 };
 
 export function WarehousePage() {
@@ -515,7 +515,6 @@ export function WarehousePage() {
           {canCreate("warehouse_movements") && (
             <Button
               onClick={() => setIsDispatchToVehicleDialogOpen(true)}
-              className="bg-blue-600"
               data-testid="button-dispatch-vehicle"
             >
               <Truck className="w-4 h-4 mr-2" />
@@ -610,8 +609,8 @@ export function WarehousePage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900/30">
-                <DollarSign className="w-6 h-6 text-blue-600" />
+              <div className="p-3 rounded-full bg-primary/10">
+                <DollarSign className="w-6 h-6 text-primary" />
               </div>
               <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">Valor Total</p>
@@ -1518,7 +1517,6 @@ export function WarehousePage() {
               type="button"
               onClick={handleSubmitDispatch}
               disabled={dispatchToVehicleMutation.isPending || dispatchItems.length === 0}
-              className="bg-blue-600"
               data-testid="button-submit-dispatch"
             >
               {dispatchToVehicleMutation.isPending ? "Despachando..." : `Despachar ${dispatchItems.length} producto(s)`}

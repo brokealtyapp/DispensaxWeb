@@ -755,7 +755,7 @@ export function HRPage() {
       key: "status",
       header: "Estado",
       render: (item) => (
-        <Badge variant="secondary" className={item.status === "pagado" ? "bg-emerald-500/10 text-emerald-500" : item.status === "procesado" ? "bg-blue-500/10 text-blue-500" : "bg-amber-500/10 text-amber-500"}>
+        <Badge variant="secondary" className={item.status === "pagado" ? "bg-emerald-500/10 text-emerald-500" : item.status === "procesado" ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-500"}>
           {payrollStatusLabels[item.status] || item.status}
         </Badge>
       ),

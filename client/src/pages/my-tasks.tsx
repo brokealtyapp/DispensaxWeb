@@ -46,21 +46,21 @@ const priorityConfig = {
 
 const statusConfig = {
   pendiente: { label: "Pendiente", color: "bg-slate-500 text-white", icon: Circle },
-  en_progreso: { label: "En Progreso", color: "bg-blue-500 text-white", icon: PlayCircle },
+  en_progreso: { label: "En Progreso", color: "bg-primary text-primary-foreground", icon: PlayCircle },
   completada: { label: "Completada", color: "bg-green-500 text-white", icon: CheckCircle2 },
   cancelada: { label: "Cancelada", color: "bg-red-500 text-white", icon: XCircle },
 };
 
 const typeConfig: Record<string, { label: string; icon: any; color: string }> = {
-  abastecimiento: { label: "Abastecimiento", icon: Package, color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+  abastecimiento: { label: "Abastecimiento", icon: Package, color: "bg-primary/10 text-primary" },
   mantenimiento: { label: "Mantenimiento", icon: Wrench, color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
   recoleccion: { label: "Recolección", icon: Truck, color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-  revision: { label: "Revisión", icon: ClipboardList, color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
-  limpieza: { label: "Limpieza", icon: Sparkles, color: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400" },
+  revision: { label: "Revisión", icon: ClipboardList, color: "bg-muted text-muted-foreground" },
+  limpieza: { label: "Limpieza", icon: Sparkles, color: "bg-muted text-muted-foreground" },
   reparacion: { label: "Reparación", icon: Wrench, color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-  reunion: { label: "Reunión", icon: Users, color: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400" },
-  administrativo: { label: "Administrativo", icon: ClipboardList, color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" },
-  capacitacion: { label: "Capacitación", icon: Users, color: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400" },
+  reunion: { label: "Reunión", icon: Users, color: "bg-muted text-muted-foreground" },
+  administrativo: { label: "Administrativo", icon: ClipboardList, color: "bg-muted text-muted-foreground" },
+  capacitacion: { label: "Capacitación", icon: Users, color: "bg-muted text-muted-foreground" },
   otro: { label: "Otro", icon: Coffee, color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400" },
 };
 
@@ -103,7 +103,7 @@ const TaskItem = memo(function TaskItem({ task, onStartTask, onCompleteTask, onC
               task.status === "completada" 
                 ? "bg-green-500 border-green-500 text-white" 
                 : task.status === "en_progreso"
-                ? "bg-blue-500 border-blue-500 text-white"
+                ? "bg-primary border-primary text-primary-foreground"
                 : task.status === "cancelada"
                 ? "bg-red-500 border-red-500 text-white"
                 : "border-muted-foreground/30 hover:border-primary"
@@ -310,8 +310,8 @@ export function MyTasksPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                  <PlayCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <PlayCircle className="h-5 w-5 text-primary" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold" data-testid="text-inprogress-count">{inProgressCount}</p>

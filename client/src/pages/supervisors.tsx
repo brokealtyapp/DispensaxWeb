@@ -266,8 +266,8 @@ export function SupervisorsPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-500/10">
-                <Users className="h-5 w-5 text-blue-500" />
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Users className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <p className="text-2xl font-bold" data-testid="text-total-supervisors">
@@ -296,8 +296,8 @@ export function SupervisorsPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-purple-500/10">
-                <MapPin className="h-5 w-5 text-purple-500" />
+              <div className="p-2 rounded-lg bg-primary/10">
+                <MapPin className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <p className="text-2xl font-bold" data-testid="text-with-zone">
@@ -547,7 +547,7 @@ export function SupervisorsPage() {
                     </div>
                     <div className="grid grid-cols-3 gap-6 text-center">
                       <div>
-                        <p className="text-lg font-bold text-blue-600">{supervisor.metrics.operativityRate}%</p>
+                        <p className="text-lg font-bold text-primary">{supervisor.metrics.operativityRate}%</p>
                         <p className="text-xs text-muted-foreground">Operatividad</p>
                       </div>
                       <div>
@@ -627,7 +627,7 @@ export function SupervisorsPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <Card>
                     <CardContent className="p-4 text-center">
-                      <p className="text-2xl font-bold text-blue-600">
+                      <p className="text-2xl font-bold text-primary">
                         {supervisorDetail.metrics.machinesCount}
                       </p>
                       <p className="text-sm text-muted-foreground">Máquinas</p>
@@ -643,7 +643,7 @@ export function SupervisorsPage() {
                   </Card>
                   <Card>
                     <CardContent className="p-4 text-center">
-                      <p className="text-2xl font-bold text-purple-600">
+                      <p className="text-2xl font-bold text-primary">
                         {supervisorDetail.metrics.abastecedoresCount}
                       </p>
                       <p className="text-sm text-muted-foreground">Abastecedores</p>
@@ -836,7 +836,7 @@ export function SupervisorsPage() {
                               {task.status === "completada" ? (
                                 <CheckCircle2 className="h-4 w-4 text-green-500" />
                               ) : task.status === "en_progreso" ? (
-                                <Clock className="h-4 w-4 text-blue-500" />
+                                <Clock className="h-4 w-4 text-primary" />
                               ) : (
                                 <Clock className="h-4 w-4 text-muted-foreground" />
                               )}

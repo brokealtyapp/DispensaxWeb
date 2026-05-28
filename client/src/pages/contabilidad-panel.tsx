@@ -177,8 +177,8 @@ export function ContabilidadPanelPage() {
               <Card data-testid="card-stat-petty-cash">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-full bg-purple-500/10 flex items-center justify-center">
-                      <PiggyBank className="h-6 w-6 text-purple-500" />
+                    <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                      <PiggyBank className="h-6 w-6 text-primary" />
                     </div>
                     <div>
                       <p className="text-xl font-bold">{formatCurrency(pettyCashStats?.currentBalance || 0)}</p>
