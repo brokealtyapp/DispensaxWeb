@@ -139,6 +139,7 @@ import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayax
 import { checkAndSendRouteAlerts } from "./routeAlertService";
 import { registerEgresoRoutes } from "./egreso-routes";
 import { registerIngresoRoutes } from "./ingreso-routes";
+import { registerComprasFinancieroRoutes } from "./compras-financiero-routes";
 
 // ── Helper: verifica permiso de acción de ruta (auto-inicializa si no existe) ──
 async function checkRouteActionPermission(tenantId: string, action: string, role: string): Promise<boolean> {
@@ -14377,6 +14378,11 @@ export async function registerRoutes(
   // MÓDULO INGRESOS
   // ============================
   registerIngresoRoutes(app);
+
+  // ============================
+  // MÓDULO COMPRAS FINANCIERO
+  // ============================
+  registerComprasFinancieroRoutes(app);
 
   return httpServer;
 }

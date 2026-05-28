@@ -3406,3 +3406,168 @@ export const ingresosRegistrosRelations = relations(ingresosRegistros, ({ one })
 }));
 
 // ==================== FIN MÓDULO INGRESOS ====================
+
+// ==================== MÓDULO COMPRAS FINANCIERO ====================
+
+export const supplierInvoiceStatusEnum = pgEnum("supplier_invoice_status", [
+  "pendiente",
+  "parcial",
+  "pagada",
+  "vencida",
+  "anulada",
+]);
+
+export const supplierInvoices = pgTable("supplier_invoices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  supplierId: varchar("supplier_id").references(() => suppliers.id),
+  orderId: varchar("order_id"),
+  invoiceNumber: text("invoice_number").notNull(),
+  description: text("description").notNull(),
+  subtotal: decimal("subtotal", { precision: 15, scale: 2 }).notNull().default("0"),
+  taxAmount: decimal("tax_amount", { precision: 15, scale: 2 }).notNull().default("0"),
+  totalAmount: decimal("total_amount", { precision: 15, scale: 2 }).notNull(),
+  paidAmount: decimal("paid_amount", { precision: 15, scale: 2 }).notNull().default("0"),
+  currency: text("currency").default("DOP"),
+  issueDate: timestamp("issue_date").notNull().defaultNow(),
+  dueDate: timestamp("due_date"),
+  status: text("status").default("pendiente"),
+  notes: text("notes"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertSupplierInvoiceSchema = createInsertSchema(supplierInvoices).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSupplierInvoice = z.infer<typeof insertSupplierInvoiceSchema>;
+export type SupplierInvoice = typeof supplierInvoices.$inferSelect;
+
+export const supplierInvoiceItems = pgTable("supplier_invoice_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  invoiceId: varchar("invoice_id").notNull().references(() => supplierInvoices.id),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  description: text("description").notNull(),
+  quantity: decimal("quantity", { precision: 10, scale: 3 }).notNull().default("1"),
+  unitPrice: decimal("unit_price", { precision: 15, scale: 2 }).notNull(),
+  amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSupplierInvoiceItemSchema = createInsertSchema(supplierInvoiceItems).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSupplierInvoiceItem = z.infer<typeof insertSupplierInvoiceItemSchema>;
+export type SupplierInvoiceItem = typeof supplierInvoiceItems.$inferSelect;
+
+export const supplierPayments = pgTable("supplier_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  invoiceId: varchar("invoice_id").notNull().references(() => supplierInvoices.id),
+  bankAccountId: varchar("bank_account_id").references(() => bankAccounts.id),
+  amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
+  currency: text("currency").default("DOP"),
+  paymentDate: timestamp("payment_date").notNull().defaultNow(),
+  reference: text("reference"),
+  notes: text("notes"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSupplierPaymentSchema = createInsertSchema(supplierPayments).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSupplierPayment = z.infer<typeof insertSupplierPaymentSchema>;
+export type SupplierPayment = typeof supplierPayments.$inferSelect;
+
+export const recurringSupplierPayments = pgTable("recurring_supplier_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  supplierId: varchar("supplier_id").references(() => suppliers.id),
+  description: text("description").notNull(),
+  amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
+  currency: text("currency").default("DOP"),
+  frecuencia: text("frecuencia").notNull().default("mensual"),
+  proximaFecha: timestamp("proxima_fecha"),
+  alertDiasPrevios: integer("alert_dias_previos").default(5),
+  bankAccountId: varchar("bank_account_id").references(() => bankAccounts.id),
+  isActive: boolean("is_active").default(true),
+  notes: text("notes"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertRecurringSupplierPaymentSchema = createInsertSchema(recurringSupplierPayments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertRecurringSupplierPayment = z.infer<typeof insertRecurringSupplierPaymentSchema>;
+export type RecurringSupplierPayment = typeof recurringSupplierPayments.$inferSelect;
+
+export const supplierDebitNotes = pgTable("supplier_debit_notes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  invoiceId: varchar("invoice_id").references(() => supplierInvoices.id),
+  supplierId: varchar("supplier_id").references(() => suppliers.id),
+  noteNumber: text("note_number").notNull(),
+  reason: text("reason").notNull(),
+  amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
+  currency: text("currency").default("DOP"),
+  date: timestamp("date").notNull().defaultNow(),
+  status: text("status").default("pendiente"),
+  notes: text("notes"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSupplierDebitNoteSchema = createInsertSchema(supplierDebitNotes).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSupplierDebitNote = z.infer<typeof insertSupplierDebitNoteSchema>;
+export type SupplierDebitNote = typeof supplierDebitNotes.$inferSelect;
+
+// Relaciones Compras Financiero
+export const supplierInvoicesRelations = relations(supplierInvoices, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [supplierInvoices.tenantId], references: [tenants.id] }),
+  supplier: one(suppliers, { fields: [supplierInvoices.supplierId], references: [suppliers.id] }),
+  createdByUser: one(users, { fields: [supplierInvoices.createdBy], references: [users.id] }),
+  items: many(supplierInvoiceItems),
+  payments: many(supplierPayments),
+  debitNotes: many(supplierDebitNotes),
+}));
+
+export const supplierInvoiceItemsRelations = relations(supplierInvoiceItems, ({ one }) => ({
+  invoice: one(supplierInvoices, { fields: [supplierInvoiceItems.invoiceId], references: [supplierInvoices.id] }),
+  tenant: one(tenants, { fields: [supplierInvoiceItems.tenantId], references: [tenants.id] }),
+}));
+
+export const supplierPaymentsRelations = relations(supplierPayments, ({ one }) => ({
+  tenant: one(tenants, { fields: [supplierPayments.tenantId], references: [tenants.id] }),
+  invoice: one(supplierInvoices, { fields: [supplierPayments.invoiceId], references: [supplierInvoices.id] }),
+  bankAccount: one(bankAccounts, { fields: [supplierPayments.bankAccountId], references: [bankAccounts.id] }),
+  createdByUser: one(users, { fields: [supplierPayments.createdBy], references: [users.id] }),
+}));
+
+export const recurringSupplierPaymentsRelations = relations(recurringSupplierPayments, ({ one }) => ({
+  tenant: one(tenants, { fields: [recurringSupplierPayments.tenantId], references: [tenants.id] }),
+  supplier: one(suppliers, { fields: [recurringSupplierPayments.supplierId], references: [suppliers.id] }),
+  bankAccount: one(bankAccounts, { fields: [recurringSupplierPayments.bankAccountId], references: [bankAccounts.id] }),
+  createdByUser: one(users, { fields: [recurringSupplierPayments.createdBy], references: [users.id] }),
+}));
+
+export const supplierDebitNotesRelations = relations(supplierDebitNotes, ({ one }) => ({
+  tenant: one(tenants, { fields: [supplierDebitNotes.tenantId], references: [tenants.id] }),
+  invoice: one(supplierInvoices, { fields: [supplierDebitNotes.invoiceId], references: [supplierInvoices.id] }),
+  supplier: one(suppliers, { fields: [supplierDebitNotes.supplierId], references: [suppliers.id] }),
+  createdByUser: one(users, { fields: [supplierDebitNotes.createdBy], references: [users.id] }),
+}));
+
+// ==================== FIN MÓDULO COMPRAS FINANCIERO ====================
