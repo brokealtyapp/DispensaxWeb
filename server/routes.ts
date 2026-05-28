@@ -8305,6 +8305,49 @@ export async function registerRoutes(
     }
   });
 
+  // Banks Summary
+  app.get("/api/summary/banks", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const weekStart = getStartOfWeekInTimezone();
+
+      const accountCond = tenantId ? and(eq(bankAccountsTable.tenantId, tenantId), eq(bankAccountsTable.isActive, true)) : eq(bankAccountsTable.isActive, true);
+      const txCond = tenantId
+        ? and(eq(bankTransactionsTable.tenantId, tenantId), gte(bankTransactionsTable.date, weekStart))
+        : gte(bankTransactionsTable.date, weekStart);
+
+      const [accounts, weekTxs] = await Promise.all([
+        db.select({
+          totalBalance: sql<number>`coalesce(sum(${bankAccountsTable.balance}::numeric), 0)`,
+          activeCount: count(),
+        }).from(bankAccountsTable).where(accountCond),
+        db.select({
+          type: bankTransactionsTable.type,
+          amount: bankTransactionsTable.amount,
+        }).from(bankTransactionsTable).where(txCond),
+      ]);
+
+      let weekInflows = 0;
+      let weekOutflows = 0;
+      for (const tx of weekTxs) {
+        const amt = Math.abs(parseFloat(tx.amount || "0"));
+        if (tx.type === "entrada") weekInflows += amt;
+        else if (tx.type === "salida") weekOutflows += amt;
+      }
+
+      res.json({
+        totalBalance: Number(accounts[0]?.totalBalance) || 0,
+        activeAccounts: Number(accounts[0]?.activeCount) || 0,
+        weekInflows,
+        weekOutflows,
+      });
+    } catch (error) {
+      if (res.headersSent) return;
+      console.error("Error in banks summary:", error);
+      res.status(500).json({ error: "Error al obtener resumen de bancos" });
+    }
+  });
+
   // HR Summary
   app.get("/api/summary/hr", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
     try {

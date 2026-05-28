@@ -275,6 +275,17 @@ export function DashboardPage() {
     queryKey: ["/api/purchases/fin/facturas/stats"],
   });
 
+  interface BanksSummary {
+    totalBalance: number;
+    activeAccounts: number;
+    weekInflows: number;
+    weekOutflows: number;
+  }
+
+  const { data: banksSummary } = useQuery<BanksSummary>({
+    queryKey: ["/api/summary/banks"],
+  });
+
   const formatRelativeTime = (dateStr: string | Date | null | undefined): string => {
     if (!dateStr) return '';
     const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
@@ -999,6 +1010,36 @@ export function DashboardPage() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Recolecciones</span>
                       <span className="font-medium text-primary">{formatCurrency(reconciliationSummary?.weekCollections || 0)}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/bancos">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-banks">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <DollarSign className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Bancos</h3>
+                      <p className="text-xs text-muted-foreground">{banksSummary?.activeAccounts ?? 0} cuentas activas</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Saldo total</span>
+                      <span className="font-medium text-primary">{formatCurrency(banksSummary?.totalBalance ?? 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Entradas sem.</span>
+                      <span className="font-medium text-primary">{formatCurrency(banksSummary?.weekInflows ?? 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Salidas sem.</span>
+                      <span className="font-medium text-destructive">{formatCurrency(banksSummary?.weekOutflows ?? 0)}</span>
                     </div>
                   </div>
                 </CardContent>
