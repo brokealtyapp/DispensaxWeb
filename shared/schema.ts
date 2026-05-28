@@ -3436,7 +3436,9 @@ export const supplierInvoices = pgTable("supplier_invoices", {
   issueDate: timestamp("issue_date").notNull().defaultNow(),
   dueDate: timestamp("due_date"),
   status: text("status").default("borrador"),
+  paymentTerms: text("payment_terms"),
   attachmentUrl: text("attachment_url"),
+  attachments: jsonb("attachments").default([]),
   notes: text("notes"),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
@@ -3458,6 +3460,7 @@ export const supplierInvoiceItems = pgTable("supplier_invoice_items", {
   description: text("description").notNull(),
   quantity: decimal("quantity", { precision: 10, scale: 3 }).notNull().default("1"),
   unitPrice: decimal("unit_price", { precision: 15, scale: 2 }).notNull(),
+  taxPercentage: decimal("tax_percentage", { precision: 5, scale: 2 }).default("0"),
   amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });

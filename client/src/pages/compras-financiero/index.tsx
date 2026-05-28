@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -215,11 +216,31 @@ const FRECUENCIA_LABELS: Record<string, string> = {
   semestral: "Semestral", anual: "Anual",
 };
 
+const PATH_TO_TAB: Record<string, string> = {
+  "/compras/facturas": "facturas",
+  "/compras/pagos": "pagos",
+  "/compras/recurrentes": "recurrentes",
+  "/compras/notas-debito": "notas-debito",
+};
+const TAB_TO_PATH: Record<string, string> = {
+  "facturas": "/compras/facturas",
+  "pagos": "/compras/pagos",
+  "recurrentes": "/compras/recurrentes",
+  "notas-debito": "/compras/notas-debito",
+};
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function ComprasFinancieroPage() {
   const { toast } = useToast();
   const { canCreate, canEdit, canDelete } = usePermissions();
-  const [tab, setTab] = useState("facturas");
+  const [location, setLocation] = useLocation();
+  const [tab, setTab] = useState(() => PATH_TO_TAB[location] ?? "facturas");
+
+  // Sync tab when user navigates via browser back/forward or sidebar link
+  useEffect(() => {
+    const newTab = PATH_TO_TAB[location];
+    if (newTab && newTab !== tab) setTab(newTab);
+  }, [location]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [supplierFilter, setSupplierFilter] = useState("all");
@@ -815,7 +836,7 @@ export default function ComprasFinancieroPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
+      <Tabs value={tab} onValueChange={(v) => { setTab(v); setLocation(TAB_TO_PATH[v] ?? "/compras/facturas"); }} className="space-y-4">
         <TabsList data-testid="tabs-compras-fin">
           <TabsTrigger value="facturas" data-testid="tab-facturas"><FileText className="h-4 w-4 mr-2" />Facturas</TabsTrigger>
           <TabsTrigger value="pagos" data-testid="tab-pagos"><CreditCard className="h-4 w-4 mr-2" />Pagos</TabsTrigger>

@@ -340,7 +340,10 @@ function TenantLayout() {
               <Route path="/bancos">{() => <ProtectedRoute path="/bancos" component={BancosPage} />}</Route>
               <Route path="/egresos">{() => <ProtectedRoute path="/egresos" component={EgresosPage} />}</Route>
               <Route path="/ingresos">{() => <ProtectedRoute path="/ingresos" component={IngresosPage} />}</Route>
-              <Route path="/compras/financiero">{() => <ProtectedRoute path="/compras/financiero" component={ComprasFinancieroPage} />}</Route>
+              <Route path="/compras/facturas">{() => <ProtectedRoute path="/compras/facturas" component={ComprasFinancieroPage} />}</Route>
+              <Route path="/compras/pagos">{() => <ProtectedRoute path="/compras/pagos" component={ComprasFinancieroPage} />}</Route>
+              <Route path="/compras/recurrentes">{() => <ProtectedRoute path="/compras/recurrentes" component={ComprasFinancieroPage} />}</Route>
+              <Route path="/compras/notas-debito">{() => <ProtectedRoute path="/compras/notas-debito" component={ComprasFinancieroPage} />}</Route>
               <Route path="/mi-panel">{() => <ProtectedRoute path="/mi-panel" component={ViewerDashboardPage} />}</Route>
               <Route component={NotFound} />
             </Switch>

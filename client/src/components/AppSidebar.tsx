@@ -51,6 +51,8 @@ import {
   LayoutGrid,
   Landmark,
   TrendingDown,
+  RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 
 interface MenuItem {
@@ -81,7 +83,6 @@ const operacionItems: MenuItem[] = [
   { icon: Activity, label: "Monitoreo Servicios", href: "/monitoreo-servicios", roles: ["admin", "supervisor"] },
   { icon: ArrowDownUp, label: "Dinero y Productos", href: "/dinero-productos", roles: ["admin", "supervisor", "contabilidad"] },
   { icon: ShoppingCart, label: "Compras", href: "/compras", roles: ["admin", "almacen"] },
-  { icon: FileText, label: "Compras Financiero", href: "/compras/financiero", roles: ["admin", "contabilidad"] },
   { icon: Fuel, label: "Combustible", href: "/combustible", roles: ["admin", "supervisor"] },
   { icon: Building2, label: "Establecimientos", href: "/establecimientos", roles: ["admin", "supervisor"] },
   { icon: Wrench, label: "Órdenes de Trabajo", href: "/ordenes-trabajo", roles: ["admin", "supervisor", "abastecedor"] },
@@ -92,6 +93,13 @@ const abastecedorItems: MenuItem[] = [
   { icon: Wrench, label: "Servicio Activo", href: "/abastecedor?tab=servicio", roles: ["abastecedor"] },
   { icon: Truck, label: "Mi Vehículo", href: "/mi-vehiculo", roles: ["abastecedor"] },
   { icon: TrendingUp, label: "Mi Rendimiento", href: "/abastecedor?tab=rendimiento", roles: ["abastecedor"] },
+];
+
+const comprasFinItems: MenuItem[] = [
+  { icon: FileText, label: "Facturas de Compra", href: "/compras/facturas", roles: ["admin", "contabilidad"] },
+  { icon: CreditCard, label: "Pagos a Proveedores", href: "/compras/pagos", roles: ["admin", "contabilidad"] },
+  { icon: RefreshCw, label: "Pagos Recurrentes", href: "/compras/recurrentes", roles: ["admin", "contabilidad"] },
+  { icon: AlertCircle, label: "Notas de Débito", href: "/compras/notas-debito", roles: ["admin", "contabilidad"] },
 ];
 
 const finanzasItems: MenuItem[] = [
@@ -151,6 +159,7 @@ export function AppSidebar() {
   const visibleMenuItems = filterByRole(menuItems, userRole);
   const visibleOperacionItems = filterByRole(operacionItems, userRole);
   const visibleAbastecedorItems = filterByRole(abastecedorItems, userRole);
+  const visibleComprasFinItems = filterByRole(comprasFinItems, userRole);
   const visibleFinanzasItems = filterByRole(finanzasItems, userRole);
   const visibleIntegrationItems = filterByRole(integrationItems, userRole);
   const visibleAdminItems = filterByRole(adminItems, userRole);
@@ -232,6 +241,33 @@ export function AppSidebar() {
             )}
             <SidebarMenu>
               {visibleOperacionItems.map((item) => {
+                const isActive = location === item.href;
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      asChild
+                      tooltip={isCollapsed ? item.label : undefined}
+                      className={navItemClass(isActive, isCollapsed)}
+                    >
+                      <Link href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {!isCollapsed && <span>{item.label}</span>}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
+
+        {visibleComprasFinItems.length > 0 && (
+          <SidebarGroup className="mt-3">
+            {!isCollapsed && (
+              <SidebarGroupLabel className={groupLabelClass}>COMPRAS FINANCIERO</SidebarGroupLabel>
+            )}
+            <SidebarMenu>
+              {visibleComprasFinItems.map((item) => {
                 const isActive = location === item.href;
                 return (
                   <SidebarMenuItem key={item.href}>

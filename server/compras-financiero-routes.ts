@@ -204,6 +204,10 @@ export function registerComprasFinancieroRoutes(app: Express) {
           );
         }
 
+        const { limit: limitQ, offset: offsetQ } = req.query as Record<string, string>;
+        const pageLimit = Math.min(parseInt(limitQ ?? "100", 10) || 100, 500);
+        const pageOffset = parseInt(offsetQ ?? "0", 10) || 0;
+
         const rows = await db
           .select({
             id: supplierInvoices.id,
@@ -233,9 +237,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
           .leftJoin(suppliersTable, eq(supplierInvoices.supplierId, suppliersTable.id))
           .where(and(...conditions))
           .orderBy(desc(supplierInvoices.createdAt))
-          .limit(200);
+          .limit(pageLimit)
+          .offset(pageOffset);
 
-        res.json(rows);
+        const withBalance = rows.map(r => ({
+          ...r,
+          balanceAmount: String(parseDecimal(r.totalAmount) - parseDecimal(r.paidAmount)),
+        }));
+
+        res.json(withBalance);
       } catch (e) {
         console.error("GET /api/purchases/fin/facturas:", e);
         res.status(500).json({ error: "Error al obtener facturas" });
@@ -376,6 +386,69 @@ export function registerComprasFinancieroRoutes(app: Express) {
       } catch (e) {
         console.error("GET /api/purchases/fin/facturas/:id:", e);
         res.status(500).json({ error: "Error al obtener factura" });
+      }
+    }
+  );
+
+  // GET /api/purchases/fin/facturas/:id/pagos
+  app.get(
+    "/api/purchases/fin/facturas/:id/pagos",
+    authenticateJWT,
+    authorizeRoles(...ROLES_CF),
+    async (req: Request, res: Response) => {
+      try {
+        const { tenantId } = req as AuthenticatedRequest;
+        if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+        const { id } = req.params;
+
+        // Verify invoice belongs to tenant
+        const [inv] = await db.select({ id: supplierInvoices.id })
+          .from(supplierInvoices)
+          .where(and(eq(supplierInvoices.id, id), eq(supplierInvoices.tenantId, tenantId)));
+        if (!inv) return res.status(404).json({ error: "Factura no encontrada" });
+
+        // Pagos directos (invoiceId = id)
+        const directPayments = await db
+          .select({
+            id: supplierPayments.id,
+            invoiceId: supplierPayments.invoiceId,
+            amount: supplierPayments.amount,
+            currency: supplierPayments.currency,
+            paymentDate: supplierPayments.paymentDate,
+            reference: supplierPayments.reference,
+            bankAccountName: bankAccountsTable.name,
+          })
+          .from(supplierPayments)
+          .leftJoin(bankAccountsTable, eq(supplierPayments.bankAccountId, bankAccountsTable.id))
+          .where(and(
+            eq(supplierPayments.invoiceId, id),
+            eq(supplierPayments.tenantId, tenantId)
+          ))
+          .orderBy(desc(supplierPayments.paymentDate));
+
+        // Pagos por allocation
+        const allocatedPayments = await db
+          .select({
+            id: supplierPayments.id,
+            allocatedAmount: supplierPaymentAllocations.allocatedAmount,
+            currency: supplierPayments.currency,
+            paymentDate: supplierPayments.paymentDate,
+            reference: supplierPayments.reference,
+            bankAccountName: bankAccountsTable.name,
+          })
+          .from(supplierPaymentAllocations)
+          .innerJoin(supplierPayments, eq(supplierPaymentAllocations.paymentId, supplierPayments.id))
+          .leftJoin(bankAccountsTable, eq(supplierPayments.bankAccountId, bankAccountsTable.id))
+          .where(and(
+            eq(supplierPaymentAllocations.invoiceId, id),
+            eq(supplierPaymentAllocations.tenantId, tenantId)
+          ))
+          .orderBy(desc(supplierPayments.paymentDate));
+
+        res.json({ directPayments, allocatedPayments });
+      } catch (e) {
+        console.error("GET /api/purchases/fin/facturas/:id/pagos:", e);
+        res.status(500).json({ error: "Error al obtener pagos de la factura" });
       }
     }
   );
@@ -649,7 +722,9 @@ export function registerComprasFinancieroRoutes(app: Express) {
         const { tenantId } = req as AuthenticatedRequest;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
 
-        const { invoiceId, supplierId, desde, hasta, bankAccountId: bankFilter } = req.query as Record<string, string>;
+        const { invoiceId, supplierId, desde, hasta, bankAccountId: bankFilter, limit: limitQ, offset: offsetQ } = req.query as Record<string, string>;
+        const pageLimit = Math.min(parseInt(limitQ ?? "100", 10) || 100, 500);
+        const pageOffset = parseInt(offsetQ ?? "0", 10) || 0;
 
         const conditions: any[] = [eq(supplierPayments.tenantId, tenantId)];
         if (invoiceId) conditions.push(eq(supplierPayments.invoiceId, invoiceId));
@@ -682,7 +757,8 @@ export function registerComprasFinancieroRoutes(app: Express) {
           .leftJoin(bankAccountsTable, eq(supplierPayments.bankAccountId, bankAccountsTable.id))
           .where(and(...conditions))
           .orderBy(desc(supplierPayments.paymentDate))
-          .limit(200);
+          .limit(pageLimit)
+          .offset(pageOffset);
 
         // Enriquecer con allocations para pagos multi-factura
         const paymentIds = rows.filter(r => !r.invoiceId).map(r => r.id);
@@ -1037,6 +1113,76 @@ export function registerComprasFinancieroRoutes(app: Express) {
     }
   );
 
+  // PATCH /api/purchases/fin/pagos/:id/cancel — anula el pago sin borrarlo
+  app.patch(
+    "/api/purchases/fin/pagos/:id/cancel",
+    authenticateJWT,
+    authorizeRoles(...ROLES_ADMIN),
+    async (req: Request, res: Response) => {
+      try {
+        const { tenantId } = req as AuthenticatedRequest;
+        if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+        const { id } = req.params;
+
+        const [pago] = await db.select().from(supplierPayments)
+          .where(and(eq(supplierPayments.id, id), eq(supplierPayments.tenantId, tenantId)));
+        if (!pago) return res.status(404).json({ error: "Pago no encontrado" });
+        if ((pago as any).status === "anulado") {
+          return res.status(400).json({ error: "El pago ya está anulado" });
+        }
+
+        await db.transaction(async (tx) => {
+          if (pago.invoiceId) {
+            const [inv] = await tx
+              .select({ paidAmount: supplierInvoices.paidAmount })
+              .from(supplierInvoices)
+              .where(eq(supplierInvoices.id, pago.invoiceId));
+            if (inv) {
+              const newPaid = Math.max(0, parseDecimal(inv.paidAmount) - parseDecimal(pago.amount));
+              await tx.update(supplierInvoices)
+                .set({ paidAmount: String(newPaid), updatedAt: new Date() })
+                .where(eq(supplierInvoices.id, pago.invoiceId));
+              await recalcInvoiceStatus(tx, pago.invoiceId, tenantId);
+            }
+          } else {
+            const allocs = await tx.select().from(supplierPaymentAllocations)
+              .where(eq(supplierPaymentAllocations.paymentId, id));
+            for (const alloc of allocs) {
+              const [inv] = await tx
+                .select({ paidAmount: supplierInvoices.paidAmount })
+                .from(supplierInvoices)
+                .where(eq(supplierInvoices.id, alloc.invoiceId));
+              if (inv) {
+                const newPaid = Math.max(0, parseDecimal(inv.paidAmount) - parseDecimal(alloc.allocatedAmount));
+                await tx.update(supplierInvoices)
+                  .set({ paidAmount: String(newPaid), updatedAt: new Date() })
+                  .where(eq(supplierInvoices.id, alloc.invoiceId));
+                await recalcInvoiceStatus(tx, alloc.invoiceId, tenantId);
+              }
+            }
+          }
+          if (pago.bankAccountId) {
+            const [cuenta] = await tx
+              .select({ balance: bankAccountsTable.balance })
+              .from(bankAccountsTable)
+              .where(eq(bankAccountsTable.id, pago.bankAccountId));
+            if (cuenta) {
+              const saldoRevertido = parseDecimal(cuenta.balance) + parseDecimal(pago.amount);
+              await tx.update(bankAccountsTable)
+                .set({ balance: String(saldoRevertido), updatedAt: new Date() })
+                .where(eq(bankAccountsTable.id, pago.bankAccountId));
+            }
+          }
+        });
+
+        res.json({ ok: true, message: "Pago anulado exitosamente" });
+      } catch (e) {
+        console.error("PATCH /api/purchases/fin/pagos/:id/cancel:", e);
+        res.status(500).json({ error: "Error al anular pago" });
+      }
+    }
+  );
+
   // GET /api/purchases/fin/pagos/:id
   app.get(
     "/api/purchases/fin/pagos/:id",
@@ -1251,6 +1397,37 @@ export function registerComprasFinancieroRoutes(app: Express) {
         if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
         console.error("PATCH /api/purchases/fin/recurrentes/:id:", e);
         res.status(500).json({ error: "Error al actualizar pago recurrente" });
+      }
+    }
+  );
+
+  // PATCH /api/purchases/fin/recurrentes/:id/toggle
+  app.patch(
+    "/api/purchases/fin/recurrentes/:id/toggle",
+    authenticateJWT,
+    authorizeRoles(...ROLES_CF),
+    async (req: Request, res: Response) => {
+      try {
+        const { tenantId } = req as AuthenticatedRequest;
+        if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+        const { id } = req.params;
+
+        const [existing] = await db
+          .select({ id: recurringSupplierPayments.id, isActive: recurringSupplierPayments.isActive })
+          .from(recurringSupplierPayments)
+          .where(and(eq(recurringSupplierPayments.id, id), eq(recurringSupplierPayments.tenantId, tenantId)));
+        if (!existing) return res.status(404).json({ error: "Pago recurrente no encontrado" });
+
+        const [updated] = await db
+          .update(recurringSupplierPayments)
+          .set({ isActive: !existing.isActive, updatedAt: new Date() })
+          .where(and(eq(recurringSupplierPayments.id, id), eq(recurringSupplierPayments.tenantId, tenantId)))
+          .returning();
+
+        res.json(updated);
+      } catch (e) {
+        console.error("PATCH /api/purchases/fin/recurrentes/:id/toggle:", e);
+        res.status(500).json({ error: "Error al cambiar estado del pago recurrente" });
       }
     }
   );
