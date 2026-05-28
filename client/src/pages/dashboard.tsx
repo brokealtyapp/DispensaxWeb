@@ -254,6 +254,26 @@ export function DashboardPage() {
     queryKey: ["/api/establishments/stats"],
   });
 
+  interface FacturasStats {
+    totalFacturas: number;
+    totalMonto: number;
+    totalPagado: number;
+    totalPendiente: number;
+    porStatus: {
+      borrador: number;
+      recibida: number;
+      aprobada: number;
+      pendiente: number;
+      parcial: number;
+      pagada: number;
+      vencida: number;
+    };
+  }
+
+  const { data: facturasStats } = useQuery<FacturasStats>({
+    queryKey: ["/api/purchases/fin/facturas/stats"],
+  });
+
   const formatRelativeTime = (dateStr: string | Date | null | undefined): string => {
     if (!dateStr) return '';
     const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
@@ -978,6 +998,44 @@ export function DashboardPage() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Recolecciones</span>
                       <span className="font-medium text-primary">{formatCurrency(reconciliationSummary?.weekCollections || 0)}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/compras">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-invoices">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <FileText className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Facturas</h3>
+                      <p className="text-xs text-muted-foreground">{facturasStats?.totalFacturas ?? 0} facturas</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Pendiente</span>
+                      <span className={`font-medium ${(facturasStats?.totalPendiente ?? 0) > 0 ? 'text-destructive' : ''}`}>
+                        {formatCurrency(facturasStats?.totalPendiente ?? 0)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Vencidas</span>
+                      {(facturasStats?.porStatus?.vencida ?? 0) > 0 ? (
+                        <Badge variant="destructive" className="text-xs" data-testid="badge-overdue-invoices">
+                          {facturasStats!.porStatus.vencida}
+                        </Badge>
+                      ) : (
+                        <span className="font-medium text-muted-foreground">0</span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Total pagado</span>
+                      <span className="font-medium text-primary">{formatCurrency(facturasStats?.totalPagado ?? 0)}</span>
                     </div>
                   </div>
                 </CardContent>
