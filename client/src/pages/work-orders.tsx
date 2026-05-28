@@ -2526,6 +2526,7 @@ export function WorkOrdersPage() {
   const [orderStatusFilter, setOrderStatusFilter] = useState("all");
   const [orderPriorityFilter, setOrderPriorityFilter] = useState("all");
   const [orderAssigneeFilter, setOrderAssigneeFilter] = useState("all");
+  const [orderRouteFilter, setOrderRouteFilter] = useState("all");
   const [kanbanQuickMyOrders, setKanbanQuickMyOrders] = useState(false);
   const [kanbanQuickUrgent, setKanbanQuickUrgent] = useState(false);
   const [kanbanQuickSlaOverdue, setKanbanQuickSlaOverdue] = useState(false);
@@ -2580,6 +2581,21 @@ export function WorkOrdersPage() {
   const { data: orders = [], isLoading: ordersLoading, isError: ordersError } = useQuery<WorkOrder[]>({
     queryKey: ["/api/work-orders"],
   });
+
+  type RouteItem = { id: string; name: string };
+  const { data: routesData } = useQuery<{ routes: RouteItem[]; total: number }>({
+    queryKey: ["/api/supplier/routes", { pageSize: 200 }],
+    queryFn: async () => {
+      const token = getAccessToken();
+      const res = await fetch("/api/supplier/routes?pageSize=200", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Error al cargar rutas");
+      return res.json();
+    },
+  });
+  const routesList = routesData?.routes ?? [];
 
   useEffect(() => {
     if (selectedOrder) {
@@ -2868,12 +2884,15 @@ export function WorkOrdersPage() {
           if (o.assignedUserId !== orderAssigneeFilter) return false;
         }
       }
+      if (orderRouteFilter !== "all") {
+        if (!o.routeId || o.routeId !== orderRouteFilter) return false;
+      }
       if (viewMode === "kanban" && kanbanQuickMyOrders && o.assignedUserId !== user?.id) return false;
       if (viewMode === "kanban" && kanbanQuickUrgent && o.priority !== "critico") return false;
       if (viewMode === "kanban" && kanbanQuickSlaOverdue && o.slaStatus !== "vencido") return false;
       return true;
     });
-  }, [orders, orderSearch, orderTypeFilter, orderStatusFilter, orderPriorityFilter, orderAssigneeFilter, machines, kanbanQuickMyOrders, kanbanQuickUrgent, kanbanQuickSlaOverdue, user?.id, viewMode]);
+  }, [orders, orderSearch, orderTypeFilter, orderStatusFilter, orderPriorityFilter, orderAssigneeFilter, orderRouteFilter, machines, kanbanQuickMyOrders, kanbanQuickUrgent, kanbanQuickSlaOverdue, user?.id, viewMode]);
 
   const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / ITEMS_PER_PAGE));
   const paginatedOrders = useMemo(() => {
@@ -2881,7 +2900,7 @@ export function WorkOrdersPage() {
     return filteredOrders.slice(start, start + ITEMS_PER_PAGE);
   }, [filteredOrders, orderPage]);
 
-  useEffect(() => { setOrderPage(1); }, [orderSearch, orderTypeFilter, orderStatusFilter, orderPriorityFilter, orderAssigneeFilter]);
+  useEffect(() => { setOrderPage(1); }, [orderSearch, orderTypeFilter, orderStatusFilter, orderPriorityFilter, orderAssigneeFilter, orderRouteFilter]);
 
   const moveStatusMutation = useMutation({
     mutationFn: async ({ orderId, status, stageId }: { orderId: string; status: string; stageId?: string }) => {
@@ -4010,6 +4029,19 @@ export function WorkOrdersPage() {
                 ))}
               </SelectContent>
             </Select>
+            {routesList.length > 0 && (
+              <Select value={orderRouteFilter} onValueChange={setOrderRouteFilter}>
+                <SelectTrigger className="w-[170px]" data-testid="select-order-route">
+                  <SelectValue placeholder="Ruta" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las rutas</SelectItem>
+                  {routesList.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <div className="flex items-center rounded-md border overflow-hidden shrink-0">
               <Button
                 variant="ghost"

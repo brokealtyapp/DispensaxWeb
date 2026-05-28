@@ -12037,12 +12037,13 @@ export async function registerRoutes(
   app.get("/api/work-orders", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
-      const { status, type, machineId, assignedUserId } = req.query;
-      const filters: { status?: string; type?: string; machineId?: string; assignedUserId?: string } = {
+      const { status, type, machineId, assignedUserId, routeId } = req.query;
+      const filters: { status?: string; type?: string; machineId?: string; assignedUserId?: string; routeId?: string } = {
         status: status as string | undefined,
         type: type as string | undefined,
         machineId: machineId as string | undefined,
         assignedUserId: assignedUserId as string | undefined,
+        routeId: routeId as string | undefined,
       };
       if (req.user!.role === "abastecedor") {
         filters.assignedUserId = req.user!.userId;

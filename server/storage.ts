@@ -826,7 +826,7 @@ export interface IStorage {
   getActiveEstablishments(tenantId: string, filters?: { search?: string; contractStatus?: string }): Promise<ActiveEstablishmentResult[]>;
   getEstablishmentOperationalHistory(establishmentId: string, tenantId: string): Promise<OperationalHistoryResult>;
 
-  getWorkOrders(tenantId: string, filters?: { status?: string; type?: string; machineId?: string; assignedUserId?: string }): Promise<WorkOrder[]>;
+  getWorkOrders(tenantId: string, filters?: { status?: string; type?: string; machineId?: string; assignedUserId?: string; routeId?: string }): Promise<WorkOrder[]>;
   getWorkOrderById(id: string): Promise<WorkOrder | undefined>;
   createWorkOrder(data: InsertWorkOrder): Promise<WorkOrder>;
   updateWorkOrder(id: string, data: Partial<InsertWorkOrder>): Promise<WorkOrder | undefined>;
@@ -8381,12 +8381,13 @@ export class DatabaseStorage implements IStorage {
 
   // ==================== WORK ORDERS ====================
 
-  async getWorkOrders(tenantId: string, filters?: { status?: string; type?: string; machineId?: string; assignedUserId?: string }): Promise<WorkOrder[]> {
+  async getWorkOrders(tenantId: string, filters?: { status?: string; type?: string; machineId?: string; assignedUserId?: string; routeId?: string }): Promise<WorkOrder[]> {
     const conditions: SQL[] = [eq(workOrders.tenantId, tenantId)];
     if (filters?.status) conditions.push(eq(workOrders.status, filters.status));
     if (filters?.type) conditions.push(eq(workOrders.type, filters.type));
     if (filters?.machineId) conditions.push(eq(workOrders.machineId, filters.machineId));
     if (filters?.assignedUserId) conditions.push(eq(workOrders.assignedUserId, filters.assignedUserId));
+    if (filters?.routeId) conditions.push(eq(workOrders.routeId, filters.routeId));
     return db.select().from(workOrders).where(and(...conditions)).orderBy(asc(workOrders.sortOrder), desc(workOrders.createdAt));
   }
 
