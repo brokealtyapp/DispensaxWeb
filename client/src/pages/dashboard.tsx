@@ -240,6 +240,18 @@ export function DashboardPage() {
     queryKey: ["/api/summary/kpi"],
   });
 
+  interface EstablishmentStats {
+    total: number;
+    converted: number;
+    newThisWeek: number;
+    byStage: Record<string, number>;
+    byPriority: Record<string, number>;
+  }
+
+  const { data: establishmentStats } = useQuery<EstablishmentStats>({
+    queryKey: ["/api/establishments/stats"],
+  });
+
   const formatRelativeTime = (dateStr: string | Date | null | undefined): string => {
     if (!dateStr) return '';
     const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
@@ -730,6 +742,40 @@ export function DashboardPage() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Gasto mes</span>
                       <span className="font-medium">{formatCurrency(purchasesSummary?.monthSpending || 0)}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/establecimientos">
+              <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-establishments">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <MapPin className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Establecimientos</h3>
+                      <p className="text-xs text-muted-foreground">{establishmentStats?.total ?? 0} total</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Convertidos</span>
+                      <span className="font-medium text-primary">{establishmentStats?.converted ?? 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">En pipeline</span>
+                      <span className="font-medium">
+                        {(establishmentStats?.total ?? 0) - (establishmentStats?.converted ?? 0)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Nuevos sem.</span>
+                      <span className={`font-medium ${(establishmentStats?.newThisWeek ?? 0) > 0 ? 'text-primary' : ''}`}>
+                        {establishmentStats?.newThisWeek ?? 0}
+                      </span>
                     </div>
                   </div>
                 </CardContent>

@@ -814,7 +814,7 @@ export interface IStorage {
   createEstablishmentDocument(data: InsertEstablishmentDocument): Promise<EstablishmentDocument>;
   deleteEstablishmentDocument(id: string): Promise<boolean>;
 
-  getEstablishmentStats(tenantId: string): Promise<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; converted: number }>;
+  getEstablishmentStats(tenantId: string): Promise<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; converted: number; newThisWeek: number }>;
 
   getEstablishmentContracts(establishmentId: string): Promise<EstablishmentContract[]>;
   getEstablishmentContract(id: string): Promise<EstablishmentContract | undefined>;
@@ -8132,12 +8132,20 @@ export class DatabaseStorage implements IStorage {
     return !!deleted;
   }
 
-  async getEstablishmentStats(tenantId: string): Promise<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; converted: number }> {
+  async getEstablishmentStats(tenantId: string): Promise<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; converted: number; newThisWeek: number }> {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    const dayOfWeek = now.getDay();
+    const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    startOfWeek.setDate(now.getDate() - daysToMonday);
+    startOfWeek.setHours(0, 0, 0, 0);
+
     const allEstablishments = await db.select({
       id: establishments.id,
       stageId: establishments.stageId,
       priority: establishments.priority,
       convertedToLocationId: establishments.convertedToLocationId,
+      createdAt: establishments.createdAt,
     })
     .from(establishments)
     .where(and(eq(establishments.tenantId, tenantId), eq(establishments.isActive, true)));
@@ -8145,6 +8153,7 @@ export class DatabaseStorage implements IStorage {
     const byStage: Record<string, number> = {};
     const byPriority: Record<string, number> = {};
     let converted = 0;
+    let newThisWeek = 0;
 
     for (const est of allEstablishments) {
       const stageKey = est.stageId || "sin_etapa";
@@ -8152,9 +8161,10 @@ export class DatabaseStorage implements IStorage {
       const prioKey = est.priority || "media";
       byPriority[prioKey] = (byPriority[prioKey] || 0) + 1;
       if (est.convertedToLocationId) converted++;
+      if (est.createdAt && new Date(est.createdAt) >= startOfWeek) newThisWeek++;
     }
 
-    return { total: allEstablishments.length, byStage, byPriority, converted };
+    return { total: allEstablishments.length, byStage, byPriority, converted, newThisWeek };
   }
 
   async getEstablishmentContracts(establishmentId: string): Promise<EstablishmentContract[]> {
