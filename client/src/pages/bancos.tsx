@@ -116,6 +116,7 @@ const transferSchema = z.object({
   description: z.string().min(1, "Descripción requerida"),
   reference: z.string().optional(),
   date: z.string().optional(),
+  exchangeRate: z.coerce.number().positive().optional(),
 });
 
 type TransferValues = z.infer<typeof transferSchema>;
@@ -145,7 +146,9 @@ export function BancosPage() {
   const [showTransferForm, setShowTransferForm] = useState(false);
   const [showTxForm, setShowTxForm] = useState(false);
 
-  const [txFilter, setTxFilter] = useState({ accountId: "all", type: "all", status: "all", search: "" });
+  const TX_PAGE_SIZE = 50;
+  const [txPage, setTxPage] = useState(1);
+  const [txFilter, setTxFilter] = useState({ accountId: "all", type: "all", status: "all", search: "", dateFrom: "", dateTo: "" });
   const [recoFilter, setRecoFilter] = useState("all");
   const [recoSelected, setRecoSelected] = useState<Set<string>>(new Set());
   const [reconciling, setReconciling] = useState(false);
@@ -158,27 +161,32 @@ export function BancosPage() {
     queryKey: ["/api/bank-accounts/summary"],
   });
 
-  const { data: transactions = [], isLoading: txLoading } = useQuery<any[]>({
-    queryKey: ["/api/bank-transactions", txFilter],
+  const { data: txResult, isLoading: txLoading } = useQuery<{ data: any[]; total: number; page: number; pageSize: number }>({
+    queryKey: ["/api/bank-transactions", txFilter, txPage],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (txFilter.accountId !== "all") params.set("accountId", txFilter.accountId);
       if (txFilter.type !== "all") params.set("type", txFilter.type);
       if (txFilter.status !== "all") params.set("status", txFilter.status);
       if (txFilter.search) params.set("search", txFilter.search);
-      const r = await fetch(`/api/bank-transactions?${params}`);
-      if (!r.ok) throw new Error("Error cargando transacciones");
+      if (txFilter.dateFrom) params.set("dateFrom", txFilter.dateFrom);
+      if (txFilter.dateTo) params.set("dateTo", txFilter.dateTo);
+      params.set("page", String(txPage));
+      params.set("pageSize", String(TX_PAGE_SIZE));
+      const r = await apiRequest("GET", `/api/bank-transactions?${params}`);
       return r.json();
     },
   });
+  const transactions = txResult?.data ?? [];
+  const txTotal = txResult?.total ?? 0;
+  const txTotalPages = Math.max(1, Math.ceil(txTotal / TX_PAGE_SIZE));
 
   const { data: recoTxs = [], isLoading: recoLoading } = useQuery<any[]>({
     queryKey: ["/api/bank-accounts/reconciliation", recoFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (recoFilter !== "all") params.set("accountId", recoFilter);
-      const r = await fetch(`/api/bank-accounts/reconciliation?${params}`);
-      if (!r.ok) throw new Error("Error cargando conciliación");
+      const r = await apiRequest("GET", `/api/bank-accounts/reconciliation?${params}`);
       return r.json();
     },
   });
@@ -196,7 +204,7 @@ export function BancosPage() {
 
   const transferForm = useForm<TransferValues>({
     resolver: zodResolver(transferSchema),
-    defaultValues: { fromAccountId: "", toAccountId: "", amount: 0, description: "", reference: "", date: "" },
+    defaultValues: { fromAccountId: "", toAccountId: "", amount: 0, description: "", reference: "", date: "", exchangeRate: undefined },
   });
 
   const transferMutation = useMutation({
@@ -458,7 +466,7 @@ export function BancosPage() {
               <div className="flex flex-wrap gap-3">
                 <Select
                   value={txFilter.accountId}
-                  onValueChange={(v) => setTxFilter((p) => ({ ...p, accountId: v }))}
+                  onValueChange={(v) => { setTxFilter((p) => ({ ...p, accountId: v })); setTxPage(1); }}
                 >
                   <SelectTrigger className="w-48" data-testid="filter-account">
                     <SelectValue placeholder="Todas las cuentas" />
@@ -473,7 +481,7 @@ export function BancosPage() {
 
                 <Select
                   value={txFilter.type}
-                  onValueChange={(v) => setTxFilter((p) => ({ ...p, type: v }))}
+                  onValueChange={(v) => { setTxFilter((p) => ({ ...p, type: v })); setTxPage(1); }}
                 >
                   <SelectTrigger className="w-36" data-testid="filter-type">
                     <SelectValue placeholder="Tipo" />
@@ -487,7 +495,7 @@ export function BancosPage() {
 
                 <Select
                   value={txFilter.status}
-                  onValueChange={(v) => setTxFilter((p) => ({ ...p, status: v }))}
+                  onValueChange={(v) => { setTxFilter((p) => ({ ...p, status: v })); setTxPage(1); }}
                 >
                   <SelectTrigger className="w-36" data-testid="filter-status">
                     <SelectValue placeholder="Estado" />
@@ -502,10 +510,28 @@ export function BancosPage() {
 
                 <Input
                   placeholder="Buscar descripción..."
-                  className="w-52"
+                  className="w-48"
                   value={txFilter.search}
-                  onChange={(e) => setTxFilter((p) => ({ ...p, search: e.target.value }))}
+                  onChange={(e) => { setTxFilter((p) => ({ ...p, search: e.target.value })); setTxPage(1); }}
                   data-testid="input-search-transactions"
+                />
+
+                <Input
+                  type="date"
+                  className="w-40"
+                  value={txFilter.dateFrom}
+                  onChange={(e) => { setTxFilter((p) => ({ ...p, dateFrom: e.target.value })); setTxPage(1); }}
+                  data-testid="input-date-from"
+                  title="Desde"
+                />
+
+                <Input
+                  type="date"
+                  className="w-40"
+                  value={txFilter.dateTo}
+                  onChange={(e) => { setTxFilter((p) => ({ ...p, dateTo: e.target.value })); setTxPage(1); }}
+                  data-testid="input-date-to"
+                  title="Hasta"
                 />
               </div>
             </CardContent>
@@ -550,6 +576,33 @@ export function BancosPage() {
               </Table>
             </CardContent>
           </Card>
+
+          {txTotalPages > 1 && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>{txTotal} transacción(es) total</span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTxPage((p) => Math.max(1, p - 1))}
+                  disabled={txPage <= 1}
+                  data-testid="button-prev-page"
+                >
+                  Anterior
+                </Button>
+                <span className="px-2">Página {txPage} de {txTotalPages}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTxPage((p) => Math.min(txTotalPages, p + 1))}
+                  disabled={txPage >= txTotalPages}
+                  data-testid="button-next-page"
+                >
+                  Siguiente
+                </Button>
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         {/* ── TRANSFERENCIAS ── */}
@@ -784,6 +837,23 @@ export function BancosPage() {
                   <FormLabel>Fecha</FormLabel>
                   <FormControl>
                     <Input type="date" data-testid="input-transfer-date" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+
+              <FormField control={transferForm.control} name="exchangeRate" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipo de cambio (opcional)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.0001"
+                      placeholder="Ej: 58.50 (dejar vacío si misma moneda)"
+                      data-testid="input-transfer-exchange-rate"
+                      value={field.value ?? ""}
+                      onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

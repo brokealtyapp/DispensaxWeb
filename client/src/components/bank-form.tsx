@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -90,6 +91,40 @@ export function BankForm({ open, onOpenChange, editingAccount }: BankFormProps) 
           notes: "",
         },
   });
+
+  useEffect(() => {
+    if (editingAccount) {
+      form.reset({
+        name: editingAccount.name ?? "",
+        bankName: editingAccount.bankName ?? "",
+        accountType: editingAccount.accountType ?? "banco",
+        accountSubtype: editingAccount.accountSubtype ?? "corriente",
+        currency: editingAccount.currency ?? "DOP",
+        accountNumber: editingAccount.accountNumber ?? "",
+        balance: editingAccount.balance ?? "0",
+        creditLimit: editingAccount.creditLimit ?? "",
+        statementClosingDay: editingAccount.statementClosingDay ?? null,
+        paymentDueDay: editingAccount.paymentDueDay ?? null,
+        alertThreshold: editingAccount.alertThreshold ?? "",
+        notes: editingAccount.notes ?? "",
+      });
+    } else {
+      form.reset({
+        name: "",
+        bankName: "",
+        accountType: "banco",
+        accountSubtype: "corriente",
+        currency: "DOP",
+        accountNumber: "",
+        balance: "0",
+        creditLimit: "",
+        statementClosingDay: null,
+        paymentDueDay: null,
+        alertThreshold: "",
+        notes: "",
+      });
+    }
+  }, [editingAccount]);
 
   const accountType = form.watch("accountType");
 

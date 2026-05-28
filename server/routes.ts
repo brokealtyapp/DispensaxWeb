@@ -14048,7 +14048,7 @@ export async function registerRoutes(
     }
   );
 
-  // POST /api/bank-accounts/transfer — transferencia atómica entre cuentas
+  // POST /api/bank-accounts/transfer — transferencia atómica entre cuentas (soporta tipo de cambio)
   app.post("/api/bank-accounts/transfer", authenticateJWT, requireTenant,
     authorizeRoles(["admin", "contabilidad"]),
     async (req: AuthenticatedRequest, res: Response) => {
@@ -14061,6 +14061,7 @@ export async function registerRoutes(
           description: z.string().min(1),
           reference: z.string().optional(),
           date: z.string().optional(),
+          exchangeRate: z.coerce.number().positive().optional(),
         });
         const data = schema.parse(req.body);
 
@@ -14081,13 +14082,16 @@ export async function registerRoutes(
           if (!fromAccount || !toAccount) throw new HttpError(404, "Cuenta no encontrada");
 
           const txDate = data.date ? new Date(data.date) : new Date();
-          const amountStr = data.amount.toFixed(2);
+          const fromAmountStr = data.amount.toFixed(2);
+          // Monto recibido en destino: aplicar tipo de cambio si se provee
+          const toAmount = data.exchangeRate ? data.amount * data.exchangeRate : data.amount;
+          const toAmountStr = toAmount.toFixed(2);
 
           await tx.insert(bankTransactionsTable).values({
             tenantId,
             bankAccountId: data.fromAccountId,
             type: "salida",
-            amount: amountStr,
+            amount: fromAmountStr,
             description: data.description,
             reference: data.reference ?? null,
             date: txDate,
@@ -14101,7 +14105,7 @@ export async function registerRoutes(
             tenantId,
             bankAccountId: data.toAccountId,
             type: "entrada",
-            amount: amountStr,
+            amount: toAmountStr,
             description: data.description,
             reference: data.reference ?? null,
             date: txDate,
@@ -14118,7 +14122,7 @@ export async function registerRoutes(
 
           await tx
             .update(bankAccountsTable)
-            .set({ balance: sql`${bankAccountsTable.balance} + ${data.amount}`, updatedAt: new Date() })
+            .set({ balance: sql`${bankAccountsTable.balance} + ${toAmount}`, updatedAt: new Date() })
             .where(eq(bankAccountsTable.id, data.toAccountId));
         });
 
@@ -14132,16 +14136,41 @@ export async function registerRoutes(
     }
   );
 
-  // GET /api/bank-transactions — listar transacciones con filtros
+  // GET /api/bank-transactions — listar transacciones paginadas con filtros
   app.get("/api/bank-transactions", authenticateJWT, requireTenant, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
-      const { accountId, type, status, search } = req.query as Record<string, string>;
+      const { accountId, type, status, search, dateFrom, dateTo } = req.query as Record<string, string>;
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 50));
+      const offset = (page - 1) * pageSize;
 
       const conditions: SQL[] = [eq(bankTransactionsTable.tenantId, tenantId)];
       if (accountId) conditions.push(eq(bankTransactionsTable.bankAccountId, accountId));
       if (type) conditions.push(eq(bankTransactionsTable.type, type));
       if (status) conditions.push(eq(bankTransactionsTable.status, status));
+      if (dateFrom) conditions.push(gte(bankTransactionsTable.date, new Date(dateFrom)));
+      if (dateTo) {
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999);
+        conditions.push(lte(bankTransactionsTable.date, toDate));
+      }
+      if (search) {
+        const q = `%${search}%`;
+        conditions.push(or(
+          sql`lower(${bankTransactionsTable.description}) like lower(${q})`,
+          sql`lower(coalesce(${bankTransactionsTable.reference}, '')) like lower(${q})`,
+          sql`lower(coalesce(${bankTransactionsTable.category}, '')) like lower(${q})`,
+        )!);
+      }
+
+      const whereClause = and(...conditions);
+
+      const [{ total }] = await db
+        .select({ total: sql<number>`cast(count(*) as int)` })
+        .from(bankTransactionsTable)
+        .innerJoin(bankAccountsTable, eq(bankTransactionsTable.bankAccountId, bankAccountsTable.id))
+        .where(whereClause);
 
       const txs = await db
         .select({
@@ -14163,32 +14192,22 @@ export async function registerRoutes(
         })
         .from(bankTransactionsTable)
         .innerJoin(bankAccountsTable, eq(bankTransactionsTable.bankAccountId, bankAccountsTable.id))
-        .where(and(...conditions))
+        .where(whereClause)
         .orderBy(desc(bankTransactionsTable.date))
-        .limit(200);
+        .limit(pageSize)
+        .offset(offset);
 
-      // Filtro de búsqueda en memoria (simple)
-      let result = txs;
-      if (search) {
-        const q = search.toLowerCase();
-        result = txs.filter((t) =>
-          t.description?.toLowerCase().includes(q) ||
-          t.reference?.toLowerCase().includes(q) ||
-          t.category?.toLowerCase().includes(q)
-        );
-      }
-
-      // Añadir nombre de cuenta de transferencia si existe
+      // Añadir nombre de cuenta de transferencia
       const accountMap = new Map<string, string>();
       for (const a of await db.select({ id: bankAccountsTable.id, name: bankAccountsTable.name }).from(bankAccountsTable).where(eq(bankAccountsTable.tenantId, tenantId))) {
         accountMap.set(a.id, a.name);
       }
-      const enriched = result.map((t) => ({
+      const enriched = txs.map((t) => ({
         ...t,
         transferAccountName: t.transferAccountId ? (accountMap.get(t.transferAccountId) ?? null) : null,
       }));
 
-      res.json(enriched);
+      res.json({ data: enriched, total, page, pageSize });
     } catch (e: any) {
       console.error("GET /api/bank-transactions:", e);
       res.status(500).json({ error: "Error al obtener transacciones" });
@@ -14254,7 +14273,42 @@ export async function registerRoutes(
     }
   );
 
-  // PATCH /api/bank-transactions/:id — actualizar categoría / estado
+  // PATCH /api/bank-transactions/:id/classify — clasificar categoría de una transacción
+  app.patch("/api/bank-transactions/:id/classify", authenticateJWT, requireTenant,
+    authorizeRoles(["admin", "contabilidad"]),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const tenantId = req.user!.tenantId!;
+        const { id } = req.params;
+
+        const [existing] = await db
+          .select()
+          .from(bankTransactionsTable)
+          .where(and(eq(bankTransactionsTable.id, id), eq(bankTransactionsTable.tenantId, tenantId)));
+        if (!existing) return res.status(404).json({ error: "Transacción no encontrada" });
+        if (existing.isReconciled) return res.status(400).json({ error: "No se puede clasificar una transacción conciliada" });
+
+        const schema = z.object({
+          category: z.string().min(1, "Categoría requerida"),
+        });
+        const data = schema.parse(req.body);
+
+        const [updated] = await db
+          .update(bankTransactionsTable)
+          .set({ category: data.category })
+          .where(eq(bankTransactionsTable.id, id))
+          .returning();
+
+        res.json(updated);
+      } catch (e: any) {
+        if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
+        console.error("PATCH /api/bank-transactions/:id/classify:", e);
+        res.status(500).json({ error: "Error al clasificar transacción" });
+      }
+    }
+  );
+
+  // PATCH /api/bank-transactions/:id — actualizar categoría / estado / descripción
   app.patch("/api/bank-transactions/:id", authenticateJWT, requireTenant,
     authorizeRoles(["admin", "contabilidad"]),
     async (req: AuthenticatedRequest, res: Response) => {
