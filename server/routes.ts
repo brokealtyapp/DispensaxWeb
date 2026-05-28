@@ -13777,9 +13777,9 @@ export async function registerRoutes(
       const tenantId = req.user!.tenantId;
       if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
       const result = await syncNayaxSalesForTenant(tenantId);
-      // Update lastSyncAt whenever sync completes without a fatal config error
-      const isConfigError = result.errors.length === 1 && result.errors[0]?.machineId === "config";
-      if (!isConfigError) {
+      // Only update lastSyncAt on a fully successful sync (no per-machine errors).
+      // This ensures the dashboard status correctly shows "error" when syncs fail.
+      if (result.errors.length === 0 && result.machinesProcessed >= 0) {
         await db
           .update(nayaxConfigTable)
           .set({ lastSyncAt: new Date(), updatedAt: new Date() })
