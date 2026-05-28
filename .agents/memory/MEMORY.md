@@ -1,1 +1,4 @@
 - [Dashboard recharts imports](dashboard-recharts.md) — usar alias para evitar conflictos si alguna vez se añade shadcn Tooltip al dashboard; actualmente sin conflicto.
+- [Compras Financiero payment model](compras-fin-payments.md) — pagos multi-factura via supplier_payment_allocations; invoiceId en supplierPayments es nullable; campo supplierId y recurringId añadidos.
+- [NCF fiscal fields RD](ncf-fields.md) — facturas proveedor requieren ncfType/ncfNumber (DGII); tipos B01-B16 y E31-E34; withholdingAmount/discountAmount en supplier_invoices.
+- [bank_transactions date column](bank-txn-date.md) — columna fecha en bank_transactions se llama `date` (NO `fecha`).
