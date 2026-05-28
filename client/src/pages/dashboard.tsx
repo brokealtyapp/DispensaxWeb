@@ -142,7 +142,6 @@ const TASK_PANEL_KEY = "dispensax-task-panel-open";
 
 export function DashboardPage() {
   const { user } = useAuth();
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [activeTab, setActiveTab] = useState("today");
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [isTaskPanelOpen, setIsTaskPanelOpen] = useState(() => {
@@ -157,12 +156,6 @@ export function DashboardPage() {
     localStorage.setItem(TASK_PANEL_KEY, String(isTaskPanelOpen));
   }, [isTaskPanelOpen]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   const { data: todayTasks = [], isLoading: tasksLoading } = useQuery<Task[]>({
     queryKey: ["/api/tasks/today"],
@@ -469,19 +462,11 @@ export function DashboardPage() {
       <div className="flex-1 p-6 overflow-auto">
 
         {/* Encabezado del Dashboard */}
-        <div className="flex items-start justify-between mb-6 flex-wrap gap-2">
-          <div>
-            <h1 className="text-2xl font-bold">Dashboard</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Bienvenido, {user?.username || "usuario"} — {currentTime.toLocaleDateString("es-DO", { timeZone: "America/Santo_Domingo", weekday: "long", day: "numeric", month: "long" })}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-2xl font-mono font-semibold tabular-nums">
-              {currentTime.toLocaleTimeString("es-DO", { timeZone: "America/Santo_Domingo", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-            </p>
-            <p className="text-xs text-muted-foreground">GMT-4 · Santo Domingo</p>
-          </div>
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Bienvenido, {user?.username || "usuario"}
+          </p>
         </div>
 
         {/* Fila superior: Highlight Card (izquierda) + 4 KPIs 2×2 (derecha) */}
