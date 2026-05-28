@@ -532,55 +532,56 @@ export function registerIngresoRoutes(app: Express) {
           fijo.proximaFecha ? new Date(fijo.proximaFecha) : new Date(),
           fijo.frecuencia as Frecuencia
         );
-
-        // Crear registro de cobro
-        const [registro] = await db
-          .insert(ingresosRegistros)
-          .values({
-            tenantId,
-            fijoId: fijo.id,
-            categoriaId: fijo.categoriaId,
-            monto: String(data.monto),
-            moneda: fijo.moneda,
-            fecha: fechaCobro,
-            metodoCobro: data.metodoCobro,
-            cuentaBancariaId: data.cuentaBancariaId ?? fijo.cuentaBancariaId ?? null,
-            descripcion: `Cobro: ${fijo.nombre}`,
-            notas: data.notas ?? null,
-            createdBy: userId ?? null,
-          })
-          .returning();
-
-        // Avanzar próxima fecha
-        await db
-          .update(ingresosFijos)
-          .set({ proximaFecha: nuevaProximaFecha, updatedAt: new Date() })
-          .where(eq(ingresosFijos.id, fijo.id));
-
-        // Integración bancaria: crear bank_transaction y sumar saldo
         const cuentaId = data.cuentaBancariaId ?? fijo.cuentaBancariaId;
-        if (cuentaId) {
-          const [cuenta] = await db
-            .select({ saldo: bankAccountsTable.balance })
-            .from(bankAccountsTable)
-            .where(and(eq(bankAccountsTable.id, cuentaId), eq(bankAccountsTable.tenantId, tenantId)));
-          if (cuenta) {
-            const nuevoSaldo = parseFloat(cuenta.saldo ?? "0") + data.monto;
-            await db
-              .update(bankAccountsTable)
-              .set({ balance: String(nuevoSaldo), updatedAt: new Date() })
-              .where(eq(bankAccountsTable.id, cuentaId));
-            await db.insert(bankTransactionsTable).values({
+
+        // Operación atómica: registro + avance de fecha + integración bancaria
+        const registro = await db.transaction(async (tx) => {
+          const [reg] = await tx
+            .insert(ingresosRegistros)
+            .values({
               tenantId,
-              bankAccountId: cuentaId,
-              type: "entrada",
-              amount: String(data.monto),
-              description: `Ingreso: ${fijo.nombre}`,
+              fijoId: fijo.id,
+              categoriaId: fijo.categoriaId,
+              monto: String(data.monto),
+              moneda: fijo.moneda,
               fecha: fechaCobro,
+              metodoCobro: data.metodoCobro,
+              cuentaBancariaId: cuentaId ?? null,
+              descripcion: `Cobro: ${fijo.nombre}`,
+              notas: data.notas ?? null,
               createdBy: userId ?? null,
-            });
+            })
+            .returning();
+
+          await tx
+            .update(ingresosFijos)
+            .set({ proximaFecha: nuevaProximaFecha, updatedAt: new Date() })
+            .where(eq(ingresosFijos.id, fijo.id));
+
+          if (cuentaId) {
+            const [cuenta] = await tx
+              .select({ saldo: bankAccountsTable.balance })
+              .from(bankAccountsTable)
+              .where(and(eq(bankAccountsTable.id, cuentaId), eq(bankAccountsTable.tenantId, tenantId)));
+            if (cuenta) {
+              const nuevoSaldo = parseFloat(cuenta.saldo ?? "0") + data.monto;
+              await tx
+                .update(bankAccountsTable)
+                .set({ balance: String(nuevoSaldo), updatedAt: new Date() })
+                .where(eq(bankAccountsTable.id, cuentaId));
+              await tx.insert(bankTransactionsTable).values({
+                tenantId,
+                bankAccountId: cuentaId,
+                type: "entrada",
+                amount: String(data.monto),
+                description: `Ingreso: ${fijo.nombre}`,
+                date: fechaCobro,
+                createdBy: userId ?? null,
+              });
+            }
           }
-        }
+          return reg;
+        });
 
         res.status(201).json({ registro, nuevaProximaFecha });
       } catch (e) {
@@ -775,46 +776,51 @@ export function registerIngresoRoutes(app: Express) {
           if (!acct) return res.status(400).json({ error: "Cuenta bancaria no válida para este tenant" });
         }
 
-        const [registro] = await db
-          .insert(ingresosRegistros)
-          .values({
-            tenantId,
-            fijoId: data.fijoId ?? null,
-            categoriaId: data.categoriaId ?? null,
-            monto: String(data.monto),
-            moneda: data.moneda,
-            fecha: new Date(data.fecha),
-            metodoCobro: data.metodoCobro,
-            cuentaBancariaId: data.cuentaBancariaId ?? null,
-            descripcion: data.descripcion,
-            notas: data.notas ?? null,
-            createdBy: userId ?? null,
-          })
-          .returning();
+        const fechaRegistro = new Date(data.fecha);
 
-        // Integración bancaria
-        if (data.cuentaBancariaId) {
-          const [cuenta] = await db
-            .select({ saldo: bankAccountsTable.balance })
-            .from(bankAccountsTable)
-            .where(and(eq(bankAccountsTable.id, data.cuentaBancariaId), eq(bankAccountsTable.tenantId, tenantId)));
-          if (cuenta) {
-            const nuevoSaldo = parseFloat(cuenta.saldo ?? "0") + data.monto;
-            await db
-              .update(bankAccountsTable)
-              .set({ balance: String(nuevoSaldo), updatedAt: new Date() })
-              .where(eq(bankAccountsTable.id, data.cuentaBancariaId));
-            await db.insert(bankTransactionsTable).values({
+        // Operación atómica: registro + integración bancaria
+        const registro = await db.transaction(async (tx) => {
+          const [reg] = await tx
+            .insert(ingresosRegistros)
+            .values({
               tenantId,
-              bankAccountId: data.cuentaBancariaId,
-              type: "entrada",
-              amount: String(data.monto),
-              description: data.descripcion,
-              fecha: new Date(data.fecha),
+              fijoId: data.fijoId ?? null,
+              categoriaId: data.categoriaId ?? null,
+              monto: String(data.monto),
+              moneda: data.moneda,
+              fecha: fechaRegistro,
+              metodoCobro: data.metodoCobro,
+              cuentaBancariaId: data.cuentaBancariaId ?? null,
+              descripcion: data.descripcion,
+              notas: data.notas ?? null,
               createdBy: userId ?? null,
-            });
+            })
+            .returning();
+
+          if (data.cuentaBancariaId) {
+            const [cuenta] = await tx
+              .select({ saldo: bankAccountsTable.balance })
+              .from(bankAccountsTable)
+              .where(and(eq(bankAccountsTable.id, data.cuentaBancariaId), eq(bankAccountsTable.tenantId, tenantId)));
+            if (cuenta) {
+              const nuevoSaldo = parseFloat(cuenta.saldo ?? "0") + data.monto;
+              await tx
+                .update(bankAccountsTable)
+                .set({ balance: String(nuevoSaldo), updatedAt: new Date() })
+                .where(eq(bankAccountsTable.id, data.cuentaBancariaId));
+              await tx.insert(bankTransactionsTable).values({
+                tenantId,
+                bankAccountId: data.cuentaBancariaId,
+                type: "entrada",
+                amount: String(data.monto),
+                description: data.descripcion,
+                date: fechaRegistro,
+                createdBy: userId ?? null,
+              });
+            }
           }
-        }
+          return reg;
+        });
 
         res.status(201).json(registro);
       } catch (e) {
