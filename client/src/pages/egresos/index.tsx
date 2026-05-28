@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -1092,7 +1092,7 @@ export default function EgresosPage() {
         <TabsContent value="categorias" className="space-y-4 mt-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">{categorias.length} categorías</p>
-            <Button onClick={() => setCatModal(true)} data-testid="button-nueva-categoria">
+            <Button onClick={() => setCatModal({ open: true, editando: null })} data-testid="button-nueva-categoria">
               <Plus className="w-4 h-4 mr-2" />Nueva categoría
             </Button>
           </div>
