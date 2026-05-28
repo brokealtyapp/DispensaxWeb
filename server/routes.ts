@@ -2654,7 +2654,10 @@ export async function registerRoutes(
         sortedStages.find(s => s.isDefault && !s.isTerminal) ??
         sortedStages.find(s => !s.isTerminal) ??
         sortedStages[0];
-      if (firstStage && route) {
+      // Solo avanzar etapa si la primera etapa disponible NO es terminal.
+      // Si todas las etapas son terminales, la ruta queda activa sin etapa asignada
+      // para evitar que advanceRouteStage la revierta a "inactiva" inmediatamente.
+      if (firstStage && route && !firstStage.isTerminal) {
         await storage.advanceRouteStage(req.params.id, firstStage.id, req.user!.userId, "Ruta activada");
       }
       checkAndSendRouteAlerts(tenantId).catch(console.error);
