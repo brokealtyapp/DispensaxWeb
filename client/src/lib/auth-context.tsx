@@ -286,7 +286,7 @@ export function getRoleDefaultRoute(role: UserRole, isSuperAdmin?: boolean): str
 export function canAccessRoute(role: UserRole, route: string, isSuperAdmin?: boolean): boolean {
   const adminRoutes = ["/", "/maquinas", "/planogramas", "/tareas", "/todas-tareas", "/calendario", "/almacen", "/almacen-panel",
     "/abastecedor", "/abastecedores", "/dinero-productos", "/compras", "/combustible", "/contabilidad", "/contabilidad-panel",
-    "/caja-chica", "/rh", "/reportes", "/configuracion", "/supervisor", "/productos", "/supervisores", "/usuarios", "/rutas", "/monitoreo-servicios", "/visores", "/nayax", "/establecimientos", "/ordenes-trabajo", "/bancos", "/egresos", "/ingresos", "/compras-financiero"];
+    "/caja-chica", "/rh", "/reportes", "/configuracion", "/supervisor", "/productos", "/supervisores", "/usuarios", "/rutas", "/monitoreo-servicios", "/visores", "/nayax", "/establecimientos", "/ordenes-trabajo", "/bancos", "/egresos", "/ingresos", "/compras/financiero"];
   
   const superAdminRoutes = ["/super-admin", "/super-admin/tenants", "/super-admin/plans", "/super-admin/metrics"];
   
@@ -297,18 +297,23 @@ export function canAccessRoute(role: UserRole, route: string, isSuperAdmin?: boo
   
   const almacenRoutes = ["/almacen", "/almacen-panel", "/compras", "/tareas", "/calendario", "/configuracion", "/productos"];
   
-  const contabilidadRoutes = ["/contabilidad", "/contabilidad-panel", "/caja-chica", "/dinero-productos", "/nayax", "/tareas", "/calendario", "/configuracion", "/bancos", "/egresos", "/ingresos", "/compras-financiero"];
+  const contabilidadRoutes = ["/contabilidad", "/contabilidad-panel", "/caja-chica", "/dinero-productos", "/nayax", "/tareas", "/calendario", "/configuracion", "/bancos", "/egresos", "/ingresos", "/compras/financiero"];
   
   const rhRoutes = ["/rh", "/tareas", "/mis-tareas", "/calendario", "/configuracion"];
 
   const visorEstablecimientoRoutes = ["/mi-panel"];
 
   const basePath = "/" + route.split("/")[1];
+  // Verifica si la ruta está en la lista, comparando tanto la ruta completa
+  // como el primer segmento (basePath). Esto permite rutas anidadas como
+  // /compras/financiero en la lista de permisos sin otorgar acceso a /compras.
+  const matchesRoutes = (routes: string[]) =>
+    routes.includes(route) || routes.includes(basePath);
 
   // Super Admin can access everything
   if (isSuperAdmin) {
     const allRoutes = [...adminRoutes, ...superAdminRoutes];
-    return allRoutes.includes(basePath);
+    return matchesRoutes(allRoutes);
   }
 
   const routePermissions: Record<UserRole, string[]> = {
@@ -321,5 +326,5 @@ export function canAccessRoute(role: UserRole, route: string, isSuperAdmin?: boo
     visor_establecimiento: visorEstablecimientoRoutes,
   };
 
-  return routePermissions[role]?.includes(basePath) || false;
+  return matchesRoutes(routePermissions[role] ?? []);
 }

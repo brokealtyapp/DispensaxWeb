@@ -848,6 +848,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
               totalAmount: supplierInvoices.totalAmount,
               paidAmount: supplierInvoices.paidAmount,
               status: supplierInvoices.status,
+              supplierId: supplierInvoices.supplierId,
             })
             .from(supplierInvoices)
             .where(and(
