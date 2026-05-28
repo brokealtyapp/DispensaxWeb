@@ -137,6 +137,7 @@ import {
 import { z, ZodError } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection, enqueueLaneChangeForNayax, syncNayaxSalesForTenant, categorizePaymentMethod } from "./nayax";
 import { checkAndSendRouteAlerts } from "./routeAlertService";
+import { registerEgresoRoutes } from "./egreso-routes";
 
 // ── Helper: verifica permiso de acción de ruta (auto-inicializa si no existe) ──
 async function checkRouteActionPermission(tenantId: string, action: string, role: string): Promise<boolean> {
@@ -14365,6 +14366,11 @@ export async function registerRoutes(
       }
     }
   );
+
+  // ============================
+  // MÓDULO EGRESOS
+  // ============================
+  registerEgresoRoutes(app);
 
   return httpServer;
 }

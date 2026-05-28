@@ -3204,3 +3204,106 @@ export const bankTransactionsRelations = relations(bankTransactions, ({ one }) =
   transferAccount: one(bankAccounts, { fields: [bankTransactions.transferAccountId], references: [bankAccounts.id] }),
   createdByUser: one(users, { fields: [bankTransactions.createdBy], references: [users.id] }),
 }));
+
+// ==================== MÓDULO EGRESOS ====================
+
+export const egresosCategorias = pgTable("egresos_categorias", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  nombre: text("nombre").notNull(),
+  color: text("color").default("#E84545"),
+  icono: text("icono").default("Tag"),
+  presupuestoMensual: decimal("presupuesto_mensual", { precision: 15, scale: 2 }),
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEgresoCategoriaSchema = createInsertSchema(egresosCategorias).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEgresoCategoria = z.infer<typeof insertEgresoCategoriaSchema>;
+export type EgresoCategoria = typeof egresosCategorias.$inferSelect;
+
+export const egresosFijos = pgTable("egresos_fijos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  nombre: text("nombre").notNull(),
+  categoriaId: varchar("categoria_id").references(() => egresosCategorias.id),
+  monto: decimal("monto", { precision: 15, scale: 2 }).notNull(),
+  moneda: text("moneda").default("DOP"),
+  frecuencia: text("frecuencia").notNull().default("mensual"),
+  diaDelMes: integer("dia_del_mes"),
+  fechaInicio: timestamp("fecha_inicio").notNull(),
+  fechaFin: timestamp("fecha_fin"),
+  proximaFecha: timestamp("proxima_fecha"),
+  cuentaBancariaId: varchar("cuenta_bancaria_id").references(() => bankAccounts.id),
+  metodoPago: text("metodo_pago").default("transferencia"),
+  alertDiasPrevios: integer("alert_dias_previos").default(3),
+  totalPagadoCiclo: decimal("total_pagado_ciclo", { precision: 15, scale: 2 }).default("0"),
+  isActive: boolean("is_active").default(true),
+  notas: text("notas"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEgresoFijoSchema = createInsertSchema(egresosFijos).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  totalPagadoCiclo: true,
+});
+
+export type InsertEgresoFijo = z.infer<typeof insertEgresoFijoSchema>;
+export type EgresoFijo = typeof egresosFijos.$inferSelect;
+
+export const egresosRegistros = pgTable("egresos_registros", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  fijoId: varchar("fijo_id").references(() => egresosFijos.id),
+  categoriaId: varchar("categoria_id").references(() => egresosCategorias.id),
+  monto: decimal("monto", { precision: 15, scale: 2 }).notNull(),
+  moneda: text("moneda").default("DOP"),
+  fecha: timestamp("fecha").notNull().defaultNow(),
+  metodoPago: text("metodo_pago").default("transferencia"),
+  cuentaBancariaId: varchar("cuenta_bancaria_id").references(() => bankAccounts.id),
+  descripcion: text("descripcion").notNull(),
+  notas: text("notas"),
+  esParcial: boolean("es_parcial").default(false),
+  ciclofecha: text("ciclo_fecha"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEgresoRegistroSchema = createInsertSchema(egresosRegistros).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEgresoRegistro = z.infer<typeof insertEgresoRegistroSchema>;
+export type EgresoRegistro = typeof egresosRegistros.$inferSelect;
+
+export const egresosCategoriasRelations = relations(egresosCategorias, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [egresosCategorias.tenantId], references: [tenants.id] }),
+  fijos: many(egresosFijos),
+  registros: many(egresosRegistros),
+}));
+
+export const egresosFijosRelations = relations(egresosFijos, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [egresosFijos.tenantId], references: [tenants.id] }),
+  categoria: one(egresosCategorias, { fields: [egresosFijos.categoriaId], references: [egresosCategorias.id] }),
+  cuentaBancaria: one(bankAccounts, { fields: [egresosFijos.cuentaBancariaId], references: [bankAccounts.id] }),
+  registros: many(egresosRegistros),
+}));
+
+export const egresosRegistrosRelations = relations(egresosRegistros, ({ one }) => ({
+  tenant: one(tenants, { fields: [egresosRegistros.tenantId], references: [tenants.id] }),
+  fijo: one(egresosFijos, { fields: [egresosRegistros.fijoId], references: [egresosFijos.id] }),
+  categoria: one(egresosCategorias, { fields: [egresosRegistros.categoriaId], references: [egresosCategorias.id] }),
+  cuentaBancaria: one(bankAccounts, { fields: [egresosRegistros.cuentaBancariaId], references: [bankAccounts.id] }),
+  createdByUser: one(users, { fields: [egresosRegistros.createdBy], references: [users.id] }),
+}));
+
+// ==================== FIN MÓDULO EGRESOS ====================

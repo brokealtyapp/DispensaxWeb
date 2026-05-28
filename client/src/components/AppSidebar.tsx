@@ -50,6 +50,7 @@ import {
   CreditCard,
   LayoutGrid,
   Landmark,
+  TrendingDown,
 } from "lucide-react";
 
 interface MenuItem {
@@ -94,6 +95,7 @@ const abastecedorItems: MenuItem[] = [
 
 const finanzasItems: MenuItem[] = [
   { icon: Landmark, label: "Bancos", href: "/bancos", roles: ["admin", "contabilidad"] },
+  { icon: TrendingDown, label: "Egresos", href: "/egresos", roles: ["admin", "contabilidad"] },
   { icon: Calculator, label: "Contabilidad", href: "/contabilidad", roles: ["admin", "contabilidad"] },
   { icon: Wallet, label: "Caja Chica", href: "/caja-chica", roles: ["admin", "contabilidad", "supervisor"] },
 ];
