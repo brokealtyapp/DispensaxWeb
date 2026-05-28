@@ -164,7 +164,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const rows = await db
           .select({ id: suppliersTable.id, name: suppliersTable.name })
@@ -187,7 +187,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
 
         const { status, supplierId, desde, hasta, search } = req.query as Record<string, string>;
@@ -262,7 +262,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
 
         const rows = await db
@@ -309,7 +309,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
 
         const { id } = req.params;
@@ -399,7 +399,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -462,7 +462,9 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId, userId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
+
+        const userId = (req as AuthenticatedRequest).user?.userId;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const data = invoiceBodySchema.parse(req.body);
 
@@ -543,7 +545,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -604,7 +606,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_ADMIN),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -638,7 +640,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_ADMIN),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
         const { status } = z.object({
@@ -677,7 +679,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -721,7 +723,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
 
         const { invoiceId, supplierId, desde, hasta, bankAccountId: bankFilter, limit: limitQ, offset: offsetQ } = req.query as Record<string, string>;
@@ -798,7 +800,9 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId, userId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
+
+        const userId = (req as AuthenticatedRequest).user?.userId;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const data = paymentBodySchema.parse(req.body);
 
@@ -1084,7 +1088,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -1161,7 +1165,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_ADMIN),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -1239,7 +1243,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -1300,7 +1304,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
 
         const rows = await db
@@ -1353,7 +1357,9 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId, userId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
+
+        const userId = (req as AuthenticatedRequest).user?.userId;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const data = recurringBodySchema.parse(req.body);
 
@@ -1402,7 +1408,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -1457,7 +1463,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -1488,7 +1494,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -1515,7 +1521,9 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId, userId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
+
+        const userId = (req as AuthenticatedRequest).user?.userId;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -1603,7 +1611,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
 
         const { status, supplierId } = req.query as Record<string, string>;
@@ -1650,7 +1658,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -1698,7 +1706,9 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId, userId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
+
+        const userId = (req as AuthenticatedRequest).user?.userId;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const data = debitNoteBodySchema.parse(req.body);
 
@@ -1758,7 +1768,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -1827,7 +1837,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
@@ -1858,7 +1868,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
 
         const ordenes = await db
@@ -1895,7 +1905,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
       try {
-        const { tenantId } = req as AuthenticatedRequest;
+        const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const { id } = req.params;
 
