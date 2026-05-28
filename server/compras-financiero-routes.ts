@@ -803,11 +803,52 @@ export function registerComprasFinancieroRoutes(app: Express) {
         const data = paymentBodySchema.parse(req.body);
 
         // Determinar si es pago simple o multi-factura
-        const isMulti = data.allocations && data.allocations.length > 0;
+        let isMulti = data.allocations && data.allocations.length > 0;
         const isSingle = !isMulti && !!data.invoiceId;
 
+        // ── Auto-distribución: sin allocations ni invoiceId pero con supplierId ──
+        // Distribuye automáticamente entre facturas pendientes del proveedor,
+        // ordenadas por dueDate ASC (oldest-due-first), hasta agotar el monto.
         if (!isMulti && !isSingle) {
-          return res.status(400).json({ error: "Se requiere invoiceId o al menos una asignación en allocations" });
+          if (!data.supplierId) {
+            return res.status(400).json({ error: "Se requiere invoiceId, allocations, o supplierId para distribución automática" });
+          }
+          const pendingInvoices = await db
+            .select({
+              id: supplierInvoices.id,
+              totalAmount: supplierInvoices.totalAmount,
+              paidAmount: supplierInvoices.paidAmount,
+              dueDate: supplierInvoices.dueDate,
+            })
+            .from(supplierInvoices)
+            .where(and(
+              eq(supplierInvoices.tenantId, tenantId),
+              eq(supplierInvoices.supplierId, data.supplierId),
+              inArray(supplierInvoices.status, ["recibida", "aprobada", "pendiente", "parcial", "vencida"])
+            ))
+            .orderBy(supplierInvoices.dueDate, supplierInvoices.issueDate);
+
+          if (pendingInvoices.length === 0) {
+            return res.status(400).json({ error: "No hay facturas pendientes para este proveedor" });
+          }
+
+          let remaining = data.amount;
+          const autoAllocs: { invoiceId: string; allocatedAmount: number }[] = [];
+          for (const inv of pendingInvoices) {
+            if (remaining <= 0.001) break;
+            const balance = parseDecimal(inv.totalAmount) - parseDecimal(inv.paidAmount);
+            if (balance <= 0.001) continue;
+            const apply = Math.min(remaining, balance);
+            autoAllocs.push({ invoiceId: inv.id, allocatedAmount: apply });
+            remaining -= apply;
+          }
+
+          if (autoAllocs.length === 0) {
+            return res.status(400).json({ error: "No hay saldo pendiente en facturas del proveedor" });
+          }
+
+          data.allocations = autoAllocs;
+          isMulti = true;
         }
 
         // Validar supplier si se especifica
@@ -1052,58 +1093,56 @@ export function registerComprasFinancieroRoutes(app: Express) {
         if (!pago) return res.status(404).json({ error: "Pago no encontrado" });
 
         await db.transaction(async (tx) => {
-          if (pago.invoiceId) {
-            // Pago simple: revertir en la factura
-            const [inv] = await tx
-              .select({ paidAmount: supplierInvoices.paidAmount, totalAmount: supplierInvoices.totalAmount })
-              .from(supplierInvoices)
-              .where(eq(supplierInvoices.id, pago.invoiceId));
-            if (inv) {
-              const newPaid = Math.max(0, parseDecimal(inv.paidAmount) - parseDecimal(pago.amount));
-              await tx.update(supplierInvoices)
-                .set({ paidAmount: String(newPaid), updatedAt: new Date() })
-                .where(eq(supplierInvoices.id, pago.invoiceId));
-              await recalcInvoiceStatus(tx, pago.invoiceId, tenantId);
-            }
-          } else {
-            // Pago multi-factura: revertir en cada factura
-            const allocs = await tx
-              .select()
-              .from(supplierPaymentAllocations)
-              .where(eq(supplierPaymentAllocations.paymentId, id));
-
-            for (const alloc of allocs) {
+          // Solo revertir balances si el pago NO fue ya anulado por PATCH /cancel.
+          // Si cancelledAt != null, los balances ya fueron revertidos; solo borramos el registro.
+          if (pago.cancelledAt === null) {
+            if (pago.invoiceId) {
               const [inv] = await tx
-                .select({ paidAmount: supplierInvoices.paidAmount })
+                .select({ paidAmount: supplierInvoices.paidAmount, totalAmount: supplierInvoices.totalAmount })
                 .from(supplierInvoices)
-                .where(eq(supplierInvoices.id, alloc.invoiceId));
+                .where(eq(supplierInvoices.id, pago.invoiceId));
               if (inv) {
-                const newPaid = Math.max(0, parseDecimal(inv.paidAmount) - parseDecimal(alloc.allocatedAmount));
+                const newPaid = Math.max(0, parseDecimal(inv.paidAmount) - parseDecimal(pago.amount));
                 await tx.update(supplierInvoices)
                   .set({ paidAmount: String(newPaid), updatedAt: new Date() })
+                  .where(eq(supplierInvoices.id, pago.invoiceId));
+                await recalcInvoiceStatus(tx, pago.invoiceId, tenantId);
+              }
+            } else {
+              const allocs = await tx
+                .select()
+                .from(supplierPaymentAllocations)
+                .where(eq(supplierPaymentAllocations.paymentId, id));
+              for (const alloc of allocs) {
+                const [inv] = await tx
+                  .select({ paidAmount: supplierInvoices.paidAmount })
+                  .from(supplierInvoices)
                   .where(eq(supplierInvoices.id, alloc.invoiceId));
-                await recalcInvoiceStatus(tx, alloc.invoiceId, tenantId);
+                if (inv) {
+                  const newPaid = Math.max(0, parseDecimal(inv.paidAmount) - parseDecimal(alloc.allocatedAmount));
+                  await tx.update(supplierInvoices)
+                    .set({ paidAmount: String(newPaid), updatedAt: new Date() })
+                    .where(eq(supplierInvoices.id, alloc.invoiceId));
+                  await recalcInvoiceStatus(tx, alloc.invoiceId, tenantId);
+                }
               }
             }
-
-            await tx.delete(supplierPaymentAllocations)
-              .where(eq(supplierPaymentAllocations.paymentId, id));
-          }
-
-          // Revertir movimiento bancario
-          if (pago.bankAccountId) {
-            const [cuenta] = await tx
-              .select({ balance: bankAccountsTable.balance })
-              .from(bankAccountsTable)
-              .where(eq(bankAccountsTable.id, pago.bankAccountId));
-            if (cuenta) {
-              const saldoRevertido = parseDecimal(cuenta.balance) + parseDecimal(pago.amount);
-              await tx.update(bankAccountsTable)
-                .set({ balance: String(saldoRevertido), updatedAt: new Date() })
+            if (pago.bankAccountId) {
+              const [cuenta] = await tx
+                .select({ balance: bankAccountsTable.balance })
+                .from(bankAccountsTable)
                 .where(eq(bankAccountsTable.id, pago.bankAccountId));
+              if (cuenta) {
+                const saldoRevertido = parseDecimal(cuenta.balance) + parseDecimal(pago.amount);
+                await tx.update(bankAccountsTable)
+                  .set({ balance: String(saldoRevertido), updatedAt: new Date() })
+                  .where(eq(bankAccountsTable.id, pago.bankAccountId));
+              }
             }
           }
-
+          // Eliminar allocations (si existen) y el pago
+          await tx.delete(supplierPaymentAllocations)
+            .where(eq(supplierPaymentAllocations.paymentId, id));
           await tx.delete(supplierPayments).where(eq(supplierPayments.id, id));
         });
 
