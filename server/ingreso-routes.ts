@@ -520,6 +520,13 @@ export function registerIngresoRoutes(app: Express) {
           .where(and(eq(ingresosFijos.id, req.params.id), eq(ingresosFijos.tenantId, tenantId)));
         if (!fijo) return res.status(404).json({ error: "Ingreso fijo no encontrado" });
 
+        // Validar cuentaBancariaId del request contra tenant (antes del insert)
+        if (data.cuentaBancariaId) {
+          const [acct] = await db.select({ id: bankAccountsTable.id }).from(bankAccountsTable)
+            .where(and(eq(bankAccountsTable.id, data.cuentaBancariaId), eq(bankAccountsTable.tenantId, tenantId)));
+          if (!acct) return res.status(400).json({ error: "Cuenta bancaria no válida para este tenant" });
+        }
+
         const fechaCobro = data.fecha ? new Date(data.fecha) : new Date();
         const nuevaProximaFecha = avanzarProximaFecha(
           fijo.proximaFecha ? new Date(fijo.proximaFecha) : new Date(),
@@ -752,6 +759,11 @@ export function registerIngresoRoutes(app: Express) {
         const data = registroBodySchema.parse(req.body);
 
         // Validar pertenencia multi-tenant de IDs referenciados
+        if (data.fijoId) {
+          const [fijo] = await db.select({ id: ingresosFijos.id }).from(ingresosFijos)
+            .where(and(eq(ingresosFijos.id, data.fijoId), eq(ingresosFijos.tenantId, tenantId)));
+          if (!fijo) return res.status(400).json({ error: "Ingreso fijo no válido para este tenant" });
+        }
         if (data.categoriaId) {
           const [cat] = await db.select({ id: ingresosCategorias.id }).from(ingresosCategorias)
             .where(and(eq(ingresosCategorias.id, data.categoriaId), eq(ingresosCategorias.tenantId, tenantId)));
@@ -824,6 +836,11 @@ export function registerIngresoRoutes(app: Express) {
         const data = registroBodySchema.parse(req.body);
 
         // Validar pertenencia multi-tenant de IDs referenciados
+        if (data.fijoId) {
+          const [fijo] = await db.select({ id: ingresosFijos.id }).from(ingresosFijos)
+            .where(and(eq(ingresosFijos.id, data.fijoId), eq(ingresosFijos.tenantId, tenantId)));
+          if (!fijo) return res.status(400).json({ error: "Ingreso fijo no válido para este tenant" });
+        }
         if (data.categoriaId) {
           const [cat] = await db.select({ id: ingresosCategorias.id }).from(ingresosCategorias)
             .where(and(eq(ingresosCategorias.id, data.categoriaId), eq(ingresosCategorias.tenantId, tenantId)));
