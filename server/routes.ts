@@ -9395,7 +9395,7 @@ export async function registerRoutes(
         .from(nayaxTransactionsTable)
         .where(and(eq(nayaxTransactionsTable.tenantId, tenantId), gte(nayaxTransactionsTable.settlementDate, weekStart)));
 
-      const weekTransactions = weekResult?.count ?? 0;
+      const weekTransactions = Number(weekResult?.count ?? 0);
 
       const now = new Date();
       let syncStatus: "ok" | "warning" | "error" = "error";
@@ -13777,6 +13777,14 @@ export async function registerRoutes(
       const tenantId = req.user!.tenantId;
       if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
       const result = await syncNayaxSalesForTenant(tenantId);
+      // Update lastSyncAt whenever sync completes without a fatal config error
+      const isConfigError = result.errors.length === 1 && result.errors[0]?.machineId === "config";
+      if (!isConfigError) {
+        await db
+          .update(nayaxConfigTable)
+          .set({ lastSyncAt: new Date(), updatedAt: new Date() })
+          .where(eq(nayaxConfigTable.tenantId, tenantId));
+      }
       res.json(result);
     } catch (error: any) {
       console.error("Error sync nayax sales:", error);
