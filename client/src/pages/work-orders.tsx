@@ -180,6 +180,7 @@ interface WorkOrder {
   stageId: string | null;
   assignedUserId: string | null;
   ticketId: string | null;
+  routeId: string | null;
   description: string | null;
   slaDeadline: string | null;
   slaStatus: string | null;
@@ -2582,20 +2583,6 @@ export function WorkOrdersPage() {
     queryKey: ["/api/work-orders"],
   });
 
-  type RouteItem = { id: string; name: string };
-  const { data: routesData } = useQuery<{ routes: RouteItem[]; total: number }>({
-    queryKey: ["/api/supplier/routes", { pageSize: 200 }],
-    queryFn: async () => {
-      const token = getAccessToken();
-      const res = await fetch("/api/supplier/routes?pageSize=200", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Error al cargar rutas");
-      return res.json();
-    },
-  });
-  const routesList = routesData?.routes ?? [];
 
   useEffect(() => {
     if (selectedOrder) {
@@ -2635,10 +2622,10 @@ export function WorkOrdersPage() {
   });
 
   const { data: routesData } = useQuery<{ data: RouteBasic[] }>({
-    queryKey: ["/api/supplier/routes"],
+    queryKey: ["/api/supplier/routes", { pageSize: 200 }],
     queryFn: async () => {
       const token = await getAccessToken();
-      const res = await fetch("/api/supplier/routes?pageSize=100", {
+      const res = await fetch("/api/supplier/routes?pageSize=200", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) return { data: [] };
@@ -2647,6 +2634,7 @@ export function WorkOrdersPage() {
     staleTime: 30000,
   });
   const availableRoutes = routesData?.data ?? [];
+  const routesList = availableRoutes;
 
   const { data: users = [] } = useQuery<UserInfo[]>({
     queryKey: ["/api/users"],
