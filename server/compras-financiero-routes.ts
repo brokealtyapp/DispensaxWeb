@@ -19,6 +19,10 @@ import { z } from "zod";
 import { avanzarProximaFecha, calcEstadoFijo, type Frecuencia } from "./egreso-helpers";
 
 const ROLES_CF = ["admin", "contabilidad"];
+const ROLES_ADMIN = ["admin"];
+// Estados editables (contenido) y estado desde el que se puede eliminar
+const MUTABLE_STATUSES = ["borrador", "recibida"];
+const DELETABLE_STATUS = "borrador";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -134,7 +138,9 @@ const debitNoteBodySchema = z.object({
   invoiceId: z.string().optional().nullable(),
   supplierId: z.string().optional().nullable(),
   noteNumber: z.string().min(1, "Número de nota requerido"),
-  reason: z.string().min(1, "Motivo requerido"),
+  reason: z.enum(["devolucion", "descuento", "correccion_error", "ajuste_precio"], {
+    errorMap: () => ({ message: "Seleccione un motivo válido" }),
+  }),
   amount: z.coerce.number().min(0.01, "Monto requerido"),
   currency: z.enum(["DOP", "USD", "EUR"]).default("DOP"),
   date: z.string().or(z.date()),
@@ -149,9 +155,9 @@ const debitNoteBodySchema = z.object({
 export function registerComprasFinancieroRoutes(app: Express) {
   // ─── PROVEEDORES (helper para el módulo) ───────────────────────────────────
 
-  // GET /api/compras-fin/proveedores
+  // GET /api/purchases/fin/proveedores
   app.get(
-    "/api/compras-fin/proveedores",
+    "/api/purchases/fin/proveedores",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -172,9 +178,9 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
   // ─── FACTURAS ──────────────────────────────────────────────────────────────
 
-  // GET /api/compras-fin/facturas
+  // GET /api/purchases/fin/facturas
   app.get(
-    "/api/compras-fin/facturas",
+    "/api/purchases/fin/facturas",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -231,15 +237,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
         res.json(rows);
       } catch (e) {
-        console.error("GET /api/compras-fin/facturas:", e);
+        console.error("GET /api/purchases/fin/facturas:", e);
         res.status(500).json({ error: "Error al obtener facturas" });
       }
     }
   );
 
-  // GET /api/compras-fin/facturas/stats
+  // GET /api/purchases/fin/facturas/stats
   app.get(
-    "/api/compras-fin/facturas/stats",
+    "/api/purchases/fin/facturas/stats",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -278,15 +284,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
         };
         res.json(stats);
       } catch (e) {
-        console.error("GET /api/compras-fin/facturas/stats:", e);
+        console.error("GET /api/purchases/fin/facturas/stats:", e);
         res.status(500).json({ error: "Error al obtener estadísticas" });
       }
     }
   );
 
-  // GET /api/compras-fin/facturas/:id
+  // GET /api/purchases/fin/facturas/:id
   app.get(
-    "/api/compras-fin/facturas/:id",
+    "/api/purchases/fin/facturas/:id",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -368,15 +374,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
         res.json({ ...inv, items, payments: directPayments, allocatedPayments });
       } catch (e) {
-        console.error("GET /api/compras-fin/facturas/:id:", e);
+        console.error("GET /api/purchases/fin/facturas/:id:", e);
         res.status(500).json({ error: "Error al obtener factura" });
       }
     }
   );
 
-  // POST /api/compras-fin/facturas
+  // POST /api/purchases/fin/facturas
   app.post(
-    "/api/compras-fin/facturas",
+    "/api/purchases/fin/facturas",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -391,6 +397,18 @@ export function registerComprasFinancieroRoutes(app: Express) {
           if (!sup) return res.status(400).json({ error: "Proveedor no válido para este tenant" });
         }
 
+        // Computar subtotal y total desde los ítems cuando se provean
+        let computedSubtotal = data.subtotal;
+        let computedTotal = data.totalAmount;
+        if (data.items && data.items.length > 0) {
+          computedSubtotal = data.items.reduce((s, i) => s + i.amount, 0);
+          computedTotal = computedSubtotal
+            - (data.discountAmount ?? 0)
+            + (data.taxAmount ?? 0)
+            - (data.withholdingAmount ?? 0);
+          if (computedTotal <= 0) computedTotal = computedSubtotal;
+        }
+
         const invoice = await db.transaction(async (tx) => {
           const [inv] = await tx
             .insert(supplierInvoices)
@@ -400,11 +418,11 @@ export function registerComprasFinancieroRoutes(app: Express) {
               orderId: data.orderId ?? null,
               invoiceNumber: data.invoiceNumber,
               description: data.description,
-              subtotal: String(data.subtotal),
+              subtotal: String(computedSubtotal),
               discountAmount: String(data.discountAmount),
               taxAmount: String(data.taxAmount),
               withholdingAmount: String(data.withholdingAmount),
-              totalAmount: String(data.totalAmount),
+              totalAmount: String(computedTotal),
               paidAmount: "0",
               currency: data.currency,
               ncfType: data.ncfType ?? null,
@@ -437,15 +455,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
         res.status(201).json(invoice);
       } catch (e) {
         if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
-        console.error("POST /api/compras-fin/facturas:", e);
+        console.error("POST /api/purchases/fin/facturas:", e);
         res.status(500).json({ error: "Error al crear factura" });
       }
     }
   );
 
-  // PATCH /api/compras-fin/facturas/:id
+  // PATCH /api/purchases/fin/facturas/:id
   app.patch(
-    "/api/compras-fin/facturas/:id",
+    "/api/purchases/fin/facturas/:id",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -459,9 +477,11 @@ export function registerComprasFinancieroRoutes(app: Express) {
           .from(supplierInvoices)
           .where(and(eq(supplierInvoices.id, id), eq(supplierInvoices.tenantId, tenantId)));
         if (!existing) return res.status(404).json({ error: "Factura no encontrada" });
-        if (existing.status === "anulada") return res.status(400).json({ error: "No se puede editar una factura anulada" });
+        if (!MUTABLE_STATUSES.includes(existing.status)) {
+          return res.status(400).json({ error: `Solo se pueden editar facturas en estado borrador o recibida. Estado actual: ${existing.status}` });
+        }
 
-        const data = invoiceBodySchema.partial().parse(req.body);
+        const data = invoiceBodySchema.omit({ status: true }).partial().parse(req.body);
         if (data.supplierId) {
           const [sup] = await db.select({ id: suppliersTable.id }).from(suppliersTable)
             .where(and(eq(suppliersTable.id, data.supplierId), eq(suppliersTable.tenantId, tenantId)));
@@ -496,17 +516,17 @@ export function registerComprasFinancieroRoutes(app: Express) {
         res.json(updated);
       } catch (e) {
         if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
-        console.error("PATCH /api/compras-fin/facturas/:id:", e);
+        console.error("PATCH /api/purchases/fin/facturas/:id:", e);
         res.status(500).json({ error: "Error al actualizar factura" });
       }
     }
   );
 
-  // PATCH /api/compras-fin/facturas/:id/anular
+  // PATCH /api/purchases/fin/facturas/:id/anular
   app.patch(
-    "/api/compras-fin/facturas/:id/anular",
+    "/api/purchases/fin/facturas/:id/anular",
     authenticateJWT,
-    authorizeRoles(...ROLES_CF),
+    authorizeRoles(...ROLES_ADMIN),
     async (req: Request, res: Response) => {
       try {
         const { tenantId } = req as AuthenticatedRequest;
@@ -530,17 +550,17 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
         res.json(updated);
       } catch (e) {
-        console.error("PATCH /api/compras-fin/facturas/:id/anular:", e);
+        console.error("PATCH /api/purchases/fin/facturas/:id/anular:", e);
         res.status(500).json({ error: "Error al anular factura" });
       }
     }
   );
 
-  // PATCH /api/compras-fin/facturas/:id/status
+  // PATCH /api/purchases/fin/facturas/:id/status — solo admin puede cambiar estado
   app.patch(
-    "/api/compras-fin/facturas/:id/status",
+    "/api/purchases/fin/facturas/:id/status",
     authenticateJWT,
-    authorizeRoles(...ROLES_CF),
+    authorizeRoles(...ROLES_ADMIN),
     async (req: Request, res: Response) => {
       try {
         const { tenantId } = req as AuthenticatedRequest;
@@ -569,15 +589,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
         res.json(updated);
       } catch (e) {
         if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
-        console.error("PATCH /api/compras-fin/facturas/:id/status:", e);
+        console.error("PATCH /api/purchases/fin/facturas/:id/status:", e);
         res.status(500).json({ error: "Error al cambiar estado" });
       }
     }
   );
 
-  // DELETE /api/compras-fin/facturas/:id
+  // DELETE /api/purchases/fin/facturas/:id
   app.delete(
-    "/api/compras-fin/facturas/:id",
+    "/api/purchases/fin/facturas/:id",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -587,12 +607,12 @@ export function registerComprasFinancieroRoutes(app: Express) {
         const { id } = req.params;
 
         const [existing] = await db
-          .select({ id: supplierInvoices.id, paidAmount: supplierInvoices.paidAmount })
+          .select({ id: supplierInvoices.id, status: supplierInvoices.status, paidAmount: supplierInvoices.paidAmount })
           .from(supplierInvoices)
           .where(and(eq(supplierInvoices.id, id), eq(supplierInvoices.tenantId, tenantId)));
         if (!existing) return res.status(404).json({ error: "Factura no encontrada" });
-        if (parseDecimal(existing.paidAmount) > 0) {
-          return res.status(400).json({ error: "No se puede eliminar una factura con pagos registrados" });
+        if (existing.status !== DELETABLE_STATUS) {
+          return res.status(400).json({ error: `Solo se pueden eliminar facturas en estado borrador. Estado actual: ${existing.status}` });
         }
 
         // Verificar que no tenga allocations
@@ -611,7 +631,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
         res.json({ ok: true });
       } catch (e) {
-        console.error("DELETE /api/compras-fin/facturas/:id:", e);
+        console.error("DELETE /api/purchases/fin/facturas/:id:", e);
         res.status(500).json({ error: "Error al eliminar factura" });
       }
     }
@@ -619,9 +639,9 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
   // ─── PAGOS ─────────────────────────────────────────────────────────────────
 
-  // GET /api/compras-fin/pagos
+  // GET /api/purchases/fin/pagos
   app.get(
-    "/api/compras-fin/pagos",
+    "/api/purchases/fin/pagos",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -629,11 +649,12 @@ export function registerComprasFinancieroRoutes(app: Express) {
         const { tenantId } = req as AuthenticatedRequest;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
 
-        const { invoiceId, supplierId, desde, hasta } = req.query as Record<string, string>;
+        const { invoiceId, supplierId, desde, hasta, bankAccountId: bankFilter } = req.query as Record<string, string>;
 
         const conditions: any[] = [eq(supplierPayments.tenantId, tenantId)];
         if (invoiceId) conditions.push(eq(supplierPayments.invoiceId, invoiceId));
         if (supplierId) conditions.push(eq(supplierPayments.supplierId, supplierId));
+        if (bankFilter) conditions.push(eq(supplierPayments.bankAccountId, bankFilter));
         if (desde) conditions.push(gte(supplierPayments.paymentDate, new Date(desde)));
         if (hasta) conditions.push(lte(supplierPayments.paymentDate, new Date(hasta)));
 
@@ -686,15 +707,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
         res.json(rowsWithAllocations);
       } catch (e) {
-        console.error("GET /api/compras-fin/pagos:", e);
+        console.error("GET /api/purchases/fin/pagos:", e);
         res.status(500).json({ error: "Error al obtener pagos" });
       }
     }
   );
 
-  // POST /api/compras-fin/pagos
+  // POST /api/purchases/fin/pagos
   app.post(
-    "/api/compras-fin/pagos",
+    "/api/purchases/fin/pagos",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -838,6 +859,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
             return res.status(400).json({ error: "Una o más facturas no son válidas para este tenant" });
           }
 
+          // ✅ Validar que todas las facturas pertenezcan al mismo proveedor
+          const supplierIdsInFacturas = [...new Set(facturas.map(f => f.supplierId).filter(Boolean))];
+          if (supplierIdsInFacturas.length > 1) {
+            return res.status(400).json({ error: "Las facturas de un pago multi-factura deben pertenecer al mismo proveedor" });
+          }
+          if (data.supplierId && supplierIdsInFacturas.length > 0 && supplierIdsInFacturas[0] !== data.supplierId) {
+            return res.status(400).json({ error: "El proveedor del pago no coincide con el proveedor de las facturas seleccionadas" });
+          }
+
           for (const alloc of allocations) {
             const factura = facturas.find(f => f.id === alloc.invoiceId);
             if (!factura) continue;
@@ -921,15 +951,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
         }
       } catch (e) {
         if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
-        console.error("POST /api/compras-fin/pagos:", e);
+        console.error("POST /api/purchases/fin/pagos:", e);
         res.status(500).json({ error: "Error al registrar pago" });
       }
     }
   );
 
-  // DELETE /api/compras-fin/pagos/:id
+  // DELETE /api/purchases/fin/pagos/:id
   app.delete(
-    "/api/compras-fin/pagos/:id",
+    "/api/purchases/fin/pagos/:id",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -1000,17 +1030,76 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
         res.json({ ok: true });
       } catch (e) {
-        console.error("DELETE /api/compras-fin/pagos/:id:", e);
+        console.error("DELETE /api/purchases/fin/pagos/:id:", e);
         res.status(500).json({ error: "Error al eliminar pago" });
+      }
+    }
+  );
+
+  // GET /api/purchases/fin/pagos/:id
+  app.get(
+    "/api/purchases/fin/pagos/:id",
+    authenticateJWT,
+    authorizeRoles(...ROLES_CF),
+    async (req: Request, res: Response) => {
+      try {
+        const { tenantId } = req as AuthenticatedRequest;
+        if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+        const { id } = req.params;
+
+        const [pago] = await db
+          .select({
+            id: supplierPayments.id,
+            tenantId: supplierPayments.tenantId,
+            supplierId: supplierPayments.supplierId,
+            invoiceId: supplierPayments.invoiceId,
+            recurringId: supplierPayments.recurringId,
+            bankAccountId: supplierPayments.bankAccountId,
+            amount: supplierPayments.amount,
+            currency: supplierPayments.currency,
+            paymentDate: supplierPayments.paymentDate,
+            reference: supplierPayments.reference,
+            notes: supplierPayments.notes,
+            createdAt: supplierPayments.createdAt,
+            invoiceNumber: supplierInvoices.invoiceNumber,
+            supplierName: suppliersTable.name,
+            bankAccountName: bankAccountsTable.name,
+          })
+          .from(supplierPayments)
+          .leftJoin(supplierInvoices, eq(supplierPayments.invoiceId, supplierInvoices.id))
+          .leftJoin(suppliersTable, eq(supplierPayments.supplierId, suppliersTable.id))
+          .leftJoin(bankAccountsTable, eq(supplierPayments.bankAccountId, bankAccountsTable.id))
+          .where(and(eq(supplierPayments.id, id), eq(supplierPayments.tenantId, tenantId)));
+
+        if (!pago) return res.status(404).json({ error: "Pago no encontrado" });
+
+        // Enriquecer con allocations si es pago multi-factura
+        let allocations: any[] = [];
+        if (!pago.invoiceId) {
+          allocations = await db
+            .select({
+              invoiceId: supplierPaymentAllocations.invoiceId,
+              allocatedAmount: supplierPaymentAllocations.allocatedAmount,
+              invoiceNumber: supplierInvoices.invoiceNumber,
+            })
+            .from(supplierPaymentAllocations)
+            .leftJoin(supplierInvoices, eq(supplierPaymentAllocations.invoiceId, supplierInvoices.id))
+            .where(and(eq(supplierPaymentAllocations.paymentId, id), eq(supplierPaymentAllocations.tenantId, tenantId)));
+        }
+
+        res.json({ ...pago, allocations });
+      } catch (e) {
+        console.error("GET /api/purchases/fin/pagos/:id:", e);
+        res.status(500).json({ error: "Error al obtener pago" });
       }
     }
   );
 
   // ─── PAGOS RECURRENTES ─────────────────────────────────────────────────────
 
-  // GET /api/compras-fin/recurrentes
+  // GET /api/purchases/fin/recurrentes
   app.get(
-    "/api/compras-fin/recurrentes",
+    "/api/purchases/fin/recurrentes",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -1055,15 +1144,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
         res.json(withStatus);
       } catch (e) {
-        console.error("GET /api/compras-fin/recurrentes:", e);
+        console.error("GET /api/purchases/fin/recurrentes:", e);
         res.status(500).json({ error: "Error al obtener pagos recurrentes" });
       }
     }
   );
 
-  // POST /api/compras-fin/recurrentes
+  // POST /api/purchases/fin/recurrentes
   app.post(
-    "/api/compras-fin/recurrentes",
+    "/api/purchases/fin/recurrentes",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -1104,15 +1193,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
         res.status(201).json(rec);
       } catch (e) {
         if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
-        console.error("POST /api/compras-fin/recurrentes:", e);
+        console.error("POST /api/purchases/fin/recurrentes:", e);
         res.status(500).json({ error: "Error al crear pago recurrente" });
       }
     }
   );
 
-  // PATCH /api/compras-fin/recurrentes/:id
+  // PATCH /api/purchases/fin/recurrentes/:id
   app.patch(
-    "/api/compras-fin/recurrentes/:id",
+    "/api/purchases/fin/recurrentes/:id",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -1159,15 +1248,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
         res.json(updated);
       } catch (e) {
         if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
-        console.error("PATCH /api/compras-fin/recurrentes/:id:", e);
+        console.error("PATCH /api/purchases/fin/recurrentes/:id:", e);
         res.status(500).json({ error: "Error al actualizar pago recurrente" });
       }
     }
   );
 
-  // DELETE /api/compras-fin/recurrentes/:id
+  // DELETE /api/purchases/fin/recurrentes/:id
   app.delete(
-    "/api/compras-fin/recurrentes/:id",
+    "/api/purchases/fin/recurrentes/:id",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -1186,15 +1275,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
         res.json({ ok: true });
       } catch (e) {
-        console.error("DELETE /api/compras-fin/recurrentes/:id:", e);
+        console.error("DELETE /api/purchases/fin/recurrentes/:id:", e);
         res.status(500).json({ error: "Error al eliminar pago recurrente" });
       }
     }
   );
 
-  // POST /api/compras-fin/recurrentes/:id/registrar-pago
+  // POST /api/purchases/fin/recurrentes/:id/registrar-pago
   app.post(
-    "/api/compras-fin/recurrentes/:id/registrar-pago",
+    "/api/purchases/fin/recurrentes/:id/registrar-pago",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -1272,7 +1361,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
         res.json({ ok: true, payment });
       } catch (e) {
-        console.error("POST /api/compras-fin/recurrentes/:id/registrar-pago:", e);
+        console.error("POST /api/purchases/fin/recurrentes/:id/registrar-pago:", e);
         res.status(500).json({ error: "Error al registrar pago recurrente" });
       }
     }
@@ -1280,9 +1369,9 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
   // ─── NOTAS DE DÉBITO ────────────────────────────────────────────────────────
 
-  // GET /api/compras-fin/notas-debito
+  // GET /api/purchases/fin/notas-debito
   app.get(
-    "/api/compras-fin/notas-debito",
+    "/api/purchases/fin/notas-debito",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -1321,15 +1410,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
         res.json(rows);
       } catch (e) {
-        console.error("GET /api/compras-fin/notas-debito:", e);
+        console.error("GET /api/purchases/fin/notas-debito:", e);
         res.status(500).json({ error: "Error al obtener notas de débito" });
       }
     }
   );
 
-  // GET /api/compras-fin/notas-debito/:id
+  // GET /api/purchases/fin/notas-debito/:id
   app.get(
-    "/api/compras-fin/notas-debito/:id",
+    "/api/purchases/fin/notas-debito/:id",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -1369,15 +1458,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
         res.json({ ...nota, items });
       } catch (e) {
-        console.error("GET /api/compras-fin/notas-debito/:id:", e);
+        console.error("GET /api/purchases/fin/notas-debito/:id:", e);
         res.status(500).json({ error: "Error al obtener nota de débito" });
       }
     }
   );
 
-  // POST /api/compras-fin/notas-debito
+  // POST /api/purchases/fin/notas-debito
   app.post(
-    "/api/compras-fin/notas-debito",
+    "/api/purchases/fin/notas-debito",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -1429,15 +1518,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
         res.status(201).json(nota);
       } catch (e) {
         if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
-        console.error("POST /api/compras-fin/notas-debito:", e);
+        console.error("POST /api/purchases/fin/notas-debito:", e);
         res.status(500).json({ error: "Error al crear nota de débito" });
       }
     }
   );
 
-  // PATCH /api/compras-fin/notas-debito/:id
+  // PATCH /api/purchases/fin/notas-debito/:id
   app.patch(
-    "/api/compras-fin/notas-debito/:id",
+    "/api/purchases/fin/notas-debito/:id",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -1498,15 +1587,15 @@ export function registerComprasFinancieroRoutes(app: Express) {
         res.json(updated);
       } catch (e) {
         if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
-        console.error("PATCH /api/compras-fin/notas-debito/:id:", e);
+        console.error("PATCH /api/purchases/fin/notas-debito/:id:", e);
         res.status(500).json({ error: "Error al actualizar nota de débito" });
       }
     }
   );
 
-  // DELETE /api/compras-fin/notas-debito/:id
+  // DELETE /api/purchases/fin/notas-debito/:id
   app.delete(
-    "/api/compras-fin/notas-debito/:id",
+    "/api/purchases/fin/notas-debito/:id",
     authenticateJWT,
     authorizeRoles(...ROLES_CF),
     async (req: Request, res: Response) => {
@@ -1527,7 +1616,7 @@ export function registerComprasFinancieroRoutes(app: Express) {
 
         res.json({ ok: true });
       } catch (e) {
-        console.error("DELETE /api/compras-fin/notas-debito/:id:", e);
+        console.error("DELETE /api/purchases/fin/notas-debito/:id:", e);
         res.status(500).json({ error: "Error al eliminar nota de débito" });
       }
     }

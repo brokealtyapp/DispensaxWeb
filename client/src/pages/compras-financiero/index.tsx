@@ -152,11 +152,20 @@ const recurringFormSchema = z.object({
 });
 type RecurringFormData = z.infer<typeof recurringFormSchema>;
 
+const DEBIT_NOTE_REASONS = [
+  { value: "devolucion", label: "Devolución" },
+  { value: "descuento", label: "Descuento" },
+  { value: "correccion_error", label: "Corrección de Error" },
+  { value: "ajuste_precio", label: "Ajuste de Precio" },
+];
+
 const debitNoteFormSchema = z.object({
   invoiceId: z.string().optional(),
   supplierId: z.string().optional(),
   noteNumber: z.string().min(1, "Número de nota requerido"),
-  reason: z.string().min(1, "Motivo requerido"),
+  reason: z.enum(["devolucion", "descuento", "correccion_error", "ajuste_precio"], {
+    errorMap: () => ({ message: "Seleccione un motivo" }),
+  }),
   amount: z.coerce.number().min(0.01, "Monto requerido"),
   currency: z.enum(["DOP", "USD", "EUR"]).default("DOP"),
   date: z.string().min(1, "Fecha requerida"),
@@ -213,6 +222,10 @@ export default function ComprasFinancieroPage() {
   const [tab, setTab] = useState("facturas");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [supplierFilter, setSupplierFilter] = useState("all");
+  const [bankFilter, setBankFilter] = useState("all");
+  const [desdeFilter, setDesdeFilter] = useState("");
+  const [hastaFilter, setHastaFilter] = useState("");
   const [paymentMode, setPaymentMode] = useState<"simple" | "multi">("simple");
 
   // ── Facturas state ──
@@ -241,33 +254,33 @@ export default function ComprasFinancieroPage() {
 
   // ─── Queries ────────────────────────────────────────────────────────────────
   const { data: invoices = [], isLoading: invoicesLoading } = useQuery<Invoice[]>({
-    queryKey: ["/api/compras-fin/facturas"],
-    queryFn: () => apiRequest("GET", "/api/compras-fin/facturas").then(r => r.json()),
+    queryKey: ["/api/purchases/fin/facturas"],
+    queryFn: () => apiRequest("GET", "/api/purchases/fin/facturas").then(r => r.json()),
   });
 
   const { data: stats } = useQuery<any>({
-    queryKey: ["/api/compras-fin/facturas/stats"],
-    queryFn: () => apiRequest("GET", "/api/compras-fin/facturas/stats").then(r => r.json()),
+    queryKey: ["/api/purchases/fin/facturas/stats"],
+    queryFn: () => apiRequest("GET", "/api/purchases/fin/facturas/stats").then(r => r.json()),
   });
 
   const { data: payments = [], isLoading: paymentsLoading } = useQuery<Payment[]>({
-    queryKey: ["/api/compras-fin/pagos"],
-    queryFn: () => apiRequest("GET", "/api/compras-fin/pagos").then(r => r.json()),
+    queryKey: ["/api/purchases/fin/pagos"],
+    queryFn: () => apiRequest("GET", "/api/purchases/fin/pagos").then(r => r.json()),
   });
 
   const { data: recurrentes = [], isLoading: recurrentesLoading } = useQuery<RecurringPayment[]>({
-    queryKey: ["/api/compras-fin/recurrentes"],
-    queryFn: () => apiRequest("GET", "/api/compras-fin/recurrentes").then(r => r.json()),
+    queryKey: ["/api/purchases/fin/recurrentes"],
+    queryFn: () => apiRequest("GET", "/api/purchases/fin/recurrentes").then(r => r.json()),
   });
 
   const { data: debitNotes = [], isLoading: debitNotesLoading } = useQuery<DebitNote[]>({
-    queryKey: ["/api/compras-fin/notas-debito"],
-    queryFn: () => apiRequest("GET", "/api/compras-fin/notas-debito").then(r => r.json()),
+    queryKey: ["/api/purchases/fin/notas-debito"],
+    queryFn: () => apiRequest("GET", "/api/purchases/fin/notas-debito").then(r => r.json()),
   });
 
   const { data: proveedores = [] } = useQuery<Supplier[]>({
-    queryKey: ["/api/compras-fin/proveedores"],
-    queryFn: () => apiRequest("GET", "/api/compras-fin/proveedores").then(r => r.json()),
+    queryKey: ["/api/purchases/fin/proveedores"],
+    queryFn: () => apiRequest("GET", "/api/purchases/fin/proveedores").then(r => r.json()),
   });
 
   const { data: bankAccounts = [] } = useQuery<BankAccount[]>({
@@ -276,8 +289,8 @@ export default function ComprasFinancieroPage() {
   });
 
   const { data: invoiceDetail } = useQuery<Invoice>({
-    queryKey: ["/api/compras-fin/facturas", viewingInvoice?.id],
-    queryFn: () => apiRequest("GET", `/api/compras-fin/facturas/${viewingInvoice!.id}`).then(r => r.json()),
+    queryKey: ["/api/purchases/fin/facturas", viewingInvoice?.id],
+    queryFn: () => apiRequest("GET", `/api/purchases/fin/facturas/${viewingInvoice!.id}`).then(r => r.json()),
     enabled: !!viewingInvoice?.id,
   });
 
@@ -312,20 +325,20 @@ export default function ComprasFinancieroPage() {
   const debitNoteForm = useForm<DebitNoteFormData>({
     resolver: zodResolver(debitNoteFormSchema),
     defaultValues: {
-      invoiceId: SENTINEL, supplierId: SENTINEL, noteNumber: "", reason: "",
+      invoiceId: SENTINEL, supplierId: SENTINEL, noteNumber: "", reason: "devolucion",
       amount: 0, currency: "DOP", date: today(), status: "pendiente", notes: "",
     },
   });
 
   // ─── Mutations ───────────────────────────────────────────────────────────────
   const invalidateAll = () => {
-    queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/facturas"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/facturas/stats"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/facturas"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/facturas/stats"] });
   };
 
   const createInvoiceMutation = useMutation({
     mutationFn: async (data: InvoiceFormData) =>
-      apiRequest("POST", "/api/compras-fin/facturas", {
+      apiRequest("POST", "/api/purchases/fin/facturas", {
         ...data,
         supplierId: clean(data.supplierId),
         ncfType: clean(data.ncfType),
@@ -349,7 +362,7 @@ export default function ComprasFinancieroPage() {
 
   const updateInvoiceMutation = useMutation({
     mutationFn: async (data: InvoiceFormData) =>
-      apiRequest("PATCH", `/api/compras-fin/facturas/${editingInvoice!.id}`, {
+      apiRequest("PATCH", `/api/purchases/fin/facturas/${editingInvoice!.id}`, {
         ...data,
         supplierId: clean(data.supplierId),
         ncfType: clean(data.ncfType),
@@ -370,7 +383,7 @@ export default function ComprasFinancieroPage() {
   });
 
   const deleteInvoiceMutation = useMutation({
-    mutationFn: async (id: string) => apiRequest("DELETE", `/api/compras-fin/facturas/${id}`),
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/purchases/fin/facturas/${id}`),
     onSuccess: () => {
       invalidateAll();
       toast({ title: "Factura eliminada" });
@@ -384,7 +397,7 @@ export default function ComprasFinancieroPage() {
   });
 
   const anularInvoiceMutation = useMutation({
-    mutationFn: async (id: string) => apiRequest("PATCH", `/api/compras-fin/facturas/${id}/anular`),
+    mutationFn: async (id: string) => apiRequest("PATCH", `/api/purchases/fin/facturas/${id}/anular`),
     onSuccess: () => {
       invalidateAll();
       toast({ title: "Factura anulada" });
@@ -399,11 +412,11 @@ export default function ComprasFinancieroPage() {
 
   const createPaymentMutation = useMutation({
     mutationFn: async (body: Record<string, any>) =>
-      apiRequest("POST", "/api/compras-fin/pagos", body),
+      apiRequest("POST", "/api/purchases/fin/pagos", body),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/pagos"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/facturas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/facturas/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/pagos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/facturas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/facturas/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts"] });
       toast({ title: "Pago registrado" });
       setPaymentDialogOpen(false);
@@ -417,11 +430,11 @@ export default function ComprasFinancieroPage() {
   });
 
   const deletePaymentMutation = useMutation({
-    mutationFn: async (id: string) => apiRequest("DELETE", `/api/compras-fin/pagos/${id}`),
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/purchases/fin/pagos/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/pagos"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/facturas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/facturas/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/pagos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/facturas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/facturas/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts"] });
       toast({ title: "Pago eliminado" });
       setDeletePaymentTarget(null);
@@ -435,14 +448,14 @@ export default function ComprasFinancieroPage() {
 
   const createRecurringMutation = useMutation({
     mutationFn: async (data: RecurringFormData) =>
-      apiRequest("POST", "/api/compras-fin/recurrentes", {
+      apiRequest("POST", "/api/purchases/fin/recurrentes", {
         ...data,
         supplierId: clean(data.supplierId),
         bankAccountId: clean(data.bankAccountId),
         proximaFecha: data.proximaFecha || null,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/recurrentes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/recurrentes"] });
       toast({ title: "Pago recurrente creado" });
       setRecurringDialogOpen(false);
       recurringForm.reset();
@@ -456,14 +469,14 @@ export default function ComprasFinancieroPage() {
 
   const updateRecurringMutation = useMutation({
     mutationFn: async (data: RecurringFormData) =>
-      apiRequest("PATCH", `/api/compras-fin/recurrentes/${editingRecurring!.id}`, {
+      apiRequest("PATCH", `/api/purchases/fin/recurrentes/${editingRecurring!.id}`, {
         ...data,
         supplierId: clean(data.supplierId),
         bankAccountId: clean(data.bankAccountId),
         proximaFecha: data.proximaFecha || null,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/recurrentes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/recurrentes"] });
       toast({ title: "Pago recurrente actualizado" });
       setRecurringDialogOpen(false);
       setEditingRecurring(null);
@@ -476,9 +489,9 @@ export default function ComprasFinancieroPage() {
   });
 
   const deleteRecurringMutation = useMutation({
-    mutationFn: async (id: string) => apiRequest("DELETE", `/api/compras-fin/recurrentes/${id}`),
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/purchases/fin/recurrentes/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/recurrentes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/recurrentes"] });
       toast({ title: "Pago recurrente eliminado" });
       setDeleteRecurringTarget(null);
     },
@@ -487,10 +500,10 @@ export default function ComprasFinancieroPage() {
 
   const registrarPagoRecurrenteMutation = useMutation({
     mutationFn: async (id: string) =>
-      apiRequest("POST", `/api/compras-fin/recurrentes/${id}/registrar-pago`, {}),
+      apiRequest("POST", `/api/purchases/fin/recurrentes/${id}/registrar-pago`, {}),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/recurrentes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/pagos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/recurrentes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/pagos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts"] });
       toast({ title: "Pago recurrente registrado" });
       setPagarRecurringTarget(null);
@@ -504,14 +517,14 @@ export default function ComprasFinancieroPage() {
 
   const createDebitNoteMutation = useMutation({
     mutationFn: async (data: DebitNoteFormData) =>
-      apiRequest("POST", "/api/compras-fin/notas-debito", {
+      apiRequest("POST", "/api/purchases/fin/notas-debito", {
         ...data,
         invoiceId: clean(data.invoiceId),
         supplierId: clean(data.supplierId),
         items: debitNoteItems,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/notas-debito"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/notas-debito"] });
       toast({ title: "Nota de débito creada" });
       setDebitNoteDialogOpen(false);
       debitNoteForm.reset();
@@ -526,14 +539,14 @@ export default function ComprasFinancieroPage() {
 
   const updateDebitNoteMutation = useMutation({
     mutationFn: async (data: DebitNoteFormData) =>
-      apiRequest("PATCH", `/api/compras-fin/notas-debito/${editingDebitNote!.id}`, {
+      apiRequest("PATCH", `/api/purchases/fin/notas-debito/${editingDebitNote!.id}`, {
         ...data,
         invoiceId: clean(data.invoiceId),
         supplierId: clean(data.supplierId),
         items: debitNoteItems,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/notas-debito"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/notas-debito"] });
       toast({ title: "Nota actualizada" });
       setDebitNoteDialogOpen(false);
       setEditingDebitNote(null);
@@ -546,9 +559,9 @@ export default function ComprasFinancieroPage() {
   });
 
   const deleteDebitNoteMutation = useMutation({
-    mutationFn: async (id: string) => apiRequest("DELETE", `/api/compras-fin/notas-debito/${id}`),
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/purchases/fin/notas-debito/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-fin/notas-debito"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases/fin/notas-debito"] });
       toast({ title: "Nota eliminada" });
       setDeleteDebitNoteTarget(null);
     },
@@ -711,31 +724,41 @@ export default function ComprasFinancieroPage() {
   // Filtered data
   const filteredInvoices = invoices.filter(inv => {
     const matchStatus = statusFilter === "all" || inv.status === statusFilter;
+    const matchSupplier = supplierFilter === "all" || inv.supplierId === supplierFilter;
     const matchSearch = !search ||
       inv.invoiceNumber.toLowerCase().includes(search.toLowerCase()) ||
       inv.description.toLowerCase().includes(search.toLowerCase()) ||
       (inv.supplierName ?? "").toLowerCase().includes(search.toLowerCase());
-    return matchStatus && matchSearch;
+    const matchDesde = !desdeFilter || new Date(inv.issueDate) >= new Date(desdeFilter);
+    const matchHasta = !hastaFilter || new Date(inv.issueDate) <= new Date(hastaFilter);
+    return matchStatus && matchSupplier && matchSearch && matchDesde && matchHasta;
   });
 
-  const filteredPayments = payments.filter(p =>
-    !search ||
-    (p.invoiceNumber ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    (p.supplierName ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    (p.reference ?? "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredPayments = payments.filter(p => {
+    const matchSupplier = supplierFilter === "all" || p.supplierId === supplierFilter;
+    const matchBank = bankFilter === "all" || p.bankAccountId === bankFilter;
+    const matchDesde = !desdeFilter || new Date(p.paymentDate) >= new Date(desdeFilter);
+    const matchHasta = !hastaFilter || new Date(p.paymentDate) <= new Date(hastaFilter);
+    const matchSearch = !search ||
+      (p.invoiceNumber ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (p.supplierName ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (p.reference ?? "").toLowerCase().includes(search.toLowerCase());
+    return matchSupplier && matchBank && matchDesde && matchHasta && matchSearch;
+  });
 
   const filteredRecurrentes = recurrentes.filter(r =>
-    !search ||
-    r.description.toLowerCase().includes(search.toLowerCase()) ||
-    (r.supplierName ?? "").toLowerCase().includes(search.toLowerCase())
+    (supplierFilter === "all" || r.supplierId === supplierFilter) &&
+    (!search ||
+      r.description.toLowerCase().includes(search.toLowerCase()) ||
+      (r.supplierName ?? "").toLowerCase().includes(search.toLowerCase()))
   );
 
   const filteredDebitNotes = debitNotes.filter(n =>
-    !search ||
-    n.noteNumber.toLowerCase().includes(search.toLowerCase()) ||
-    n.reason.toLowerCase().includes(search.toLowerCase()) ||
-    (n.supplierName ?? "").toLowerCase().includes(search.toLowerCase())
+    (supplierFilter === "all" || n.supplierId === supplierFilter) &&
+    (!search ||
+      n.noteNumber.toLowerCase().includes(search.toLowerCase()) ||
+      n.reason.toLowerCase().includes(search.toLowerCase()) ||
+      (n.supplierName ?? "").toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -806,15 +829,24 @@ export default function ComprasFinancieroPage() {
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input className="pl-9 w-64" placeholder="Buscar facturas..." value={search} onChange={e => setSearch(e.target.value)} data-testid="input-search-facturas" />
+                <Input className="pl-9 w-52" placeholder="Buscar facturas..." value={search} onChange={e => setSearch(e.target.value)} data-testid="input-search-facturas" />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40" data-testid="select-status-facturas"><SelectValue placeholder="Estado" /></SelectTrigger>
+                <SelectTrigger className="w-36" data-testid="select-status-facturas"><SelectValue placeholder="Estado" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="all">Todos los estados</SelectItem>
                   {INVOICE_STATUSES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+                <SelectTrigger className="w-40" data-testid="select-supplier-facturas"><SelectValue placeholder="Proveedor" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los proveedores</SelectItem>
+                  {proveedores.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Input type="date" className="w-36" value={desdeFilter} onChange={e => setDesdeFilter(e.target.value)} title="Fecha desde" data-testid="input-desde-facturas" />
+              <Input type="date" className="w-36" value={hastaFilter} onChange={e => setHastaFilter(e.target.value)} title="Fecha hasta" data-testid="input-hasta-facturas" />
             </div>
             {canCreate && (
               <Button onClick={openNewInvoice} data-testid="button-new-factura">
@@ -880,9 +912,27 @@ export default function ComprasFinancieroPage() {
         {/* ── PAGOS ────────────────────────────────────────────────────────────── */}
         <TabsContent value="pagos" className="space-y-4">
           <div className="flex flex-wrap items-center gap-2 justify-between">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9 w-64" placeholder="Buscar pagos..." value={search} onChange={e => setSearch(e.target.value)} data-testid="input-search-pagos" />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input className="pl-9 w-52" placeholder="Buscar pagos..." value={search} onChange={e => setSearch(e.target.value)} data-testid="input-search-pagos" />
+              </div>
+              <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+                <SelectTrigger className="w-40" data-testid="select-supplier-pagos"><SelectValue placeholder="Proveedor" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los proveedores</SelectItem>
+                  {proveedores.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={bankFilter} onValueChange={setBankFilter}>
+                <SelectTrigger className="w-40" data-testid="select-bank-pagos"><SelectValue placeholder="Cuenta" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las cuentas</SelectItem>
+                  {bankAccounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Input type="date" className="w-36" value={desdeFilter} onChange={e => setDesdeFilter(e.target.value)} title="Fecha desde" data-testid="input-desde-pagos" />
+              <Input type="date" className="w-36" value={hastaFilter} onChange={e => setHastaFilter(e.target.value)} title="Fecha hasta" data-testid="input-hasta-pagos" />
             </div>
             {canCreate && (
               <Button onClick={openNewPaymentDialog} data-testid="button-new-pago">
@@ -1001,9 +1051,18 @@ export default function ComprasFinancieroPage() {
         {/* ── NOTAS DE DÉBITO ──────────────────────────────────────────────────── */}
         <TabsContent value="notas-debito" className="space-y-4">
           <div className="flex flex-wrap items-center gap-2 justify-between">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9 w-64" placeholder="Buscar notas..." value={search} onChange={e => setSearch(e.target.value)} data-testid="input-search-notas" />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input className="pl-9 w-52" placeholder="Buscar notas..." value={search} onChange={e => setSearch(e.target.value)} data-testid="input-search-notas" />
+              </div>
+              <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+                <SelectTrigger className="w-40" data-testid="select-supplier-notas"><SelectValue placeholder="Proveedor" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los proveedores</SelectItem>
+                  {proveedores.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             {canCreate && (
               <Button onClick={openNewDebitNote} data-testid="button-new-nota">
@@ -1682,7 +1741,16 @@ export default function ComprasFinancieroPage() {
                 </FormItem>
               )} />
               <FormField control={debitNoteForm.control} name="reason" render={({ field }) => (
-                <FormItem><FormLabel>Motivo *</FormLabel><FormControl><Textarea {...field} rows={2} placeholder="Motivo de la nota de débito..." data-testid="textarea-dn-reason" /></FormControl><FormMessage /></FormItem>
+                <FormItem>
+                  <FormLabel>Motivo *</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl><SelectTrigger data-testid="select-dn-reason"><SelectValue placeholder="Seleccionar motivo" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {DEBIT_NOTE_REASONS.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
               )} />
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={debitNoteForm.control} name="amount" render={({ field }) => (

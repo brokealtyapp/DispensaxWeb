@@ -81,7 +81,7 @@ const operacionItems: MenuItem[] = [
   { icon: Activity, label: "Monitoreo Servicios", href: "/monitoreo-servicios", roles: ["admin", "supervisor"] },
   { icon: ArrowDownUp, label: "Dinero y Productos", href: "/dinero-productos", roles: ["admin", "supervisor", "contabilidad"] },
   { icon: ShoppingCart, label: "Compras", href: "/compras", roles: ["admin", "almacen"] },
-  { icon: FileText, label: "Compras Financiero", href: "/compras-financiero", roles: ["admin", "contabilidad"] },
+  { icon: FileText, label: "Compras Financiero", href: "/compras/financiero", roles: ["admin", "contabilidad"] },
   { icon: Fuel, label: "Combustible", href: "/combustible", roles: ["admin", "supervisor"] },
   { icon: Building2, label: "Establecimientos", href: "/establecimientos", roles: ["admin", "supervisor"] },
   { icon: Wrench, label: "Órdenes de Trabajo", href: "/ordenes-trabajo", roles: ["admin", "supervisor", "abastecedor"] },
