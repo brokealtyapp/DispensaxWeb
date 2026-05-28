@@ -620,8 +620,8 @@ export function ReportsPage() {
                   <Area 
                     type="monotone" 
                     dataKey="totalAmount" 
-                    stroke="#E84545" 
-                    fill="#E84545" 
+                    stroke="hsl(var(--primary))" 
+                    fill="hsl(var(--primary))" 
                     fillOpacity={0.3}
                     name="Ventas"
                   />
@@ -658,7 +658,7 @@ export function ReportsPage() {
                     tick={{ fontSize: 11 }}
                   />
                   <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                  <Bar dataKey="totalAmount" fill="#4ECB71" name="Ventas" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="totalAmount" fill="hsl(var(--primary))" name="Ventas" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -1427,8 +1427,8 @@ export function ReportsPage() {
                   name === 'Ventas' ? formatCurrency(value) : value
                 } />
                 <Legend />
-                <Bar dataKey="totalSales" fill="#E84545" name="Ventas" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="transactionCount" fill="#2F6FED" name="Transacciones" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="totalSales" fill="hsl(var(--primary))" name="Ventas" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="transactionCount" fill="hsl(var(--muted-foreground))" name="Transacciones" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -1543,7 +1543,7 @@ export function ReportsPage() {
                   name === 'Monto' ? formatCurrency(value) : `${value}%`
                 } />
                 <Legend />
-                <Bar dataKey="totalAmount" fill="#2F6FED" name="Monto" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="totalAmount" fill="hsl(var(--primary))" name="Monto" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -1587,7 +1587,7 @@ export function ReportsPage() {
                       <td className="text-right py-3 px-2">
                         <Badge 
                           variant={item.fulfillmentRate >= 90 ? "default" : item.fulfillmentRate >= 70 ? "secondary" : "destructive"}
-                          className={item.fulfillmentRate >= 90 ? "bg-primary/10 text-primary" : ""}
+                          className={item.fulfillmentRate >= 90 ? "bg-primary/10 text-primary" : item.fulfillmentRate >= 70 ? "bg-muted text-muted-foreground" : ""}
                         >
                           {item.fulfillmentRate}%
                         </Badge>

@@ -82,23 +82,29 @@ const eventTypeConfig: Record<string, { label: string; icon: any; color: string;
 };
 
 const colorOptions = [
-  { value: "blue", label: "Azul", class: "bg-blue-500" },
-  { value: "green", label: "Verde", class: "bg-green-500" },
-  { value: "orange", label: "Naranja", class: "bg-orange-500" },
-  { value: "purple", label: "Púrpura", class: "bg-purple-500" },
-  { value: "red", label: "Rojo", class: "bg-red-500" },
-  { value: "cyan", label: "Cian", class: "bg-cyan-500" },
-  { value: "pink", label: "Rosa", class: "bg-pink-500" },
+  { value: "red", label: "Rojo", class: "bg-primary" },
+  { value: "rose", label: "Coral", class: "bg-rose-600" },
+  { value: "dark", label: "Oscuro", class: "bg-gray-800" },
+  { value: "slate", label: "Pizarra", class: "bg-slate-500" },
+  { value: "gray", label: "Gris", class: "bg-gray-500" },
+  { value: "silver", label: "Plateado", class: "bg-gray-400" },
+  { value: "light", label: "Claro", class: "bg-gray-300" },
 ];
 
 const colorToClass: Record<string, string> = {
-  blue: "bg-blue-500",
-  green: "bg-green-500",
-  orange: "bg-orange-500",
-  purple: "bg-purple-500",
-  red: "bg-red-500",
-  cyan: "bg-cyan-500",
-  pink: "bg-pink-500",
+  red: "bg-primary",
+  rose: "bg-rose-600",
+  dark: "bg-gray-800",
+  slate: "bg-slate-500",
+  gray: "bg-gray-500",
+  silver: "bg-gray-400",
+  light: "bg-gray-300",
+  blue: "bg-primary",
+  green: "bg-primary",
+  orange: "bg-primary",
+  purple: "bg-slate-500",
+  cyan: "bg-slate-500",
+  pink: "bg-rose-600",
 };
 
 function getEventColorClass(item: CalendarDayItem): string {
@@ -149,7 +155,7 @@ export function CalendarPage() {
       allDay: false,
       startTime: "",
       endTime: "",
-      color: "blue",
+      color: "red",
       userId: "",
     },
   });
@@ -163,7 +169,7 @@ export function CalendarPage() {
       allDay: false,
       startTime: "",
       endTime: "",
-      color: "blue",
+      color: "red",
       userId: "",
     },
   });
@@ -313,7 +319,7 @@ export function CalendarPage() {
       startTime: "",
       endTime: "",
       allDay: false,
-      color: "blue",
+      color: "red",
       userId: "",
     });
     setIsNewEventOpen(true);
@@ -331,7 +337,7 @@ export function CalendarPage() {
       endDate: event.endDate ? parseISO(event.endDate) : undefined,
       endTime: extractTime(event.endDate),
       allDay: event.allDay || false,
-      color: event.color || "blue",
+      color: event.color || "red",
       userId: event.userId || "",
     });
     setIsEditEventOpen(true);
@@ -445,7 +451,7 @@ export function CalendarPage() {
                   startTime: "",
                   endTime: "",
                   allDay: false,
-                  color: "blue",
+                  color: "red",
                   userId: "",
                 });
                 setIsNewEventOpen(true);

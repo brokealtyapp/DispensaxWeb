@@ -1617,9 +1617,9 @@ export function FuelPage() {
                         <Line
                           type="monotone"
                           dataKey="rendimiento"
-                          stroke="#E84545"
+                          stroke="hsl(var(--primary))"
                           strokeWidth={2}
-                          dot={{ fill: "#E84545" }}
+                          dot={{ fill: "hsl(var(--primary))" }}
                         />
                       </LineChart>
                     </ResponsiveContainer>
@@ -1646,8 +1646,8 @@ export function FuelPage() {
                         <YAxis yAxisId="right" orientation="right" />
                         <Tooltip />
                         <Legend />
-                        <Bar yAxisId="left" dataKey="litros" fill="#2F6FED" name="Litros" />
-                        <Bar yAxisId="right" dataKey="gasto" fill="#4ECB71" name="Gasto ($)" />
+                        <Bar yAxisId="left" dataKey="litros" fill="hsl(var(--muted-foreground))" name="Litros" />
+                        <Bar yAxisId="right" dataKey="gasto" fill="hsl(var(--primary))" name="Gasto ($)" />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
@@ -1737,7 +1737,7 @@ export function FuelPage() {
                           labelLine={false}
                           label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                           outerRadius={100}
-                          fill="#8884d8"
+                          fill="hsl(var(--primary))"
                           dataKey="value"
                         >
                           {costByFuelType.map((entry: any, index: number) => (

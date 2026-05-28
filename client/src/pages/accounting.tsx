@@ -555,7 +555,7 @@ export function AccountingPage() {
                             borderRadius: "8px",
                           }}
                         />
-                        <Bar dataKey="ventas" fill="#4ECB71" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="ventas" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   )}

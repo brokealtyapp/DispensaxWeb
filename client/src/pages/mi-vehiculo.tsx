@@ -293,7 +293,7 @@ export default function MiVehiculoPage() {
                             key={lot.id}
                             className={`flex items-center justify-between text-sm bg-muted/50 rounded-md px-3 py-2 ${
                               isExpired ? 'bg-destructive/10' : 
-                              isExpiringSoon ? 'bg-muted' : ''
+                              isExpiringSoon ? 'bg-primary/10' : ''
                             }`}
                           >
                             <div className="flex items-center gap-3">
