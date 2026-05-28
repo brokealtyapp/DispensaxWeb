@@ -242,7 +242,8 @@ export function DashboardPage() {
 
   interface EstablishmentStats {
     total: number;
-    converted: number;
+    activeWithContract: number;
+    inPipeline: number;
     newThisWeek: number;
     byStage: Record<string, number>;
     byPriority: Record<string, number>;
@@ -762,14 +763,12 @@ export function DashboardPage() {
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Convertidos</span>
-                      <span className="font-medium text-primary">{establishmentStats?.converted ?? 0}</span>
+                      <span className="text-muted-foreground">Activos (contrato)</span>
+                      <span className="font-medium text-primary">{establishmentStats?.activeWithContract ?? 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">En pipeline</span>
-                      <span className="font-medium">
-                        {(establishmentStats?.total ?? 0) - (establishmentStats?.converted ?? 0)}
-                      </span>
+                      <span className="font-medium">{establishmentStats?.inPipeline ?? 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Nuevos sem.</span>

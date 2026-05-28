@@ -814,7 +814,7 @@ export interface IStorage {
   createEstablishmentDocument(data: InsertEstablishmentDocument): Promise<EstablishmentDocument>;
   deleteEstablishmentDocument(id: string): Promise<boolean>;
 
-  getEstablishmentStats(tenantId: string): Promise<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; converted: number; newThisWeek: number }>;
+  getEstablishmentStats(tenantId: string): Promise<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; activeWithContract: number; inPipeline: number; newThisWeek: number }>;
 
   getEstablishmentContracts(establishmentId: string): Promise<EstablishmentContract[]>;
   getEstablishmentContract(id: string): Promise<EstablishmentContract | undefined>;
@@ -8132,7 +8132,7 @@ export class DatabaseStorage implements IStorage {
     return !!deleted;
   }
 
-  async getEstablishmentStats(tenantId: string): Promise<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; converted: number; newThisWeek: number }> {
+  async getEstablishmentStats(tenantId: string): Promise<{ total: number; byStage: Record<string, number>; byPriority: Record<string, number>; activeWithContract: number; inPipeline: number; newThisWeek: number }> {
     const now = new Date();
     const startOfWeek = new Date(now);
     const dayOfWeek = now.getDay();
@@ -8144,15 +8144,23 @@ export class DatabaseStorage implements IStorage {
       id: establishments.id,
       stageId: establishments.stageId,
       priority: establishments.priority,
-      convertedToLocationId: establishments.convertedToLocationId,
       createdAt: establishments.createdAt,
     })
     .from(establishments)
     .where(and(eq(establishments.tenantId, tenantId), eq(establishments.isActive, true)));
 
+    // Fetch establishment IDs that have at least one active/signed contract
+    const activeContracts = await db.selectDistinct({ establishmentId: establishmentContracts.establishmentId })
+      .from(establishmentContracts)
+      .where(and(
+        eq(establishmentContracts.tenantId, tenantId),
+        inArray(establishmentContracts.status, ["activo", "firmado"])
+      ));
+    const activeContractIds = new Set(activeContracts.map(c => c.establishmentId));
+
     const byStage: Record<string, number> = {};
     const byPriority: Record<string, number> = {};
-    let converted = 0;
+    let activeWithContract = 0;
     let newThisWeek = 0;
 
     for (const est of allEstablishments) {
@@ -8160,11 +8168,12 @@ export class DatabaseStorage implements IStorage {
       byStage[stageKey] = (byStage[stageKey] || 0) + 1;
       const prioKey = est.priority || "media";
       byPriority[prioKey] = (byPriority[prioKey] || 0) + 1;
-      if (est.convertedToLocationId) converted++;
+      if (activeContractIds.has(est.id)) activeWithContract++;
       if (est.createdAt && new Date(est.createdAt) >= startOfWeek) newThisWeek++;
     }
 
-    return { total: allEstablishments.length, byStage, byPriority, converted, newThisWeek };
+    const inPipeline = allEstablishments.length - activeWithContract;
+    return { total: allEstablishments.length, byStage, byPriority, activeWithContract, inPipeline, newThisWeek };
   }
 
   async getEstablishmentContracts(establishmentId: string): Promise<EstablishmentContract[]> {
