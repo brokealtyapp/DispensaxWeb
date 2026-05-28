@@ -212,6 +212,7 @@ export function BancosPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/bank-accounts"] });
       qc.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      qc.invalidateQueries({ queryKey: ["/api/bank-transfers-history"] });
       qc.invalidateQueries({ queryKey: ["/api/bank-accounts/summary"] });
       toast({ title: "Transferencia realizada correctamente" });
       setShowTransferForm(false);
@@ -272,6 +273,15 @@ export function BancosPage() {
     }
   };
 
+  const { data: transferHistoryResult, isLoading: transfersLoading } = useQuery<{ data: any[]; total: number }>({
+    queryKey: ["/api/bank-transfers-history"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/bank-transactions?source=transfer&type=salida&pageSize=100");
+      return r.json();
+    },
+  });
+  const transferHistory = transferHistoryResult?.data ?? [];
+
   const activeAccounts = accounts.filter((a: any) => a.isActive);
   const totalDOP = activeAccounts
     .filter((a: any) => a.currency === "DOP")
@@ -279,6 +289,26 @@ export function BancosPage() {
   const totalUSD = activeAccounts
     .filter((a: any) => a.currency === "USD")
     .reduce((s: number, a: any) => s + Number(a.balance ?? 0), 0);
+
+  const creditCardAlerts = activeAccounts
+    .filter((a: any) => a.accountType === "tarjeta_credito")
+    .flatMap((account: any) => {
+      const today = new Date();
+      const dayOfMonth = today.getDate();
+      const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      const alerts: { account: any; type: "cierre" | "pago"; daysUntil: number }[] = [];
+      if (account.statementClosingDay) {
+        let d = account.statementClosingDay - dayOfMonth;
+        if (d < 0) d += daysInMonth;
+        if (d <= 5) alerts.push({ account, type: "cierre", daysUntil: d });
+      }
+      if (account.paymentDueDay) {
+        let d = account.paymentDueDay - dayOfMonth;
+        if (d < 0) d += daysInMonth;
+        if (d <= 5) alerts.push({ account, type: "pago", daysUntil: d });
+      }
+      return alerts;
+    });
 
   return (
     <div className="p-6 space-y-6">
@@ -309,6 +339,26 @@ export function BancosPage() {
 
         {/* ── RESUMEN ── */}
         <TabsContent value="resumen" className="space-y-6 mt-4">
+          {creditCardAlerts.length > 0 && (
+            <div className="space-y-2">
+              {creditCardAlerts.map((alert, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-2.5 text-sm"
+                  data-testid={`alert-card-${alert.account.id}-${alert.type}`}
+                >
+                  <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                  <span className="text-foreground">
+                    <span className="font-medium">{alert.account.name}</span>
+                    {" — "}
+                    {alert.type === "cierre"
+                      ? `fecha de corte en ${alert.daysUntil === 0 ? "hoy" : `${alert.daysUntil} día(s)`}`
+                      : `fecha límite de pago en ${alert.daysUntil === 0 ? "hoy" : `${alert.daysUntil} día(s)`}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card data-testid="card-total-dop">
               <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
@@ -628,9 +678,11 @@ export function BancosPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {transactions.filter((t: any) => t.source === "transfer" && t.type === "salida").length === 0 ? (
+                  {transfersLoading ? (
+                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Cargando...</TableCell></TableRow>
+                  ) : transferHistory.length === 0 ? (
                     <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Sin transferencias</TableCell></TableRow>
-                  ) : transactions.filter((t: any) => t.source === "transfer" && t.type === "salida").map((tx: any) => (
+                  ) : transferHistory.map((tx: any) => (
                     <TableRow key={tx.id} data-testid={`row-transfer-${tx.id}`}>
                       <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                         {tx.date ? format(new Date(tx.date), "dd/MM/yyyy", { locale: es }) : "—"}

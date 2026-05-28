@@ -13975,7 +13975,7 @@ export async function registerRoutes(
     }
   );
 
-  // PUT /api/bank-accounts/:id — actualizar cuenta
+  // PUT /api/bank-accounts/:id — actualizar cuenta (validación Zod)
   app.put("/api/bank-accounts/:id", authenticateJWT, requireTenant,
     authorizeRoles(["admin", "contabilidad"]),
     async (req: AuthenticatedRequest, res: Response) => {
@@ -13983,31 +13983,46 @@ export async function registerRoutes(
         const tenantId = req.user!.tenantId!;
         const { id } = req.params;
 
+        const updateSchema = z.object({
+          name: z.string().min(1, "Nombre requerido"),
+          bankName: z.string().optional().nullable(),
+          accountType: z.enum(["banco", "tarjeta_credito", "efectivo"]),
+          accountSubtype: z.enum(["corriente", "ahorros", "credito", "caja"]).optional().nullable(),
+          currency: z.enum(["DOP", "USD"]),
+          accountNumber: z.string().optional().nullable(),
+          creditLimit: z.string().optional().nullable(),
+          statementClosingDay: z.coerce.number().min(1).max(31).optional().nullable(),
+          paymentDueDay: z.coerce.number().min(1).max(31).optional().nullable(),
+          alertThreshold: z.string().optional().nullable(),
+          notes: z.string().optional().nullable(),
+        });
+
+        const data = updateSchema.parse(req.body);
+
         const [existing] = await db
           .select()
           .from(bankAccountsTable)
           .where(and(eq(bankAccountsTable.id, id), eq(bankAccountsTable.tenantId, tenantId)));
         if (!existing) return res.status(404).json({ error: "Cuenta no encontrada" });
 
-        const body = req.body;
-        const lastFour = body.accountNumber ? body.accountNumber.slice(-4) : existing.accountNumber?.slice(-4) ?? null;
+        const lastFour = data.accountNumber ? data.accountNumber.slice(-4) : existing.accountNumber?.slice(-4) ?? null;
         const maskedNumber = lastFour ? `•••• ${lastFour}` : existing.maskedNumber;
 
         const [updated] = await db
           .update(bankAccountsTable)
           .set({
-            name: body.name ?? existing.name,
-            bankName: body.bankName ?? existing.bankName,
-            accountType: body.accountType ?? existing.accountType,
-            accountSubtype: body.accountSubtype ?? existing.accountSubtype,
-            currency: body.currency ?? existing.currency,
-            accountNumber: body.accountNumber ?? existing.accountNumber,
+            name: data.name,
+            bankName: data.bankName ?? existing.bankName,
+            accountType: data.accountType,
+            accountSubtype: data.accountSubtype ?? existing.accountSubtype,
+            currency: data.currency,
+            accountNumber: data.accountNumber ?? existing.accountNumber,
             maskedNumber,
-            creditLimit: body.creditLimit ?? existing.creditLimit,
-            statementClosingDay: body.statementClosingDay ?? existing.statementClosingDay,
-            paymentDueDay: body.paymentDueDay ?? existing.paymentDueDay,
-            alertThreshold: body.alertThreshold ?? existing.alertThreshold,
-            notes: body.notes ?? existing.notes,
+            creditLimit: data.creditLimit ?? existing.creditLimit,
+            statementClosingDay: data.statementClosingDay ?? existing.statementClosingDay,
+            paymentDueDay: data.paymentDueDay ?? existing.paymentDueDay,
+            alertThreshold: data.alertThreshold ?? existing.alertThreshold,
+            notes: data.notes ?? existing.notes,
             updatedAt: new Date(),
           })
           .where(eq(bankAccountsTable.id, id))
@@ -14015,6 +14030,7 @@ export async function registerRoutes(
 
         res.json(updated);
       } catch (e: any) {
+        if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
         console.error("PUT /api/bank-accounts/:id:", e);
         res.status(500).json({ error: "Error al actualizar cuenta bancaria" });
       }
@@ -14140,7 +14156,7 @@ export async function registerRoutes(
   app.get("/api/bank-transactions", authenticateJWT, requireTenant, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
-      const { accountId, type, status, search, dateFrom, dateTo } = req.query as Record<string, string>;
+      const { accountId, type, status, search, dateFrom, dateTo, source } = req.query as Record<string, string>;
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 50));
       const offset = (page - 1) * pageSize;
@@ -14149,6 +14165,7 @@ export async function registerRoutes(
       if (accountId) conditions.push(eq(bankTransactionsTable.bankAccountId, accountId));
       if (type) conditions.push(eq(bankTransactionsTable.type, type));
       if (status) conditions.push(eq(bankTransactionsTable.status, status));
+      if (source) conditions.push(eq(bankTransactionsTable.source, source));
       if (dateFrom) conditions.push(gte(bankTransactionsTable.date, new Date(dateFrom)));
       if (dateTo) {
         const toDate = new Date(dateTo);
