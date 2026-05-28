@@ -396,139 +396,171 @@ export function DashboardPage() {
   return (
     <div className="flex h-full">
       <div className="flex-1 p-6 overflow-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+
+        {/* Encabezado del Dashboard */}
+        <div className="flex items-start justify-between mb-6 flex-wrap gap-2">
+          <div>
+            <h1 className="text-2xl font-bold">Dashboard</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Bienvenido, {user?.username || "usuario"} — {currentTime.toLocaleDateString("es-DO", { timeZone: "America/Santo_Domingo", weekday: "long", day: "numeric", month: "long" })}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-mono font-semibold tabular-nums">
+              {currentTime.toLocaleTimeString("es-DO", { timeZone: "America/Santo_Domingo", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </p>
+            <p className="text-xs text-muted-foreground">GMT-4 · Santo Domingo</p>
+          </div>
+        </div>
+
+        {/* Fila superior: Highlight Card + 4 KPIs */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+          {/* Highlight Card — ocupa 2 columnas en desktop */}
+          <Link href={highlightInfo.href} className="lg:col-span-2">
+            <Card
+              className={`h-full cursor-pointer hover-elevate ${
+                highlightInfo.type === 'urgent'
+                  ? 'bg-destructive text-destructive-foreground border-destructive'
+                  : 'bg-primary text-primary-foreground border-primary'
+              }`}
+              data-testid="card-highlight"
+            >
+              <CardContent className="p-6 flex flex-col justify-between h-full gap-6">
+                <div className="flex items-start gap-4">
+                  <div className="h-12 w-12 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                    {highlightInfo.type === 'urgent' ? (
+                      <Zap className="h-6 w-6" />
+                    ) : highlightInfo.type === 'warning' ? (
+                      <AlertTriangle className="h-6 w-6" />
+                    ) : (
+                      <Activity className="h-6 w-6" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs uppercase tracking-wider opacity-70 mb-1">Estado operativo</p>
+                    <p className="text-xl font-bold leading-snug">{highlightInfo.title}</p>
+                    <p className="text-sm opacity-80 mt-1">{highlightInfo.subtitle}</p>
+                  </div>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="self-start bg-white/20 text-inherit border-white/30"
+                  data-testid="button-highlight-cta"
+                >
+                  {highlightInfo.cta}
+                  <ArrowUpRight className="h-4 w-4 ml-1" />
+                </Button>
+              </CardContent>
+            </Card>
+          </Link>
+
+          {/* KPI: Máquinas Activas */}
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-4 h-full flex flex-col justify-between">
               <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Máquinas Activas</p>
-                  <p className="text-3xl font-bold" data-testid="stat-active-machines">
-                    {machinesSummary?.statusCounts?.operando ?? machines.filter((m: any) => m.status === "operando").length}
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Máquinas Activas</p>
+                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <Box className="h-4 w-4 text-primary" />
+                </div>
+              </div>
+              <div>
+                <p className="text-3xl font-bold mt-2" data-testid="stat-active-machines">
+                  {machinesSummary?.statusCounts?.operando ?? machines.filter((m: any) => m.status === "operando").length}
+                </p>
+                <div className="flex items-center gap-1 mt-1">
+                  {machinesDelta >= 0 ? (
+                    <ArrowUpRight className="h-3 w-3 text-primary" />
+                  ) : (
+                    <ArrowDownRight className="h-3 w-3 text-destructive" />
+                  )}
+                  <p className={`text-xs ${machinesDelta >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                    {machinesDelta >= 0 ? '100% operatividad' : `${Math.abs(machinesDelta)}% fuera de serv.`}
                   </p>
-                  <div className="flex items-center gap-1 mt-1">
-                    {machinesDelta >= 0 ? (
-                      <ArrowUpRight className="h-3 w-3 text-primary" />
-                    ) : (
-                      <ArrowDownRight className="h-3 w-3 text-destructive" />
-                    )}
-                    <p className={`text-xs ${machinesDelta >= 0 ? 'text-primary' : 'text-destructive'}`}>
-                      {machinesDelta >= 0 ? '100% operatividad' : `${Math.abs(machinesDelta)}% fuera de serv.`}
-                    </p>
-                  </div>
-                </div>
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <Box className="h-5 w-5 text-primary" />
                 </div>
               </div>
             </CardContent>
           </Card>
+
+          {/* KPI: Ventas Hoy */}
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-4 h-full flex flex-col justify-between">
               <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Alertas Activas</p>
-                  <p className="text-3xl font-bold" data-testid="stat-active-alerts">{activeAlerts}</p>
-                  <div className="flex items-center gap-1 mt-1">
-                    {(kpiSummary?.alertsDelta ?? 0) <= 0 ? (
-                      <ArrowDownRight className="h-3 w-3 text-primary" />
-                    ) : (
-                      <ArrowUpRight className="h-3 w-3 text-destructive" />
-                    )}
-                    <p className={`text-xs ${(kpiSummary?.alertsDelta ?? 0) <= 0 ? 'text-primary' : 'text-destructive'}`}>
-                      {Math.abs(kpiSummary?.alertsDelta ?? 0)}% vs sem. ant.
-                    </p>
-                  </div>
-                </div>
-                <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
-                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Ventas Hoy</p>
+                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <DollarSign className="h-4 w-4 text-primary" />
                 </div>
               </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Ventas Hoy</p>
-                  <p className="text-3xl font-bold" data-testid="stat-sales-today">
-                    {formatCurrency(accountingSummary?.salesToday || 0)}
+              <div>
+                <p className="text-3xl font-bold mt-2" data-testid="stat-sales-today">
+                  {formatCurrency(accountingSummary?.salesToday || 0)}
+                </p>
+                <div className="flex items-center gap-1 mt-1">
+                  {salesTodayDelta >= 0 ? (
+                    <ArrowUpRight className="h-3 w-3 text-primary" />
+                  ) : (
+                    <ArrowDownRight className="h-3 w-3 text-destructive" />
+                  )}
+                  <p className={`text-xs ${salesTodayDelta >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                    {Math.abs(salesTodayDelta)}% vs prom. sem.
                   </p>
-                  <div className="flex items-center gap-1 mt-1">
-                    {salesTodayDelta >= 0 ? (
-                      <ArrowUpRight className="h-3 w-3 text-primary" />
-                    ) : (
-                      <ArrowDownRight className="h-3 w-3 text-destructive" />
-                    )}
-                    <p className={`text-xs ${salesTodayDelta >= 0 ? 'text-primary' : 'text-destructive'}`}>
-                      {Math.abs(salesTodayDelta)}% vs prom. sem.
-                    </p>
-                  </div>
-                </div>
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <DollarSign className="h-5 w-5 text-primary" />
                 </div>
               </div>
             </CardContent>
           </Card>
+
+          {/* KPI: Alertas Activas */}
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-4 h-full flex flex-col justify-between">
               <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Tareas Hoy</p>
-                  <p className="text-3xl font-bold" data-testid="stat-today-tasks">{todayTasks.length}</p>
-                  <div className="flex items-center gap-1 mt-1">
-                    {(kpiSummary?.tasksDelta ?? 0) >= 0 ? (
-                      <ArrowUpRight className="h-3 w-3 text-primary" />
-                    ) : (
-                      <ArrowDownRight className="h-3 w-3 text-destructive" />
-                    )}
-                    <p className={`text-xs ${(kpiSummary?.tasksDelta ?? 0) >= 0 ? 'text-primary' : 'text-destructive'}`}>
-                      {kpiSummary?.tasksDelta !== undefined
-                        ? `${kpiSummary.tasksDelta >= 0 ? '+' : ''}${kpiSummary.tasksDelta}pp vs sem. ant.`
-                        : `${completedCount}/${todayTasks.length} completadas`}
-                    </p>
-                  </div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Alertas Activas</p>
+                <div className="h-9 w-9 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
                 </div>
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-3xl font-bold mt-2" data-testid="stat-active-alerts">{activeAlerts}</p>
+                <div className="flex items-center gap-1 mt-1">
+                  {(kpiSummary?.alertsDelta ?? 0) <= 0 ? (
+                    <ArrowDownRight className="h-3 w-3 text-primary" />
+                  ) : (
+                    <ArrowUpRight className="h-3 w-3 text-destructive" />
+                  )}
+                  <p className={`text-xs ${(kpiSummary?.alertsDelta ?? 0) <= 0 ? 'text-primary' : 'text-destructive'}`}>
+                    {Math.abs(kpiSummary?.alertsDelta ?? 0)}% vs sem. ant.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* KPI: Tareas Hoy */}
+          <Card>
+            <CardContent className="p-4 h-full flex flex-col justify-between">
+              <div className="flex items-start justify-between">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Tareas Hoy</p>
+                <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
+                </div>
+              </div>
+              <div>
+                <p className="text-3xl font-bold mt-2" data-testid="stat-today-tasks">{todayTasks.length}</p>
+                <div className="flex items-center gap-1 mt-1">
+                  {(kpiSummary?.tasksDelta ?? 0) >= 0 ? (
+                    <ArrowUpRight className="h-3 w-3 text-primary" />
+                  ) : (
+                    <ArrowDownRight className="h-3 w-3 text-destructive" />
+                  )}
+                  <p className={`text-xs ${(kpiSummary?.tasksDelta ?? 0) >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                    {kpiSummary?.tasksDelta !== undefined
+                      ? `${kpiSummary.tasksDelta >= 0 ? '+' : ''}${kpiSummary.tasksDelta}pp vs sem. ant.`
+                      : `${completedCount}/${todayTasks.length} completadas`}
+                  </p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
-
-        {/* Highlight Card */}
-        <Link href={highlightInfo.href}>
-          <Card className={`mb-6 cursor-pointer hover-elevate ${
-            highlightInfo.type === 'urgent'
-              ? 'bg-destructive text-destructive-foreground border-destructive'
-              : 'bg-primary text-primary-foreground border-primary'
-          }`} data-testid="card-highlight">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
-                    {highlightInfo.type === 'urgent' ? (
-                      <Zap className="h-5 w-5" />
-                    ) : highlightInfo.type === 'warning' ? (
-                      <AlertTriangle className="h-5 w-5" />
-                    ) : (
-                      <Activity className="h-5 w-5" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-semibold">{highlightInfo.title}</p>
-                    <p className="text-sm opacity-80">{highlightInfo.subtitle}</p>
-                  </div>
-                </div>
-                <Button variant="secondary" size="sm" className="shrink-0 bg-white/20 text-inherit border-white/30" data-testid="button-highlight-cta">
-                  {highlightInfo.cta}
-                  <ArrowUpRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
 
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
