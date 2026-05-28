@@ -135,6 +135,7 @@ import {
   insertBankTransactionSchema,
   egresosRegistros as egresosRegistrosTable,
   ingresosRegistros as ingresosRegistrosTable,
+  nayaxTransactions as nayaxTransactionsTable,
 } from "@shared/schema";
 import { z, ZodError } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection, enqueueLaneChangeForNayax, syncNayaxSalesForTenant, categorizePaymentMethod } from "./nayax";
@@ -9376,6 +9377,48 @@ export async function registerRoutes(
   // ==================== NAYAX INTEGRATION ====================
 
   // Get Nayax config for current tenant
+  app.get("/api/nayax/sync-status", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) return res.json({ configured: false });
+
+      const config = await db.select().from(nayaxConfigTable).where(eq(nayaxConfigTable.tenantId, tenantId)).limit(1);
+      if (config.length === 0 || !config[0].apiToken || !config[0].isEnabled) {
+        return res.json({ configured: false });
+      }
+
+      const cfg = config[0];
+      const weekStart = getStartOfWeekInTimezone();
+
+      const [weekResult] = await db
+        .select({ count: count() })
+        .from(nayaxTransactionsTable)
+        .where(and(eq(nayaxTransactionsTable.tenantId, tenantId), gte(nayaxTransactionsTable.settlementDate, weekStart)));
+
+      const weekTransactions = weekResult?.count ?? 0;
+
+      const now = new Date();
+      let syncStatus: "ok" | "warning" | "error" = "error";
+      if (cfg.lastSyncAt) {
+        const diffHours = (now.getTime() - cfg.lastSyncAt.getTime()) / (1000 * 60 * 60);
+        if (diffHours < 2) syncStatus = "ok";
+        else if (diffHours < 24) syncStatus = "warning";
+        else syncStatus = "error";
+      }
+
+      return res.json({
+        configured: true,
+        isEnabled: cfg.isEnabled,
+        lastSyncAt: cfg.lastSyncAt,
+        weekTransactions,
+        syncStatus,
+      });
+    } catch (error) {
+      console.error("Error getting Nayax sync status:", error);
+      res.status(500).json({ error: "Error al obtener estado de Nayax" });
+    }
+  });
+
   app.get("/api/nayax/config", authenticateJWT, authorizeRoles("admin"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user?.tenantId;

@@ -299,6 +299,18 @@ export function DashboardPage() {
     queryKey: ["/api/summary/income-expenses"],
   });
 
+  interface NayaxSyncStatus {
+    configured: boolean;
+    isEnabled?: boolean;
+    lastSyncAt?: string | null;
+    weekTransactions?: number;
+    syncStatus?: "ok" | "warning" | "error";
+  }
+
+  const { data: nayaxStatus } = useQuery<NayaxSyncStatus>({
+    queryKey: ["/api/nayax/sync-status"],
+  });
+
   const formatRelativeTime = (dateStr: string | Date | null | undefined): string => {
     if (!dateStr) return '';
     const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
@@ -826,6 +838,55 @@ export function DashboardPage() {
                 </CardContent>
               </Card>
             </Link>
+
+            {nayaxStatus?.configured && (
+              <Link href="/dinero-productos">
+                <Card className="hover-elevate cursor-pointer h-full" data-testid="widget-nayax">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Zap className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold">Nayax</h3>
+                        <p className="text-xs text-muted-foreground">Cobro sin efectivo</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Estado</span>
+                        <span className={`font-medium flex items-center gap-1 ${
+                          nayaxStatus.syncStatus === "ok"
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : nayaxStatus.syncStatus === "warning"
+                            ? "text-amber-600 dark:text-amber-400"
+                            : "text-destructive"
+                        }`}>
+                          <span className={`inline-block h-2 w-2 rounded-full ${
+                            nayaxStatus.syncStatus === "ok"
+                              ? "bg-emerald-500"
+                              : nayaxStatus.syncStatus === "warning"
+                              ? "bg-amber-500"
+                              : "bg-destructive"
+                          }`} />
+                          {nayaxStatus.syncStatus === "ok" ? "OK" : nayaxStatus.syncStatus === "warning" ? "Atención" : "Error"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Última sync</span>
+                        <span className="font-medium">
+                          {nayaxStatus.lastSyncAt ? formatRelativeTime(nayaxStatus.lastSyncAt) : "Nunca"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Trans. semana</span>
+                        <span className="font-medium">{nayaxStatus.weekTransactions ?? 0}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
           </div>
         </div>
 
