@@ -982,7 +982,7 @@ export function registerEgresoRoutes(app: Express) {
               eq(bankAccountsTable.isActive, true)
             )
           )
-          .orderBy(bankAccountsTable.nombre);
+          .orderBy(bankAccountsTable.name);
 
         res.json(cuentas);
       } catch (e) {

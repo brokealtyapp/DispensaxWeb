@@ -247,7 +247,7 @@ export default function EgresosPage() {
   const [tab, setTab] = useState("dashboard");
   const [fijoModal, setFijoModal] = useState<{ open: boolean; editando?: EgresoFijo }>({ open: false });
   const [pagoSheet, setPagoSheet] = useState<{ open: boolean; fijo?: EgresoFijo }>({ open: false });
-  const [catModal, setCatModal] = useState(false);
+  const [catModal, setCatModal] = useState<{ open: boolean; editando?: EgresoCategoria | null }>({ open: false });
   const [histPage, setHistPage] = useState(1);
   const [histFiltros, setHistFiltros] = useState({
     desde: "",
@@ -1113,9 +1113,38 @@ export default function EgresosPage() {
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-semibold">{formatCurrency(c.gastoDelMes)}</p>
-                      <p className="text-xs text-muted-foreground">este mes</p>
+                    <div className="flex items-center gap-1">
+                      <div className="text-right mr-2">
+                        <p className="text-sm font-semibold">{formatCurrency(c.gastoDelMes)}</p>
+                        <p className="text-xs text-muted-foreground">este mes</p>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setCatModal({ open: true, editando: c })}
+                        data-testid={`button-editar-categoria-${c.id}`}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-destructive"
+                        onClick={() => {
+                          if (confirm(`¿Eliminar categoría "${c.nombre}"? Los registros quedarán sin categoría.`)) {
+                            apiRequest("DELETE", `/api/egresos/categorias/${c.id}`)
+                              .then(() => {
+                                queryClient.invalidateQueries({ queryKey: ["/api/egresos/categorias"] });
+                                queryClient.invalidateQueries({ queryKey: ["/api/egresos/dashboard"] });
+                                toast({ title: "Categoría eliminada" });
+                              })
+                              .catch(() => toast({ title: "Error al eliminar categoría", variant: "destructive" }));
+                          }
+                        }}
+                        data-testid={`button-eliminar-categoria-${c.id}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
                   {c.presupuestoMensual && parseFloat(c.presupuestoMensual) > 0 && (
@@ -1474,10 +1503,11 @@ export default function EgresosPage() {
         </SheetContent>
       </Sheet>
 
-      {/* ── MODAL NUEVA CATEGORÍA ── */}
+      {/* ── MODAL CATEGORÍA (crear / editar) ── */}
       <CategoriaModal
-        open={catModal}
-        onClose={() => setCatModal(false)}
+        open={catModal.open}
+        editando={catModal.editando}
+        onClose={() => setCatModal({ open: false })}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["/api/egresos/categorias"] });
           queryClient.invalidateQueries({ queryKey: ["/api/egresos/dashboard"] });
@@ -1499,10 +1529,12 @@ const catSchema = z.object({
 
 function CategoriaModal({
   open,
+  editando,
   onClose,
   onSuccess,
 }: {
   open: boolean;
+  editando?: EgresoCategoria | null;
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -1512,8 +1544,20 @@ function CategoriaModal({
     defaultValues: { color: "#E84545" },
   });
 
+  useEffect(() => {
+    if (open && editando) {
+      form.reset({
+        nombre: editando.nombre,
+        color: editando.color ?? "#E84545",
+        presupuestoMensual: editando.presupuestoMensual ?? undefined,
+      });
+    } else if (open && !editando) {
+      form.reset({ color: "#E84545" });
+    }
+  }, [open, editando]);
+
   const crearMut = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/egresos/categorias", data),
+    mutationFn: (data: z.infer<typeof catSchema>) => apiRequest("POST", "/api/egresos/categorias", data),
     onSuccess: () => {
       onSuccess();
       onClose();
@@ -1523,15 +1567,28 @@ function CategoriaModal({
     onError: () => toast({ title: "Error al crear categoría", variant: "destructive" }),
   });
 
+  const editarMut = useMutation({
+    mutationFn: (data: z.infer<typeof catSchema>) =>
+      apiRequest("PUT", `/api/egresos/categorias/${editando!.id}`, data),
+    onSuccess: () => {
+      onSuccess();
+      onClose();
+      toast({ title: "Categoría actualizada" });
+    },
+    onError: () => toast({ title: "Error al actualizar categoría", variant: "destructive" }),
+  });
+
+  const isPending = crearMut.isPending || editarMut.isPending;
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nueva categoría</DialogTitle>
+          <DialogTitle>{editando ? "Editar categoría" : "Nueva categoría"}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form
-            onSubmit={form.handleSubmit((d) => crearMut.mutate(d))}
+            onSubmit={form.handleSubmit((d) => editando ? editarMut.mutate(d) : crearMut.mutate(d))}
             className="space-y-4"
           >
             <FormField
@@ -1591,8 +1648,8 @@ function CategoriaModal({
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={crearMut.isPending} data-testid="button-guardar-categoria">
-                {crearMut.isPending ? "Guardando..." : "Guardar"}
+              <Button type="submit" disabled={isPending} data-testid="button-guardar-categoria">
+                {isPending ? "Guardando..." : "Guardar"}
               </Button>
             </DialogFooter>
           </form>
