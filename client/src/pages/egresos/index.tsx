@@ -58,7 +58,25 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  Building2,
+  Fuel,
+  Wrench,
+  Users,
+  Package,
+  Zap,
+  Monitor,
+  Shield,
+  FileText,
+  MoreHorizontal,
+  ShoppingCart,
+  Truck,
+  Home,
+  DollarSign,
+  Receipt,
+  Briefcase,
+  type LucideProps,
 } from "lucide-react";
+import type { FC } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -70,6 +88,33 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+
+const ICONOS_CATEGORIA: Record<string, FC<LucideProps>> = {
+  Building2,
+  Fuel,
+  Wrench,
+  Users,
+  Package,
+  Zap,
+  Monitor,
+  Shield,
+  TrendingDown,
+  FileText,
+  MoreHorizontal,
+  ShoppingCart,
+  Truck,
+  Home,
+  DollarSign,
+  Receipt,
+  Briefcase,
+  CreditCard,
+};
+
+function CatIcon({ nombre, className }: { nombre?: string | null; className?: string }) {
+  if (!nombre) return <MoreHorizontal className={className ?? "w-4 h-4"} />;
+  const Icon = ICONOS_CATEGORIA[nombre];
+  return Icon ? <Icon className={className ?? "w-4 h-4"} /> : <MoreHorizontal className={className ?? "w-4 h-4"} />;
+}
 
 // ────────────────────────────────────────────────
 // TYPES
@@ -1103,7 +1148,12 @@ export default function EgresosPage() {
                 <CardContent className="py-4">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-3">
-                      <span className="w-4 h-4 rounded-sm flex-shrink-0" style={{ background: c.color }} />
+                      <span
+                        className="w-8 h-8 rounded-md flex-shrink-0 flex items-center justify-center"
+                        style={{ background: c.color + "22", color: c.color }}
+                      >
+                        <CatIcon nombre={c.icono} className="w-4 h-4" />
+                      </span>
                       <div>
                         <p className="font-medium text-sm">{c.nombre}</p>
                         {c.presupuestoMensual && (
@@ -1524,6 +1574,7 @@ export default function EgresosPage() {
 const catSchema = z.object({
   nombre: z.string().min(1, "Nombre requerido"),
   color: z.string().default("#E84545"),
+  icono: z.string().default("MoreHorizontal"),
   presupuestoMensual: z.string().optional(),
 });
 
@@ -1549,10 +1600,11 @@ function CategoriaModal({
       form.reset({
         nombre: editando.nombre,
         color: editando.color ?? "#E84545",
+        icono: editando.icono ?? "MoreHorizontal",
         presupuestoMensual: editando.presupuestoMensual ?? undefined,
       });
     } else if (open && !editando) {
-      form.reset({ color: "#E84545" });
+      form.reset({ color: "#E84545", icono: "MoreHorizontal" });
     }
   }, [open, editando]);
 
@@ -1621,6 +1673,36 @@ function CategoriaModal({
                       <span className="text-sm text-muted-foreground">{field.value}</span>
                     </div>
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="icono"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Ícono</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value ?? "MoreHorizontal"}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-icono-categoria">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {Object.keys(ICONOS_CATEGORIA).map((key) => {
+                        const Icon = ICONOS_CATEGORIA[key];
+                        return (
+                          <SelectItem key={key} value={key}>
+                            <span className="flex items-center gap-2">
+                              <Icon className="w-4 h-4" />
+                              {key}
+                            </span>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
