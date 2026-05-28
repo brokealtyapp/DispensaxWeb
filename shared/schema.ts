@@ -2957,6 +2957,7 @@ export const workOrders = pgTable("work_orders", {
   stageId: varchar("stage_id").references(() => workOrderStages.id),
   assignedUserId: varchar("assigned_user_id").references(() => users.id),
   ticketId: varchar("ticket_id").references(() => workOrderTickets.id),
+  routeId: varchar("route_id").references(() => routes.id),
   description: text("description"),
   slaDeadline: timestamp("sla_deadline"),
   slaStatus: varchar("sla_status").default("dentro_tiempo"),

@@ -2672,6 +2672,75 @@ export async function registerRoutes(
       }
       checkAndSendRouteAlerts(tenantId).catch(console.error);
 
+      // Auto-crear órdenes de trabajo para cada parada de la ruta
+      (async () => {
+        try {
+          await ensureWorkOrderTypesSeed(tenantId);
+          const activeTypes = await storage.getWorkOrderTypes(tenantId, false);
+
+          // Determinar tipo de orden según rol del usuario asignado
+          const supplier = existingRoute.supplierId ? await storage.getUser(existingRoute.supplierId) : null;
+          const supplierRole = supplier?.role ?? "abastecedor";
+          const preferredKey = supplierRole === "abastecedor" ? "abastecimiento" : "tecnico";
+          const effectiveTypeKey =
+            activeTypes.find(t => t.key === preferredKey)?.key ??
+            activeTypes[0]?.key ??
+            "abastecimiento";
+
+          const slaConf = await storage.getSlaConfig(tenantId);
+          const slaDeadline = calculateSlaDeadline("medio", slaConf || undefined);
+
+          for (const stop of stops) {
+            const machine = await storage.getMachine(stop.machineId);
+            const machineName = machine
+              ? (machine.code ? `${machine.code} - ${machine.name}` : machine.name)
+              : stop.machineId;
+            const description = `Orden generada automáticamente al activar la ruta "${existingRoute.name}" — ${machineName}`;
+
+            for (let attempt = 0; attempt < 5; attempt++) {
+              const orderNumber = await storage.generateOrderNumber(tenantId, attempt);
+              const parsed = insertWorkOrderSchema.parse({
+                tenantId,
+                orderNumber,
+                machineId: stop.machineId,
+                type: effectiveTypeKey,
+                priority: "medio",
+                status: "pendiente",
+                assignedUserId: existingRoute.supplierId,
+                description,
+                routeId: existingRoute.id,
+                slaDeadline,
+                slaStatus: "dentro_tiempo",
+              });
+              try {
+                const order = await storage.createWorkOrder(parsed);
+                const defaultItems = await getChecklistItemsForTenant(tenantId, order.type);
+                if (defaultItems.length > 0) {
+                  await storage.createChecklistItems(
+                    defaultItems.map((item, idx) => ({
+                      workOrderId: order.id,
+                      tenantId,
+                      label: item.label,
+                      sortOrder: idx,
+                      isCompleted: false,
+                      requiresPhoto: item.requiresPhoto,
+                      itemType: item.itemType,
+                      options: item.options,
+                    }))
+                  );
+                }
+                break;
+              } catch (err) {
+                if (isUniqueViolation(err) && attempt < 4) continue;
+                throw err;
+              }
+            }
+          }
+        } catch (autoCreateErr) {
+          console.error("[route-start] Error al crear órdenes automáticas:", autoCreateErr instanceof Error ? autoCreateErr.message : autoCreateErr);
+        }
+      })();
+
       // Retornar ruta actualizada con etapa y SLA actuales
       const freshRoute = await storage.getRoute(req.params.id);
       res.json(freshRoute ?? route);
@@ -12474,6 +12543,13 @@ export async function registerRoutes(
         const ticket = await storage.getTicketById(req.body.ticketId);
         if (!ticket || ticket.tenantId !== tenantId) {
           return res.status(400).json({ error: "Ticket no encontrado o no pertenece al tenant" });
+        }
+      }
+
+      if (req.body.routeId) {
+        const route = await storage.getRoute(req.body.routeId);
+        if (!route || route.tenantId !== tenantId) {
+          return res.status(400).json({ error: "Ruta no encontrada o no pertenece al tenant" });
         }
       }
 

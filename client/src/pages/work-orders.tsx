@@ -162,6 +162,13 @@ const SLA_LABELS: Record<string, string> = {
   vencido: "Vencido",
 };
 
+interface RouteBasic {
+  id: string;
+  name: string;
+  status: string;
+  date: string;
+}
+
 interface WorkOrder {
   id: string;
   tenantId: string;
@@ -399,6 +406,7 @@ const createOrderSchema = z.object({
   type: z.string().min(1, "Tipo requerido"),
   priority: z.enum(["critico", "alto", "medio", "bajo"]),
   assignedUserId: z.string().nullable().optional(),
+  routeId: z.string().nullable().optional(),
   description: z.string().min(1, "Descripción requerida"),
   notes: z.string().nullable().optional(),
 });
@@ -2610,6 +2618,20 @@ export function WorkOrdersPage() {
     queryKey: ["/api/machines"],
   });
 
+  const { data: routesData } = useQuery<{ routes: RouteBasic[] }>({
+    queryKey: ["/api/supplier/routes"],
+    queryFn: async () => {
+      const token = await getAccessToken();
+      const res = await fetch("/api/supplier/routes?pageSize=100", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return { routes: [] };
+      return res.json();
+    },
+    staleTime: 30000,
+  });
+  const availableRoutes = routesData?.routes ?? [];
+
   const { data: users = [] } = useQuery<UserInfo[]>({
     queryKey: ["/api/users"],
   });
@@ -2907,6 +2929,7 @@ export function WorkOrdersPage() {
       type: "",
       priority: "medio",
       assignedUserId: null,
+      routeId: null,
       description: "",
       notes: "",
     },
@@ -3023,6 +3046,9 @@ export function WorkOrdersPage() {
       const payload = { ...data };
       if (payload.assignedUserId === "none" || !payload.assignedUserId) {
         payload.assignedUserId = null;
+      }
+      if (payload.routeId === "none" || !payload.routeId) {
+        payload.routeId = null;
       }
       await apiRequest("POST", "/api/work-orders", payload);
     },
@@ -4613,6 +4639,31 @@ export function WorkOrdersPage() {
                 </FormItem>
               )}
             />
+            {availableRoutes.length > 0 && (
+              <FormField
+                control={orderForm.control}
+                name="routeId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Ruta relacionada <span className="text-muted-foreground font-normal">(opcional)</span></FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || "none"}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-order-form-route">
+                          <SelectValue placeholder="Sin ruta" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">Sin ruta</SelectItem>
+                        {availableRoutes.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
             <FormField
               control={orderForm.control}
               name="description"
