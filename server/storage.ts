@@ -827,6 +827,7 @@ export interface IStorage {
   getEstablishmentOperationalHistory(establishmentId: string, tenantId: string): Promise<OperationalHistoryResult>;
 
   getWorkOrders(tenantId: string, filters?: { status?: string; type?: string; machineId?: string; assignedUserId?: string; routeId?: string }): Promise<WorkOrder[]>;
+  getWorkOrderCountsByRouteIds(tenantId: string, routeIds: string[]): Promise<Record<string, number>>;
   getWorkOrderById(id: string): Promise<WorkOrder | undefined>;
   createWorkOrder(data: InsertWorkOrder): Promise<WorkOrder>;
   updateWorkOrder(id: string, data: Partial<InsertWorkOrder>): Promise<WorkOrder | undefined>;
@@ -8389,6 +8390,20 @@ export class DatabaseStorage implements IStorage {
     if (filters?.assignedUserId) conditions.push(eq(workOrders.assignedUserId, filters.assignedUserId));
     if (filters?.routeId) conditions.push(eq(workOrders.routeId, filters.routeId));
     return db.select().from(workOrders).where(and(...conditions)).orderBy(asc(workOrders.sortOrder), desc(workOrders.createdAt));
+  }
+
+  async getWorkOrderCountsByRouteIds(tenantId: string, routeIds: string[]): Promise<Record<string, number>> {
+    if (routeIds.length === 0) return {};
+    const rows = await db
+      .select({ routeId: workOrders.routeId, cnt: count() })
+      .from(workOrders)
+      .where(and(eq(workOrders.tenantId, tenantId), inArray(workOrders.routeId, routeIds)))
+      .groupBy(workOrders.routeId);
+    const result: Record<string, number> = {};
+    for (const row of rows) {
+      if (row.routeId) result[row.routeId] = Number(row.cnt);
+    }
+    return result;
   }
 
   async reorderWorkOrders(tenantId: string, orderedIds: string[]): Promise<void> {

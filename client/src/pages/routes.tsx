@@ -329,6 +329,7 @@ function RouteKanbanCard({
   stage,
   sortedStages,
   canAdvanceStage,
+  workOrderCount,
   onViewDetail,
   onAdvance,
   onEdit,
@@ -337,6 +338,7 @@ function RouteKanbanCard({
   stage: RouteStage | undefined;
   sortedStages: RouteStage[];
   canAdvanceStage: boolean;
+  workOrderCount: number;
   onViewDetail: (route: RouteData) => void;
   onAdvance: (routeId: string, stageId: string) => void;
   onEdit?: (route: RouteData) => void;
@@ -402,9 +404,27 @@ function RouteKanbanCard({
         </Badge>
       </div>
 
-      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Truck className="h-3.5 w-3.5" />
-        <span className="truncate">{route.supplierName ?? route.supplierId}</span>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1 text-sm text-muted-foreground min-w-0">
+          <Truck className="h-3.5 w-3.5 flex-shrink-0" />
+          <span className="truncate">{route.supplierName ?? route.supplierId}</span>
+        </div>
+        {workOrderCount > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge
+                className="no-default-hover-elevate no-default-active-elevate text-xs flex-shrink-0 gap-1 bg-primary/10 text-primary"
+                data-testid={`kanban-work-order-count-${route.id}`}
+              >
+                <ClipboardList className="h-3 w-3" />
+                {workOrderCount}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p>{workOrderCount} {workOrderCount === 1 ? "orden de trabajo" : "órdenes de trabajo"}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -511,6 +531,7 @@ function RouteKanbanColumn({
   stageMap,
   sortedStages,
   canAdvanceStage,
+  workOrderCounts,
   onViewDetail,
   onAdvance,
   onEdit,
@@ -522,6 +543,7 @@ function RouteKanbanColumn({
   stageMap: Map<string, RouteStage>;
   sortedStages: RouteStage[];
   canAdvanceStage: boolean;
+  workOrderCounts: Record<string, number>;
   onViewDetail: (route: RouteData) => void;
   onAdvance: (routeId: string, stageId: string) => void;
   onEdit?: (route: RouteData) => void;
@@ -569,6 +591,7 @@ function RouteKanbanColumn({
               stage={stageMap.get(route.currentStageId ?? "")}
               sortedStages={sortedStages}
               canAdvanceStage={canAdvanceStage}
+              workOrderCount={workOrderCounts[route.id] ?? 0}
               onViewDetail={onViewDetail}
               onAdvance={onAdvance}
               onEdit={onEdit}
@@ -865,6 +888,19 @@ export default function RoutesPage() {
     const all = boardRoutesData?.data ?? [];
     return all.filter(r => r.status === "activa");
   }, [boardRoutesData]);
+
+  const boardRouteIds = useMemo(() => boardRoutes.map(r => r.id), [boardRoutes]);
+
+  const { data: workOrderCounts = {} } = useQuery<Record<string, number>>({
+    queryKey: ["/api/work-orders/counts", { routeIds: boardRouteIds }],
+    enabled: activeTab === "board" && boardRouteIds.length > 0,
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/work-orders/counts?routeIds=${boardRouteIds.join(",")}`);
+      return res.json();
+    },
+    staleTime: 30000,
+    refetchInterval: activeTab === "board" && isTabVisible ? 30000 : false,
+  });
 
   const stats = {
     total: routeStats?.total ?? 0,
@@ -1715,6 +1751,7 @@ export default function RoutesPage() {
                     stageMap={stageMap}
                     sortedStages={sortedStages}
                     canAdvanceStage={canAdvanceStage}
+                    workOrderCounts={workOrderCounts}
                     onViewDetail={handleViewDetail}
                     onAdvance={handleBoardAdvance}
                     onEdit={handleEditRoute}
@@ -1730,6 +1767,7 @@ export default function RoutesPage() {
                     stageMap={stageMap}
                     sortedStages={sortedStages}
                     canAdvanceStage={canAdvanceStage}
+                    workOrderCounts={workOrderCounts}
                     onViewDetail={handleViewDetail}
                     onAdvance={handleBoardAdvance}
                     onEdit={handleEditRoute}

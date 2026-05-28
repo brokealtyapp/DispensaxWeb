@@ -12034,6 +12034,20 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/work-orders/counts", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const raw = req.query.routeIds as string | undefined;
+      if (!raw) return res.json({});
+      const routeIds = raw.split(",").map(s => s.trim()).filter(Boolean);
+      const counts = await storage.getWorkOrderCountsByRouteIds(tenantId, routeIds);
+      res.json(counts);
+    } catch (error) {
+      console.error("Error fetching work order counts:", error);
+      res.status(500).json({ error: "Error al obtener conteos de órdenes" });
+    }
+  });
+
   app.get("/api/work-orders", authenticateJWT, authorizeAction("work_orders", "view"), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const tenantId = req.user!.tenantId!;
