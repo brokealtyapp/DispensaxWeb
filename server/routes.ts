@@ -8563,6 +8563,59 @@ export async function registerRoutes(
     }
   });
 
+  // KPI Period-over-period Deltas for Dashboard
+  app.get("/api/summary/kpi", authenticateJWT, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user?.isSuperAdmin ? undefined : req.user?.tenantId;
+      const now = new Date();
+      const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
+      const twoWeeksAgo = new Date(now); twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+      const alertCond = tenantId ? eq(machineAlerts.tenantId, tenantId) : undefined;
+      const taskCond = tenantId ? eq(tasksTable.tenantId, tenantId) : undefined;
+
+      const [alertStats, taskStats] = await Promise.all([
+        db.select({
+          thisWeek: sql<number>`count(*) filter (where ${machineAlerts.createdAt} >= ${weekAgo})`,
+          lastWeek: sql<number>`count(*) filter (where ${machineAlerts.createdAt} >= ${twoWeeksAgo} and ${machineAlerts.createdAt} < ${weekAgo})`,
+        }).from(machineAlerts).where(alertCond),
+        db.select({
+          completedThisWeek: sql<number>`count(*) filter (where ${tasksTable.completedAt} >= ${weekAgo})`,
+          totalThisWeek: sql<number>`count(*) filter (where ${tasksTable.createdAt} >= ${weekAgo})`,
+          completedLastWeek: sql<number>`count(*) filter (where ${tasksTable.completedAt} >= ${twoWeeksAgo} and ${tasksTable.completedAt} < ${weekAgo})`,
+          totalLastWeek: sql<number>`count(*) filter (where ${tasksTable.createdAt} >= ${twoWeeksAgo} and ${tasksTable.createdAt} < ${weekAgo})`,
+        }).from(tasksTable).where(taskCond),
+      ]);
+
+      const alertsThisWeek = Number(alertStats[0]?.thisWeek) || 0;
+      const alertsLastWeek = Number(alertStats[0]?.lastWeek) || 0;
+      const alertsDelta = alertsLastWeek > 0
+        ? Math.round(((alertsThisWeek - alertsLastWeek) / alertsLastWeek) * 100)
+        : 0;
+
+      const completedThisWeek = Number(taskStats[0]?.completedThisWeek) || 0;
+      const totalThisWeek = Number(taskStats[0]?.totalThisWeek) || 0;
+      const completedLastWeek = Number(taskStats[0]?.completedLastWeek) || 0;
+      const totalLastWeek = Number(taskStats[0]?.totalLastWeek) || 0;
+      const rateThisWeek = totalThisWeek > 0 ? Math.round((completedThisWeek / totalThisWeek) * 100) : 0;
+      const rateLastWeek = totalLastWeek > 0 ? Math.round((completedLastWeek / totalLastWeek) * 100) : 0;
+      const tasksDelta = rateThisWeek - rateLastWeek;
+
+      res.json({
+        alertsThisWeek,
+        alertsLastWeek,
+        alertsDelta,
+        tasksRateThisWeek: rateThisWeek,
+        tasksRateLastWeek: rateLastWeek,
+        tasksDelta,
+      });
+    } catch (error) {
+      if (res.headersSent) return;
+      console.error("Error in KPI summary:", error);
+      res.status(500).json({ error: "Error al obtener KPIs" });
+    }
+  });
+
   // Supervisors management endpoints
   const SUPERVISOR_VALID_ZONES = ["Zona Norte", "Zona Sur", "Zona Centro", "Zona Oriente", "Zona Poniente"] as const;
   const supervisorZoneSchema = z.object({

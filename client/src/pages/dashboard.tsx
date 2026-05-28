@@ -117,6 +117,15 @@ interface SummaryProducts {
   categories: Record<string, number>;
 }
 
+interface SummaryKpi {
+  alertsThisWeek: number;
+  alertsLastWeek: number;
+  alertsDelta: number;
+  tasksRateThisWeek: number;
+  tasksRateLastWeek: number;
+  tasksDelta: number;
+}
+
 interface SummaryMachines {
   totalMachines: number;
   statusCounts: { operando: number; necesita_servicio: number; mantenimiento: number; fuera_servicio: number };
@@ -227,6 +236,23 @@ export function DashboardPage() {
     queryKey: ["/api/work-orders/stats"],
   });
 
+  const { data: kpiSummary } = useQuery<SummaryKpi>({
+    queryKey: ["/api/summary/kpi"],
+  });
+
+  const formatRelativeTime = (dateStr: string | Date | null | undefined): string => {
+    if (!dateStr) return '';
+    const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMinutes = Math.floor(diffMs / 60000);
+    if (diffMinutes < 60) return `hace ${diffMinutes}m`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `hace ${diffHours}h`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `hace ${diffDays}d`;
+  };
+
   const toggleTaskMutation = useMutation({
     mutationFn: async ({ taskId, status }: { taskId: string; status: string }) => {
       const newStatus = status === "completada" ? "pendiente" : "completada";
@@ -320,6 +346,7 @@ export function DashboardPage() {
   const salesTodayDelta = dailyAvgSales > 0
     ? Math.round(((accountingSummary?.salesToday || 0) / dailyAvgSales - 1) * 100)
     : 0;
+  const machinesDelta = (machinesSummary?.operativityRate ?? 100) - 100;
 
   const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
   const formatDayLabel = (dateStr: string) => {
@@ -378,7 +405,16 @@ export function DashboardPage() {
                   <p className="text-3xl font-bold" data-testid="stat-active-machines">
                     {machinesSummary?.statusCounts?.operando ?? machines.filter((m: any) => m.status === "operando").length}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">{machinesSummary?.operativityRate || 0}% operatividad</p>
+                  <div className="flex items-center gap-1 mt-1">
+                    {machinesDelta >= 0 ? (
+                      <ArrowUpRight className="h-3 w-3 text-primary" />
+                    ) : (
+                      <ArrowDownRight className="h-3 w-3 text-destructive" />
+                    )}
+                    <p className={`text-xs ${machinesDelta >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                      {machinesDelta >= 0 ? '100% operatividad' : `${Math.abs(machinesDelta)}% fuera de serv.`}
+                    </p>
+                  </div>
                 </div>
                 <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                   <Box className="h-5 w-5 text-primary" />
@@ -392,9 +428,16 @@ export function DashboardPage() {
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Alertas Activas</p>
                   <p className="text-3xl font-bold" data-testid="stat-active-alerts">{activeAlerts}</p>
-                  <p className={`text-xs mt-1 ${(machinesSummary?.criticalAlerts || 0) > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                    {machinesSummary?.criticalAlerts || 0} críticas
-                  </p>
+                  <div className="flex items-center gap-1 mt-1">
+                    {(kpiSummary?.alertsDelta ?? 0) <= 0 ? (
+                      <ArrowDownRight className="h-3 w-3 text-primary" />
+                    ) : (
+                      <ArrowUpRight className="h-3 w-3 text-destructive" />
+                    )}
+                    <p className={`text-xs ${(kpiSummary?.alertsDelta ?? 0) <= 0 ? 'text-primary' : 'text-destructive'}`}>
+                      {Math.abs(kpiSummary?.alertsDelta ?? 0)}% vs sem. ant.
+                    </p>
+                  </div>
                 </div>
                 <div className="h-10 w-10 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
                   <AlertTriangle className="h-5 w-5 text-destructive" />
@@ -433,7 +476,18 @@ export function DashboardPage() {
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Tareas Hoy</p>
                   <p className="text-3xl font-bold" data-testid="stat-today-tasks">{todayTasks.length}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{completedCount}/{todayTasks.length} completadas</p>
+                  <div className="flex items-center gap-1 mt-1">
+                    {(kpiSummary?.tasksDelta ?? 0) >= 0 ? (
+                      <ArrowUpRight className="h-3 w-3 text-primary" />
+                    ) : (
+                      <ArrowDownRight className="h-3 w-3 text-destructive" />
+                    )}
+                    <p className={`text-xs ${(kpiSummary?.tasksDelta ?? 0) >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                      {kpiSummary?.tasksDelta !== undefined
+                        ? `${kpiSummary.tasksDelta >= 0 ? '+' : ''}${kpiSummary.tasksDelta}pp vs sem. ant.`
+                        : `${completedCount}/${todayTasks.length} completadas`}
+                    </p>
+                  </div>
                 </div>
                 <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                   <CheckCircle2 className="h-5 w-5 text-primary" />
@@ -1092,7 +1146,10 @@ export function DashboardPage() {
                       <AlertTriangle className={`h-4 w-4 ${alert.priority === 'critica' ? 'text-destructive' : 'text-muted-foreground'}`} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-sm truncate">{alert.machineName || 'Máquina desconocida'}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium text-sm truncate">{alert.machineName || 'Máquina desconocida'}</p>
+                        <span className="text-[10px] text-muted-foreground shrink-0">{formatRelativeTime(alert.createdAt)}</span>
+                      </div>
                       <p className="text-xs text-muted-foreground truncate">{alert.message || alert.type}</p>
                       <div className="flex items-center gap-2 mt-1">
                         <Badge variant={alert.priority === 'critica' ? 'destructive' : 'secondary'} className="text-[10px] px-1.5">
@@ -1400,15 +1457,7 @@ export function DashboardPage() {
                       >
                         {alert.priority}
                       </Badge>
-                      <span className={`text-xs ${
-                        alert.priority === "critica" 
-                          ? "text-destructive"
-                          : alert.priority === "alta"
-                          ? "text-muted-foreground"
-                          : "text-muted-foreground"
-                      }`}>
-                        {alert.type}
-                      </span>
+                      <span className="text-xs text-muted-foreground">{formatRelativeTime(alert.createdAt)}</span>
                     </div>
                   </div>
                 ))}
