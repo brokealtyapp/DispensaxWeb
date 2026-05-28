@@ -65,8 +65,8 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusColors: Record<string, string> = {
-  operando: "bg-emerald-500 text-white",
-  necesita_servicio: "bg-amber-500 text-white",
+  operando: "bg-primary text-primary-foreground",
+  necesita_servicio: "bg-secondary text-secondary-foreground",
   vacia: "bg-destructive text-destructive-foreground",
   fuera_de_linea: "bg-muted text-muted-foreground",
   mantenimiento: "bg-primary text-primary-foreground",
@@ -912,7 +912,7 @@ export function MachinesPage() {
                     <span>{formatMachineDate(machine.lastVisit)}</span>
                   </div>
                   {(machine.alertCount || 0) > 0 && (
-                    <div className="flex items-center gap-1 text-amber-300">
+                    <div className="flex items-center gap-1 text-muted-foreground">
                       <AlertTriangle className="h-4 w-4" />
                       <span>{machine.alertCount} alertas</span>
                     </div>
@@ -955,7 +955,7 @@ export function MachinesPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="text-white hover:bg-red-500/20 hover:text-red-300"
+                      className="text-white hover:bg-destructive/20 hover:text-destructive-foreground"
                       onClick={(e) => { e.stopPropagation(); setDeletingMachineId(machine.id); }}
                       data-testid={`button-delete-machine-${machine.id}`}
                     >

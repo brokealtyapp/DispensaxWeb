@@ -175,9 +175,9 @@ interface EstablishmentFollowup {
 
 function PriorityBadge({ priority }: { priority: string }) {
   const config: Record<string, { label: string; className: string }> = {
-    alta: { label: "Alta", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-    media: { label: "Media", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
-    baja: { label: "Baja", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+    alta: { label: "Alta", className: "bg-destructive/10 text-destructive" },
+    media: { label: "Media", className: "bg-muted text-muted-foreground" },
+    baja: { label: "Baja", className: "bg-primary/10 text-primary" },
   };
   const c = config[priority] || config.media;
   return <Badge variant="secondary" className={c.className}>{c.label}</Badge>;
@@ -203,9 +203,9 @@ function DocumentStatusBadge({ status }: { status: string }) {
   const config: Record<string, { label: string; className: string }> = {
     pendiente: { label: "Pendiente", className: "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400" },
     enviado: { label: "Enviado", className: "bg-primary/10 text-primary" },
-    recibido: { label: "Recibido", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
-    firmado: { label: "Firmado", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-    rechazado: { label: "Rechazado", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+    recibido: { label: "Recibido", className: "bg-muted text-muted-foreground" },
+    firmado: { label: "Firmado", className: "bg-primary/10 text-primary" },
+    rechazado: { label: "Rechazado", className: "bg-destructive/10 text-destructive" },
   };
   const c = config[status] || config.pendiente;
   return <Badge variant="secondary" className={`text-xs ${c.className}`}>{c.label}</Badge>;
@@ -1022,7 +1022,7 @@ function EstablishmentDetail({
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <StageBadge stage={establishment.stage} />
             <PriorityBadge priority={establishment.priority || "media"} />
-            {isConverted && <Badge className="bg-green-600 text-white">Convertido</Badge>}
+            {isConverted && <Badge className="bg-primary text-primary-foreground">Convertido</Badge>}
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -1041,7 +1041,7 @@ function EstablishmentDetail({
             <Button
               size="sm"
               variant="default"
-              className="bg-green-600"
+              className="bg-primary"
               onClick={() => convertMutation.mutate()}
               disabled={convertMutation.isPending}
               data-testid="button-convert-establishment"
@@ -1418,9 +1418,9 @@ function ContractStatusBadge({ status, endDate }: { status: string; endDate?: st
     }
   }
   const config: Record<string, { label: string; className: string }> = {
-    activo: { label: "Activo", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-    por_vencer: { label: "Por Vencer", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-    vencido: { label: "Vencido", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+    activo: { label: "Activo", className: "bg-primary/10 text-primary" },
+    por_vencer: { label: "Por Vencer", className: "bg-muted text-muted-foreground" },
+    vencido: { label: "Vencido", className: "bg-destructive/10 text-destructive" },
     renovado: { label: "Renovado", className: "bg-muted text-muted-foreground" },
     cancelado: { label: "Cancelado", className: "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400" },
   };
@@ -1790,7 +1790,7 @@ function ActiveEstablishmentDetail({
         <div>
           <h2 className="text-xl font-bold">{establishment.name}</h2>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <Badge className="bg-green-600 text-white">Activo</Badge>
+            <Badge className="bg-primary text-primary-foreground">Activo</Badge>
             {establishment.businessType && (
               <Badge variant="outline" className="text-xs">{establishment.businessType}</Badge>
             )}
@@ -1900,7 +1900,7 @@ function ActiveEstablishmentDetail({
           {!establishment.convertedToLocationId ? (
             <Card>
               <CardContent className="p-4 flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <AlertTriangle className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
                 <div className="text-sm">
                   <p className="font-medium">Este establecimiento aún no tiene ubicación operativa</p>
                   <p className="text-muted-foreground mt-1">
@@ -1948,8 +1948,8 @@ function ActiveEstablishmentDetail({
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge variant="secondary" className={
-                              machine.status === "operando" || machine.status === "active" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                              machine.status === "mantenimiento" || machine.status === "maintenance" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
+                              machine.status === "operando" || machine.status === "active" ? "bg-primary/10 text-primary" :
+                              machine.status === "mantenimiento" || machine.status === "maintenance" ? "bg-muted text-muted-foreground" :
                               "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400"
                             }>
                               {machine.status === "operando" || machine.status === "active" ? "Activa" :
@@ -2157,7 +2157,7 @@ function ActiveEstablishmentDetail({
                 <Card>
                   <CardContent className="p-4 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4 text-green-600" />
+                      <TrendingUp className="h-4 w-4 text-primary" />
                       <span className="font-medium text-sm">Ventas Totales</span>
                     </div>
                     <span className="font-bold text-lg" data-testid="text-total-sales">
@@ -2228,7 +2228,7 @@ function ActiveEstablishmentDetail({
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <Badge variant="secondary" className={a.resolved ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}>
+                          <Badge variant="secondary" className={a.resolved ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}>
                             {a.resolved ? "Resuelta" : "Pendiente"}
                           </Badge>
                           <span className="text-xs text-muted-foreground">
@@ -2776,7 +2776,7 @@ function ActiveEstablishmentsTab({ canEdit, canCreate, canDelete }: { canEdit: b
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div className="flex items-center gap-3 min-w-0">
-                  <Building2 className="h-5 w-5 text-green-600 shrink-0" />
+                  <Building2 className="h-5 w-5 text-primary shrink-0" />
                   <div className="min-w-0">
                     <p className="font-medium truncate">{est.name}</p>
                     <p className="text-xs text-muted-foreground truncate">
@@ -3267,7 +3267,7 @@ function LinkedViewerSection({
       <Card>
         {renderHeader(
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className={linkedViewer.isActive ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400"}>
+            <Badge variant="secondary" className={linkedViewer.isActive ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}>
               {linkedViewer.isActive ? "Activo" : "Inactivo"}
             </Badge>
             {canEdit && !isEditing && (
@@ -3423,7 +3423,7 @@ function LinkedViewerSection({
     return (
       <Card>
         {renderHeader(
-          <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+          <Badge variant="secondary" className="bg-muted text-muted-foreground">
             Invitación pendiente
           </Badge>
         )}
@@ -3797,13 +3797,13 @@ export function EstablishmentsPage() {
           </Card>
           <Card>
             <CardContent className="pt-4 pb-3">
-              <p className="text-2xl font-bold text-green-600" data-testid="text-stat-converted">{stats.converted}</p>
+              <p className="text-2xl font-bold text-primary" data-testid="text-stat-converted">{stats.converted}</p>
               <p className="text-xs text-muted-foreground">Convertidos</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4 pb-3">
-              <p className="text-2xl font-bold text-red-600" data-testid="text-stat-high-priority">{stats.byPriority?.alta || 0}</p>
+              <p className="text-2xl font-bold text-destructive" data-testid="text-stat-high-priority">{stats.byPriority?.alta || 0}</p>
               <p className="text-xs text-muted-foreground">Prioridad Alta</p>
             </CardContent>
           </Card>
@@ -3962,7 +3962,7 @@ export function EstablishmentsPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <StageBadge stage={est.stage} />
                           <PriorityBadge priority={est.priority || "media"} />
-                          {est.convertedToLocationId && <Badge className="bg-green-600 text-white text-xs">Convertido</Badge>}
+                          {est.convertedToLocationId && <Badge className="bg-primary text-primary-foreground text-xs">Convertido</Badge>}
                           {canEdit && (
                             <Button
                               variant="ghost"

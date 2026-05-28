@@ -396,11 +396,11 @@ export function DashboardPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Operando</span>
-                      <span className="font-medium text-green-600">{machinesSummary?.statusCounts?.operando || 0}</span>
+                      <span className="font-medium text-primary">{machinesSummary?.statusCounts?.operando || 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Con alertas</span>
-                      <span className="font-medium text-orange-600">{machinesSummary?.activeAlerts || activeAlerts}</span>
+                      <span className="font-medium text-muted-foreground">{machinesSummary?.activeAlerts || activeAlerts}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Operatividad</span>
@@ -426,11 +426,11 @@ export function DashboardPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Activos</span>
-                      <span className="font-medium text-green-600">{productsSummary?.activeProducts || 0}</span>
+                      <span className="font-medium text-primary">{productsSummary?.activeProducts || 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Stock bajo</span>
-                      <span className="font-medium text-red-600">{productsSummary?.lowStockCount || 0}</span>
+                      <span className="font-medium text-destructive">{productsSummary?.lowStockCount || 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Ventas sem.</span>
@@ -456,7 +456,7 @@ export function DashboardPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Activas</span>
-                      <span className="font-medium text-green-600">{routesSummary?.activeRoutes || 0}</span>
+                      <span className="font-medium text-primary">{routesSummary?.activeRoutes || 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Paradas hoy</span>
@@ -490,7 +490,7 @@ export function DashboardPage() {
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Stock bajo</span>
-                      <span className="font-medium text-red-600">{warehouseSummary?.lowStockCount || 0}</span>
+                      <span className="font-medium text-destructive">{warehouseSummary?.lowStockCount || 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Movimientos sem.</span>
@@ -520,7 +520,7 @@ export function DashboardPage() {
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Por recibir</span>
-                      <span className="font-medium text-orange-600">{purchasesSummary?.pendingReceptions || 0}</span>
+                      <span className="font-medium text-muted-foreground">{purchasesSummary?.pendingReceptions || 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Gasto mes</span>
@@ -553,7 +553,7 @@ export function DashboardPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Ventas semana</span>
-                      <span className="font-medium text-green-600">{formatCurrency(accountingSummary?.salesWeek || 0)}</span>
+                      <span className="font-medium text-primary">{formatCurrency(accountingSummary?.salesWeek || 0)}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Ventas mes</span>
@@ -561,7 +561,7 @@ export function DashboardPage() {
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Flujo neto</span>
-                      <span className={`font-medium ${(accountingSummary?.netCashFlow || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <span className={`font-medium ${(accountingSummary?.netCashFlow || 0) >= 0 ? 'text-primary' : 'text-destructive'}`}>
                         {formatCurrency(accountingSummary?.netCashFlow || 0)}
                       </span>
                     </div>
@@ -585,15 +585,15 @@ export function DashboardPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Balance</span>
-                      <span className="font-medium text-green-600">{formatCurrency(parseFloat(pettyCashSummary?.currentBalance || "0"))}</span>
+                      <span className="font-medium text-primary">{formatCurrency(parseFloat(pettyCashSummary?.currentBalance || "0"))}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Gastos sem.</span>
-                      <span className="font-medium text-red-600">{formatCurrency(pettyCashSummary?.weekExpenses || 0)}</span>
+                      <span className="font-medium text-destructive">{formatCurrency(pettyCashSummary?.weekExpenses || 0)}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Pendientes</span>
-                      <span className="font-medium text-orange-600">{pettyCashSummary?.pendingCount || 0}</span>
+                      <span className="font-medium text-muted-foreground">{pettyCashSummary?.pendingCount || 0}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -615,7 +615,7 @@ export function DashboardPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Costo mes</span>
-                      <span className="font-medium text-red-600">{formatCurrency(fuelSummary?.monthCost || 0)}</span>
+                      <span className="font-medium text-destructive">{formatCurrency(fuelSummary?.monthCost || 0)}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Litros mes</span>
@@ -649,11 +649,11 @@ export function DashboardPage() {
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Mermas sem.</span>
-                      <span className="font-medium text-red-600">{reconciliationSummary?.weekShrinkage || 0}</span>
+                      <span className="font-medium text-destructive">{reconciliationSummary?.weekShrinkage || 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Recolecciones</span>
-                      <span className="font-medium text-green-600">{formatCurrency(reconciliationSummary?.weekCollections || 0)}</span>
+                      <span className="font-medium text-primary">{formatCurrency(reconciliationSummary?.weekCollections || 0)}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -686,7 +686,7 @@ export function DashboardPage() {
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Tareas comp.</span>
-                      <span className="font-medium text-green-600">{hrSummary?.weekTasksCompleted || 0}</span>
+                      <span className="font-medium text-primary">{hrSummary?.weekTasksCompleted || 0}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Técnicos</span>
@@ -725,7 +725,7 @@ export function DashboardPage() {
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">SLA vencidas</span>
-                        <span className={`font-medium ${woStats.slaBreached > 0 ? "text-red-600" : "text-green-600"}`}>
+                        <span className={`font-medium ${woStats.slaBreached > 0 ? "text-destructive" : "text-primary"}`}>
                           {woStats.slaBreached}
                         </span>
                       </div>
@@ -1103,8 +1103,8 @@ export function DashboardPage() {
                       <Badge 
                         variant="secondary" 
                         className={`text-[10px] ${
-                          task.priority === "urgente" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
-                          task.priority === "alta" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" :
+                          task.priority === "urgente" ? "bg-destructive/10 text-destructive" :
+                          task.priority === "alta" ? "bg-muted text-muted-foreground" :
                           ""
                         }`}
                       >
@@ -1138,18 +1138,18 @@ export function DashboardPage() {
                     key={alert.id} 
                     className={`p-3 rounded-xl border ${
                       alert.priority === "critica" 
-                        ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                        ? "bg-destructive/10 border-destructive/20"
                         : alert.priority === "alta"
-                        ? "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800"
-                        : "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
+                        ? "bg-muted border-muted-foreground/10"
+                        : "bg-muted border-muted-foreground/10"
                     }`}
                   >
                     <p className={`text-sm font-medium ${
                       alert.priority === "critica" 
-                        ? "text-red-800 dark:text-red-300"
+                        ? "text-destructive"
                         : alert.priority === "alta"
-                        ? "text-orange-800 dark:text-orange-300"
-                        : "text-yellow-800 dark:text-yellow-300"
+                        ? "text-muted-foreground"
+                        : "text-muted-foreground"
                     }`}>
                       {alert.message}
                     </p>
@@ -1158,20 +1158,20 @@ export function DashboardPage() {
                         variant="secondary" 
                         className={`text-[10px] ${
                           alert.priority === "critica" 
-                            ? "bg-red-200 text-red-800 dark:bg-red-800 dark:text-red-200"
+                            ? "bg-destructive/20 text-destructive"
                             : alert.priority === "alta"
-                            ? "bg-orange-200 text-orange-800 dark:bg-orange-800 dark:text-orange-200"
-                            : "bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200"
+                            ? "bg-muted text-muted-foreground"
+                            : "bg-muted text-muted-foreground"
                         }`}
                       >
                         {alert.priority}
                       </Badge>
                       <span className={`text-xs ${
                         alert.priority === "critica" 
-                          ? "text-red-600 dark:text-red-400"
+                          ? "text-destructive"
                           : alert.priority === "alta"
-                          ? "text-orange-600 dark:text-orange-400"
-                          : "text-yellow-600 dark:text-yellow-400"
+                          ? "text-muted-foreground"
+                          : "text-muted-foreground"
                       }`}>
                         {alert.type}
                       </span>
@@ -1186,7 +1186,7 @@ export function DashboardPage() {
               </div>
             ) : (
               <div className="text-center py-8">
-                <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-4" />
+                <CheckCircle2 className="h-12 w-12 mx-auto text-primary mb-4" />
                 <p className="text-sm text-muted-foreground">
                   No hay alertas activas
                 </p>

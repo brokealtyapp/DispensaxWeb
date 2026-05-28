@@ -233,10 +233,10 @@ export default function ViewerDashboardPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Mi Comisión
               </CardTitle>
-              <TrendingUp className="h-5 w-5 text-green-500" />
+              <TrendingUp className="h-5 w-5 text-primary" />
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-green-600 dark:text-green-400" data-testid="text-total-commission">
+              <p className="text-3xl font-bold text-primary" data-testid="text-total-commission">
                 {formatCurrency(salesSummary?.totalCommission || 0)}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
@@ -295,7 +295,7 @@ export default function ViewerDashboardPage() {
                                 {machine.commissionPercent}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-right font-semibold text-green-600 dark:text-green-400">
+                            <TableCell className="text-right font-semibold text-primary">
                               {formatCurrency(machine.commission)}
                             </TableCell>
                           </TableRow>
@@ -331,7 +331,7 @@ export default function ViewerDashboardPage() {
                         </div>
                         <div className="text-right">
                           <p className="text-xs text-muted-foreground">Mi Comisión</p>
-                          <p className="font-semibold text-green-600 dark:text-green-400">
+                          <p className="font-semibold text-primary">
                             {formatCurrency(machine.commission)}
                           </p>
                         </div>

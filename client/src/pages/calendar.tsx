@@ -74,8 +74,8 @@ interface CalendarDayItem {
 
 const eventTypeConfig: Record<string, { label: string; icon: any; color: string; bgColor: string }> = {
   tarea: { label: "Tarea", icon: ListTodo, color: "bg-primary", bgColor: "bg-primary/10" },
-  mantenimiento: { label: "Mantenimiento", icon: Wrench, color: "bg-orange-500", bgColor: "bg-orange-100 dark:bg-orange-900/30" },
-  abastecimiento: { label: "Abastecimiento", icon: Package, color: "bg-green-500", bgColor: "bg-green-100 dark:bg-green-900/30" },
+  mantenimiento: { label: "Mantenimiento", icon: Wrench, color: "bg-primary", bgColor: "bg-primary/10" },
+  abastecimiento: { label: "Abastecimiento", icon: Package, color: "bg-muted-foreground", bgColor: "bg-muted" },
   recoleccion: { label: "Recolección", icon: Truck, color: "bg-muted-foreground", bgColor: "bg-muted" },
   revision: { label: "Revisión", icon: ClipboardList, color: "bg-muted-foreground", bgColor: "bg-muted" },
   otro: { label: "Otro", color: "bg-gray-500", icon: CalendarIcon, bgColor: "bg-gray-100 dark:bg-gray-800" },

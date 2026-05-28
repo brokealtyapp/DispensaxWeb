@@ -288,9 +288,9 @@ interface WOStats {
 function PriorityBadge({ priority }: { priority: string }) {
   const variants: Record<string, string> = {
     critico: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-    alto: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
-    medio: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-    bajo: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+    alto: "bg-secondary text-secondary-foreground",
+    medio: "bg-muted text-muted-foreground",
+    bajo: "bg-muted text-muted-foreground",
   };
   return (
     <Badge className={`no-default-hover-elevate no-default-active-elevate ${variants[priority] || ""}`}>
@@ -305,10 +305,10 @@ function StatusBadge({ status, labels = STATUS_LABELS }: { status: string; label
     asignada: "bg-muted text-muted-foreground",
     en_proceso: "bg-primary/10 text-primary",
     en_ruta: "bg-primary/15 text-primary",
-    completada: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-    cerrada: "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400",
-    cancelada: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-    resuelto: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+    completada: "bg-muted text-muted-foreground",
+    cerrada: "bg-muted text-muted-foreground",
+    cancelada: "bg-destructive/10 text-destructive",
+    resuelto: "bg-muted text-muted-foreground",
     cerrado: "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400",
   };
   return (
@@ -321,8 +321,8 @@ function StatusBadge({ status, labels = STATUS_LABELS }: { status: string; label
 function SlaBadge({ slaStatus }: { slaStatus: string | null }) {
   if (!slaStatus) return null;
   const variants: Record<string, string> = {
-    dentro_tiempo: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-    proximo_vencer: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+    dentro_tiempo: "bg-muted text-muted-foreground",
+    proximo_vencer: "bg-secondary text-secondary-foreground",
     vencido: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
   };
   return (
@@ -907,8 +907,8 @@ function OrderDetailView({
               const isVencido = order.stageSlaStatus === "vencido";
               const isProximo = order.stageSlaStatus === "proximo_vencer";
               const fmtH = (h: number) => h < 1 ? `${Math.round(h * 60)}min` : `${h.toFixed(1)}h`;
-              const barColor = isVencido ? "bg-red-500" : isProximo ? "bg-amber-400" : "bg-green-500";
-              const textColor = isVencido ? "text-red-600 font-semibold" : isProximo ? "text-amber-600 font-medium" : "text-green-600";
+              const barColor = isVencido ? "bg-red-500" : isProximo ? "bg-muted-foreground" : "bg-primary";
+              const textColor = isVencido ? "text-red-600 font-semibold" : isProximo ? "text-muted-foreground font-medium" : "text-muted-foreground";
               const detailSlaSourceLabels: Record<string, string> = {
                 prioridad: "por prioridad",
                 tipo: "por tipo",
@@ -958,7 +958,7 @@ function OrderDetailView({
               <div className="flex items-center gap-2 text-sm">
                 <Layers className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 <span className="text-muted-foreground">SLA etapa:</span>
-                <span className={order.stageSlaStatus === "vencido" ? "text-red-600 font-semibold" : order.stageSlaStatus === "proximo_vencer" ? "text-amber-600 font-medium" : "text-green-600"}>
+                <span className={order.stageSlaStatus === "vencido" ? "text-red-600 font-semibold" : order.stageSlaStatus === "proximo_vencer" ? "text-muted-foreground font-medium" : "text-muted-foreground"}>
                   {SLA_LABELS[order.stageSlaStatus] || order.stageSlaStatus}
                 </span>
                 {order.slaPausedAt && <span className="text-xs text-muted-foreground">(pausado)</span>}
@@ -1023,7 +1023,7 @@ function OrderDetailView({
                       {effectiveRequiresPhoto ? (
                         <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
                           {item.isCompleted ? (
-                            <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" data-testid={`checkbox-checklist-${item.id}`} />
+                            <CheckCircle2 className="h-4 w-4 text-primary flex-shrink-0" data-testid={`checkbox-checklist-${item.id}`} />
                           ) : uploadingItemId === item.id ? (
                             <Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
                           ) : canEdit ? (
@@ -1055,7 +1055,7 @@ function OrderDetailView({
                       ) : (
                         <div className="mt-0.5 shrink-0">
                           {item.isCompleted ? (
-                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                            <CheckCircle2 className="h-4 w-4 text-primary" />
                           ) : (
                             <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/40" />
                           )}
@@ -1181,7 +1181,7 @@ function OrderDetailView({
                     </div>
                     {effectiveRequiresPhoto && item.photoUrl && (
                       <div className="ml-8 space-y-1.5">
-                        <Badge className="no-default-hover-elevate no-default-active-elevate text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                        <Badge className="no-default-hover-elevate no-default-active-elevate text-xs bg-primary/10 text-primary">
                           <CheckCircle2 className="h-2.5 w-2.5 mr-1" />
                           Foto tomada
                         </Badge>
@@ -1397,8 +1397,6 @@ function OrderDetailView({
                       <p className={`text-xs font-medium ${
                         entry.slaStatus === "vencido" || entry.slaStatus === "incumplido"
                           ? "text-red-600"
-                          : entry.slaStatus === "proximo_vencer"
-                          ? "text-amber-600"
                           : "text-muted-foreground"
                       }`}>
                         {elapsedH}h {elapsedM}m{slaH ? ` / ${slaH}h` : ""}
@@ -1407,7 +1405,7 @@ function OrderDetailView({
                         <div className="mt-1 w-20 bg-muted rounded-full h-1.5">
                           <div
                             className={`h-1.5 rounded-full transition-all ${
-                              entry.slaStatus === "incumplido" || pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-green-500"
+                              entry.slaStatus === "incumplido" || pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-muted-foreground" : "bg-primary"
                             }`}
                             style={{ width: `${Math.min(pct, 100)}%` }}
                           />
@@ -1418,9 +1416,9 @@ function OrderDetailView({
                           entry.slaStatus === "incumplido" || entry.slaStatus === "vencido"
                             ? "text-red-600"
                             : entry.slaStatus === "cumplido"
-                            ? "text-green-600"
+                            ? "text-muted-foreground"
                             : entry.slaStatus === "proximo_vencer"
-                            ? "text-amber-600"
+                            ? "text-muted-foreground"
                             : "text-muted-foreground"
                         }`}>
                           {entry.slaStatus === "cumplido" ? "Cumplido" : entry.slaStatus === "incumplido" ? "Incumplido" : SLA_LABELS[entry.slaStatus] ?? entry.slaStatus}
@@ -1696,11 +1694,11 @@ function SLADashboard({ stats, orders, machines, users, onSelectOrder, typeLabel
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Órdenes vencidas (global):</span>
-                <span className={`font-semibold ${(stats.slaBreached ?? 0) > 0 ? "text-red-600" : "text-green-600"}`}>{stats.slaBreached ?? 0}</span>
+                <span className={`font-semibold ${(stats.slaBreached ?? 0) > 0 ? "text-red-600" : "text-muted-foreground"}`}>{stats.slaBreached ?? 0}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Órdenes etapa vencida:</span>
-                <span className={`font-semibold ${(stats.stageSlaBreached ?? 0) > 0 ? "text-red-600" : "text-green-600"}`}>{stats.stageSlaBreached ?? 0}</span>
+                <span className={`font-semibold ${(stats.stageSlaBreached ?? 0) > 0 ? "text-red-600" : "text-muted-foreground"}`}>{stats.stageSlaBreached ?? 0}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Total órdenes:</span>
@@ -1823,8 +1821,8 @@ function formatElapsed(dateStr: string): string {
 
 const PRIORITY_STRIP: Record<string, string> = {
   critico: "bg-[#E84545]",
-  alto: "bg-orange-500",
-  medio: "bg-amber-400",
+  alto: "bg-secondary",
+  medio: "bg-muted-foreground",
   bajo: "bg-slate-300 dark:bg-slate-600",
 };
 
@@ -1908,8 +1906,6 @@ function KanbanCard({
               className={`flex items-center gap-1 text-xs shrink-0 ${
                 slaIsOverdue
                   ? "text-red-600 dark:text-red-400 font-medium"
-                  : slaIsAtRisk
-                  ? "text-amber-600 dark:text-amber-400"
                   : "text-muted-foreground"
               }`}
             >
@@ -1939,11 +1935,11 @@ function KanbanCard({
             const escalatePct = Number.isFinite(parsedEscalate) && order.stageEscalateAt != null ? parsedEscalate : 80;
             const isVencido = elapsedMs >= totalMs;
             const isProximo = !isVencido && elapsedMs >= (escalatePct / 100) * totalMs;
-            const barColor = isVencido ? "bg-red-500" : isProximo ? "bg-amber-400" : "bg-green-500";
+            const barColor = isVencido ? "bg-red-500" : isProximo ? "bg-muted-foreground" : "bg-primary";
             const textColor = isVencido
               ? "text-red-600 dark:text-red-400"
               : isProximo
-              ? "text-amber-600 dark:text-amber-400"
+              ? "text-muted-foreground"
               : "text-muted-foreground";
             // Format duration in human-friendly "Xh Ym" or "Ym" style
             const fmtDuration = (ms: number) => {
@@ -3518,7 +3514,7 @@ export function WorkOrdersPage() {
                               data-testid={`button-toggle-type-${wot.id}`}
                               title={wot.isActive ? "Desactivar tipo" : "Activar tipo"}
                             >
-                              {wot.isActive ? <ToggleRight className="h-4 w-4 text-green-600" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
+                              {wot.isActive ? <ToggleRight className="h-4 w-4 text-primary" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
                             </Button>
                             <Button size="icon" variant="ghost" onClick={() => { setEditingTypeId(wot.id); setEditingTypeLabel(wot.label); }} data-testid={`button-rename-type-${wot.id}`} title="Renombrar">
                               <Pencil className="h-3.5 w-3.5" />
@@ -3649,7 +3645,7 @@ export function WorkOrdersPage() {
                                         data-testid={`button-toggle-${item.id}`}
                                         title={item.isActive ? "Desactivar" : "Activar"}
                                       >
-                                        {item.isActive ? <ToggleRight className="h-4 w-4 text-green-600" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
+                                        {item.isActive ? <ToggleRight className="h-4 w-4 text-primary" /> : <ToggleLeft className="h-4 w-4 text-muted-foreground" />}
                                       </Button>
                                       <Button
                                         size="icon"
@@ -3911,7 +3907,7 @@ export function WorkOrdersPage() {
         <Card>
           <CardContent className="pt-4 pb-3">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
+              <CheckCircle2 className="h-5 w-5 text-primary" />
               <div>
                 <p className="text-2xl font-bold" data-testid="text-completed-today">{completedToday}</p>
                 <p className="text-xs text-muted-foreground">Completadas Hoy</p>
@@ -4885,7 +4881,7 @@ export function WorkOrdersPage() {
                             <div className="grid grid-cols-2 gap-1.5">
                               {(["critico", "alto", "medio", "bajo"] as const).map(p => (
                                 <div key={p} className="flex items-center gap-1.5">
-                                  <span className={`text-xs shrink-0 w-14 ${p === "critico" ? "text-red-600" : p === "alto" ? "text-orange-500" : p === "medio" ? "text-amber-500" : "text-slate-500"}`}>{PRIORITY_LABELS[p]}</span>
+                                  <span className={`text-xs shrink-0 w-14 ${p === "critico" ? "text-red-600" : p === "alto" ? "text-secondary-foreground" : p === "medio" ? "text-muted-foreground" : "text-muted-foreground"}`}>{PRIORITY_LABELS[p]}</span>
                                   <input
                                     type="number"
                                     min="0.5"

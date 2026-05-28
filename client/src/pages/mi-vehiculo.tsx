@@ -218,8 +218,8 @@ export default function MiVehiculoPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-emerald-100 dark:bg-emerald-900/30">
-                <ArrowDownCircle className="w-6 h-6 text-emerald-600" />
+              <div className="p-3 rounded-full bg-primary/10">
+                <ArrowDownCircle className="w-6 h-6 text-primary" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Cargas Hoy</p>
@@ -234,8 +234,8 @@ export default function MiVehiculoPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className={`p-3 rounded-full ${expiringSoonCount > 0 ? 'bg-amber-100 dark:bg-amber-900/30' : 'bg-muted'}`}>
-                <AlertTriangle className={`w-6 h-6 ${expiringSoonCount > 0 ? 'text-amber-600' : 'text-muted-foreground'}`} />
+              <div className={`p-3 rounded-full ${expiringSoonCount > 0 ? 'bg-muted' : 'bg-muted'}`}>
+                <AlertTriangle className={`w-6 h-6 ${expiringSoonCount > 0 ? 'text-muted-foreground' : 'text-muted-foreground'}`} />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Por Vencer (7 días)</p>
@@ -292,8 +292,8 @@ export default function MiVehiculoPage() {
                           <div 
                             key={lot.id}
                             className={`flex items-center justify-between text-sm bg-muted/50 rounded-md px-3 py-2 ${
-                              isExpired ? 'bg-red-100 dark:bg-red-900/20' : 
-                              isExpiringSoon ? 'bg-amber-100 dark:bg-amber-900/20' : ''
+                              isExpired ? 'bg-destructive/10' : 
+                              isExpiringSoon ? 'bg-muted' : ''
                             }`}
                           >
                             <div className="flex items-center gap-3">
@@ -308,8 +308,8 @@ export default function MiVehiculoPage() {
                                 <>
                                   <Calendar className="w-3 h-3 text-muted-foreground" />
                                   <span className={`text-xs ${
-                                    isExpired ? 'text-red-600 font-medium' :
-                                    isExpiringSoon ? 'text-amber-600 font-medium' : 'text-muted-foreground'
+                                    isExpired ? 'text-destructive font-medium' :
+                                    isExpiringSoon ? 'text-muted-foreground font-medium' : 'text-muted-foreground'
                                   }`}>
                                     {isExpired ? 'VENCIDO' : 
                                      isExpiringSoon ? `Vence en ${daysUntilExpiry} días` :
@@ -354,13 +354,13 @@ export default function MiVehiculoPage() {
                     >
                       <div className={`p-1.5 rounded-full mt-0.5 ${
                         isIncoming 
-                          ? 'bg-emerald-100 dark:bg-emerald-900/30' 
-                          : 'bg-amber-100 dark:bg-amber-900/30'
+                          ? 'bg-primary/10' 
+                          : 'bg-muted'
                       }`}>
                         {isIncoming ? (
-                          <ArrowDownCircle className="w-3 h-3 text-emerald-600" />
+                          <ArrowDownCircle className="w-3 h-3 text-primary" />
                         ) : (
-                          <ArrowUpCircle className="w-3 h-3 text-amber-600" />
+                          <ArrowUpCircle className="w-3 h-3 text-muted-foreground" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">

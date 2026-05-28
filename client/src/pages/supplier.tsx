@@ -1224,7 +1224,7 @@ export function SupplierPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completada":
-        return <Badge className="bg-emerald-500">Completada</Badge>;
+        return <Badge className="bg-primary">Completada</Badge>;
       case "en_progreso":
         return <Badge className="bg-primary">En progreso</Badge>;
       default:
@@ -1300,7 +1300,7 @@ export function SupplierPage() {
             </Button>
           )}
           <Badge variant="outline" className="gap-1 text-sm md:text-base py-1 px-3" data-testid="badge-progress">
-            <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+            <CheckCircle2 className="h-3 w-3 text-primary" />
             {completedStops}/{totalStops} completadas
           </Badge>
         </div>
@@ -1321,7 +1321,7 @@ export function SupplierPage() {
         </Card>
         <Card data-testid="card-stat-time">
           <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
-            <div className="p-2 md:p-3 rounded-lg bg-emerald-500/10 text-emerald-500">
+            <div className="p-2 md:p-3 rounded-lg bg-primary/10 text-primary">
               <Clock className="h-4 w-4 md:h-5 md:w-5" />
             </div>
             <div>
@@ -1343,7 +1343,7 @@ export function SupplierPage() {
         </Card>
         <Card data-testid="card-stat-cash">
           <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
-            <div className="p-2 md:p-3 rounded-lg bg-amber-500/10 text-amber-500">
+            <div className="p-2 md:p-3 rounded-lg bg-muted text-muted-foreground">
               <DollarSign className="h-4 w-4 md:h-5 md:w-5" />
             </div>
             <div>
@@ -1355,11 +1355,11 @@ export function SupplierPage() {
       </div>
 
       {activeChangeFund && (
-        <Card className="border-orange-200 dark:border-orange-800" data-testid="card-active-change-fund">
+        <Card data-testid="card-active-change-fund">
           <CardContent className="p-3 md:p-4">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500">
+                <div className="p-2 rounded-lg bg-muted text-muted-foreground">
                   <Wallet className="h-5 w-5" />
                 </div>
                 <div>
@@ -1369,7 +1369,7 @@ export function SupplierPage() {
                   </p>
                 </div>
               </div>
-              <span className="text-xl font-bold text-orange-600" data-testid="text-active-fund-total">
+              <span className="text-xl font-bold text-primary" data-testid="text-active-fund-total">
                 {formatCurrency(parseFloat(activeChangeFund.totalAmount || "0"))}
               </span>
             </div>
@@ -1445,7 +1445,7 @@ export function SupplierPage() {
                           <div className="flex items-start justify-between gap-2 md:gap-4">
                             <div className="flex items-start gap-3 md:gap-4 flex-1 min-w-0">
                               <div className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center font-bold text-xs md:text-sm shrink-0 ${
-                                stop.status === "completada" ? "bg-emerald-500 text-white" :
+                                stop.status === "completada" ? "bg-primary text-white" :
                                 stop.status === "en_progreso" ? "bg-primary text-white" :
                                 "bg-muted text-muted-foreground"
                               }`}>
@@ -1568,7 +1568,7 @@ export function SupplierPage() {
                                 <Button 
                                   size="sm"
                                   variant="outline"
-                                  className="gap-2 text-orange-600 border-orange-600"
+                                  className="gap-2 text-primary border-primary"
                                   onClick={() => recoverStopMutation.mutate(stop.id)}
                                   disabled={recoverStopMutation.isPending}
                                   data-testid={`button-recover-stop-${stop.id}`}
@@ -1682,7 +1682,7 @@ export function SupplierPage() {
                           {item.label}
                           {item.required && <span className="text-destructive ml-1">*</span>}
                         </span>
-                        {item.checked && <Check className="h-4 w-4 text-emerald-500" />}
+                        {item.checked && <Check className="h-4 w-4 text-primary" />}
                       </div>
                     ))}
                   </CardContent>
@@ -2083,8 +2083,8 @@ export function SupplierPage() {
 
                   {/* Próximo servicio / mantenimiento */}
                   {assignedVehicle.nextServiceOdometer && (
-                    <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center gap-3">
-                      <AlertTriangle className="h-5 w-5 text-amber-500" />
+                    <div className="mt-4 p-3 bg-muted border rounded-lg flex items-center gap-3">
+                      <AlertTriangle className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-sm font-medium">Próximo servicio</p>
                         <p className="text-xs text-muted-foreground">
@@ -2260,16 +2260,16 @@ export function SupplierPage() {
                       <p className="text-xs md:text-sm text-primary/80">Servicios completados</p>
                     </div>
                     
-                    <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/20 rounded-xl p-4 text-center">
+                    <div className="bg-primary/10 rounded-xl p-4 text-center">
                       <div className="flex items-center justify-center mb-2">
-                        <div className="p-2 bg-emerald-500/20 rounded-full">
-                          <Target className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                        <div className="p-2 bg-primary/20 rounded-full">
+                          <Target className="h-5 w-5 text-primary" />
                         </div>
                       </div>
-                      <p className="text-2xl md:text-3xl font-bold text-emerald-700 dark:text-emerald-300">
+                      <p className="text-2xl md:text-3xl font-bold text-primary">
                         {weeklyStats?.machinesVisited || 0}
                       </p>
-                      <p className="text-xs md:text-sm text-emerald-600/80 dark:text-emerald-400/80">Máquinas atendidas</p>
+                      <p className="text-xs md:text-sm text-primary/80">Máquinas atendidas</p>
                     </div>
                     
                     <div className="bg-muted rounded-xl p-4 text-center">
@@ -2284,16 +2284,16 @@ export function SupplierPage() {
                       <p className="text-xs md:text-sm text-muted-foreground">Productos cargados</p>
                     </div>
                     
-                    <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/20 rounded-xl p-4 text-center">
+                    <div className="bg-muted rounded-xl p-4 text-center">
                       <div className="flex items-center justify-center mb-2">
-                        <div className="p-2 bg-amber-500/20 rounded-full">
-                          <DollarSign className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                        <div className="p-2 bg-muted rounded-full">
+                          <DollarSign className="h-5 w-5 text-muted-foreground" />
                         </div>
                       </div>
-                      <p className="text-2xl md:text-3xl font-bold text-amber-700 dark:text-amber-300">
+                      <p className="text-2xl md:text-3xl font-bold text-muted-foreground">
                         {formatCurrency(weeklyStats?.cashCollected || 0)}
                       </p>
-                      <p className="text-xs md:text-sm text-amber-600/80 dark:text-amber-400/80">Efectivo recolectado</p>
+                      <p className="text-xs md:text-sm text-muted-foreground/80">Efectivo recolectado</p>
                     </div>
                   </div>
                 )}
@@ -2346,7 +2346,7 @@ export function SupplierPage() {
                     <div>
                       <div className="flex justify-between text-sm mb-1">
                         <span>Servicios por día</span>
-                        <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                        <span className="font-medium text-primary">
                           {((weeklyStats?.servicesCompleted || 0) / 5).toFixed(1)}
                         </span>
                       </div>
@@ -2367,7 +2367,7 @@ export function SupplierPage() {
                     </div>
                     <Separator />
                     <div className="flex items-center gap-2 text-sm">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      <CheckCircle2 className="h-4 w-4 text-primary" />
                       <span className="text-muted-foreground">
                         {weeklyStats?.issuesReported || 0} problemas reportados esta semana
                       </span>
@@ -2398,30 +2398,30 @@ export function SupplierPage() {
                     <p className="text-xs md:text-sm text-primary/80">Máquinas este mes</p>
                   </CardContent>
                 </Card>
-                <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/20">
+                <Card className="bg-primary/10">
                   <CardContent className="p-4 text-center">
                     <div className="flex items-center justify-center mb-2">
-                      <div className="p-2 bg-emerald-500/20 rounded-full">
-                        <ClipboardCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                      <div className="p-2 bg-primary/20 rounded-full">
+                        <ClipboardCheck className="h-5 w-5 text-primary" />
                       </div>
                     </div>
-                    <p className="text-2xl md:text-3xl font-bold text-emerald-700 dark:text-emerald-300">
+                    <p className="text-2xl md:text-3xl font-bold text-primary">
                       {monthlyStats?.servicesCompleted || 0}
                     </p>
-                    <p className="text-xs md:text-sm text-emerald-600/80">Servicios este mes</p>
+                    <p className="text-xs md:text-sm text-primary/80">Servicios este mes</p>
                   </CardContent>
                 </Card>
-                <Card className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/20">
+                <Card className="bg-muted">
                   <CardContent className="p-4 text-center">
                     <div className="flex items-center justify-center mb-2">
-                      <div className="p-2 bg-amber-500/20 rounded-full">
-                        <DollarSign className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                      <div className="p-2 bg-muted rounded-full">
+                        <DollarSign className="h-5 w-5 text-muted-foreground" />
                       </div>
                     </div>
-                    <p className="text-2xl md:text-3xl font-bold text-amber-700 dark:text-amber-300">
+                    <p className="text-2xl md:text-3xl font-bold text-muted-foreground">
                       {formatCurrency(monthlyStats?.cashCollected || 0)}
                     </p>
-                    <p className="text-xs md:text-sm text-amber-600/80">Efectivo este mes</p>
+                    <p className="text-xs md:text-sm text-muted-foreground/80">Efectivo este mes</p>
                   </CardContent>
                 </Card>
                 <Card>
@@ -2458,12 +2458,12 @@ export function SupplierPage() {
                             <div key={route.id} className="flex items-center justify-between p-3 rounded-lg border">
                               <div className="flex items-center gap-3">
                                 <div className={`p-2 rounded-full ${
-                                  route.status === "completada" ? "bg-emerald-500/10" :
+                                  route.status === "completada" ? "bg-primary/10" :
                                   route.status === "en_progreso" ? "bg-primary/10" :
                                   "bg-muted"
                                 }`}>
                                   <Navigation className={`h-4 w-4 ${
-                                    route.status === "completada" ? "text-emerald-500" :
+                                    route.status === "completada" ? "text-primary" :
                                     route.status === "en_progreso" ? "text-primary" :
                                     "text-muted-foreground"
                                   }`} />
@@ -2512,8 +2512,8 @@ export function SupplierPage() {
                           {supplierCashCollections.slice(0, 10).map((collection: any) => (
                             <div key={collection.id} className="flex items-center justify-between p-3 rounded-lg border">
                               <div className="flex items-center gap-3">
-                                <div className="p-2 rounded-full bg-amber-500/10">
-                                  <DollarSign className="h-4 w-4 text-amber-500" />
+                                <div className="p-2 rounded-full bg-muted">
+                                  <DollarSign className="h-4 w-4 text-muted-foreground" />
                                 </div>
                                 <div>
                                   <p className="font-medium text-sm">{collection.machine?.name || "Máquina"}</p>
@@ -2523,11 +2523,11 @@ export function SupplierPage() {
                                 </div>
                               </div>
                               <div className="text-right">
-                                <p className="font-bold text-emerald-600 dark:text-emerald-400">
+                                <p className="font-bold text-primary">
                                   {formatCurrency(parseFloat(collection.actualAmount || "0"))}
                                 </p>
                                 {collection.difference && parseFloat(collection.difference) !== 0 && (
-                                  <p className={`text-xs ${parseFloat(collection.difference) > 0 ? "text-emerald-500" : "text-red-500"}`}>
+                                  <p className={`text-xs ${parseFloat(collection.difference) > 0 ? "text-primary" : "text-destructive"}`}>
                                     {parseFloat(collection.difference) > 0 ? "+" : ""}{formatCurrency(parseFloat(collection.difference))}
                                   </p>
                                 )}
@@ -2588,7 +2588,7 @@ export function SupplierPage() {
                     </div>
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">
-                      <CheckCircle2 className="h-10 w-10 mx-auto mb-3 opacity-50 text-emerald-500" />
+                      <CheckCircle2 className="h-10 w-10 mx-auto mb-3 opacity-50 text-primary" />
                       <p>Sin problemas reportados</p>
                     </div>
                   )}
@@ -2771,7 +2771,7 @@ export function SupplierPage() {
             )}
 
             {expectedAmount && (useDenominations ? denominationTotal > 0 : cashAmount) && (
-              <div className={`p-3 rounded-lg ${(useDenominations ? denominationTotal : parseFloat(cashAmount)) >= parseFloat(expectedAmount) ? "bg-emerald-500/10" : "bg-amber-500/10"}`}>
+              <div className={`p-3 rounded-lg ${(useDenominations ? denominationTotal : parseFloat(cashAmount)) >= parseFloat(expectedAmount) ? "bg-primary/10" : "bg-muted"}`}>
                 <p className="text-sm">
                   Diferencia: <span className="font-bold">{formatCurrency((useDenominations ? denominationTotal : parseFloat(cashAmount)) - parseFloat(expectedAmount))}</span>
                 </p>
@@ -2965,13 +2965,13 @@ export function SupplierPage() {
 
           {refillSuggestionData?.warnings && refillSuggestionData.warnings.length > 0 && (
             <div
-              className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-700 dark:bg-amber-950"
+              className="rounded-md border bg-muted p-3 text-xs"
               data-testid="panel-refill-warnings"
             >
-              <p className="font-medium text-amber-800 dark:text-amber-200 mb-1">
+              <p className="font-medium text-muted-foreground mb-1">
                 Productos sin estándar configurado ({refillSuggestionData.warnings.length})
               </p>
-              <ul className="space-y-0.5 text-amber-700 dark:text-amber-300">
+              <ul className="space-y-0.5 text-muted-foreground">
                 {refillSuggestionData.warnings.map((w) => (
                   <li
                     key={w.productId}
@@ -2981,7 +2981,7 @@ export function SupplierPage() {
                   </li>
                 ))}
               </ul>
-              <p className="mt-1 text-amber-700 dark:text-amber-300">
+              <p className="mt-1 text-muted-foreground">
                 Configura el planograma para incluirlos en la sugerencia automática.
               </p>
             </div>
@@ -3030,7 +3030,7 @@ export function SupplierPage() {
                         )}
                       </p>
                       {loadDialogMode === "standard" && diffFromSuggestion > 0 && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400" data-testid={`text-diff-${product.productId}`}>
+                        <p className="text-xs text-muted-foreground" data-testid={`text-diff-${product.productId}`}>
                           Faltan {diffFromSuggestion} respecto a la sugerencia
                         </p>
                       )}
@@ -3116,11 +3116,11 @@ export function SupplierPage() {
             
             {currentStop?.machine?.salesSummary && (
               <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-lg bg-emerald-500/10">
+                <div className="p-3 rounded-lg bg-primary/10">
                   <p className="text-xs text-muted-foreground">Ventas recientes</p>
                   <p className="text-xl font-bold">{currentStop.machine.salesSummary.totalSales}</p>
                 </div>
-                <div className="p-3 rounded-lg bg-amber-500/10">
+                <div className="p-3 rounded-lg bg-muted">
                   <p className="text-xs text-muted-foreground">Ingresos</p>
                   <p className="text-xl font-bold">{formatCurrency(currentStop.machine.salesSummary.totalRevenue || 0)}</p>
                 </div>
@@ -3132,7 +3132,7 @@ export function SupplierPage() {
                 <p className="text-sm font-medium">Alertas activas</p>
                 {currentStop.machine.alerts.map((alert: any) => (
                   <div key={alert.id} className="flex items-start gap-2 p-2 rounded-lg border">
-                    <AlertTriangle className={`h-4 w-4 mt-0.5 ${alert.priority === "critica" ? "text-destructive" : "text-amber-500"}`} />
+                    <AlertTriangle className={`h-4 w-4 mt-0.5 ${alert.priority === "critica" ? "text-destructive" : "text-muted-foreground"}`} />
                     <div>
                       <p className="text-sm">{alert.message}</p>
                       <p className="text-xs text-muted-foreground">
@@ -3386,15 +3386,15 @@ export function SupplierPage() {
             </div>
 
             {/* Checklist completado */}
-            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+            <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
               <p className="text-sm font-medium mb-2 flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                <CheckCircle2 className="h-4 w-4 text-primary" />
                 Checklist Completado
               </p>
               <div className="space-y-1">
                 {checklist.filter(c => c.checked).map(item => (
                   <p key={item.id} className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Check className="h-3 w-3 text-emerald-500" />
+                    <Check className="h-3 w-3 text-primary" />
                     {item.label}
                   </p>
                 ))}
@@ -3421,8 +3421,8 @@ export function SupplierPage() {
 
             {/* Sin productos cargados */}
             {loadedProducts.length === 0 && (
-              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <p className="text-sm text-amber-600 flex items-center gap-2">
+              <div className="p-3 rounded-lg bg-muted border">
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4" />
                   No se cargaron productos en este servicio
                 </p>

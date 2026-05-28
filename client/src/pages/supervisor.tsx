@@ -107,15 +107,15 @@ export function SupervisorPage() {
       </div>
 
       {criticalAlerts.length > 0 && (
-        <Card className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20">
+        <Card className="bg-destructive/10 border-destructive/20">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5" />
+              <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
               <div className="flex-1">
-                <h3 className="font-semibold text-red-800 dark:text-red-200">
+                <h3 className="font-semibold text-destructive">
                   {criticalAlerts.length} Alerta{criticalAlerts.length > 1 ? "s" : ""} Crítica{criticalAlerts.length > 1 ? "s" : ""}
                 </h3>
-                <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                <p className="text-sm text-destructive mt-1">
                   {criticalAlerts[0]?.message}
                   {criticalAlerts.length > 1 && ` y ${criticalAlerts.length - 1} más...`}
                 </p>
@@ -168,11 +168,11 @@ export function SupervisorPage() {
               <span className="text-2xl font-bold">{machineSummary.active}/{machineSummary.total}</span>
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div className="text-center">
-                  <p className="font-medium text-orange-600">{machineSummary.needsService}</p>
+                  <p className="font-medium text-muted-foreground">{machineSummary.needsService}</p>
                   <p className="text-muted-foreground">Servicio</p>
                 </div>
                 <div className="text-center">
-                  <p className="font-medium text-red-600">{machineSummary.offline}</p>
+                  <p className="font-medium text-destructive">{machineSummary.offline}</p>
                   <p className="text-muted-foreground">Offline</p>
                 </div>
                 <div className="text-center">
@@ -204,8 +204,8 @@ export function SupervisorPage() {
                   <div 
                     key={idx}
                     className={`h-2 flex-1 rounded-full ${
-                      alert.priority === "critica" ? "bg-red-500" :
-                      alert.priority === "alta" ? "bg-orange-500" : "bg-yellow-500"
+                      alert.priority === "critica" ? "bg-destructive" :
+                      alert.priority === "alta" ? "bg-muted" : "bg-muted"
                     }`}
                   />
                 ))}
@@ -263,12 +263,12 @@ export function SupervisorPage() {
                     className="flex items-center gap-4 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
                   >
                     <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-                      route.status === "inactiva" ? "bg-green-100 dark:bg-green-900/30" :
+                      route.status === "inactiva" ? "bg-primary/10" :
                       route.status === "activa" ? "bg-primary/10" :
                       "bg-muted"
                     }`}>
                       {route.status === "inactiva" ? (
-                        <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                        <CheckCircle2 className="h-5 w-5 text-primary" />
                       ) : route.status === "activa" ? (
                         <Truck className="h-5 w-5 text-primary" />
                       ) : (
@@ -377,23 +377,23 @@ export function SupervisorPage() {
                     key={alert.id}
                     className={`p-3 rounded-lg border ${
                       alert.priority === "critica" 
-                        ? "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800"
+                        ? "bg-destructive/10 border-destructive/20"
                         : alert.priority === "alta"
-                        ? "bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800"
-                        : "bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800"
+                        ? "bg-muted border-muted-foreground/10"
+                        : "bg-muted border-muted-foreground/10"
                     }`}
                   >
                     <div className="flex items-start gap-3">
                       <AlertTriangle className={`h-4 w-4 mt-0.5 ${
-                        alert.priority === "critica" ? "text-red-600 dark:text-red-400" :
-                        alert.priority === "alta" ? "text-orange-600 dark:text-orange-400" :
-                        "text-yellow-600 dark:text-yellow-400"
+                        alert.priority === "critica" ? "text-destructive" :
+                        alert.priority === "alta" ? "text-muted-foreground" :
+                        "text-muted-foreground"
                       }`} />
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm font-medium ${
-                          alert.priority === "critica" ? "text-red-800 dark:text-red-200" :
-                          alert.priority === "alta" ? "text-orange-800 dark:text-orange-200" :
-                          "text-yellow-800 dark:text-yellow-200"
+                          alert.priority === "critica" ? "text-destructive" :
+                          alert.priority === "alta" ? "text-muted-foreground" :
+                          "text-muted-foreground"
                         }`}>
                           {alert.message}
                         </p>
@@ -403,10 +403,10 @@ export function SupervisorPage() {
                       </div>
                       <Badge variant="secondary" className={`text-[10px] ${
                         alert.priority === "critica" 
-                          ? "bg-red-200 text-red-800 dark:bg-red-800 dark:text-red-200"
+                          ? "bg-destructive/20 text-destructive"
                           : alert.priority === "alta"
-                          ? "bg-orange-200 text-orange-800 dark:bg-orange-800 dark:text-orange-200"
-                          : "bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200"
+                          ? "bg-muted text-muted-foreground"
+                          : "bg-muted text-muted-foreground"
                       }`}>
                         {alert.priority}
                       </Badge>
@@ -448,13 +448,13 @@ export function SupervisorPage() {
                   >
                     <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
                       task.status === "completada" 
-                        ? "bg-green-100 dark:bg-green-900/30"
+                        ? "bg-primary/10"
                         : task.status === "en_progreso"
                         ? "bg-primary/10"
                         : "bg-muted"
                     }`}>
                       {task.status === "completada" ? (
-                        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                        <CheckCircle2 className="h-4 w-4 text-primary" />
                       ) : task.status === "en_progreso" ? (
                         <Clock className="h-4 w-4 text-primary" />
                       ) : (
@@ -471,8 +471,8 @@ export function SupervisorPage() {
                     </div>
                     {task.priority && (
                       <Badge variant="secondary" className={`text-[10px] ${
-                        task.priority === "urgente" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
-                        task.priority === "alta" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" :
+                        task.priority === "urgente" ? "bg-destructive/10 text-destructive" :
+                        task.priority === "alta" ? "bg-muted text-muted-foreground" :
                         ""
                       }`}>
                         {task.priority}

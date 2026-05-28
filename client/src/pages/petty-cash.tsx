@@ -270,10 +270,10 @@ export function PettyCashPage() {
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, { class: string; icon: JSX.Element }> = {
-      pendiente: { class: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200", icon: <Clock className="h-3 w-3 mr-1" /> },
+      pendiente: { class: "bg-muted text-muted-foreground", icon: <Clock className="h-3 w-3 mr-1" /> },
       aprobado: { class: "bg-primary/10 text-primary", icon: <CheckCircle2 className="h-3 w-3 mr-1" /> },
-      rechazado: { class: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200", icon: <XCircle className="h-3 w-3 mr-1" /> },
-      pagado: { class: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200", icon: <CheckCircle2 className="h-3 w-3 mr-1" /> },
+      rechazado: { class: "bg-destructive/10 text-destructive", icon: <XCircle className="h-3 w-3 mr-1" /> },
+      pagado: { class: "bg-primary/10 text-primary", icon: <CheckCircle2 className="h-3 w-3 mr-1" /> },
     };
     const style = styles[status] || { class: "", icon: null };
     return (
@@ -458,7 +458,7 @@ export function PettyCashPage() {
               <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className={`text-2xl font-bold ${needsReplenish ? 'text-orange-600' : ''}`} data-testid="text-fund-balance">
+              <div className={`text-2xl font-bold ${needsReplenish ? 'text-muted-foreground' : ''}`} data-testid="text-fund-balance">
                 {formatCurrency(fundBalance)}
               </div>
               <Progress value={balancePercentage} className="mt-2" />
@@ -466,7 +466,7 @@ export function PettyCashPage() {
                 {balancePercentage.toFixed(0)}% del fondo máximo
               </p>
               {needsReplenish && (
-                <div className="flex items-center gap-1 mt-2 text-orange-600 text-xs" data-testid="alert-replenish">
+                <div className="flex items-center gap-1 mt-2 text-muted-foreground text-xs" data-testid="alert-replenish">
                   <AlertCircle className="h-3 w-3" />
                   Requiere reposición
                 </div>
@@ -491,7 +491,7 @@ export function PettyCashPage() {
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-yellow-600" data-testid="text-pending-approvals">{stats?.pendingApprovals || 0}</div>
+              <div className="text-2xl font-bold text-muted-foreground" data-testid="text-pending-approvals">{stats?.pendingApprovals || 0}</div>
               <p className="text-xs text-muted-foreground">Solicitudes pendientes</p>
             </CardContent>
           </Card>
@@ -701,11 +701,11 @@ export function PettyCashPage() {
                         data-testid={`row-transaction-${transaction.id}`}
                       >
                         <div className="flex items-center gap-4">
-                          <div className={`p-2 rounded-lg ${transaction.type === "reposicion" ? 'bg-green-100 dark:bg-green-900' : 'bg-red-100 dark:bg-red-900'}`}>
+                          <div className={`p-2 rounded-lg ${transaction.type === "reposicion" ? 'bg-primary/10' : 'bg-destructive/10'}`}>
                             {transaction.type === "reposicion" ? (
-                              <ArrowUp className="h-4 w-4 text-green-600 dark:text-green-400" />
+                              <ArrowUp className="h-4 w-4 text-primary" />
                             ) : (
-                              <ArrowDown className="h-4 w-4 text-red-600 dark:text-red-400" />
+                              <ArrowDown className="h-4 w-4 text-destructive" />
                             )}
                           </div>
                           <div>
@@ -717,7 +717,7 @@ export function PettyCashPage() {
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-right">
-                            <p className={`font-bold text-lg ${transaction.type === "reposicion" ? 'text-green-600' : 'text-red-600'}`} data-testid={`text-transaction-amount-${transaction.id}`}>
+                            <p className={`font-bold text-lg ${transaction.type === "reposicion" ? 'text-primary' : 'text-destructive'}`} data-testid={`text-transaction-amount-${transaction.id}`}>
                               {transaction.type === "reposicion" ? '+' : '-'}{formatCurrency(transaction.amount)}
                             </p>
                             <p className="text-sm text-muted-foreground">

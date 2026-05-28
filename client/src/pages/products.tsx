@@ -89,8 +89,8 @@ const categoryLabels: Record<string, string> = {
 
 const categoryColors: Record<string, string> = {
   bebidas_frias: "bg-primary/10 text-primary",
-  bebidas_calientes: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-  snacks: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  bebidas_calientes: "bg-muted text-muted-foreground",
+  snacks: "bg-muted text-muted-foreground",
   dulces: "bg-muted text-muted-foreground",
   otros: "bg-gray-500/10 text-gray-600 dark:text-gray-400",
 };
@@ -107,11 +107,11 @@ const movementTypeLabels: Record<string, string> = {
 };
 
 const movementTypeColors: Record<string, string> = {
-  entrada_compra: "bg-emerald-500 text-white",
+  entrada_compra: "bg-primary text-primary-foreground",
   entrada_devolucion: "bg-muted text-muted-foreground",
-  salida_abastecedor: "bg-amber-500 text-white",
+  salida_abastecedor: "bg-secondary text-secondary-foreground",
   salida_merma: "bg-destructive text-destructive-foreground",
-  salida_caducidad: "bg-orange-500 text-white",
+  salida_caducidad: "bg-destructive text-destructive-foreground",
   salida_danio: "bg-red-500 text-white",
   ajuste_inventario: "bg-muted text-muted-foreground",
   transferencia: "bg-muted text-muted-foreground",
@@ -358,8 +358,8 @@ export function ProductsPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-500/10">
-                <CheckCircle className="h-5 w-5 text-emerald-500" />
+              <div className="p-2 rounded-lg bg-primary/10">
+                <CheckCircle className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <p className="text-2xl font-bold" data-testid="text-active-products">
@@ -888,7 +888,7 @@ export function ProductsPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right font-semibold">
-                          <span className={isEntry ? "text-emerald-600" : "text-red-600"}>
+                          <span className={isEntry ? "text-primary" : "text-destructive"}>
                             {isEntry ? "+" : "-"}{movement.quantity}
                           </span>
                         </TableCell>

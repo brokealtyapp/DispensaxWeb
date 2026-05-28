@@ -232,6 +232,15 @@ const attendanceStatusLabels: Record<string, string> = {
   permiso: "Permiso",
 };
 
+const attendanceStatusStyles: Record<string, string> = {
+  presente: "bg-primary text-primary-foreground",
+  ausente: "bg-destructive text-destructive-foreground",
+  tarde: "bg-muted text-muted-foreground",
+  vacaciones: "bg-primary/20 text-primary",
+  enfermedad: "bg-muted text-muted-foreground",
+  permiso: "bg-muted text-muted-foreground",
+};
+
 const payrollStatusLabels: Record<string, string> = {
   pendiente: "Pendiente",
   procesado: "Procesado",
@@ -677,7 +686,7 @@ export function HRPage() {
       key: "isActive",
       header: "Estado",
       render: (item) => (
-        <Badge variant="secondary" className={item.isActive ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"}>
+        <Badge variant="secondary" className={item.isActive ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}>
           {item.isActive ? "Activo" : "Inactivo"}
         </Badge>
       ),
@@ -718,7 +727,7 @@ export function HRPage() {
       key: "status",
       header: "Estado",
       render: (item) => (
-        <Badge variant="secondary" className={item.status === "presente" ? "bg-emerald-500/10 text-emerald-500" : item.status === "ausente" ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-500"}>
+        <Badge variant="secondary" className={item.status === "presente" ? "bg-primary/10 text-primary" : item.status === "ausente" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}>
           {attendanceStatusLabels[item.status] || item.status}
         </Badge>
       ),
@@ -755,7 +764,7 @@ export function HRPage() {
       key: "status",
       header: "Estado",
       render: (item) => (
-        <Badge variant="secondary" className={item.status === "pagado" ? "bg-emerald-500/10 text-emerald-500" : item.status === "procesado" ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-500"}>
+        <Badge variant="secondary" className={item.status === "pagado" ? "bg-primary/10 text-primary" : item.status === "procesado" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}>
           {payrollStatusLabels[item.status] || item.status}
         </Badge>
       ),
@@ -770,7 +779,7 @@ export function HRPage() {
               <Button variant="ghost" size="icon" onClick={() => openEditPayroll(item)} data-testid={`button-edit-payroll-${item.id}`}>
                 <Pencil className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="text-emerald-500" onClick={() => processPayrollMutation.mutate(item.id)} data-testid={`button-process-payroll-${item.id}`}>
+              <Button variant="ghost" size="icon" className="text-primary" onClick={() => processPayrollMutation.mutate(item.id)} data-testid={`button-process-payroll-${item.id}`}>
                 <Check className="h-4 w-4" />
               </Button>
             </>
@@ -790,7 +799,7 @@ export function HRPage() {
       key: "status",
       header: "Estado",
       render: (item) => (
-        <Badge variant="secondary" className={item.status === "aprobado" ? "bg-emerald-500/10 text-emerald-500" : item.status === "rechazado" ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-500"}>
+        <Badge variant="secondary" className={item.status === "aprobado" ? "bg-primary/10 text-primary" : item.status === "rechazado" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}>
           {vacationStatusLabels[item.status] || item.status}
         </Badge>
       ),
@@ -800,7 +809,7 @@ export function HRPage() {
       header: "",
       render: (item) => item.status === "pendiente" && canEdit("vacations") ? (
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="text-emerald-500" onClick={() => approveVacationMutation.mutate(item.id)} data-testid={`button-approve-vacation-${item.id}`}>
+          <Button variant="ghost" size="icon" className="text-primary" onClick={() => approveVacationMutation.mutate(item.id)} data-testid={`button-approve-vacation-${item.id}`}>
             <Check className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="icon" className="text-destructive" onClick={() => rejectVacationMutation.mutate({ id: item.id, reason: "Solicitud rechazada" })} data-testid={`button-reject-vacation-${item.id}`}>
@@ -816,7 +825,7 @@ export function HRPage() {
     { key: "reviewPeriod", header: "Periodo" },
     { key: "overallScore", header: "Calificación", render: (item) => (
       <div className="flex items-center gap-1">
-        <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
+        <Star className="h-4 w-4 text-primary fill-primary" />
         <span>{item.overallScore}/5</span>
       </div>
     )},

@@ -38,30 +38,30 @@ import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
 
 const priorityConfig = {
-  urgente: { label: "Urgente", color: "bg-red-500 text-white", textColor: "text-red-500" },
-  alta: { label: "Alta", color: "bg-orange-500 text-white", textColor: "text-orange-500" },
-  media: { label: "Media", color: "bg-yellow-500 text-white", textColor: "text-yellow-500" },
-  baja: { label: "Baja", color: "bg-green-500 text-white", textColor: "text-green-500" },
+  urgente: { label: "Urgente", color: "bg-destructive text-destructive-foreground", textColor: "text-destructive" },
+  alta: { label: "Alta", color: "bg-muted text-muted-foreground", textColor: "text-muted-foreground" },
+  media: { label: "Media", color: "bg-muted text-muted-foreground", textColor: "text-muted-foreground" },
+  baja: { label: "Baja", color: "bg-primary text-primary-foreground", textColor: "text-primary" },
 };
 
 const statusConfig = {
-  pendiente: { label: "Pendiente", color: "bg-slate-500 text-white", icon: Circle },
+  pendiente: { label: "Pendiente", color: "bg-muted text-muted-foreground", icon: Circle },
   en_progreso: { label: "En Progreso", color: "bg-primary text-primary-foreground", icon: PlayCircle },
-  completada: { label: "Completada", color: "bg-green-500 text-white", icon: CheckCircle2 },
-  cancelada: { label: "Cancelada", color: "bg-red-500 text-white", icon: XCircle },
+  completada: { label: "Completada", color: "bg-primary text-primary-foreground", icon: CheckCircle2 },
+  cancelada: { label: "Cancelada", color: "bg-destructive text-destructive-foreground", icon: XCircle },
 };
 
 const typeConfig: Record<string, { label: string; icon: any; color: string }> = {
   abastecimiento: { label: "Abastecimiento", icon: Package, color: "bg-primary/10 text-primary" },
-  mantenimiento: { label: "Mantenimiento", icon: Wrench, color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-  recoleccion: { label: "Recolección", icon: Truck, color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+  mantenimiento: { label: "Mantenimiento", icon: Wrench, color: "bg-muted text-muted-foreground" },
+  recoleccion: { label: "Recolección", icon: Truck, color: "bg-primary/10 text-primary" },
   revision: { label: "Revisión", icon: ClipboardList, color: "bg-muted text-muted-foreground" },
   limpieza: { label: "Limpieza", icon: Sparkles, color: "bg-muted text-muted-foreground" },
-  reparacion: { label: "Reparación", icon: Wrench, color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+  reparacion: { label: "Reparación", icon: Wrench, color: "bg-destructive/10 text-destructive" },
   reunion: { label: "Reunión", icon: Users, color: "bg-muted text-muted-foreground" },
   administrativo: { label: "Administrativo", icon: ClipboardList, color: "bg-muted text-muted-foreground" },
   capacitacion: { label: "Capacitación", icon: Users, color: "bg-muted text-muted-foreground" },
-  otro: { label: "Otro", icon: Coffee, color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400" },
+  otro: { label: "Otro", icon: Coffee, color: "bg-muted text-muted-foreground" },
 };
 
 interface TaskItemProps {
@@ -87,7 +87,7 @@ const TaskItem = memo(function TaskItem({ task, onStartTask, onCompleteTask, onC
         <div className="flex items-start gap-4">
           {(task.priority === "urgente" || task.priority === "alta") && (
             <div className={`w-1 self-stretch rounded-full ${
-              task.priority === "urgente" ? "bg-red-500" : "bg-orange-500"
+              task.priority === "urgente" ? "bg-destructive" : "bg-muted"
             }`} />
           )}
           <button
@@ -101,11 +101,11 @@ const TaskItem = memo(function TaskItem({ task, onStartTask, onCompleteTask, onC
             disabled={task.status === "completada" || task.status === "cancelada"}
             className={`mt-1 h-6 w-6 rounded-full border-2 flex items-center justify-center transition-colors ${
               task.status === "completada" 
-                ? "bg-green-500 border-green-500 text-white" 
+                ? "bg-primary border-primary text-primary-foreground" 
                 : task.status === "en_progreso"
                 ? "bg-primary border-primary text-primary-foreground"
                 : task.status === "cancelada"
-                ? "bg-red-500 border-red-500 text-white"
+                ? "bg-destructive border-destructive text-destructive-foreground"
                 : "border-muted-foreground/30 hover:border-primary"
             }`}
             data-testid={`button-toggle-mytask-${task.id}`}
@@ -297,8 +297,8 @@ export function MyTasksPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                  <Circle className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+                <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                  <Circle className="h-5 w-5 text-muted-foreground" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold" data-testid="text-pending-count">{pendingCount}</p>
@@ -323,8 +323,8 @@ export function MyTasksPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                  <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold" data-testid="text-completed-count">{completedCount}</p>

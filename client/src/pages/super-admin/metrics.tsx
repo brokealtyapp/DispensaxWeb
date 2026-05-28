@@ -58,10 +58,10 @@ export function SuperAdminMetricsPage() {
               <>
                 <div className="text-2xl font-bold">{metrics?.totalTenants || 0}</div>
                 <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="outline" className="text-green-600">
+                  <Badge variant="outline" className="text-primary">
                     {metrics?.activeTenants || 0} activas
                   </Badge>
-                  <Badge variant="outline" className="text-gray-500">
+                  <Badge variant="outline" className="text-muted-foreground">
                     {(metrics?.totalTenants || 0) - (metrics?.activeTenants || 0)} inactivas
                   </Badge>
                 </div>
@@ -73,7 +73,7 @@ export function SuperAdminMetricsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Máquinas Desplegadas</CardTitle>
-            <Cpu className="h-4 w-4 text-orange-500" />
+            <Cpu className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -111,7 +111,7 @@ export function SuperAdminMetricsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Ingresos Totales</CardTitle>
-            <DollarSign className="h-4 w-4 text-green-500" />
+            <DollarSign className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -205,7 +205,7 @@ export function SuperAdminMetricsPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Tasa de Activación</span>
-                  <span className="text-sm font-bold text-green-600">
+                  <span className="text-sm font-bold text-primary">
                     {metrics?.totalTenants ? ((metrics.activeTenants / metrics.totalTenants) * 100).toFixed(1) : 0}%
                   </span>
                 </div>
@@ -251,7 +251,7 @@ export function SuperAdminMetricsPage() {
               <div className="pt-4 border-t">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Ingreso Promedio por Empresa</span>
-                  <span className="text-lg font-bold text-green-600">
+                  <span className="text-lg font-bold text-primary">
                     RD$ {metrics?.totalTenants ? (parseFloat(metrics.totalRevenue || "0") / metrics.totalTenants).toLocaleString("es-DO", { maximumFractionDigits: 0 }) : 0}
                   </span>
                 </div>

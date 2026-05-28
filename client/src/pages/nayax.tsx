@@ -230,7 +230,7 @@ export function NayaxPage() {
         </div>
         <div className="flex items-center gap-2">
           {isConfigured ? (
-            <Badge variant="default" className="bg-emerald-600 text-white" data-testid="badge-nayax-status">
+            <Badge variant="default" className="bg-primary text-white" data-testid="badge-nayax-status">
               <CheckCircle2 className="w-3 h-3 mr-1" />
               Conectado
             </Badge>
@@ -285,8 +285,8 @@ export function NayaxPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-3">
-                  <div className="rounded-md bg-emerald-500/10 p-2">
-                    <Link2 className="h-5 w-5 text-emerald-500" />
+                  <div className="rounded-md bg-primary/20 p-2">
+                    <Link2 className="h-5 w-5 text-primary" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Vinculadas</p>
@@ -298,8 +298,8 @@ export function NayaxPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-3">
-                  <div className="rounded-md bg-amber-500/10 p-2">
-                    <AlertTriangle className="h-5 w-5 text-amber-500" />
+                  <div className="rounded-md bg-muted p-2">
+                    <AlertTriangle className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Sin Vincular</p>
@@ -385,7 +385,7 @@ export function NayaxPage() {
                             </TableCell>
                             <TableCell>
                               {machine.MachineStatusBit === 1 ? (
-                                <Badge variant="default" className="bg-emerald-600 text-white">
+                                <Badge variant="default" className="bg-primary text-white">
                                   <Wifi className="w-3 h-3 mr-1" />
                                   Activa
                                 </Badge>
@@ -398,7 +398,7 @@ export function NayaxPage() {
                             </TableCell>
                             <TableCell>
                               {isLinked ? (
-                                <Badge variant="default" className="bg-emerald-600 text-white">
+                                <Badge variant="default" className="bg-primary text-white">
                                   <Link2 className="w-3 h-3 mr-1" />
                                   Vinculada
                                 </Badge>

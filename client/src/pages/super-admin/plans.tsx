@@ -284,28 +284,28 @@ export function SuperAdminPlansPage() {
                 <div className="space-y-2 text-sm border-t pt-4">
                   {plan.maxMachines && (
                     <div className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-green-500" />
+                      <Check className="h-4 w-4 text-primary" />
                       <Package className="h-4 w-4 text-muted-foreground" />
                       <span>Hasta {plan.maxMachines} máquinas</span>
                     </div>
                   )}
                   {plan.maxUsers && (
                     <div className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-green-500" />
+                      <Check className="h-4 w-4 text-primary" />
                       <Users className="h-4 w-4 text-muted-foreground" />
                       <span>Hasta {plan.maxUsers} usuarios</span>
                     </div>
                   )}
                   {plan.maxProducts && (
                     <div className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-green-500" />
+                      <Check className="h-4 w-4 text-primary" />
                       <Package className="h-4 w-4 text-muted-foreground" />
                       <span>Hasta {plan.maxProducts} productos</span>
                     </div>
                   )}
                   {plan.maxLocations && (
                     <div className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-green-500" />
+                      <Check className="h-4 w-4 text-primary" />
                       <MapPin className="h-4 w-4 text-muted-foreground" />
                       <span>Hasta {plan.maxLocations} ubicaciones</span>
                     </div>

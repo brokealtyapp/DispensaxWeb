@@ -277,7 +277,7 @@ function SortableStageItem({
             </Badge>
           )}
           {stage.alertOnSlaExpired && (
-            <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-xs gap-1">
+            <Badge className="bg-destructive/10 text-destructive text-xs gap-1">
               <Bell className="h-3 w-3" />Alerta
             </Badge>
           )}
@@ -307,7 +307,7 @@ function computeSlaBar(route: RouteData, stage: RouteStage | undefined): { pct: 
   const elapsed = (Date.now() - new Date(route.currentStageEnteredAt).getTime()) / 3_600_000;
   const threshold = stage.slaAlertThresholdPct ?? 80;
   const pct = Math.min(100, (elapsed / slaHours) * 100);
-  const color = pct >= 100 ? "bg-red-500" : pct >= threshold ? "bg-yellow-500" : "bg-green-500";
+  const color = pct >= 100 ? "bg-destructive" : pct >= threshold ? "bg-muted" : "bg-primary";
   return { pct, color };
 }
 
@@ -345,7 +345,7 @@ function RouteKanbanCard({
   const advanceTarget = nextStage ?? (sortedStages.length > 0 && !stage ? sortedStages[0] : null);
 
   const statusColors: Record<string, string> = {
-    activa: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+    activa: "bg-muted text-muted-foreground",
     inactiva: "bg-muted text-muted-foreground",
   };
   const statusLabels: Record<string, string> = {
@@ -361,7 +361,7 @@ function RouteKanbanCard({
       data-testid={`kanban-card-route-${route.id}`}
     >
       {!stage && (
-        <div className="flex items-center justify-between gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 rounded px-2 py-1">
+        <div className="flex items-center justify-between gap-1.5 text-xs text-muted-foreground bg-muted rounded px-2 py-1">
           <div className="flex items-center gap-1.5">
             <AlertTriangle className="h-3 w-3 flex-shrink-0" />
             <span>Sin etapa asignada</span>
@@ -369,7 +369,7 @@ function RouteKanbanCard({
           {onEdit && (
             <button
               onClick={() => onEdit(route)}
-              className="underline font-medium hover:text-amber-800 dark:hover:text-amber-300 focus:outline-none"
+              className="underline font-medium hover:text-foreground focus:outline-none"
               data-testid={`kanban-button-assign-stage-${route.id}`}
             >
               Asignar etapa
@@ -532,7 +532,7 @@ function RouteKanbanColumn({
           {isNoStage && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <AlertTriangle className="h-3.5 w-3.5 text-amber-500 cursor-help flex-shrink-0" />
+                <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground cursor-help flex-shrink-0" />
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-xs">
                 <p>Estas rutas no tienen etapa asignada. Arrástralas a una etapa o usa el botón de avanzar para asignarles una.</p>
@@ -1267,7 +1267,7 @@ export default function RoutesPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "activa":
-        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">Activa</Badge>;
+        return <Badge className="bg-primary/10 text-primary">Activa</Badge>;
       case "inactiva":
         return <Badge className="bg-muted text-muted-foreground">Inactiva</Badge>;
       default:
@@ -1280,35 +1280,35 @@ export default function RoutesPage() {
     switch (slaStatus) {
       case "dentro_tiempo":
         return (
-          <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 gap-1">
+          <Badge className="bg-primary/10 text-primary gap-1">
             <CheckCircle2 className="h-3 w-3" />
             En tiempo
           </Badge>
         );
       case "proximo_vencer":
         return (
-          <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 gap-1">
+          <Badge className="bg-muted text-muted-foreground gap-1">
             <Timer className="h-3 w-3" />
             Por vencer
           </Badge>
         );
       case "vencido":
         return (
-          <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 gap-1">
+          <Badge className="bg-destructive/10 text-destructive gap-1">
             <AlertTriangle className="h-3 w-3" />
             Vencido
           </Badge>
         );
       case "finalizada_a_tiempo":
         return (
-          <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 gap-1">
+          <Badge className="bg-primary/10 text-primary gap-1">
             <CheckCircle2 className="h-3 w-3" />
             A tiempo
           </Badge>
         );
       case "finalizada_fuera_de_tiempo":
         return (
-          <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 gap-1">
+          <Badge className="bg-destructive/10 text-destructive gap-1">
             <AlertTriangle className="h-3 w-3" />
             Fuera de tiempo
           </Badge>
@@ -1531,7 +1531,7 @@ export default function RoutesPage() {
         <Card data-testid="stat-active-routes">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Activas</CardTitle>
-            <Play className="h-4 w-4 text-green-500" />
+            <Play className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.active}</div>
@@ -1766,7 +1766,7 @@ export default function RoutesPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => setIsBulkCancelOpen(true)}
-                            className="gap-1 text-orange-600"
+                            className="gap-1 text-muted-foreground"
                             data-testid="button-bulk-cancel"
                           >
                             <XCircle className="h-4 w-4" />
@@ -1918,7 +1918,7 @@ export default function RoutesPage() {
                                         data-testid={`button-start-route-${route.id}`}
                                         title="Activar ruta"
                                       >
-                                        <Play className="h-4 w-4 text-green-500" />
+                                        <Play className="h-4 w-4 text-primary" />
                                       </Button>
                                     )}
                                     {canEditRoute && (
@@ -1961,7 +1961,7 @@ export default function RoutesPage() {
                                         data-testid={`button-cancel-active-route-${route.id}`}
                                         title="Desactivar ruta"
                                       >
-                                        <XCircle className="h-4 w-4 text-orange-500" />
+                                        <XCircle className="h-4 w-4 text-muted-foreground" />
                                       </Button>
                                     )}
                                   </>
@@ -2127,7 +2127,7 @@ export default function RoutesPage() {
               />
 
               {sortedStages.length === 0 && (
-                <div className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400 p-3 bg-amber-50 dark:bg-amber-950/40 rounded-md border border-amber-200 dark:border-amber-800">
+                <div className="flex items-start gap-2 text-sm text-muted-foreground p-3 bg-muted rounded-md border">
                   <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
                   <span>
                     No hay etapas configuradas. Ve a{" "}
@@ -2298,7 +2298,7 @@ export default function RoutesPage() {
                       Etapa{!selectedRoute?.currentStageId && <span className="text-destructive"> *</span>}
                     </FormLabel>
                     {sortedStages.length === 0 ? (
-                      <div className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400 p-3 bg-amber-50 dark:bg-amber-950/40 rounded-md border border-amber-200 dark:border-amber-800">
+                      <div className="flex items-start gap-2 text-sm text-muted-foreground p-3 bg-muted rounded-md border">
                         <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
                         <span>No hay etapas configuradas. Ve a <strong>Configuración → Etapas de Ruta</strong>.</span>
                       </div>
@@ -2480,7 +2480,7 @@ export default function RoutesPage() {
                             const elapsedM = Math.floor((elapsedMs % 3_600_000) / 60_000);
                             const elapsedLabel = elapsedH > 0 ? `${elapsedH}h ${elapsedM}m` : `${elapsedM}m`;
                             const slaLabel = `${Number(stage.slaHours)}h`;
-                            const barColor = pct >= 100 ? "bg-destructive" : pct >= (stage.slaAlertThresholdPct ?? 80) ? "bg-amber-500" : "bg-emerald-500";
+                            const barColor = pct >= 100 ? "bg-destructive" : pct >= (stage.slaAlertThresholdPct ?? 80) ? "bg-primary/60" : "bg-primary";
                             return (
                               <div className="space-y-1">
                                 <div className="flex justify-between text-xs text-muted-foreground">
@@ -2542,7 +2542,7 @@ export default function RoutesPage() {
                         <div 
                           key={stop.id} 
                           className={`flex items-center justify-between p-3 rounded-lg border ${
-                            stop.status === "completada" ? "bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800" :
+                            stop.status === "completada" ? "bg-primary/5 border-primary/20" :
                             stop.status === "en_progreso" ? "bg-primary/5 border-primary/20" :
                             "bg-muted/50"
                           }`}
@@ -2576,7 +2576,7 @@ export default function RoutesPage() {
                               </div>
                             )}
                             <span className={`flex items-center justify-center w-7 h-7 rounded-full text-sm font-medium ${
-                              stop.status === "completada" ? "bg-green-500 text-white" :
+                              stop.status === "completada" ? "bg-primary text-primary-foreground" :
                               stop.status === "en_progreso" ? "bg-primary text-primary-foreground" :
                               "bg-muted-foreground/20 text-muted-foreground"
                             }`}>
@@ -2746,7 +2746,7 @@ export default function RoutesPage() {
             <AlertDialogCancel>Volver</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => selectedRoute && cancelRouteMutation.mutate({ id: selectedRoute.id, stageId: selectedRoute.currentStageId })}
-              className="bg-orange-500 text-white hover:bg-orange-600"
+              className="bg-primary text-primary-foreground"
               data-testid="button-confirm-cancel-route"
             >
               {cancelRouteMutation.isPending ? "Desactivando..." : "Desactivar Ruta"}
@@ -2788,7 +2788,7 @@ export default function RoutesPage() {
             <AlertDialogCancel>Volver</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => bulkCancelMutation.mutate(bulkCancellableRoutes)}
-              className="bg-orange-500 text-white hover:bg-orange-600"
+              className="bg-primary text-primary-foreground"
               data-testid="button-confirm-bulk-cancel"
             >
               {bulkCancelMutation.isPending ? "Desactivando..." : "Desactivar Rutas"}
@@ -3008,7 +3008,7 @@ export default function RoutesPage() {
                 return (
                   <div
                     key={entry.id}
-                    className={`relative flex gap-3 pb-4 ${isLast ? "" : "border-l-2 border-muted ml-4 pl-4"} ${exceededSla ? "rounded-md bg-red-50/60 dark:bg-red-900/10 px-2" : ""}`}
+                    className={`relative flex gap-3 pb-4 ${isLast ? "" : "border-l-2 border-muted ml-4 pl-4"} ${exceededSla ? "rounded-md bg-destructive/10 px-2" : ""}`}
                     data-testid={`quick-stage-log-entry-${entry.id}`}
                   >
                     <div

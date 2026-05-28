@@ -15,8 +15,8 @@ interface StatsCardProps {
 
 const iconColorClasses = {
   primary: "bg-primary/10 text-primary",
-  success: "bg-emerald-500/10 text-emerald-500",
-  warning: "bg-amber-500/10 text-amber-500",
+  success: "bg-primary/10 text-primary",
+  warning: "bg-muted text-muted-foreground",
   destructive: "bg-destructive/10 text-destructive",
   purple: "bg-primary/10 text-primary",
 };
@@ -37,13 +37,13 @@ export function StatsCard({ title, value, subtitle, trend, icon: Icon, iconColor
             {trend && (
               <div className="flex items-center gap-1 pt-1">
                 {trend.isPositive ? (
-                  <TrendingUp className="h-4 w-4 text-emerald-500" />
+                  <TrendingUp className="h-4 w-4 text-primary" />
                 ) : (
                   <TrendingDown className="h-4 w-4 text-destructive" />
                 )}
                 <span
                   className={`text-sm font-medium ${
-                    trend.isPositive ? "text-emerald-500" : "text-destructive"
+                    trend.isPositive ? "text-primary" : "text-destructive"
                   }`}
                 >
                   {trend.value}%

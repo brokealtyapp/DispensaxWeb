@@ -23,7 +23,7 @@ const statusLabels: Record<RouteStatus, string> = {
 };
 
 const statusColors: Record<RouteStatus, string> = {
-  activa: "bg-green-500 text-white",
+  activa: "bg-primary text-primary-foreground",
   inactiva: "bg-muted text-muted-foreground",
 };
 

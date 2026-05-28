@@ -11,10 +11,10 @@ interface QuickActionCardProps {
 
 const colorClasses = {
   primary: "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground",
-  success: "bg-emerald-500/10 text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white",
-  warning: "bg-amber-500/10 text-amber-500 group-hover:bg-amber-500 group-hover:text-white",
+  success: "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground",
+  warning: "bg-muted text-muted-foreground group-hover:bg-secondary group-hover:text-secondary-foreground",
   purple: "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground",
-  orange: "bg-orange-500/10 text-orange-500 group-hover:bg-orange-500 group-hover:text-white",
+  orange: "bg-muted text-muted-foreground group-hover:bg-secondary group-hover:text-secondary-foreground",
 };
 
 export function QuickActionCard({

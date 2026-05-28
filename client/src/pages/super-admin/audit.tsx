@@ -24,11 +24,11 @@ interface AuditLog {
 }
 
 const actionColors: Record<string, string> = {
-  create: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  create: "bg-primary/10 text-primary",
   update: "bg-primary/10 text-primary",
-  delete: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  delete: "bg-destructive/10 text-destructive",
   login: "bg-muted text-muted-foreground",
-  logout: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
+  logout: "bg-muted text-muted-foreground",
 };
 
 export function SuperAdminAuditPage() {

@@ -104,19 +104,19 @@ export function SuperAdminUsersPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Activos</CardTitle>
-            <Users className="h-4 w-4 text-green-500" />
+            <Users className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{users.filter(u => u.isActive).length}</div>
+            <div className="text-2xl font-bold text-primary">{users.filter(u => u.isActive).length}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Inactivos</CardTitle>
-            <Users className="h-4 w-4 text-red-500" />
+            <Users className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{users.filter(u => !u.isActive).length}</div>
+            <div className="text-2xl font-bold text-destructive">{users.filter(u => !u.isActive).length}</div>
           </CardContent>
         </Card>
       </div>

@@ -34,8 +34,8 @@ const statusLabels: Record<MachineStatus, string> = {
 };
 
 const statusColors: Record<MachineStatus, string> = {
-  operando: "bg-emerald-500",
-  servicio: "bg-amber-500",
+  operando: "bg-primary",
+  servicio: "bg-muted-foreground",
   vacia: "bg-destructive",
   offline: "bg-muted-foreground",
 };

@@ -90,7 +90,6 @@ const fuelRecordFormSchema = insertFuelRecordSchema.omit({ tenantId: true }).ext
 type VehicleFormData = z.infer<typeof vehicleFormSchema>;
 type FuelRecordFormData = z.infer<typeof fuelRecordFormSchema>;
 
-const COLORS = ['#E84545', '#2F6FED', '#4ECB71', '#8E59FF', '#FF6B3D'];
 
 const vehicleTypes = [
   { value: "camioneta", label: "Camioneta" },
@@ -107,9 +106,9 @@ const fuelTypes = [
 ];
 
 const vehicleStatuses = [
-  { value: "activo", label: "Activo", color: "bg-green-500" },
-  { value: "mantenimiento", label: "En Mantenimiento", color: "bg-yellow-500" },
-  { value: "inactivo", label: "Inactivo", color: "bg-gray-500" },
+  { value: "activo", label: "Activo", color: "bg-primary" },
+  { value: "mantenimiento", label: "En Mantenimiento", color: "bg-muted" },
+  { value: "inactivo", label: "Inactivo", color: "bg-muted" },
 ];
 
 type SortField = "recordDate" | "liters" | "totalAmount" | "odometerReading" | "calculatedMileage";
@@ -523,6 +522,8 @@ export function FuelPage() {
       rendimiento: parseFloat(r.calculatedMileage || 0),
       vehiculo: r.vehicle?.plate || "",
     }));
+
+  const COLORS = ['hsl(var(--primary))', 'hsl(var(--muted-foreground))', 'hsl(var(--secondary))', 'hsl(var(--accent))', 'hsl(var(--destructive))'];
 
   const vehiclePerformanceData = vehicles.map((v: any) => {
     const vehicleRecords = fuelRecords.filter((r: any) => r.vehicleId === v.id);
@@ -1685,11 +1686,11 @@ export function FuelPage() {
                         return (
                           <div
                             key={v.id}
-                            className={`flex items-center justify-between p-3 rounded-lg ${isLow ? "bg-red-50 dark:bg-red-950" : "bg-muted/50"}`}
+                            className={`flex items-center justify-between p-3 rounded-lg ${isLow ? "bg-destructive/10" : "bg-muted/50"}`}
                             data-testid={`alert-vehicle-${v.id}`}
                           >
                             <div className="flex items-center gap-3">
-                              <Car className={`h-5 w-5 ${isLow ? "text-red-500" : "text-muted-foreground"}`} />
+                              <Car className={`h-5 w-5 ${isLow ? "text-destructive" : "text-muted-foreground"}`} />
                               <div>
                                 <p className="font-medium">{v.plate}</p>
                                 <p className="text-sm text-muted-foreground">{v.brand} {v.model}</p>
@@ -1698,11 +1699,11 @@ export function FuelPage() {
                             <div className="text-right">
                               <div className="flex items-center gap-2">
                                 {isLow ? (
-                                  <ArrowDown className="h-4 w-4 text-red-500" />
+                                  <ArrowDown className="h-4 w-4 text-destructive" />
                                 ) : (
-                                  <ArrowUp className="h-4 w-4 text-green-500" />
+                                  <ArrowUp className="h-4 w-4 text-primary" />
                                 )}
-                                <span className={`font-bold ${isLow ? "text-red-500" : "text-green-500"}`}>
+                                <span className={`font-bold ${isLow ? "text-destructive" : "text-primary"}`}>
                                   {avgMileage.toFixed(1)} km/L
                                 </span>
                               </div>

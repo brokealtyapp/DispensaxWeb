@@ -85,8 +85,8 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusColors: Record<string, string> = {
-  operando: "bg-emerald-500 text-white",
-  necesita_servicio: "bg-amber-500 text-white",
+  operando: "bg-primary text-primary-foreground",
+  necesita_servicio: "bg-secondary text-secondary-foreground",
   vacia: "bg-destructive text-destructive-foreground",
   fuera_de_linea: "bg-muted text-muted-foreground",
   mantenimiento: "bg-primary text-primary-foreground",
@@ -103,8 +103,8 @@ const alertTypeLabels: Record<string, string> = {
 
 const alertPriorityColors: Record<string, string> = {
   baja: "bg-muted",
-  media: "bg-amber-500",
-  alta: "bg-orange-500",
+  media: "bg-primary/60",
+  alta: "bg-primary",
   critica: "bg-destructive",
 };
 
@@ -1171,8 +1171,8 @@ export function MachineDetailPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-500/10 rounded-lg">
-                <DollarSign className="h-5 w-5 text-emerald-500" />
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <DollarSign className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Ventas Hoy</p>
@@ -1180,7 +1180,7 @@ export function MachineDetailPage() {
               </div>
             </div>
             <div className="flex items-center gap-1 mt-2 text-sm text-muted-foreground">
-              <TrendingUp className="h-4 w-4 text-emerald-500" />
+              <TrendingUp className="h-4 w-4 text-primary" />
               <span>Semana: {formatCurrency(machine.salesSummary?.week || 0)}</span>
             </div>
           </CardContent>
@@ -1189,8 +1189,8 @@ export function MachineDetailPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-500/10 rounded-lg">
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
+              <div className="p-2 bg-muted rounded-lg">
+                <AlertTriangle className="h-5 w-5 text-muted-foreground" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Alertas Activas</p>
@@ -1198,7 +1198,7 @@ export function MachineDetailPage() {
               </div>
             </div>
             {unresolvedAlerts.length > 0 && (
-              <p className="text-sm text-amber-600 mt-2">Requiere atención</p>
+              <p className="text-sm text-muted-foreground mt-2">Requiere atención</p>
             )}
           </CardContent>
         </Card>
@@ -1309,7 +1309,7 @@ export function MachineDetailPage() {
               <CardContent>
                 {collectedCash !== null ? (
                   <div className="text-center py-4">
-                    <div className="text-4xl font-bold text-emerald-500 mb-2">{formatCurrency(collectedCash)}</div>
+                    <div className="text-4xl font-bold text-primary mb-2">{formatCurrency(collectedCash)}</div>
                     <p className="text-sm text-muted-foreground mb-4">Efectivo registrado</p>
                     <Button 
                       variant="outline" 
@@ -1961,7 +1961,7 @@ export function MachineDetailPage() {
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <CheckCircle className="h-12 w-12 mx-auto text-emerald-500 mb-4" />
+                  <CheckCircle className="h-12 w-12 mx-auto text-primary mb-4" />
                   <p className="text-muted-foreground">No hay alertas activas</p>
                 </div>
               )}
@@ -2059,8 +2059,8 @@ export function MachineDetailPage() {
                 <div className="space-y-2">
                   {machineOrders.map((order) => {
                     const priorityColors: Record<string, string> = {
-                      critica: "bg-red-500", alta: "bg-orange-500",
-                      media: "bg-yellow-500", baja: "bg-muted",
+                      critica: "bg-destructive", alta: "bg-primary/70",
+                      media: "bg-primary/40", baja: "bg-muted",
                     };
                     const statusLabels: Record<string, string> = {
                       pendiente: "Pendiente", asignada: "Asignada", en_proceso: "En proceso",
@@ -2070,7 +2070,7 @@ export function MachineDetailPage() {
                       dentro_tiempo: "A tiempo", proximo_vencer: "Por vencer", vencido: "Vencido",
                     };
                     const slaColors: Record<string, string> = {
-                      dentro_tiempo: "text-green-600", proximo_vencer: "text-orange-600", vencido: "text-red-600",
+                      dentro_tiempo: "text-primary", proximo_vencer: "text-muted-foreground", vencido: "text-destructive",
                     };
                     return (
                       <div

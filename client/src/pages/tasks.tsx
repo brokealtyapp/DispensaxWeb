@@ -72,17 +72,17 @@ const taskFormSchema = z.object({
 type TaskFormData = z.infer<typeof taskFormSchema>;
 
 const priorityConfig = {
-  urgente: { label: "Urgente", color: "bg-red-500 text-white", icon: AlertCircle },
-  alta: { label: "Alta", color: "bg-orange-500 text-white", icon: Flag },
-  media: { label: "Media", color: "bg-yellow-500 text-white", icon: Flag },
-  baja: { label: "Baja", color: "bg-green-500 text-white", icon: Flag },
+  urgente: { label: "Urgente", color: "bg-destructive text-destructive-foreground", icon: AlertCircle },
+  alta: { label: "Alta", color: "bg-muted text-muted-foreground", icon: Flag },
+  media: { label: "Media", color: "bg-muted text-muted-foreground", icon: Flag },
+  baja: { label: "Baja", color: "bg-primary text-primary-foreground", icon: Flag },
 };
 
 const statusConfig = {
   pendiente: { label: "Pendiente", color: "bg-slate-500 text-white", icon: Circle },
   en_progreso: { label: "En Progreso", color: "bg-primary text-primary-foreground", icon: PlayCircle },
-  completada: { label: "Completada", color: "bg-green-500 text-white", icon: CheckCircle2 },
-  cancelada: { label: "Cancelada", color: "bg-red-500 text-white", icon: XCircle },
+  completada: { label: "Completada", color: "bg-primary text-primary-foreground", icon: CheckCircle2 },
+  cancelada: { label: "Cancelada", color: "bg-destructive text-destructive-foreground", icon: XCircle },
 };
 
 const typeConfig: Record<string, { label: string; icon: any }> = {
@@ -356,8 +356,8 @@ export function TasksPage() {
           <Card className="hover-elevate">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/30">
-                  <Circle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                <div className="p-2 rounded-lg bg-muted">
+                  <Circle className="h-5 w-5 text-muted-foreground" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold" data-testid="text-stat-pending">{stats?.pending || 0}</p>
@@ -384,8 +384,8 @@ export function TasksPage() {
           <Card className="hover-elevate">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
-                  <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold" data-testid="text-stat-completed">{stats?.completed || 0}</p>
@@ -398,8 +398,8 @@ export function TasksPage() {
           <Card className="hover-elevate">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30">
-                  <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                <div className="p-2 rounded-lg bg-destructive/10">
+                  <AlertCircle className="h-5 w-5 text-destructive" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold" data-testid="text-stat-overdue">{stats?.overdue || 0}</p>
@@ -493,19 +493,19 @@ export function TasksPage() {
                       return (
                         <Card 
                           key={task.id} 
-                          className={`hover-elevate transition-all ${isOverdue ? "border-red-500/50" : ""}`}
+                          className={`hover-elevate transition-all ${isOverdue ? "border-destructive/50" : ""}`}
                           data-testid={`card-task-${task.id}`}
                         >
                           <CardContent className="p-4">
                             <div className="flex items-start gap-4">
                               <div className={`p-2 rounded-lg ${
                                 task.status === "completada" 
-                                  ? "bg-green-100 dark:bg-green-900/30" 
+                                  ? "bg-primary/10" 
                                   : "bg-muted"
                               }`}>
                                 <TypeIcon className={`h-5 w-5 ${
                                   task.status === "completada" 
-                                    ? "text-green-600 dark:text-green-400" 
+                                    ? "text-primary" 
                                     : "text-muted-foreground"
                                 }`} />
                               </div>
@@ -536,7 +536,7 @@ export function TasksPage() {
 
                                 <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-muted-foreground">
                                   {task.dueDate && (
-                                    <div className={`flex items-center gap-1 ${isOverdue ? "text-red-500" : ""}`}>
+                                    <div className={`flex items-center gap-1 ${isOverdue ? "text-destructive" : ""}`}>
                                       <Calendar className="h-4 w-4" />
                                       <span>{getDateLabel(task.dueDate)}</span>
                                       {task.startTime && <span>- {task.startTime}</span>}
@@ -587,7 +587,7 @@ export function TasksPage() {
                                   {canEdit("tasks") && task.status !== "completada" && task.status !== "cancelada" && (
                                     <DropdownMenuItem 
                                       onClick={() => cancelTaskMutation.mutate(task.id)}
-                                      className="text-orange-600"
+                                      className="text-muted-foreground"
                                     >
                                       <XCircle className="h-4 w-4 mr-2" />
                                       Cancelar
@@ -596,7 +596,7 @@ export function TasksPage() {
                                   {canDelete("tasks") && (
                                     <DropdownMenuItem 
                                       onClick={() => deleteTaskMutation.mutate(task.id)}
-                                      className="text-red-600"
+                                      className="text-destructive"
                                     >
                                       <Trash2 className="h-4 w-4 mr-2" />
                                       Eliminar

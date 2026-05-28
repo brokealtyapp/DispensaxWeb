@@ -66,8 +66,8 @@ export function AlmacenPanelPage() {
   const getStockLevelColor = (current: number, min: number, max: number) => {
     const percentage = (current / max) * 100;
     if (current <= min) return "[&>div]:bg-destructive";
-    if (percentage < 30) return "[&>div]:bg-amber-500";
-    return "[&>div]:bg-emerald-500";
+    if (percentage < 30) return "[&>div]:bg-muted-foreground";
+    return "[&>div]:bg-primary";
   };
 
   const getDaysUntilExpiry = (date: Date | string | null) => {
@@ -129,8 +129,8 @@ export function AlmacenPanelPage() {
               <Card data-testid="card-stat-stock">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center">
-                      <Boxes className="h-6 w-6 text-emerald-500" />
+                    <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Boxes className="h-6 w-6 text-primary" />
                     </div>
                     <div>
                       <p className="text-2xl font-bold">{stats?.totalStock?.toLocaleString() || 0}</p>
@@ -140,11 +140,11 @@ export function AlmacenPanelPage() {
                 </CardContent>
               </Card>
 
-              <Card data-testid="card-stat-low-stock" className={lowStock.length > 0 ? "border-amber-500/50" : ""}>
+              <Card data-testid="card-stat-low-stock" className={lowStock.length > 0 ? "border-muted-foreground/50" : ""}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
-                    <div className={`h-12 w-12 rounded-full flex items-center justify-center ${lowStock.length > 0 ? "bg-amber-500/10" : "bg-muted"}`}>
-                      <TrendingDown className={`h-6 w-6 ${lowStock.length > 0 ? "text-amber-500" : "text-muted-foreground"}`} />
+                    <div className={`h-12 w-12 rounded-full flex items-center justify-center ${lowStock.length > 0 ? "bg-muted" : "bg-muted"}`}>
+                      <TrendingDown className={`h-6 w-6 ${lowStock.length > 0 ? "text-muted-foreground" : "text-muted-foreground"}`} />
                     </div>
                     <div>
                       <p className="text-2xl font-bold">{stats?.lowStockCount || 0}</p>
@@ -176,7 +176,7 @@ export function AlmacenPanelPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                  <AlertTriangle className="h-5 w-5 text-muted-foreground" />
                   Stock Bajo
                 </CardTitle>
                 <Badge variant="secondary">{lowStock.length}</Badge>
@@ -366,7 +366,7 @@ export function AlmacenPanelPage() {
                         data-testid={`item-movement-${movement.id}`}
                       >
                         <div className="flex items-center gap-3">
-                          <div className={`w-2 h-2 rounded-full ${movement.movementType.includes("entrada") ? "bg-emerald-500" : "bg-amber-500"}`} />
+                          <div className={`w-2 h-2 rounded-full ${movement.movementType.includes("entrada") ? "bg-primary" : "bg-muted-foreground"}`} />
                           <div>
                             <p className="font-medium">{movement.product?.name}</p>
                             <p className="text-xs text-muted-foreground">
@@ -375,7 +375,7 @@ export function AlmacenPanelPage() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className={`font-semibold ${movement.movementType.includes("entrada") ? "text-emerald-600" : "text-amber-600"}`}>
+                          <p className={`font-semibold ${movement.movementType.includes("entrada") ? "text-primary" : "text-muted-foreground"}`}>
                             {movement.movementType.includes("entrada") ? "+" : "-"}{movement.quantity}
                           </p>
                           <p className="text-xs text-muted-foreground">

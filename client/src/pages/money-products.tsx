@@ -614,9 +614,9 @@ export function MoneyProductsPage() {
 
   const getChangeFundStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
-      activo: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+      activo: "bg-primary/10 text-primary",
       usado: "bg-muted text-muted-foreground",
-      devuelto: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
+      devuelto: "bg-muted text-muted-foreground",
     };
     return <Badge className={styles[status] || ""} data-testid={`badge-fund-status-${status}`}>{status}</Badge>;
   };
@@ -631,11 +631,11 @@ export function MoneyProductsPage() {
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
-      pendiente: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+      pendiente: "bg-muted text-muted-foreground",
       entregado: "bg-muted text-muted-foreground",
-      depositado: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+      depositado: "bg-primary/10 text-primary",
       conciliado: "bg-muted text-muted-foreground",
-      aprobado: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+      aprobado: "bg-primary/10 text-primary",
     };
     return <Badge className={styles[status] || ""} data-testid={`badge-status-${status}`}>{status}</Badge>;
   };
@@ -725,7 +725,7 @@ export function MoneyProductsPage() {
               <Banknote className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600" data-testid="text-deposited">{formatCurrency(cashSummary?.deposited || 0)}</div>
+              <div className="text-2xl font-bold text-primary" data-testid="text-deposited">{formatCurrency(cashSummary?.deposited || 0)}</div>
               <p className="text-xs text-muted-foreground">Depósitos bancarios</p>
             </CardContent>
           </Card>
@@ -736,7 +736,7 @@ export function MoneyProductsPage() {
               <AlertCircle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className={`text-2xl font-bold ${(cashSummary?.differences || 0) < 0 ? 'text-red-600' : 'text-green-600'}`} data-testid="text-differences">
+              <div className={`text-2xl font-bold ${(cashSummary?.differences || 0) < 0 ? 'text-destructive' : 'text-primary'}`} data-testid="text-differences">
                 {formatCurrency(Math.abs(cashSummary?.differences || 0))}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -751,7 +751,7 @@ export function MoneyProductsPage() {
               <Trash2 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-orange-600" data-testid="text-shrinkage">{formatCurrency(shrinkageSummary?.totalCost || 0)}</div>
+              <div className="text-2xl font-bold text-muted-foreground" data-testid="text-shrinkage">{formatCurrency(shrinkageSummary?.totalCost || 0)}</div>
               <p className="text-xs text-muted-foreground">{shrinkageSummary?.totalQuantity || 0} unidades</p>
             </CardContent>
           </Card>
@@ -830,7 +830,7 @@ export function MoneyProductsPage() {
                           <div className="text-right">
                             <p className="font-bold text-lg" data-testid={`text-movement-amount-${movement.id}`}>{formatCurrency(movement.amount)}</p>
                             {movement.difference && parseFloat(movement.difference) !== 0 && (
-                              <p className={`text-sm ${parseFloat(movement.difference) < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                              <p className={`text-sm ${parseFloat(movement.difference) < 0 ? 'text-destructive' : 'text-primary'}`}>
                                 {parseFloat(movement.difference) < 0 ? '-' : '+'}{formatCurrency(Math.abs(parseFloat(movement.difference)))}
                               </p>
                             )}
@@ -935,8 +935,8 @@ export function MoneyProductsPage() {
                         data-testid={`row-shrinkage-${record.id}`}
                       >
                         <div className="flex items-center gap-4">
-                          <div className="p-2 bg-red-100 dark:bg-red-900 rounded-lg">
-                            <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" />
+                          <div className="p-2 bg-destructive/10 rounded-lg">
+                            <TrendingDown className="h-4 w-4 text-destructive" />
                           </div>
                           <div>
                             <p className="font-medium" data-testid={`text-shrinkage-product-${record.id}`}>{record.product?.name || "Producto"}</p>
@@ -947,7 +947,7 @@ export function MoneyProductsPage() {
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-right">
-                            <p className="font-bold text-red-600" data-testid={`text-shrinkage-qty-${record.id}`}>-{record.quantity} unidades</p>
+                            <p className="font-bold text-destructive" data-testid={`text-shrinkage-qty-${record.id}`}>-{record.quantity} unidades</p>
                             <p className="text-sm text-muted-foreground">
                               {formatCurrency(parseFloat(record.totalLoss || "0"))} pérdida
                             </p>
@@ -1053,15 +1053,15 @@ export function MoneyProductsPage() {
                         </div>
                         <div className="p-3 bg-muted rounded-lg text-center" data-testid="stat-total-fondo">
                           <p className="text-xs text-muted-foreground">Fondo Cambio</p>
-                          <p className="text-lg font-bold text-orange-600">{formatCurrency(selectedReconciliation.totalFondoCambio || 0)}</p>
+                          <p className="text-lg font-bold text-muted-foreground">{formatCurrency(selectedReconciliation.totalFondoCambio || 0)}</p>
                         </div>
                         <div className="p-3 bg-muted rounded-lg text-center" data-testid="stat-total-entrega">
                           <p className="text-xs text-muted-foreground">Conteo Entrega</p>
                           <p className="text-lg font-bold">{formatCurrency(selectedReconciliation.totalEntrega || 0)}</p>
                         </div>
-                        <div className={`p-3 rounded-lg text-center ${(selectedReconciliation.difference || 0) === 0 ? "bg-emerald-500/10" : "bg-red-500/10"}`} data-testid="stat-denomination-difference">
+                        <div className={`p-3 rounded-lg text-center ${(selectedReconciliation.difference || 0) === 0 ? "bg-primary/10" : "bg-destructive/10"}`} data-testid="stat-denomination-difference">
                           <p className="text-xs text-muted-foreground">Diferencia</p>
-                          <p className={`text-lg font-bold ${(selectedReconciliation.difference || 0) === 0 ? "text-green-600" : "text-red-600"}`}>
+                          <p className={`text-lg font-bold ${(selectedReconciliation.difference || 0) === 0 ? "text-primary" : "text-destructive"}`}>
                             {formatCurrency(Math.abs(selectedReconciliation.difference || 0))}
                           </p>
                         </div>
@@ -1100,9 +1100,9 @@ export function MoneyProductsPage() {
                                       <Badge variant="outline" className="text-xs">{d.label}</Badge>
                                     </td>
                                     <td className="p-2 text-center">{maqQty}</td>
-                                    <td className="p-2 text-center text-orange-600">{fondoQty}</td>
+                                    <td className="p-2 text-center text-muted-foreground">{fondoQty}</td>
                                     <td className="p-2 text-center">{entQty}</td>
-                                    <td className={`p-2 text-right font-medium ${diff === 0 ? "text-green-600" : "text-red-600"}`}>
+                                    <td className={`p-2 text-right font-medium ${diff === 0 ? "text-primary" : "text-destructive"}`}>
                                       {diff === 0 ? "OK" : (diff > 0 ? `+${diff}` : diff)}
                                     </td>
                                   </tr>
@@ -1232,13 +1232,13 @@ export function MoneyProductsPage() {
                       </div>
                       <div className="p-4 bg-muted rounded-lg" data-testid="stat-difference">
                         <p className="text-sm text-muted-foreground">Diferencia</p>
-                        <p className={`text-2xl font-bold ${dailyReconciliation.totalDifference < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        <p className={`text-2xl font-bold ${dailyReconciliation.totalDifference < 0 ? 'text-destructive' : 'text-primary'}`}>
                           {formatCurrency(Math.abs(dailyReconciliation.totalDifference || 0))}
                         </p>
                       </div>
                       <div className="p-4 bg-muted rounded-lg" data-testid="stat-deposited">
                         <p className="text-sm text-muted-foreground">Depositado</p>
-                        <p className="text-2xl font-bold text-green-600">{formatCurrency(dailyReconciliation.totalDeposited || 0)}</p>
+                        <p className="text-2xl font-bold text-primary">{formatCurrency(dailyReconciliation.totalDeposited || 0)}</p>
                       </div>
                     </div>
 
@@ -1783,26 +1783,26 @@ function CrossReconciliationPanel({ cashCollections }: { cashCollections: any[] 
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : error ? (
-          <div className="text-center py-8 text-red-600">No se pudo cargar el cuadre.</div>
+          <div className="text-center py-8 text-destructive">No se pudo cargar el cuadre.</div>
         ) : data ? (
           <div className="space-y-6">
             {!data.cashOk && (
-              <div className="border rounded-md p-3 bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800 flex items-start gap-2" data-testid="alert-cash-mismatch">
-                <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5" />
+              <div className="border rounded-md p-3 bg-destructive/10 border-destructive/20 flex items-start gap-2" data-testid="alert-cash-mismatch">
+                <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
                 <div className="text-sm">
-                  <p className="font-semibold text-red-700 dark:text-red-300">Descuadre detectado</p>
-                  <p className="text-red-600 dark:text-red-400">
+                  <p className="font-semibold text-destructive">Descuadre detectado</p>
+                  <p className="text-destructive/80">
                     Diferencia de {formatRD(Math.abs(data.cashDifference))} entre efectivo físico y esperado.
                   </p>
                 </div>
               </div>
             )}
             {data.unitDiscrepancy && data.unitDiscrepancy.deltaUnits !== 0 && (
-              <div className="border rounded-md p-3 bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 flex items-start gap-2" data-testid="alert-unit-mismatch">
-                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <div className="border rounded-md p-3 bg-muted border-muted-foreground/20 flex items-start gap-2" data-testid="alert-unit-mismatch">
+                <AlertCircle className="h-5 w-5 text-muted-foreground mt-0.5" />
                 <div className="text-sm">
-                  <p className="font-semibold text-amber-700 dark:text-amber-300">Discrepancia de unidades</p>
-                  <p className="text-amber-700 dark:text-amber-400">
+                  <p className="font-semibold text-muted-foreground">Discrepancia de unidades</p>
+                  <p className="text-muted-foreground/80">
                     Vendidas Nayax: {data.unitDiscrepancy.nayaxUnits} · Carriles vacíos:{" "}
                     {data.unitDiscrepancy.emptyLanes} · Delta: {data.unitDiscrepancy.deltaUnits}
                   </p>
@@ -1843,13 +1843,13 @@ function CrossReconciliationPanel({ cashCollections }: { cashCollections: any[] 
               <div
                 className={`p-3 border rounded-md ${
                   data.cashOk
-                    ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800"
-                    : "bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800"
+                    ? "bg-primary/10 border-primary/20"
+                    : "bg-destructive/10 border-destructive/20"
                 }`}
                 data-testid="stat-cross-difference"
               >
                 <p className="text-xs text-muted-foreground">Diferencia</p>
-                <p className={`text-lg font-bold ${data.cashOk ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"}`}>
+                <p className={`text-lg font-bold ${data.cashOk ? "text-primary" : "text-destructive"}`}>
                   {formatRD(data.cashDifference)}
                 </p>
               </div>

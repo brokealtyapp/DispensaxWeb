@@ -271,7 +271,7 @@ export function SuppliersManagementPage() {
     }
     const status = supplier.todayRoute.status;
     if (status === "activa") {
-      return <Badge className="bg-green-500">En ruta</Badge>;
+      return <Badge className="bg-primary">En ruta</Badge>;
     }
     if (status === "inactiva") {
       return <Badge variant="outline">Inactiva</Badge>;
@@ -280,9 +280,9 @@ export function SuppliersManagementPage() {
   };
 
   const getProgressColor = (progress: number) => {
-    if (progress >= 80) return "bg-green-500";
-    if (progress >= 50) return "bg-amber-500";
-    return "bg-red-500";
+    if (progress >= 80) return "bg-primary";
+    if (progress >= 50) return "bg-muted-foreground";
+    return "bg-destructive";
   };
 
   if (isLoading) {
@@ -311,7 +311,7 @@ export function SuppliersManagementPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+          <Badge variant="outline" className="bg-primary/10 text-primary">
             <Activity className="w-3 h-3 mr-1" />
             {activeSuppliers.length} activos ahora
           </Badge>
@@ -340,12 +340,12 @@ export function SuppliersManagementPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">En Ruta Ahora</p>
-                <p className="text-2xl font-bold text-green-600" data-testid="text-active-now">
+                <p className="text-2xl font-bold text-primary" data-testid="text-active-now">
                   {totalStats.activeNow}
                 </p>
               </div>
-              <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">
-                <Navigation className="w-6 h-6 text-green-600 dark:text-green-400" />
+              <div className="p-3 bg-primary/10 rounded-full">
+                <Navigation className="w-6 h-6 text-primary" />
               </div>
             </div>
           </CardContent>
@@ -379,12 +379,12 @@ export function SuppliersManagementPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Efectivo Recolectado</p>
-                <p className="text-2xl font-bold text-green-600" data-testid="text-cash-collected">
+                <p className="text-2xl font-bold text-primary" data-testid="text-cash-collected">
                   {formatCurrency(totalStats.totalCashCollected)}
                 </p>
               </div>
-              <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">
-                <DollarSign className="w-6 h-6 text-green-600 dark:text-green-400" />
+              <div className="p-3 bg-primary/10 rounded-full">
+                <DollarSign className="w-6 h-6 text-primary" />
               </div>
             </div>
           </CardContent>
@@ -462,7 +462,7 @@ export function SuppliersManagementPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-10 w-10">
-                            <AvatarFallback className="bg-green-500 text-white">
+                            <AvatarFallback className="bg-primary text-primary-foreground">
                               {(supplier.fullName || "?").split(" ").map((n: string) => n[0]).join("").toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
@@ -493,7 +493,7 @@ export function SuppliersManagementPage() {
                           <span>{supplier.stats?.avgServiceTime || 0} min/máq</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <DollarSign className="w-4 h-4 text-green-500" />
+                          <DollarSign className="w-4 h-4 text-primary" />
                           <span>{formatCurrency(supplier.stats?.cashCollected || 0)}</span>
                         </div>
                       </div>
@@ -524,7 +524,7 @@ export function SuppliersManagementPage() {
                     <CardContent className="pt-4">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
-                          <AvatarFallback className="bg-amber-500 text-white text-xs">
+                          <AvatarFallback className="bg-muted text-muted-foreground text-xs">
                             {(supplier.fullName || "?").split(" ").map((n: string) => n[0]).join("").toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
@@ -598,7 +598,7 @@ export function SuppliersManagementPage() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          <span className="text-green-600 font-medium">
+                          <span className="text-primary font-medium">
                             {formatCurrency(supplier.stats?.cashCollected || 0)}
                           </span>
                         </TableCell>
@@ -626,7 +626,7 @@ export function SuppliersManagementPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Award className="w-5 h-5 text-amber-500" />
+                  <Award className="w-5 h-5 text-muted-foreground" />
                   Mejores del Día
                 </CardTitle>
                 <CardDescription>Abastecedores con mejor rendimiento hoy</CardDescription>
@@ -641,9 +641,9 @@ export function SuppliersManagementPage() {
                       <div key={supplier.id} className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                            index === 0 ? "bg-amber-500 text-white" :
+                            index === 0 ? "bg-muted text-muted-foreground" :
                             index === 1 ? "bg-gray-400 text-white" :
-                            index === 2 ? "bg-amber-700 text-white" :
+                            index === 2 ? "bg-muted/80 text-muted-foreground" :
                             "bg-muted text-muted-foreground"
                           }`}>
                             {index + 1}
@@ -659,7 +659,7 @@ export function SuppliersManagementPage() {
                           <span className="text-sm text-muted-foreground">
                             {supplier.stats?.machinesAttended} máquinas
                           </span>
-                          <Badge variant="outline" className="bg-green-100 text-green-700 dark:bg-green-900/30">
+                          <Badge variant="outline" className="bg-muted text-muted-foreground">
                             {formatCurrency(supplier.stats?.cashCollected || 0)}
                           </Badge>
                         </div>
@@ -687,8 +687,8 @@ export function SuppliersManagementPage() {
                       <div key={supplier.id} className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                            index === 0 ? "bg-green-500 text-white" :
-                            index === 1 ? "bg-green-400 text-white" :
+                            index === 0 ? "bg-primary text-primary-foreground" :
+                            index === 1 ? "bg-primary/80 text-primary-foreground" :
                             "bg-muted text-muted-foreground"
                           }`}>
                             {index + 1}
@@ -722,7 +722,7 @@ export function SuppliersManagementPage() {
                   <p className="text-sm text-muted-foreground">Máquinas Atendidas</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-green-600">{formatCurrency(totalStats.totalCashCollected)}</p>
+                  <p className="text-3xl font-bold text-primary">{formatCurrency(totalStats.totalCashCollected)}</p>
                   <p className="text-sm text-muted-foreground">Efectivo Total</p>
                 </div>
                 <div className="text-center">
@@ -734,7 +734,7 @@ export function SuppliersManagementPage() {
                   <p className="text-sm text-muted-foreground">Progreso General</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-amber-600">{totalStats.inactiveWithRoute}</p>
+                  <p className="text-3xl font-bold text-muted-foreground">{totalStats.inactiveWithRoute}</p>
                   <p className="text-sm text-muted-foreground">Rutas Inactivas</p>
                 </div>
               </div>

@@ -79,8 +79,8 @@ const ITEMS_PER_PAGE = 10;
 const ROLES = [
   { value: "admin", label: "Administrador", icon: Shield, color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
   { value: "supervisor", label: "Supervisor", icon: Eye, color: "bg-primary/10 text-primary" },
-  { value: "abastecedor", label: "Abastecedor", icon: Truck, color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-  { value: "almacen", label: "Almacén", icon: Package, color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
+  { value: "abastecedor", label: "Abastecedor", icon: Truck, color: "bg-muted text-muted-foreground" },
+  { value: "almacen", label: "Almacén", icon: Package, color: "bg-muted text-muted-foreground" },
   { value: "contabilidad", label: "Contabilidad", icon: Calculator, color: "bg-muted text-muted-foreground" },
   { value: "rh", label: "Recursos Humanos", icon: UserCheck, color: "bg-muted text-muted-foreground" },
 ];
@@ -484,11 +484,11 @@ export default function UsersPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-500/10">
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
+              <div className="p-2 rounded-lg bg-primary/10">
+                <CheckCircle2 className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-green-600" data-testid="text-active-users">{stats.active}</p>
+                <p className="text-2xl font-bold" data-testid="text-active-users">{stats.active}</p>
                 <p className="text-sm text-muted-foreground">Activos</p>
               </div>
             </div>
@@ -612,7 +612,7 @@ export default function UsersPage() {
                   </TableCell>
                   <TableCell className="text-center">
                     {user.isActive ? (
-                      <Badge className="bg-green-500/10 text-green-600 hover:bg-green-500/20">
+                      <Badge className="bg-primary/10 text-primary">
                         Activo
                       </Badge>
                     ) : (
@@ -646,7 +646,7 @@ export default function UsersPage() {
                         {user.isActive ? (
                           <XCircle className="h-4 w-4 text-destructive" />
                         ) : (
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          <CheckCircle2 className="h-4 w-4 text-primary" />
                         )}
                       </Button>
                       )}
@@ -1117,7 +1117,7 @@ export default function UsersPage() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleToggleStatus}
-              className={selectedUser?.isActive ? "bg-destructive" : "bg-green-600"}
+              className={selectedUser?.isActive ? "bg-destructive" : "bg-primary"}
               data-testid="button-confirm-toggle-status"
             >
               {toggleStatusMutation.isPending 

@@ -215,7 +215,7 @@ export function TenantSignupPage() {
                         )}
                         {plan.features?.map((feature, i) => (
                           <div key={i} className="flex items-center gap-2">
-                            <Check className="h-4 w-4 text-green-500" />
+                            <Check className="h-4 w-4 text-primary" />
                             <span>{feature}</span>
                           </div>
                         ))}

@@ -56,8 +56,8 @@ export function ForgotPasswordForm({ onBackToLogin }: ForgotPasswordFormProps) {
     return (
       <Card className="w-full max-w-md mx-auto">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-            <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
+          <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+            <CheckCircle className="w-8 h-8 text-primary" />
           </div>
           <CardTitle className="text-2xl">¡Email Enviado!</CardTitle>
           <CardDescription className="text-base">

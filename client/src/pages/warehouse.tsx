@@ -122,12 +122,12 @@ const movementTypeLabels: Record<string, string> = {
 };
 
 const movementTypeColors: Record<string, string> = {
-  entrada_compra: "bg-emerald-500 text-white",
+  entrada_compra: "bg-primary text-primary-foreground",
   entrada_devolucion: "bg-muted text-muted-foreground",
-  salida_abastecedor: "bg-amber-500 text-white",
+  salida_abastecedor: "bg-secondary text-secondary-foreground",
   salida_maquina: "bg-muted text-muted-foreground",
   salida_merma: "bg-destructive text-destructive-foreground",
-  salida_caducidad: "bg-orange-500 text-white",
+  salida_caducidad: "bg-destructive text-destructive-foreground",
   salida_danio: "bg-red-600 text-white",
   ajuste_inventario: "bg-muted text-muted-foreground",
   transferencia: "bg-muted text-muted-foreground",
@@ -494,7 +494,6 @@ export function WarehousePage() {
                 entryForm.setValue("lotNumber", generateLotNumber());
                 setIsEntryDialogOpen(true);
               }}
-              className="bg-emerald-600"
               data-testid="button-new-entry"
             >
               <ArrowDownCircle className="w-4 h-4 mr-2" />
@@ -505,7 +504,6 @@ export function WarehousePage() {
             <Button
               onClick={() => setIsExitDialogOpen(true)}
               variant="outline"
-              className="border-amber-500 text-amber-600"
               data-testid="button-new-exit"
             >
               <ArrowUpCircle className="w-4 h-4 mr-2" />
@@ -561,8 +559,8 @@ export function WarehousePage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-emerald-100 dark:bg-emerald-900/30">
-                <TrendingUp className="w-6 h-6 text-emerald-600" />
+              <div className="p-3 rounded-full bg-primary/10">
+                <TrendingUp className="w-6 h-6 text-primary" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Stock Total</p>
@@ -577,8 +575,8 @@ export function WarehousePage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-amber-100 dark:bg-amber-900/30">
-                <AlertTriangle className="w-6 h-6 text-amber-600" />
+              <div className="p-3 rounded-full bg-muted">
+                <AlertTriangle className="w-6 h-6 text-muted-foreground" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Stock Bajo</p>
@@ -708,7 +706,7 @@ export function WarehousePage() {
                           <TableCell className="w-32">
                             <Progress 
                               value={percentage} 
-                              className={`h-2 ${isLow ? "[&>div]:bg-destructive" : "[&>div]:bg-emerald-500"}`}
+                              className={`h-2 ${isLow ? "[&>div]:bg-destructive" : "[&>div]:bg-primary"}`}
                             />
                           </TableCell>
                           <TableCell>
@@ -718,7 +716,7 @@ export function WarehousePage() {
                                 Bajo
                               </Badge>
                             ) : (
-                              <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                              <Badge variant="secondary">
                                 OK
                               </Badge>
                             )}
@@ -733,9 +731,9 @@ export function WarehousePage() {
           </Card>
 
           {lowStock.length > 0 && (
-            <Card className="mt-6 border-amber-200 dark:border-amber-800">
+            <Card className="mt-6">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-amber-600">
+                <CardTitle className="flex items-center gap-2 text-destructive">
                   <AlertTriangle className="w-5 h-5" />
                   Alertas de Stock Bajo
                 </CardTitle>
@@ -745,7 +743,7 @@ export function WarehousePage() {
                   {lowStock.map((item) => (
                     <div
                       key={item.id}
-                      className="p-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20"
+                      className="p-4 rounded-lg border bg-destructive/5"
                       data-testid={`alert-low-stock-${item.id}`}
                     >
                       <p className="font-medium">{item.product.name}</p>
@@ -852,7 +850,7 @@ export function WarehousePage() {
                               {mov.product.name}
                             </TableCell>
                             <TableCell className="text-right">
-                              <span className={`font-mono font-medium ${isAdjustment ? "text-muted-foreground" : isEntry ? "text-emerald-600" : "text-destructive"}`}>
+                              <span className={`font-mono font-medium ${isAdjustment ? "text-muted-foreground" : isEntry ? "text-primary" : "text-destructive"}`}>
                                 {isAdjustment ? "±" : isEntry ? "+" : "-"}{mov.quantity}
                               </span>
                             </TableCell>
@@ -871,7 +869,7 @@ export function WarehousePage() {
                     </TableBody>
                   </Table>
                   {movements.length >= MOVEMENTS_API_LIMIT && (
-                    <div className="mt-3 flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2">
+                    <div className="mt-3 flex items-start gap-2 text-sm text-muted-foreground bg-muted rounded-md px-3 py-2">
                       <Info className="w-4 h-4 shrink-0 mt-0.5" />
                       <span>
                         Se muestran los últimos {MOVEMENTS_API_LIMIT} movimientos. Usa el filtro por producto para ver el historial completo de un artículo, o{" "}
@@ -944,7 +942,7 @@ export function WarehousePage() {
                               {isExpired ? (
                                 <Badge variant="destructive">Vencido</Badge>
                               ) : daysUntilExpiry && daysUntilExpiry <= 7 ? (
-                                <Badge className="bg-amber-500 text-white">
+                                <Badge variant="secondary">
                                   {daysUntilExpiry} días
                                 </Badge>
                               ) : (
@@ -1323,7 +1321,7 @@ export function WarehousePage() {
                   adjDiff === 0
                     ? "bg-muted text-muted-foreground"
                     : adjDiff > 0
-                    ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400"
+                    ? "bg-primary/10 text-primary"
                     : "bg-destructive/10 text-destructive"
                 }`} data-testid="text-adjustment-diff">
                   <span className="font-medium">Diferencia:</span>
@@ -1418,7 +1416,7 @@ export function WarehousePage() {
                 return (
                   <>
                     {!hasStock && (
-                      <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted rounded-md px-3 py-2">
                         <Info className="w-4 h-4 shrink-0" />
                         <span>No hay productos con stock disponible. Registra una entrada de compra primero.</span>
                       </div>

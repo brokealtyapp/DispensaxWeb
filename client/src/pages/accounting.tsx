@@ -271,7 +271,7 @@ export function AccountingPage() {
       header: "Tendencia",
       render: (item) =>
         item.status === "up" ? (
-          <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-500">
+          <Badge variant="secondary" className="bg-primary/10 text-primary">
             <TrendingUp className="h-3 w-3 mr-1" />
             Arriba
           </Badge>
@@ -533,10 +533,10 @@ export function AccountingPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
-                <CardTitle className="text-emerald-500">Ingresos</CardTitle>
+                <CardTitle className="text-primary">Ingresos</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-4xl font-bold text-emerald-500 mb-4" data-testid="text-total-ingresos">
+                <div className="text-4xl font-bold text-primary mb-4" data-testid="text-total-ingresos">
                   {formatCurrency(overview?.totalIngresos || 0)}
                 </div>
                 <div className="h-[200px]">
@@ -641,7 +641,7 @@ export function AccountingPage() {
                     <Card className="bg-muted/50">
                       <CardContent className="p-4">
                         <p className="text-sm text-muted-foreground">Diferencia</p>
-                        <p className={`text-2xl font-bold ${(cashCut?.diferencia || 0) < 0 ? "text-destructive" : "text-emerald-500"}`} data-testid="text-diferencia">
+                        <p className={`text-2xl font-bold ${(cashCut?.diferencia || 0) < 0 ? "text-destructive" : "text-primary"}`} data-testid="text-diferencia">
                           {(cashCut?.diferencia || 0) < 0 ? "-" : "+"}{formatCurrency(Math.abs(cashCut?.diferencia || 0))}
                         </p>
                       </CardContent>
@@ -656,7 +656,7 @@ export function AccountingPage() {
                           <div className="flex gap-4 text-sm">
                             <span>Esperado: {formatCurrency(user.esperado || 0)}</span>
                             <span>Real: {formatCurrency(user.recolectado || 0)}</span>
-                            <span className={(user.diferencia || 0) < 0 ? "text-destructive" : "text-emerald-500"}>
+                            <span className={(user.diferencia || 0) < 0 ? "text-destructive" : "text-primary"}>
                               Dif: {formatCurrency(user.diferencia || 0)}
                             </span>
                           </div>

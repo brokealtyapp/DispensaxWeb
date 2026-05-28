@@ -113,15 +113,15 @@ export function ServiceMonitoringPage() {
   const getTimelineIcon = (type: string) => {
     switch (type) {
       case "service_start":
-        return <Play className="h-3 w-3 text-emerald-500" />;
+        return <Play className="h-3 w-3 text-primary" />;
       case "product_load":
         return <Package className="h-3 w-3 text-muted-foreground" />;
       case "cash_collection":
-        return <DollarSign className="h-3 w-3 text-amber-500" />;
+        return <DollarSign className="h-3 w-3 text-muted-foreground" />;
       case "issue_report":
-        return <AlertTriangle className="h-3 w-3 text-red-500" />;
+        return <AlertTriangle className="h-3 w-3 text-destructive" />;
       case "service_end":
-        return <CheckCircle2 className="h-3 w-3 text-emerald-500" />;
+        return <CheckCircle2 className="h-3 w-3 text-primary" />;
       default:
         return <Clock className="h-3 w-3" />;
     }
@@ -161,7 +161,7 @@ export function ServiceMonitoringPage() {
         </div>
         <div className="flex items-center gap-3">
           <Badge variant="outline" className="gap-2 py-2 px-4" data-testid="badge-active-count">
-            <Activity className="h-4 w-4 text-emerald-500" />
+            <Activity className="h-4 w-4 text-primary" />
             {activeServicesData?.activeCount || 0} servicios activos
           </Badge>
           <Button
@@ -183,7 +183,7 @@ export function ServiceMonitoringPage() {
       {activeServices.length === 0 ? (
         <Card className="bg-muted/30">
           <CardContent className="p-12 text-center">
-            <CheckCircle2 className="h-16 w-16 mx-auto mb-4 text-emerald-500 opacity-50" />
+            <CheckCircle2 className="h-16 w-16 mx-auto mb-4 text-primary opacity-50" />
             <h3 className="text-lg font-medium mb-2">No hay servicios activos</h3>
             <p className="text-muted-foreground">
               Cuando los abastecedores inicien servicios en las máquinas, aparecerán aquí.
@@ -219,7 +219,7 @@ export function ServiceMonitoringPage() {
                       )}
                     </CardDescription>
                   </div>
-                  <Badge variant="default" className="bg-emerald-500 shrink-0">
+                  <Badge variant="default" className="bg-primary shrink-0">
                     <Timer className="h-3 w-3 mr-1" />
                     {formatDuration(service.duration)}
                   </Badge>
@@ -240,13 +240,13 @@ export function ServiceMonitoringPage() {
                     <p className="text-sm font-bold">{service.totalProductsLoaded}</p>
                     <p className="text-[10px] text-muted-foreground">Productos</p>
                   </div>
-                  <div className="p-2 rounded-lg bg-amber-500/10">
-                    <DollarSign className="h-4 w-4 mx-auto text-amber-500 mb-1" />
+                  <div className="p-2 rounded-lg bg-muted">
+                    <DollarSign className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
                     <p className="text-sm font-bold">{formatCurrency(service.totalCashCollected)}</p>
                     <p className="text-[10px] text-muted-foreground">Efectivo</p>
                   </div>
-                  <div className={`p-2 rounded-lg ${service.issuesReported > 0 ? "bg-red-500/10" : "bg-muted/50"}`}>
-                    <AlertTriangle className={`h-4 w-4 mx-auto mb-1 ${service.issuesReported > 0 ? "text-red-500" : "text-muted-foreground"}`} />
+                  <div className={`p-2 rounded-lg ${service.issuesReported > 0 ? "bg-destructive/10" : "bg-muted/50"}`}>
+                    <AlertTriangle className={`h-4 w-4 mx-auto mb-1 ${service.issuesReported > 0 ? "text-destructive" : "text-muted-foreground"}`} />
                     <p className="text-sm font-bold">{service.issuesReported}</p>
                     <p className="text-[10px] text-muted-foreground">Incidencias</p>
                   </div>
@@ -306,8 +306,8 @@ export function ServiceMonitoringPage() {
                 </div>
 
                 <div className="grid grid-cols-4 gap-3">
-                  <div className="p-3 rounded-lg bg-emerald-500/10 text-center">
-                    <Timer className="h-5 w-5 mx-auto text-emerald-500 mb-1" />
+                  <div className="p-3 rounded-lg bg-primary/10 text-center">
+                    <Timer className="h-5 w-5 mx-auto text-primary mb-1" />
                     <p className="text-lg font-bold">{formatDuration(serviceDetail.duration)}</p>
                     <p className="text-xs text-muted-foreground">Duración</p>
                   </div>
@@ -316,13 +316,13 @@ export function ServiceMonitoringPage() {
                     <p className="text-lg font-bold">{serviceDetail.totalProductsLoaded}</p>
                     <p className="text-xs text-muted-foreground">Productos</p>
                   </div>
-                  <div className="p-3 rounded-lg bg-amber-500/10 text-center">
-                    <DollarSign className="h-5 w-5 mx-auto text-amber-500 mb-1" />
+                  <div className="p-3 rounded-lg bg-muted text-center">
+                    <DollarSign className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
                     <p className="text-lg font-bold">{formatCurrency(serviceDetail.totalCashCollected)}</p>
                     <p className="text-xs text-muted-foreground">Efectivo</p>
                   </div>
-                  <div className={`p-3 rounded-lg text-center ${serviceDetail.issues.length > 0 ? "bg-red-500/10" : "bg-muted/50"}`}>
-                    <AlertTriangle className={`h-5 w-5 mx-auto mb-1 ${serviceDetail.issues.length > 0 ? "text-red-500" : "text-muted-foreground"}`} />
+                  <div className={`p-3 rounded-lg text-center ${serviceDetail.issues.length > 0 ? "bg-destructive/10" : "bg-muted/50"}`}>
+                    <AlertTriangle className={`h-5 w-5 mx-auto mb-1 ${serviceDetail.issues.length > 0 ? "text-destructive" : "text-muted-foreground"}`} />
                     <p className="text-lg font-bold">{serviceDetail.issues.length}</p>
                     <p className="text-xs text-muted-foreground">Incidencias</p>
                   </div>
@@ -341,10 +341,10 @@ export function ServiceMonitoringPage() {
                       {serviceDetail.checklistItems.map((item: any) => (
                         <div 
                           key={item.id} 
-                          className={`flex items-center gap-2 text-sm p-2 rounded ${item.checked ? "bg-emerald-500/10" : "bg-muted/30"}`}
+                          className={`flex items-center gap-2 text-sm p-2 rounded ${item.checked ? "bg-primary/10" : "bg-muted/30"}`}
                         >
                           {item.checked ? (
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                            <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
                           ) : (
                             <div className="h-4 w-4 rounded-full border-2 shrink-0" />
                           )}
@@ -415,9 +415,9 @@ export function ServiceMonitoringPage() {
                     <CardContent>
                       <div className="space-y-2">
                         {serviceDetail.cashCollected.map((cash: any) => (
-                          <div key={cash.id} className="flex items-center justify-between p-2 rounded-lg bg-amber-500/10">
+                          <div key={cash.id} className="flex items-center justify-between p-2 rounded-lg bg-muted">
                             <span className="text-sm">{formatTime(cash.createdAt)}</span>
-                            <span className="font-bold text-amber-600">{formatCurrency(parseFloat(cash.actualAmount || "0"))}</span>
+                            <span className="font-bold text-muted-foreground">{formatCurrency(parseFloat(cash.actualAmount || "0"))}</span>
                           </div>
                         ))}
                       </div>
@@ -426,9 +426,9 @@ export function ServiceMonitoringPage() {
                 )}
 
                 {serviceDetail.issues.length > 0 && (
-                  <Card className="border-red-500/20">
+                  <Card className="border-destructive/20">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm flex items-center gap-2 text-red-500">
+                      <CardTitle className="text-sm flex items-center gap-2 text-destructive">
                         <AlertTriangle className="h-4 w-4" />
                         Incidencias Reportadas
                       </CardTitle>
@@ -436,7 +436,7 @@ export function ServiceMonitoringPage() {
                     <CardContent>
                       <div className="space-y-2">
                         {serviceDetail.issues.map((issue: any) => (
-                          <div key={issue.id} className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                          <div key={issue.id} className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
                             <div className="flex items-center gap-2 mb-1">
                               <Badge variant={issue.priority === "critica" || issue.priority === "alta" ? "destructive" : "secondary"}>
                                 {issue.priority}
@@ -457,7 +457,7 @@ export function ServiceMonitoringPage() {
                     <span className="text-sm">Firma:</span>
                   </div>
                   {serviceDetail.hasSignature ? (
-                    <Badge className="bg-emerald-500">
+                    <Badge className="bg-primary">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       Firmado por {serviceDetail.responsibleName || "N/A"}
                     </Badge>

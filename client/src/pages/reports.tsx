@@ -140,7 +140,7 @@ function TrendIndicator({ current, previous, inverted = false }: { current: numb
   
   const { change, direction } = calculateTrend(current, previous);
   const isPositive = inverted ? direction === 'down' : direction === 'up';
-  const color = direction === 'neutral' ? 'text-muted-foreground' : isPositive ? 'text-green-600' : 'text-red-600';
+  const color = direction === 'neutral' ? 'text-muted-foreground' : isPositive ? 'text-primary' : 'text-destructive';
   const Icon = direction === 'up' ? ArrowUp : direction === 'down' ? ArrowDown : Minus;
   
   return (
@@ -455,8 +455,8 @@ export function ReportsPage() {
                       </div>
                     )}
                   </div>
-                  <div className="rounded-lg p-2 bg-green-500/10">
-                    <DollarSign className="h-6 w-6 text-green-600" />
+                  <div className="rounded-lg p-2 bg-primary/10">
+                    <DollarSign className="h-6 w-6 text-primary" />
                   </div>
                 </div>
               </CardContent>
@@ -501,8 +501,8 @@ export function ReportsPage() {
                       </div>
                     )}
                   </div>
-                  <div className="rounded-lg p-2 bg-yellow-500/10">
-                    <Fuel className="h-6 w-6 text-yellow-600" />
+                  <div className="rounded-lg p-2 bg-muted">
+                    <Fuel className="h-6 w-6 text-muted-foreground" />
                   </div>
                 </div>
               </CardContent>
@@ -573,7 +573,7 @@ export function ReportsPage() {
                     <p className="text-sm text-muted-foreground">Productos</p>
                     <p className="text-2xl font-bold">{overview?.productCount || 0}</p>
                   </div>
-                  <Package className="h-8 w-8 text-green-500 opacity-80" />
+                  <Package className="h-8 w-8 text-primary opacity-80" />
                 </div>
               </CardContent>
             </Card>
@@ -584,7 +584,7 @@ export function ReportsPage() {
                     <p className="text-sm text-muted-foreground">Alertas Stock</p>
                     <p className="text-2xl font-bold">{overview?.lowStockAlerts || 0}</p>
                   </div>
-                  <AlertTriangle className="h-8 w-8 text-yellow-500 opacity-80" />
+                  <AlertTriangle className="h-8 w-8 text-muted-foreground opacity-80" />
                 </div>
               </CardContent>
             </Card>
@@ -638,7 +638,7 @@ export function ReportsPage() {
         <Card data-testid="card-top-products">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5 text-green-500" />
+              <Package className="h-5 w-5 text-primary" />
               Productos Más Vendidos
             </CardTitle>
             <CardDescription>Top 5 por monto</CardDescription>
@@ -1476,7 +1476,7 @@ export function ReportsPage() {
                         {item.activeAlerts > 0 ? (
                           <Badge variant="destructive">{item.activeAlerts}</Badge>
                         ) : (
-                          <Badge variant="outline" className="bg-green-50 text-green-700">0</Badge>
+                          <Badge variant="outline" className="bg-muted text-muted-foreground">0</Badge>
                         )}
                       </td>
                     </tr>
@@ -1587,7 +1587,7 @@ export function ReportsPage() {
                       <td className="text-right py-3 px-2">
                         <Badge 
                           variant={item.fulfillmentRate >= 90 ? "default" : item.fulfillmentRate >= 70 ? "secondary" : "destructive"}
-                          className={item.fulfillmentRate >= 90 ? "bg-green-100 text-green-800" : ""}
+                          className={item.fulfillmentRate >= 90 ? "bg-primary/10 text-primary" : ""}
                         >
                           {item.fulfillmentRate}%
                         </Badge>
@@ -1822,7 +1822,7 @@ export function ReportsPage() {
       <Card data-testid="card-shrinkage-chart">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-yellow-500" />
+            <AlertTriangle className="h-5 w-5 text-muted-foreground" />
             Distribución por Tipo de Merma
           </CardTitle>
         </CardHeader>
@@ -1903,7 +1903,7 @@ export function ReportsPage() {
                         <Badge variant={
                           item.status === 'aprobado' ? 'default' :
                           item.status === 'rechazado' ? 'destructive' : 'secondary'
-                        } className={item.status === 'aprobado' ? 'bg-green-100 text-green-800' : ''}>
+                        } className={item.status === 'aprobado' ? 'bg-primary/10 text-primary' : ''}>
                           {item.status === 'aprobado' ? 'Aprobado' : 
                            item.status === 'rechazado' ? 'Rechazado' : 'Pendiente'}
                         </Badge>

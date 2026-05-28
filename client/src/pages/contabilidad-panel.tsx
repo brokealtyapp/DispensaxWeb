@@ -135,8 +135,8 @@ export function ContabilidadPanelPage() {
               <Card data-testid="card-stat-revenue">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center">
-                      <TrendingUp className="h-6 w-6 text-emerald-500" />
+                    <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                      <TrendingUp className="h-6 w-6 text-primary" />
                     </div>
                     <div>
                       <p className="text-xl font-bold">{formatCurrency(salesStats?.totalRevenue || 0)}</p>
@@ -160,11 +160,11 @@ export function ContabilidadPanelPage() {
                 </CardContent>
               </Card>
 
-              <Card data-testid="card-stat-pending-deposit" className={cashStats?.pendingDeposit && cashStats.pendingDeposit > 0 ? "border-amber-500/50" : ""}>
+              <Card data-testid="card-stat-pending-deposit" className={cashStats?.pendingDeposit && cashStats.pendingDeposit > 0 ? "border-muted-foreground/50" : ""}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
-                    <div className={`h-12 w-12 rounded-full flex items-center justify-center ${cashStats?.pendingDeposit && cashStats.pendingDeposit > 0 ? "bg-amber-500/10" : "bg-muted"}`}>
-                      <Building2 className={`h-6 w-6 ${cashStats?.pendingDeposit && cashStats.pendingDeposit > 0 ? "text-amber-500" : "text-muted-foreground"}`} />
+                    <div className={`h-12 w-12 rounded-full flex items-center justify-center ${cashStats?.pendingDeposit && cashStats.pendingDeposit > 0 ? "bg-muted" : "bg-muted"}`}>
+                      <Building2 className={`h-6 w-6 ${cashStats?.pendingDeposit && cashStats.pendingDeposit > 0 ? "text-muted-foreground" : "text-muted-foreground"}`} />
                     </div>
                     <div>
                       <p className="text-xl font-bold">{formatCurrency(cashStats?.pendingDeposit || 0)}</p>
@@ -196,7 +196,7 @@ export function ContabilidadPanelPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-emerald-500" />
+                  <TrendingUp className="h-5 w-5 text-primary" />
                   Máquinas con Más Ventas
                 </CardTitle>
                 <Link href="/contabilidad">
@@ -225,9 +225,9 @@ export function ContabilidadPanelPage() {
                       data-testid={`item-top-machine-${machine.machineId}`}
                     >
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                        idx === 0 ? "bg-amber-500 text-white" :
-                        idx === 1 ? "bg-gray-400 text-white" :
-                        idx === 2 ? "bg-amber-700 text-white" :
+                        idx === 0 ? "bg-muted text-muted-foreground" :
+                        idx === 1 ? "bg-muted text-muted-foreground" :
+                        idx === 2 ? "bg-muted text-muted-foreground" :
                         "bg-muted text-muted-foreground"
                       }`}>
                         {idx + 1}
@@ -235,7 +235,7 @@ export function ContabilidadPanelPage() {
                       <div className="flex-1">
                         <p className="font-medium">{machine.machineName}</p>
                       </div>
-                      <p className="font-semibold text-emerald-600">{formatCurrency(machine.total)}</p>
+                      <p className="font-semibold text-primary">{formatCurrency(machine.total)}</p>
                     </div>
                   ))}
                 </div>
@@ -247,7 +247,7 @@ export function ContabilidadPanelPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 text-amber-500" />
+                  <AlertCircle className="h-5 w-5 text-muted-foreground" />
                   Gastos Pendientes de Aprobación
                 </CardTitle>
                 <Badge variant={pendingExpenses.length > 0 ? "default" : "secondary"}>
@@ -334,7 +334,7 @@ export function ContabilidadPanelPage() {
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-emerald-600">
+                        <p className="font-semibold text-primary">
                           {formatCurrency(Number(deposit.amount))}
                         </p>
                         <Badge
@@ -360,12 +360,12 @@ export function ContabilidadPanelPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-500/10">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10">
                   <div className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-emerald-500" />
+                    <TrendingUp className="h-5 w-5 text-primary" />
                     <span>Ingresos del Mes</span>
                   </div>
-                  <span className="font-bold text-emerald-600">
+                  <span className="font-bold text-primary">
                     {formatCurrency(salesStats?.totalRevenue || 0)}
                   </span>
                 </div>
@@ -388,7 +388,7 @@ export function ContabilidadPanelPage() {
                     </div>
                     <span className={`font-bold text-lg ${
                       (salesStats?.totalRevenue || 0) - (pettyCashStats?.totalExpenses || 0) >= 0 
-                        ? "text-emerald-600" 
+                        ? "text-primary" 
                         : "text-destructive"
                     }`}>
                       {formatCurrency((salesStats?.totalRevenue || 0) - (pettyCashStats?.totalExpenses || 0))}

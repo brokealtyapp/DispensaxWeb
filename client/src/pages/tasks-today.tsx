@@ -67,28 +67,28 @@ const taskFormSchema = z.object({
 type TaskFormData = z.infer<typeof taskFormSchema>;
 
 const priorityConfig = {
-  urgente: { label: "Urgente", color: "bg-red-500 text-white", textColor: "text-red-500" },
-  alta: { label: "Alta", color: "bg-orange-500 text-white", textColor: "text-orange-500" },
-  media: { label: "Media", color: "bg-yellow-500 text-white", textColor: "text-yellow-500" },
-  baja: { label: "Baja", color: "bg-green-500 text-white", textColor: "text-green-500" },
+  urgente: { label: "Urgente", color: "bg-destructive text-destructive-foreground", textColor: "text-destructive" },
+  alta: { label: "Alta", color: "bg-muted text-muted-foreground", textColor: "text-muted-foreground" },
+  media: { label: "Media", color: "bg-muted text-muted-foreground", textColor: "text-muted-foreground" },
+  baja: { label: "Baja", color: "bg-primary text-primary-foreground", textColor: "text-primary" },
 };
 
 const statusConfig = {
-  pendiente: { label: "Pendiente", color: "bg-slate-500 text-white", icon: Circle },
+  pendiente: { label: "Pendiente", color: "bg-muted text-muted-foreground", icon: Circle },
   en_progreso: { label: "En Progreso", color: "bg-primary text-primary-foreground", icon: PlayCircle },
-  completada: { label: "Completada", color: "bg-green-500 text-white", icon: CheckCircle2 },
-  cancelada: { label: "Cancelada", color: "bg-red-500 text-white", icon: XCircle },
+  completada: { label: "Completada", color: "bg-primary text-primary-foreground", icon: CheckCircle2 },
+  cancelada: { label: "Cancelada", color: "bg-destructive text-destructive-foreground", icon: XCircle },
 };
 
 const typeConfig: Record<string, { label: string; icon: any; color: string }> = {
   abastecimiento: { label: "Abastecimiento", icon: Package, color: "bg-primary/10 text-primary" },
-  mantenimiento: { label: "Mantenimiento", icon: Wrench, color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-  recoleccion: { label: "Recolección", icon: Truck, color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+  mantenimiento: { label: "Mantenimiento", icon: Wrench, color: "bg-muted text-muted-foreground" },
+  recoleccion: { label: "Recolección", icon: Truck, color: "bg-primary/10 text-primary" },
   revision: { label: "Revisión", icon: ClipboardList, color: "bg-muted text-muted-foreground" },
   limpieza: { label: "Limpieza", icon: Sparkles, color: "bg-muted text-muted-foreground" },
-  reparacion: { label: "Reparación", icon: Wrench, color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+  reparacion: { label: "Reparación", icon: Wrench, color: "bg-destructive/10 text-destructive" },
   reunion: { label: "Reunión", icon: Users, color: "bg-muted text-muted-foreground" },
-  otro: { label: "Otro", icon: Coffee, color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400" },
+  otro: { label: "Otro", icon: Coffee, color: "bg-muted text-muted-foreground" },
 };
 
 export function TasksTodayPage() {
@@ -240,7 +240,7 @@ export function TasksTodayPage() {
               }}
               className={`mt-1 h-6 w-6 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 ${
                 task.status === "completada" 
-                  ? "bg-green-500 border-green-500 text-white" 
+                  ? "bg-primary border-primary text-primary-foreground" 
                   : task.status === "en_progreso"
                   ? "bg-primary border-primary text-primary-foreground"
                   : "border-muted-foreground/30 hover:border-primary"
@@ -269,7 +269,7 @@ export function TasksTodayPage() {
                   {(task.priority === "urgente" || task.priority === "alta") && (
                     <Badge
                       variant="secondary"
-                      className={task.priority === "urgente" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}
+                      className={task.priority === "urgente" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}
                     >
                       {task.priority === "urgente" ? "Urgente" : "Alta"}
                     </Badge>
@@ -433,8 +433,8 @@ export function TasksTodayPage() {
             {urgentTasks.length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 text-red-500" />
-                  <h2 className="text-lg font-semibold text-red-500">Urgente ({urgentTasks.length})</h2>
+                  <AlertCircle className="h-5 w-5 text-destructive" />
+                  <h2 className="text-lg font-semibold text-destructive">Urgente ({urgentTasks.length})</h2>
                 </div>
                 <div className="space-y-2">
                   {urgentTasks.map((task) => (
@@ -447,8 +447,8 @@ export function TasksTodayPage() {
             {highTasks.length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Flag className="h-5 w-5 text-orange-500" />
-                  <h2 className="text-lg font-semibold text-orange-500">Prioridad Alta ({highTasks.length})</h2>
+                  <Flag className="h-5 w-5 text-muted-foreground" />
+                  <h2 className="text-lg font-semibold text-muted-foreground">Prioridad Alta ({highTasks.length})</h2>
                 </div>
                 <div className="space-y-2">
                   {highTasks.map((task) => (
@@ -498,7 +498,7 @@ export function TasksTodayPage() {
                       <CardContent className="p-4">
                         <div className="flex items-center gap-4">
                           <div className={`h-6 w-6 rounded-full flex items-center justify-center ${
-                            isCompleted ? "bg-green-500 text-white" : "bg-red-500 text-white"
+                            isCompleted ? "bg-primary text-primary-foreground" : "bg-destructive text-destructive-foreground"
                           }`}>
                             {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
                           </div>

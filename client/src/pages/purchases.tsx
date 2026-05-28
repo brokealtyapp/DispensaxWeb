@@ -399,11 +399,11 @@ export default function PurchasesPage() {
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, { class: string; label: string }> = {
-      borrador: { class: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200", label: "Borrador" },
+      borrador: { class: "bg-muted text-muted-foreground", label: "Borrador" },
       enviada: { class: "bg-primary/10 text-primary", label: "Enviada" },
-      parcialmente_recibida: { class: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200", label: "Parcial" },
-      recibida: { class: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200", label: "Recibida" },
-      cancelada: { class: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200", label: "Cancelada" },
+      parcialmente_recibida: { class: "bg-muted text-muted-foreground", label: "Parcial" },
+      recibida: { class: "bg-primary/10 text-primary", label: "Recibida" },
+      cancelada: { class: "bg-destructive/10 text-destructive", label: "Cancelada" },
     };
     const style = styles[status] || styles.borrador;
     return <Badge className={style.class} data-testid={`badge-status-${status}`}>{style.label}</Badge>;
@@ -484,10 +484,10 @@ export default function PurchasesPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Stock Bajo</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-yellow-500" />
+            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600" data-testid="text-low-stock">{lowStockProducts?.length || 0}</div>
+            <div className="text-2xl font-bold text-muted-foreground" data-testid="text-low-stock">{lowStockProducts?.length || 0}</div>
             <p className="text-xs text-muted-foreground">Productos por reabastecer</p>
           </CardContent>
         </Card>
@@ -677,7 +677,7 @@ export default function PurchasesPage() {
                           </Button>
                           {canApprove("purchase_orders") && (order.status === "enviada" || order.status === "parcialmente_recibida") && (
                             <Button variant="ghost" size="icon" onClick={() => handleReceiveOrder(order)} data-testid={`button-receive-${order.id}`}>
-                              <PackageOpen className="h-4 w-4 text-green-600" />
+                              <PackageOpen className="h-4 w-4 text-primary" />
                             </Button>
                           )}
                         </div>
@@ -744,7 +744,7 @@ export default function PurchasesPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                  <AlertTriangle className="h-5 w-5 text-muted-foreground" />
                   Productos con Stock Bajo
                 </CardTitle>
                 <CardDescription>Estos productos necesitan ser reabastecidos</CardDescription>

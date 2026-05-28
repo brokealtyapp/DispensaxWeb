@@ -198,10 +198,10 @@ export function SupervisorsPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "operando": return "bg-green-500";
-      case "necesita_servicio": return "bg-yellow-500";
-      case "fuera_de_linea": return "bg-red-500";
-      case "vacia": return "bg-orange-500";
+      case "operando": return "bg-primary";
+      case "necesita_servicio": return "bg-muted";
+      case "fuera_de_linea": return "bg-destructive";
+      case "vacia": return "bg-muted";
       default: return "bg-gray-500";
     }
   };
@@ -281,8 +281,8 @@ export function SupervisorsPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-500/10">
-                <UserCheck className="h-5 w-5 text-green-500" />
+              <div className="p-2 rounded-lg bg-primary/10">
+                <UserCheck className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <p className="text-2xl font-bold" data-testid="text-active-supervisors">
@@ -311,8 +311,8 @@ export function SupervisorsPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-orange-500/10">
-                <BarChart3 className="h-5 w-5 text-orange-500" />
+              <div className="p-2 rounded-lg bg-muted">
+                <BarChart3 className="h-5 w-5 text-muted-foreground" />
               </div>
               <div>
                 <p className="text-2xl font-bold" data-testid="text-avg-operativity">
@@ -441,7 +441,7 @@ export function SupervisorsPage() {
                           {supervisor.metrics.pendingAlerts}
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="gap-1 text-green-600">
+                        <Badge variant="outline" className="gap-1 text-primary">
                           <CheckCircle2 className="h-3 w-3" />
                           0
                         </Badge>
@@ -454,7 +454,7 @@ export function SupervisorsPage() {
                     </TableCell>
                     <TableCell className="text-center">
                       {supervisor.isActive ? (
-                        <Badge className="bg-green-500/10 text-green-600 no-default-hover-elevate">
+                        <Badge className="bg-primary/10 text-primary no-default-hover-elevate">
                           Activo
                         </Badge>
                       ) : (
@@ -527,9 +527,9 @@ export function SupervisorsPage() {
                     data-testid={`ranking-supervisor-${supervisor.id}`}
                   >
                     <div className={`flex items-center justify-center w-10 h-10 rounded-full font-bold text-lg ${
-                      supervisor.rank === 1 ? "bg-yellow-500 text-white" :
-                      supervisor.rank === 2 ? "bg-gray-300 text-gray-800" :
-                      supervisor.rank === 3 ? "bg-orange-400 text-white" :
+                      supervisor.rank === 1 ? "bg-primary text-primary-foreground" :
+                      supervisor.rank === 2 ? "bg-secondary text-secondary-foreground" :
+                      supervisor.rank === 3 ? "bg-muted text-muted-foreground" :
                       "bg-muted text-muted-foreground"
                     }`}>
                       {supervisor.rank}
@@ -551,19 +551,19 @@ export function SupervisorsPage() {
                         <p className="text-xs text-muted-foreground">Operatividad</p>
                       </div>
                       <div>
-                        <p className="text-lg font-bold text-green-600">{supervisor.metrics.completionRate}%</p>
+                        <p className="text-lg font-bold text-primary">{supervisor.metrics.completionRate}%</p>
                         <p className="text-xs text-muted-foreground">Tareas</p>
                       </div>
                       <div>
-                        <p className="text-lg font-bold text-orange-600">{supervisor.metrics.pendingAlerts}</p>
+                        <p className="text-lg font-bold text-muted-foreground">{supervisor.metrics.pendingAlerts}</p>
                         <p className="text-xs text-muted-foreground">Alertas</p>
                       </div>
                     </div>
                     <div className="w-20 text-center">
                       <div className={`text-2xl font-bold ${
-                        supervisor.score >= 80 ? "text-green-600" :
-                        supervisor.score >= 60 ? "text-yellow-600" :
-                        "text-red-600"
+                        supervisor.score >= 80 ? "text-primary" :
+                        supervisor.score >= 60 ? "text-muted-foreground" :
+                        "text-destructive"
                       }`}>
                         {supervisor.score}
                       </div>
@@ -635,7 +635,7 @@ export function SupervisorsPage() {
                   </Card>
                   <Card>
                     <CardContent className="p-4 text-center">
-                      <p className="text-2xl font-bold text-green-600">
+                      <p className="text-2xl font-bold text-primary">
                         {supervisorDetail.metrics.operativityRate}%
                       </p>
                       <p className="text-sm text-muted-foreground">Operatividad</p>
@@ -651,7 +651,7 @@ export function SupervisorsPage() {
                   </Card>
                   <Card>
                     <CardContent className="p-4 text-center">
-                      <p className="text-2xl font-bold text-orange-600">
+                      <p className="text-2xl font-bold text-muted-foreground">
                         {supervisorDetail.metrics.pendingAlerts}
                       </p>
                       <p className="text-sm text-muted-foreground">Alertas Pendientes</p>
@@ -769,7 +769,7 @@ export function SupervisorsPage() {
                               <p className="font-medium">{abastecedor.fullName || "Sin nombre"}</p>
                             </div>
                             {abastecedor.isActive ? (
-                              <Badge className="bg-green-500/10 text-green-600 no-default-hover-elevate">Activo</Badge>
+                      <Badge className="bg-primary/10 text-primary no-default-hover-elevate">Activo</Badge>
                             ) : (
                               <Badge variant="secondary">Inactivo</Badge>
                             )}
@@ -786,7 +786,7 @@ export function SupervisorsPage() {
                   <CardContent className="p-4">
                     {supervisorDetail.alerts.length === 0 ? (
                       <div className="text-center py-8">
-                        <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-4" />
+                        <CheckCircle2 className="h-12 w-12 mx-auto text-primary mb-4" />
                         <p className="text-muted-foreground">No hay alertas pendientes</p>
                       </div>
                     ) : (
@@ -798,7 +798,7 @@ export function SupervisorsPage() {
                           >
                             <div className="flex items-center gap-3">
                               <AlertTriangle className={`h-4 w-4 ${
-                                alert.priority === "critica" ? "text-red-500" : "text-yellow-500"
+                                alert.priority === "critica" ? "text-destructive" : "text-muted-foreground"
                               }`} />
                               <div>
                                 <p className="font-medium text-sm">{alert.type}</p>
@@ -834,7 +834,7 @@ export function SupervisorsPage() {
                           >
                             <div className="flex items-center gap-3">
                               {task.status === "completada" ? (
-                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                <CheckCircle2 className="h-4 w-4 text-primary" />
                               ) : task.status === "en_progreso" ? (
                                 <Clock className="h-4 w-4 text-primary" />
                               ) : (

@@ -25,15 +25,15 @@ const alertIcons: Record<AlertType, LucideIcon> = {
 };
 
 const alertColors: Record<AlertType, string> = {
-  producto: "text-amber-500 bg-amber-500/10",
+  producto: "text-muted-foreground bg-muted",
   falla: "text-destructive bg-destructive/10",
-  dinero: "text-emerald-500 bg-emerald-500/10",
+  dinero: "text-primary bg-primary/10",
   mantenimiento: "text-primary bg-primary/10",
 };
 
 const priorityColors: Record<AlertPriority, string> = {
   alta: "bg-destructive text-destructive-foreground",
-  media: "bg-amber-500 text-white",
+  media: "bg-secondary text-secondary-foreground",
   baja: "bg-muted text-muted-foreground",
 };
 
