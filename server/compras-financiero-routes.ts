@@ -265,11 +265,16 @@ export function registerComprasFinancieroRoutes(app: Express) {
         const tenantId = (req as AuthenticatedRequest).user?.tenantId ?? null;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
 
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
         const rows = await db
           .select({
             status: supplierInvoices.status,
             totalAmount: supplierInvoices.totalAmount,
             paidAmount: supplierInvoices.paidAmount,
+            updatedAt: supplierInvoices.updatedAt,
           })
           .from(supplierInvoices)
           .where(and(
@@ -277,10 +282,21 @@ export function registerComprasFinancieroRoutes(app: Express) {
             sql`${supplierInvoices.status} != 'anulada'`
           ));
 
+        // pagadoEsteMes: facturas cuyo paidAmount > 0 y fueron actualizadas este mes
+        // (proxy: updatedAt en el mes actual y status pagada/parcial)
+        const pagadoEsteMes = rows
+          .filter(r => {
+            if (!r.updatedAt) return false;
+            const upd = new Date(r.updatedAt);
+            return upd >= startOfMonth && upd <= endOfMonth && parseDecimal(r.paidAmount) > 0;
+          })
+          .reduce((s, r) => s + parseDecimal(r.paidAmount), 0);
+
         const stats = {
           totalFacturas: rows.length,
           totalMonto: rows.reduce((s, r) => s + parseDecimal(r.totalAmount), 0),
           totalPagado: rows.reduce((s, r) => s + parseDecimal(r.paidAmount), 0),
+          pagadoEsteMes,
           totalPendiente: rows
             .filter(r => r.status !== "pagada")
             .reduce((s, r) => s + (parseDecimal(r.totalAmount) - parseDecimal(r.paidAmount)), 0),

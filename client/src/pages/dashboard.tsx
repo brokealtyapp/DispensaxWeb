@@ -258,6 +258,7 @@ export function DashboardPage() {
     totalFacturas: number;
     totalMonto: number;
     totalPagado: number;
+    pagadoEsteMes: number;
     totalPendiente: number;
     porStatus: {
       borrador: number;
@@ -1034,8 +1035,8 @@ export function DashboardPage() {
                       )}
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Total pagado</span>
-                      <span className="font-medium text-primary">{formatCurrency(facturasStats?.totalPagado ?? 0)}</span>
+                      <span className="text-muted-foreground">Pagado este mes</span>
+                      <span className="font-medium text-primary">{formatCurrency(facturasStats?.pagadoEsteMes ?? 0)}</span>
                     </div>
                   </div>
                 </CardContent>
