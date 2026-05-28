@@ -33,7 +33,7 @@ import {
   Calendar, Clock, CheckCircle2, XCircle, Play, Truck,
   ChevronUp, ChevronDown, Settings, ArrowRight, Bell, 
   Shield, AlertTriangle, Timer, GripVertical, History,
-  Layers, Save, RefreshCw, ChevronRight, Info, LayoutGrid
+  Layers, Save, RefreshCw, ChevronRight, Info, LayoutGrid, ClipboardList, ExternalLink
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -94,6 +94,18 @@ interface RouteStage {
   alertOnSlaWarning?: boolean;
   alertOnSlaExpired?: boolean;
   createdAt?: string;
+}
+
+interface RouteWorkOrder {
+  id: string;
+  orderNumber: string;
+  machineId: string;
+  type: string;
+  priority: string;
+  status: string;
+  assignedUserId: string | null;
+  description: string | null;
+  createdAt: string;
 }
 
 interface RouteStageLogEntry {
@@ -810,6 +822,15 @@ export default function RoutesPage() {
   const { data: stageLog = [], isLoading: stageLogLoading } = useQuery<RouteStageLogEntry[]>({
     queryKey: ["/api/supplier/routes", selectedRoute?.id, "stage-log"],
     enabled: !!selectedRoute?.id && isStageLogOpen,
+  });
+
+  const { data: routeWorkOrders = [], isLoading: routeWorkOrdersLoading } = useQuery<RouteWorkOrder[]>({
+    queryKey: ["/api/work-orders", { routeId: selectedRoute?.id }],
+    enabled: !!selectedRoute?.id && isRouteDetailOpen,
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/work-orders?routeId=${selectedRoute!.id}`);
+      return res.json();
+    },
   });
 
   const { data: quickStageLog = [], isLoading: quickStageLogLoading } = useQuery<RouteStageLogEntry[]>({
@@ -2606,6 +2627,74 @@ export default function RoutesPage() {
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
                             )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Sección de Órdenes de Trabajo vinculadas */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4" />
+                    Órdenes de Trabajo ({routeWorkOrders.length})
+                  </h4>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1"
+                    onClick={() => { setIsRouteDetailOpen(false); setLocation("/work-orders"); }}
+                    data-testid="button-view-all-route-work-orders"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Ver módulo
+                  </Button>
+                </div>
+                {routeWorkOrdersLoading ? (
+                  <div className="space-y-2">
+                    {[...Array(2)].map((_, i) => (
+                      <Skeleton key={i} className="h-14" />
+                    ))}
+                  </div>
+                ) : routeWorkOrders.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground text-sm">
+                    No hay órdenes de trabajo vinculadas a esta ruta
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {routeWorkOrders.map((order) => {
+                      const machine = machines.find(m => m.id === order.machineId);
+                      const allUsers = [...abastecedores, ...supervisores, ...admins];
+                      const assignee = allUsers.find(u => u.id === order.assignedUserId);
+                      return (
+                        <div
+                          key={order.id}
+                          className="flex items-center justify-between p-3 rounded-lg border bg-muted/30 hover-elevate cursor-pointer"
+                          onClick={() => { setIsRouteDetailOpen(false); setLocation("/work-orders"); }}
+                          data-testid={`route-work-order-${order.id}`}
+                        >
+                          <div className="flex flex-col gap-0.5 min-w-0">
+                            <span className="font-semibold text-sm" data-testid={`text-route-wo-number-${order.id}`}>
+                              {order.orderNumber}
+                            </span>
+                            <span className="text-xs text-muted-foreground truncate">
+                              {machine ? machine.name : order.machineId}
+                            </span>
+                            {assignee && (
+                              <span className="text-xs text-muted-foreground">
+                                Asignado: {assignee.fullName || assignee.username}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <Badge variant="outline" className="text-xs capitalize" data-testid={`badge-route-wo-status-${order.id}`}>
+                              {order.status.replace(/_/g, " ")}
+                            </Badge>
                           </div>
                         </div>
                       );

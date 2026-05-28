@@ -2621,7 +2621,7 @@ export function WorkOrdersPage() {
     queryKey: ["/api/machines"],
   });
 
-  const { data: routesData } = useQuery<{ data: RouteBasic[] }>({
+  const { data: availableRoutesData } = useQuery<{ data: RouteBasic[] }>({
     queryKey: ["/api/supplier/routes", { pageSize: 200 }],
     queryFn: async () => {
       const token = await getAccessToken();
@@ -2633,7 +2633,7 @@ export function WorkOrdersPage() {
     },
     staleTime: 30000,
   });
-  const availableRoutes = routesData?.data ?? [];
+  const availableRoutes = availableRoutesData?.data ?? [];
   const routesList = availableRoutes;
 
   const { data: users = [] } = useQuery<UserInfo[]>({
