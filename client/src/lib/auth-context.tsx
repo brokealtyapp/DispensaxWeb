@@ -286,7 +286,7 @@ export function getRoleDefaultRoute(role: UserRole, isSuperAdmin?: boolean): str
 export function canAccessRoute(role: UserRole, route: string, isSuperAdmin?: boolean): boolean {
   const adminRoutes = ["/", "/maquinas", "/planogramas", "/tareas", "/todas-tareas", "/calendario", "/almacen", "/almacen-panel",
     "/abastecedor", "/abastecedores", "/dinero-productos", "/compras", "/combustible", "/contabilidad", "/contabilidad-panel",
-    "/caja-chica", "/rh", "/reportes", "/configuracion", "/supervisor", "/productos", "/supervisores", "/usuarios", "/rutas", "/monitoreo-servicios", "/visores", "/nayax", "/establecimientos", "/ordenes-trabajo", "/bancos", "/egresos"];
+    "/caja-chica", "/rh", "/reportes", "/configuracion", "/supervisor", "/productos", "/supervisores", "/usuarios", "/rutas", "/monitoreo-servicios", "/visores", "/nayax", "/establecimientos", "/ordenes-trabajo", "/bancos", "/egresos", "/ingresos"];
   
   const superAdminRoutes = ["/super-admin", "/super-admin/tenants", "/super-admin/plans", "/super-admin/metrics"];
   
@@ -297,7 +297,7 @@ export function canAccessRoute(role: UserRole, route: string, isSuperAdmin?: boo
   
   const almacenRoutes = ["/almacen", "/almacen-panel", "/compras", "/tareas", "/calendario", "/configuracion", "/productos"];
   
-  const contabilidadRoutes = ["/contabilidad", "/contabilidad-panel", "/caja-chica", "/dinero-productos", "/nayax", "/tareas", "/calendario", "/configuracion", "/bancos", "/egresos"];
+  const contabilidadRoutes = ["/contabilidad", "/contabilidad-panel", "/caja-chica", "/dinero-productos", "/nayax", "/tareas", "/calendario", "/configuracion", "/bancos", "/egresos", "/ingresos"];
   
   const rhRoutes = ["/rh", "/tareas", "/mis-tareas", "/calendario", "/configuracion"];
 

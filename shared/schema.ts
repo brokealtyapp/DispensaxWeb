@@ -3307,3 +3307,102 @@ export const egresosRegistrosRelations = relations(egresosRegistros, ({ one }) =
 }));
 
 // ==================== FIN MÓDULO EGRESOS ====================
+
+// ==================== MÓDULO INGRESOS ====================
+
+export const ingresosCategorias = pgTable("ingresos_categorias", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  nombre: text("nombre").notNull(),
+  color: text("color").default("#E84545"),
+  icono: text("icono").default("DollarSign"),
+  metaMensual: decimal("meta_mensual", { precision: 15, scale: 2 }),
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertIngresoCategoriaSchema = createInsertSchema(ingresosCategorias).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertIngresoCategoria = z.infer<typeof insertIngresoCategoriaSchema>;
+export type IngresoCategoria = typeof ingresosCategorias.$inferSelect;
+
+export const ingresosFijos = pgTable("ingresos_fijos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  nombre: text("nombre").notNull(),
+  categoriaId: varchar("categoria_id").references(() => ingresosCategorias.id),
+  montoEsperado: decimal("monto_esperado", { precision: 15, scale: 2 }).notNull(),
+  moneda: text("moneda").default("DOP"),
+  frecuencia: text("frecuencia").notNull().default("mensual"),
+  diaDelMes: integer("dia_del_mes"),
+  fechaInicio: timestamp("fecha_inicio").notNull(),
+  fechaFin: timestamp("fecha_fin"),
+  proximaFecha: timestamp("proxima_fecha"),
+  cuentaBancariaId: varchar("cuenta_bancaria_id").references(() => bankAccounts.id),
+  metodoCobro: text("metodo_cobro").default("transferencia"),
+  alertDiasPrevios: integer("alert_dias_previos").default(3),
+  isActive: boolean("is_active").default(true),
+  notas: text("notas"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertIngresoFijoSchema = createInsertSchema(ingresosFijos).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertIngresoFijo = z.infer<typeof insertIngresoFijoSchema>;
+export type IngresoFijo = typeof ingresosFijos.$inferSelect;
+
+export const ingresosRegistros = pgTable("ingresos_registros", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  fijoId: varchar("fijo_id").references(() => ingresosFijos.id),
+  categoriaId: varchar("categoria_id").references(() => ingresosCategorias.id),
+  monto: decimal("monto", { precision: 15, scale: 2 }).notNull(),
+  moneda: text("moneda").default("DOP"),
+  fecha: timestamp("fecha").notNull().defaultNow(),
+  metodoCobro: text("metodo_cobro").default("transferencia"),
+  cuentaBancariaId: varchar("cuenta_bancaria_id").references(() => bankAccounts.id),
+  descripcion: text("descripcion").notNull(),
+  notas: text("notas"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertIngresoRegistroSchema = createInsertSchema(ingresosRegistros).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertIngresoRegistro = z.infer<typeof insertIngresoRegistroSchema>;
+export type IngresoRegistro = typeof ingresosRegistros.$inferSelect;
+
+export const ingresosCategoriasRelations = relations(ingresosCategorias, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [ingresosCategorias.tenantId], references: [tenants.id] }),
+  fijos: many(ingresosFijos),
+  registros: many(ingresosRegistros),
+}));
+
+export const ingresosFijosRelations = relations(ingresosFijos, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [ingresosFijos.tenantId], references: [tenants.id] }),
+  categoria: one(ingresosCategorias, { fields: [ingresosFijos.categoriaId], references: [ingresosCategorias.id] }),
+  cuentaBancaria: one(bankAccounts, { fields: [ingresosFijos.cuentaBancariaId], references: [bankAccounts.id] }),
+  registros: many(ingresosRegistros),
+}));
+
+export const ingresosRegistrosRelations = relations(ingresosRegistros, ({ one }) => ({
+  tenant: one(tenants, { fields: [ingresosRegistros.tenantId], references: [tenants.id] }),
+  fijo: one(ingresosFijos, { fields: [ingresosRegistros.fijoId], references: [ingresosFijos.id] }),
+  categoria: one(ingresosCategorias, { fields: [ingresosRegistros.categoriaId], references: [ingresosCategorias.id] }),
+  cuentaBancaria: one(bankAccounts, { fields: [ingresosRegistros.cuentaBancariaId], references: [bankAccounts.id] }),
+  createdByUser: one(users, { fields: [ingresosRegistros.createdBy], references: [users.id] }),
+}));
+
+// ==================== FIN MÓDULO INGRESOS ====================
