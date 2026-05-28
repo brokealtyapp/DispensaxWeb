@@ -54,6 +54,7 @@ import { NayaxPage } from "@/pages/nayax";
 import { ViewerDashboardPage } from "@/pages/viewer-dashboard";
 import { EstablishmentsPage } from "@/pages/establishments";
 import { WorkOrdersPage } from "@/pages/work-orders";
+import { BancosPage } from "@/pages/bancos";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
@@ -333,6 +334,7 @@ function TenantLayout() {
               <Route path="/visores">{() => <ProtectedRoute path="/visores" component={EstablishmentViewersPage} />}</Route>
               <Route path="/establecimientos">{() => <ProtectedRoute path="/establecimientos" component={EstablishmentsPage} />}</Route>
               <Route path="/ordenes-trabajo">{() => <ProtectedRoute path="/ordenes-trabajo" component={WorkOrdersPage} />}</Route>
+              <Route path="/bancos">{() => <ProtectedRoute path="/bancos" component={BancosPage} />}</Route>
               <Route path="/mi-panel">{() => <ProtectedRoute path="/mi-panel" component={ViewerDashboardPage} />}</Route>
               <Route component={NotFound} />
             </Switch>

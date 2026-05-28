@@ -3131,3 +3131,76 @@ export const workOrderStageLog = pgTable("work_order_stage_log", {
 export const insertWorkOrderStageLogSchema = createInsertSchema(workOrderStageLog).omit({ id: true });
 export type InsertWorkOrderStageLog = z.infer<typeof insertWorkOrderStageLogSchema>;
 export type WorkOrderStageLog = typeof workOrderStageLog.$inferSelect;
+
+// ==================== MÓDULO BANCOS ====================
+
+export const bankAccounts = pgTable("bank_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  name: text("name").notNull(),
+  bankName: text("bank_name"),
+  accountType: text("account_type").notNull().default("banco"),
+  accountSubtype: text("account_subtype").default("corriente"),
+  currency: text("currency").default("DOP"),
+  accountNumber: text("account_number"),
+  maskedNumber: text("masked_number"),
+  balance: decimal("balance", { precision: 15, scale: 2 }).default("0"),
+  creditLimit: decimal("credit_limit", { precision: 15, scale: 2 }),
+  statementClosingDay: integer("statement_closing_day"),
+  paymentDueDay: integer("payment_due_day"),
+  alertThreshold: decimal("alert_threshold", { precision: 15, scale: 2 }),
+  isActive: boolean("is_active").default(true),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBankAccountSchema = createInsertSchema(bankAccounts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertBankAccount = z.infer<typeof insertBankAccountSchema>;
+export type BankAccount = typeof bankAccounts.$inferSelect;
+
+export const bankTransactions = pgTable("bank_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  bankAccountId: varchar("bank_account_id").notNull().references(() => bankAccounts.id),
+  type: text("type").notNull(),
+  amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
+  description: text("description").notNull(),
+  reference: text("reference"),
+  date: timestamp("date").notNull().defaultNow(),
+  status: text("status").default("pending"),
+  isReconciled: boolean("is_reconciled").default(false),
+  reconciledAt: timestamp("reconciled_at"),
+  source: text("source").default("manual"),
+  transferAccountId: varchar("transfer_account_id").references(() => bankAccounts.id),
+  category: text("category"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBankTransactionSchema = createInsertSchema(bankTransactions).omit({
+  id: true,
+  createdAt: true,
+  isReconciled: true,
+  reconciledAt: true,
+});
+
+export type InsertBankTransaction = z.infer<typeof insertBankTransactionSchema>;
+export type BankTransaction = typeof bankTransactions.$inferSelect;
+
+export const bankAccountsRelations = relations(bankAccounts, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [bankAccounts.tenantId], references: [tenants.id] }),
+  transactions: many(bankTransactions),
+}));
+
+export const bankTransactionsRelations = relations(bankTransactions, ({ one }) => ({
+  tenant: one(tenants, { fields: [bankTransactions.tenantId], references: [tenants.id] }),
+  bankAccount: one(bankAccounts, { fields: [bankTransactions.bankAccountId], references: [bankAccounts.id] }),
+  transferAccount: one(bankAccounts, { fields: [bankTransactions.transferAccountId], references: [bankAccounts.id] }),
+  createdByUser: one(users, { fields: [bankTransactions.createdBy], references: [users.id] }),
+}));

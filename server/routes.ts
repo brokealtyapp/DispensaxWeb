@@ -129,6 +129,10 @@ import {
   insertRouteModuleAlertConfigSchema,
   routeStages as routeStagesTable,
   routeActionPermissions as routeActionPermissionsTable,
+  bankAccounts as bankAccountsTable,
+  bankTransactions as bankTransactionsTable,
+  insertBankAccountSchema,
+  insertBankTransactionSchema,
 } from "@shared/schema";
 import { z, ZodError } from "zod";
 import { getNayaxToken, getAllNayaxMachines, getNayaxMachineLastSales, testNayaxConnection, enqueueLaneChangeForNayax, syncNayaxSalesForTenant, categorizePaymentMethod } from "./nayax";
@@ -13801,6 +13805,495 @@ export async function registerRoutes(
       res.status(500).json({ error: error?.message || "Error al exportar reporte" });
     }
   });
+
+  // ==========================================
+  // MÓDULO BANCOS — Cuentas Bancarias
+  // ==========================================
+
+  // GET /api/bank-accounts — listar cuentas del tenant
+  app.get("/api/bank-accounts", authenticateJWT, requireTenant, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const accts = await db
+        .select()
+        .from(bankAccountsTable)
+        .where(and(eq(bankAccountsTable.tenantId, tenantId), eq(bankAccountsTable.isActive, true)))
+        .orderBy(asc(bankAccountsTable.createdAt));
+      res.json(accts);
+    } catch (e: any) {
+      console.error("GET /api/bank-accounts:", e);
+      res.status(500).json({ error: "Error al obtener cuentas bancarias" });
+    }
+  });
+
+  // GET /api/bank-accounts/summary — KPIs + flujo de caja últimos 30 días
+  app.get("/api/bank-accounts/summary", authenticateJWT, requireTenant, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      const [monthIncome] = await db
+        .select({ total: sql<string>`coalesce(sum(${bankTransactionsTable.amount}), 0)` })
+        .from(bankTransactionsTable)
+        .where(and(
+          eq(bankTransactionsTable.tenantId, tenantId),
+          eq(bankTransactionsTable.type, "entrada"),
+          gte(bankTransactionsTable.date, startOfMonth),
+        ));
+
+      const [monthExpense] = await db
+        .select({ total: sql<string>`coalesce(sum(${bankTransactionsTable.amount}), 0)` })
+        .from(bankTransactionsTable)
+        .where(and(
+          eq(bankTransactionsTable.tenantId, tenantId),
+          eq(bankTransactionsTable.type, "salida"),
+          gte(bankTransactionsTable.date, startOfMonth),
+        ));
+
+      const cashFlowRaw = await db
+        .select({
+          date: sql<string>`to_char(${bankTransactionsTable.date}, 'DD/MM')`,
+          type: bankTransactionsTable.type,
+          total: sql<string>`coalesce(sum(${bankTransactionsTable.amount}), 0)`,
+        })
+        .from(bankTransactionsTable)
+        .where(and(
+          eq(bankTransactionsTable.tenantId, tenantId),
+          gte(bankTransactionsTable.date, thirtyDaysAgo),
+        ))
+        .groupBy(sql`to_char(${bankTransactionsTable.date}, 'DD/MM')`, bankTransactionsTable.type)
+        .orderBy(sql`to_char(${bankTransactionsTable.date}, 'DD/MM')`);
+
+      const cashFlowMap: Record<string, { date: string; entradas: number; salidas: number }> = {};
+      for (const row of cashFlowRaw) {
+        if (!cashFlowMap[row.date]) cashFlowMap[row.date] = { date: row.date, entradas: 0, salidas: 0 };
+        if (row.type === "entrada") cashFlowMap[row.date].entradas += Number(row.total);
+        else cashFlowMap[row.date].salidas += Number(row.total);
+      }
+
+      res.json({
+        monthIncome: Number(monthIncome?.total ?? 0),
+        monthExpense: Number(monthExpense?.total ?? 0),
+        cashFlow: Object.values(cashFlowMap),
+      });
+    } catch (e: any) {
+      console.error("GET /api/bank-accounts/summary:", e);
+      res.status(500).json({ error: "Error al obtener resumen" });
+    }
+  });
+
+  // GET /api/bank-accounts/reconciliation — transacciones processed pendientes de conciliar
+  app.get("/api/bank-accounts/reconciliation", authenticateJWT, requireTenant, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const accountId = req.query.accountId as string | undefined;
+      const conditions = [
+        eq(bankTransactionsTable.tenantId, tenantId),
+        eq(bankTransactionsTable.isReconciled, false),
+        eq(bankTransactionsTable.status, "processed"),
+      ];
+      if (accountId) conditions.push(eq(bankTransactionsTable.bankAccountId, accountId));
+
+      const txs = await db
+        .select({
+          id: bankTransactionsTable.id,
+          bankAccountId: bankTransactionsTable.bankAccountId,
+          accountName: bankAccountsTable.name,
+          currency: bankAccountsTable.currency,
+          type: bankTransactionsTable.type,
+          amount: bankTransactionsTable.amount,
+          description: bankTransactionsTable.description,
+          reference: bankTransactionsTable.reference,
+          date: bankTransactionsTable.date,
+          status: bankTransactionsTable.status,
+          source: bankTransactionsTable.source,
+        })
+        .from(bankTransactionsTable)
+        .innerJoin(bankAccountsTable, eq(bankTransactionsTable.bankAccountId, bankAccountsTable.id))
+        .where(and(...conditions))
+        .orderBy(desc(bankTransactionsTable.date));
+
+      res.json(txs);
+    } catch (e: any) {
+      console.error("GET /api/bank-accounts/reconciliation:", e);
+      res.status(500).json({ error: "Error al obtener transacciones para conciliación" });
+    }
+  });
+
+  // POST /api/bank-accounts/reconciliation/reconcile — marcar lote como conciliado (irreversible)
+  app.post("/api/bank-accounts/reconciliation/reconcile", authenticateJWT, requireTenant,
+    authorizeRoles(["admin", "contabilidad"]),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const tenantId = req.user!.tenantId!;
+        const schema = z.object({ transactionIds: z.array(z.string()).min(1) });
+        const { transactionIds } = schema.parse(req.body);
+
+        await db
+          .update(bankTransactionsTable)
+          .set({ isReconciled: true, reconciledAt: new Date(), status: "reconciled" })
+          .where(and(
+            eq(bankTransactionsTable.tenantId, tenantId),
+            inArray(bankTransactionsTable.id, transactionIds),
+            eq(bankTransactionsTable.isReconciled, false),
+          ));
+
+        res.json({ ok: true, count: transactionIds.length });
+      } catch (e: any) {
+        if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
+        console.error("POST /api/bank-accounts/reconciliation/reconcile:", e);
+        res.status(500).json({ error: "Error al conciliar transacciones" });
+      }
+    }
+  );
+
+  // POST /api/bank-accounts — crear cuenta
+  app.post("/api/bank-accounts", authenticateJWT, requireTenant,
+    authorizeRoles(["admin", "contabilidad"]),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const tenantId = req.user!.tenantId!;
+        const data = insertBankAccountSchema.parse({ ...req.body, tenantId });
+
+        // Generar maskedNumber
+        const lastFour = data.accountNumber ? data.accountNumber.slice(-4) : null;
+        const maskedNumber = lastFour ? `•••• ${lastFour}` : null;
+
+        const [account] = await db
+          .insert(bankAccountsTable)
+          .values({ ...data, maskedNumber })
+          .returning();
+
+        res.status(201).json(account);
+      } catch (e: any) {
+        if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
+        console.error("POST /api/bank-accounts:", e);
+        res.status(500).json({ error: "Error al crear cuenta bancaria" });
+      }
+    }
+  );
+
+  // PUT /api/bank-accounts/:id — actualizar cuenta
+  app.put("/api/bank-accounts/:id", authenticateJWT, requireTenant,
+    authorizeRoles(["admin", "contabilidad"]),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const tenantId = req.user!.tenantId!;
+        const { id } = req.params;
+
+        const [existing] = await db
+          .select()
+          .from(bankAccountsTable)
+          .where(and(eq(bankAccountsTable.id, id), eq(bankAccountsTable.tenantId, tenantId)));
+        if (!existing) return res.status(404).json({ error: "Cuenta no encontrada" });
+
+        const body = req.body;
+        const lastFour = body.accountNumber ? body.accountNumber.slice(-4) : existing.accountNumber?.slice(-4) ?? null;
+        const maskedNumber = lastFour ? `•••• ${lastFour}` : existing.maskedNumber;
+
+        const [updated] = await db
+          .update(bankAccountsTable)
+          .set({
+            name: body.name ?? existing.name,
+            bankName: body.bankName ?? existing.bankName,
+            accountType: body.accountType ?? existing.accountType,
+            accountSubtype: body.accountSubtype ?? existing.accountSubtype,
+            currency: body.currency ?? existing.currency,
+            accountNumber: body.accountNumber ?? existing.accountNumber,
+            maskedNumber,
+            creditLimit: body.creditLimit ?? existing.creditLimit,
+            statementClosingDay: body.statementClosingDay ?? existing.statementClosingDay,
+            paymentDueDay: body.paymentDueDay ?? existing.paymentDueDay,
+            alertThreshold: body.alertThreshold ?? existing.alertThreshold,
+            notes: body.notes ?? existing.notes,
+            updatedAt: new Date(),
+          })
+          .where(eq(bankAccountsTable.id, id))
+          .returning();
+
+        res.json(updated);
+      } catch (e: any) {
+        console.error("PUT /api/bank-accounts/:id:", e);
+        res.status(500).json({ error: "Error al actualizar cuenta bancaria" });
+      }
+    }
+  );
+
+  // DELETE /api/bank-accounts/:id — desactivar cuenta (soft delete)
+  app.delete("/api/bank-accounts/:id", authenticateJWT, requireTenant,
+    authorizeRoles(["admin"]),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const tenantId = req.user!.tenantId!;
+        const { id } = req.params;
+
+        const [existing] = await db
+          .select()
+          .from(bankAccountsTable)
+          .where(and(eq(bankAccountsTable.id, id), eq(bankAccountsTable.tenantId, tenantId)));
+        if (!existing) return res.status(404).json({ error: "Cuenta no encontrada" });
+
+        await db
+          .update(bankAccountsTable)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(bankAccountsTable.id, id));
+
+        res.json({ ok: true });
+      } catch (e: any) {
+        console.error("DELETE /api/bank-accounts/:id:", e);
+        res.status(500).json({ error: "Error al eliminar cuenta bancaria" });
+      }
+    }
+  );
+
+  // POST /api/bank-accounts/transfer — transferencia atómica entre cuentas
+  app.post("/api/bank-accounts/transfer", authenticateJWT, requireTenant,
+    authorizeRoles(["admin", "contabilidad"]),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const tenantId = req.user!.tenantId!;
+        const schema = z.object({
+          fromAccountId: z.string().min(1),
+          toAccountId: z.string().min(1),
+          amount: z.coerce.number().positive(),
+          description: z.string().min(1),
+          reference: z.string().optional(),
+          date: z.string().optional(),
+        });
+        const data = schema.parse(req.body);
+
+        if (data.fromAccountId === data.toAccountId) {
+          return res.status(400).json({ error: "Las cuentas origen y destino deben ser diferentes" });
+        }
+
+        await db.transaction(async (tx) => {
+          const [fromAccount] = await tx
+            .select()
+            .from(bankAccountsTable)
+            .where(and(eq(bankAccountsTable.id, data.fromAccountId), eq(bankAccountsTable.tenantId, tenantId)));
+          const [toAccount] = await tx
+            .select()
+            .from(bankAccountsTable)
+            .where(and(eq(bankAccountsTable.id, data.toAccountId), eq(bankAccountsTable.tenantId, tenantId)));
+
+          if (!fromAccount || !toAccount) throw new HttpError(404, "Cuenta no encontrada");
+
+          const txDate = data.date ? new Date(data.date) : new Date();
+          const amountStr = data.amount.toFixed(2);
+
+          await tx.insert(bankTransactionsTable).values({
+            tenantId,
+            bankAccountId: data.fromAccountId,
+            type: "salida",
+            amount: amountStr,
+            description: data.description,
+            reference: data.reference ?? null,
+            date: txDate,
+            status: "processed",
+            source: "transfer",
+            transferAccountId: data.toAccountId,
+            createdBy: req.user!.userId,
+          });
+
+          await tx.insert(bankTransactionsTable).values({
+            tenantId,
+            bankAccountId: data.toAccountId,
+            type: "entrada",
+            amount: amountStr,
+            description: data.description,
+            reference: data.reference ?? null,
+            date: txDate,
+            status: "processed",
+            source: "transfer",
+            transferAccountId: data.fromAccountId,
+            createdBy: req.user!.userId,
+          });
+
+          await tx
+            .update(bankAccountsTable)
+            .set({ balance: sql`${bankAccountsTable.balance} - ${data.amount}`, updatedAt: new Date() })
+            .where(eq(bankAccountsTable.id, data.fromAccountId));
+
+          await tx
+            .update(bankAccountsTable)
+            .set({ balance: sql`${bankAccountsTable.balance} + ${data.amount}`, updatedAt: new Date() })
+            .where(eq(bankAccountsTable.id, data.toAccountId));
+        });
+
+        res.json({ ok: true });
+      } catch (e: any) {
+        if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
+        if (e instanceof HttpError) return res.status(e.status).json({ error: e.message });
+        console.error("POST /api/bank-accounts/transfer:", e);
+        res.status(500).json({ error: "Error al realizar transferencia" });
+      }
+    }
+  );
+
+  // GET /api/bank-transactions — listar transacciones con filtros
+  app.get("/api/bank-transactions", authenticateJWT, requireTenant, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const { accountId, type, status, search } = req.query as Record<string, string>;
+
+      const conditions: SQL[] = [eq(bankTransactionsTable.tenantId, tenantId)];
+      if (accountId) conditions.push(eq(bankTransactionsTable.bankAccountId, accountId));
+      if (type) conditions.push(eq(bankTransactionsTable.type, type));
+      if (status) conditions.push(eq(bankTransactionsTable.status, status));
+
+      const txs = await db
+        .select({
+          id: bankTransactionsTable.id,
+          bankAccountId: bankTransactionsTable.bankAccountId,
+          accountName: bankAccountsTable.name,
+          currency: bankAccountsTable.currency,
+          type: bankTransactionsTable.type,
+          amount: bankTransactionsTable.amount,
+          description: bankTransactionsTable.description,
+          reference: bankTransactionsTable.reference,
+          date: bankTransactionsTable.date,
+          status: bankTransactionsTable.status,
+          isReconciled: bankTransactionsTable.isReconciled,
+          source: bankTransactionsTable.source,
+          transferAccountId: bankTransactionsTable.transferAccountId,
+          category: bankTransactionsTable.category,
+          createdAt: bankTransactionsTable.createdAt,
+        })
+        .from(bankTransactionsTable)
+        .innerJoin(bankAccountsTable, eq(bankTransactionsTable.bankAccountId, bankAccountsTable.id))
+        .where(and(...conditions))
+        .orderBy(desc(bankTransactionsTable.date))
+        .limit(200);
+
+      // Filtro de búsqueda en memoria (simple)
+      let result = txs;
+      if (search) {
+        const q = search.toLowerCase();
+        result = txs.filter((t) =>
+          t.description?.toLowerCase().includes(q) ||
+          t.reference?.toLowerCase().includes(q) ||
+          t.category?.toLowerCase().includes(q)
+        );
+      }
+
+      // Añadir nombre de cuenta de transferencia si existe
+      const accountMap = new Map<string, string>();
+      for (const a of await db.select({ id: bankAccountsTable.id, name: bankAccountsTable.name }).from(bankAccountsTable).where(eq(bankAccountsTable.tenantId, tenantId))) {
+        accountMap.set(a.id, a.name);
+      }
+      const enriched = result.map((t) => ({
+        ...t,
+        transferAccountName: t.transferAccountId ? (accountMap.get(t.transferAccountId) ?? null) : null,
+      }));
+
+      res.json(enriched);
+    } catch (e: any) {
+      console.error("GET /api/bank-transactions:", e);
+      res.status(500).json({ error: "Error al obtener transacciones" });
+    }
+  });
+
+  // POST /api/bank-transactions — crear transacción manual
+  app.post("/api/bank-transactions", authenticateJWT, requireTenant,
+    authorizeRoles(["admin", "contabilidad"]),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const tenantId = req.user!.tenantId!;
+        const schema = z.object({
+          bankAccountId: z.string().min(1),
+          type: z.enum(["entrada", "salida"]),
+          amount: z.coerce.number().positive(),
+          description: z.string().min(1),
+          reference: z.string().optional(),
+          date: z.string().optional(),
+          category: z.string().optional(),
+        });
+        const data = schema.parse(req.body);
+
+        const [account] = await db
+          .select()
+          .from(bankAccountsTable)
+          .where(and(eq(bankAccountsTable.id, data.bankAccountId), eq(bankAccountsTable.tenantId, tenantId)));
+        if (!account) return res.status(404).json({ error: "Cuenta no encontrada" });
+
+        const txDate = data.date ? new Date(data.date) : new Date();
+        const amountStr = data.amount.toFixed(2);
+
+        const [tx] = await db.transaction(async (trx) => {
+          const [newTx] = await trx.insert(bankTransactionsTable).values({
+            tenantId,
+            bankAccountId: data.bankAccountId,
+            type: data.type,
+            amount: amountStr,
+            description: data.description,
+            reference: data.reference ?? null,
+            date: txDate,
+            status: "pending",
+            source: "manual",
+            category: data.category ?? null,
+            createdBy: req.user!.userId,
+          }).returning();
+
+          const delta = data.type === "entrada" ? data.amount : -data.amount;
+          await trx
+            .update(bankAccountsTable)
+            .set({ balance: sql`${bankAccountsTable.balance} + ${delta}`, updatedAt: new Date() })
+            .where(eq(bankAccountsTable.id, data.bankAccountId));
+
+          return [newTx];
+        });
+
+        res.status(201).json(tx);
+      } catch (e: any) {
+        if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
+        console.error("POST /api/bank-transactions:", e);
+        res.status(500).json({ error: "Error al registrar transacción" });
+      }
+    }
+  );
+
+  // PATCH /api/bank-transactions/:id — actualizar categoría / estado
+  app.patch("/api/bank-transactions/:id", authenticateJWT, requireTenant,
+    authorizeRoles(["admin", "contabilidad"]),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const tenantId = req.user!.tenantId!;
+        const { id } = req.params;
+
+        const [existing] = await db
+          .select()
+          .from(bankTransactionsTable)
+          .where(and(eq(bankTransactionsTable.id, id), eq(bankTransactionsTable.tenantId, tenantId)));
+        if (!existing) return res.status(404).json({ error: "Transacción no encontrada" });
+        if (existing.isReconciled) return res.status(400).json({ error: "No se puede modificar una transacción conciliada" });
+
+        const schema = z.object({
+          category: z.string().optional(),
+          status: z.enum(["pending", "processed"]).optional(),
+          description: z.string().optional(),
+        });
+        const data = schema.parse(req.body);
+
+        const [updated] = await db
+          .update(bankTransactionsTable)
+          .set({
+            ...(data.category !== undefined && { category: data.category }),
+            ...(data.status !== undefined && { status: data.status }),
+            ...(data.description !== undefined && { description: data.description }),
+          })
+          .where(eq(bankTransactionsTable.id, id))
+          .returning();
+
+        res.json(updated);
+      } catch (e: any) {
+        if (e instanceof z.ZodError) return res.status(400).json({ error: e.errors[0].message });
+        console.error("PATCH /api/bank-transactions/:id:", e);
+        res.status(500).json({ error: "Error al actualizar transacción" });
+      }
+    }
+  );
 
   return httpServer;
 }
