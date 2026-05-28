@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ComponentType } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -49,7 +49,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -87,6 +87,7 @@ interface IngresoFijo {
 interface Registro {
   id: string;
   categoriaId: string | null;
+  cuentaBancariaId: string | null;
   monto: string;
   moneda: string;
   fecha: string;
@@ -129,7 +130,7 @@ interface CuentaBancaria {
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
-const ICONOS_CATEGORIA: Record<string, React.ComponentType<any>> = {
+const ICONOS_CATEGORIA: Record<string, ComponentType<any>> = {
   ShoppingCart,
   Building2,
   Wrench,
@@ -161,7 +162,7 @@ const METODOS_COBRO = [
   { value: "deposito", label: "Depósito" },
 ];
 
-const ESTADO_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: React.ComponentType<any> }> = {
+const ESTADO_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: ComponentType<any> }> = {
   al_dia:  { label: "Al día",   variant: "secondary",  icon: CheckCircle2 },
   alerta:  { label: "Alerta",   variant: "outline",    icon: AlertTriangle },
   vencido: { label: "Vencido",  variant: "destructive", icon: XCircle },
@@ -339,18 +340,36 @@ function DashboardTab() {
             {data.recaudoPorCategoria.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">Sin registros este mes</p>
             ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {data.recaudoPorCategoria
-                  .sort((a, b) => b.total - a.total)
-                  .map((c) => (
+              <div className="space-y-3">
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie
+                      data={data.recaudoPorCategoria}
+                      dataKey="total"
+                      nameKey="nombre"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={75}
+                      innerRadius={36}
+                    >
+                      {data.recaudoPorCategoria.map((entry: { nombre: string; total: number; color: string }, idx: number) => (
+                        <Cell key={idx} fill={entry.color || "#E84545"} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-1.5">
+                  {data.recaudoPorCategoria.sort((a: { total: number }, b: { total: number }) => b.total - a.total).map((c: { nombre: string; total: number; color: string }) => (
                     <div key={c.nombre} className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c.color }} />
-                        <span className="text-sm truncate">{c.nombre}</span>
+                        <span className="text-xs truncate">{c.nombre}</span>
                       </div>
-                      <span className="text-sm font-medium flex-shrink-0">{formatCurrency(c.total)}</span>
+                      <span className="text-xs font-medium flex-shrink-0">{formatCurrency(c.total)}</span>
                     </div>
                   ))}
+                </div>
               </div>
             )}
           </CardContent>
@@ -1095,16 +1114,20 @@ function HistorialTab() {
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
   const [catFiltro, setCatFiltro] = useState("__all__");
+  const [monedaFiltro, setMonedaFiltro] = useState("__all__");
+
+  const buildParams = (overrides: Record<string, string> = {}) => {
+    const params = new URLSearchParams({ page: String(page), pageSize: "30", ...overrides });
+    if (desde) params.set("desde", desde);
+    if (hasta) params.set("hasta", hasta);
+    if (catFiltro && catFiltro !== "__all__") params.set("categoriaId", catFiltro);
+    if (monedaFiltro && monedaFiltro !== "__all__") params.set("moneda", monedaFiltro);
+    return params;
+  };
 
   const { data: paginado, isLoading } = useQuery<{ rows: Registro[]; total: number; totalPages: number }>({
-    queryKey: ["/api/ingresos/registros", { page, desde, hasta, categoriaId: catFiltro }],
-    queryFn: () => {
-      const params = new URLSearchParams({ page: String(page), pageSize: "30" });
-      if (desde) params.set("desde", desde);
-      if (hasta) params.set("hasta", hasta);
-      if (catFiltro && catFiltro !== "__all__") params.set("categoriaId", catFiltro);
-      return apiRequest("GET", `/api/ingresos/registros?${params}`).then((r) => r.json());
-    },
+    queryKey: ["/api/ingresos/registros", { page, desde, hasta, categoriaId: catFiltro, moneda: monedaFiltro }],
+    queryFn: () => apiRequest("GET", `/api/ingresos/registros?${buildParams()}`).then((r) => r.json()),
   });
 
   const { data: categorias = [] } = useQuery<Categoria[]>({
@@ -1116,30 +1139,51 @@ function HistorialTab() {
   const totalPages = paginado?.totalPages ?? 1;
   const total = paginado?.total ?? 0;
 
+  const handleExportCSV = () => {
+    const params = buildParams({ page: "1", pageSize: "9999" });
+    window.open(`/api/ingresos/registros/export?${params}`, "_blank");
+  };
+
   return (
     <div className="space-y-4 mt-4">
       {/* Filtros */}
       <Card>
         <CardContent className="pt-4 pb-4">
-          <div className="flex flex-wrap gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground">Desde</label>
-              <Input type="date" value={desde} onChange={(e) => { setDesde(e.target.value); setPage(1); }} className="w-36" />
+          <div className="flex flex-wrap gap-3 items-end justify-between">
+            <div className="flex flex-wrap gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground">Desde</label>
+                <Input type="date" value={desde} onChange={(e) => { setDesde(e.target.value); setPage(1); }} className="w-36" data-testid="input-historial-desde" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground">Hasta</label>
+                <Input type="date" value={hasta} onChange={(e) => { setHasta(e.target.value); setPage(1); }} className="w-36" data-testid="input-historial-hasta" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground">Categoría</label>
+                <Select value={catFiltro} onValueChange={(v) => { setCatFiltro(v); setPage(1); }}>
+                  <SelectTrigger className="w-44" data-testid="select-historial-categoria"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Todas</SelectItem>
+                    {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground">Moneda</label>
+                <Select value={monedaFiltro} onValueChange={(v) => { setMonedaFiltro(v); setPage(1); }}>
+                  <SelectTrigger className="w-32" data-testid="select-historial-moneda"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Todas</SelectItem>
+                    <SelectItem value="DOP">DOP (RD$)</SelectItem>
+                    <SelectItem value="USD">USD ($)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground">Hasta</label>
-              <Input type="date" value={hasta} onChange={(e) => { setHasta(e.target.value); setPage(1); }} className="w-36" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground">Categoría</label>
-              <Select value={catFiltro} onValueChange={(v) => { setCatFiltro(v); setPage(1); }}>
-                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">Todas</SelectItem>
-                  {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+            <Button variant="outline" onClick={handleExportCSV} data-testid="button-exportar-csv">
+              Exportar CSV
+            </Button>
           </div>
         </CardContent>
       </Card>

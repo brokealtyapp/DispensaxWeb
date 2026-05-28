@@ -275,7 +275,7 @@ export function registerIngresoRoutes(app: Express) {
             categoriaIcono: ingresosCategorias.icono,
           })
           .from(ingresosFijos)
-          .leftJoin(ingresosCategorias, eq(ingresosFijos.categoriaId, ingresosCategorias.id))
+          .leftJoin(ingresosCategorias, and(eq(ingresosFijos.categoriaId, ingresosCategorias.id), eq(ingresosCategorias.tenantId, tenantId)))
           .where(and(eq(ingresosFijos.tenantId, tenantId), eq(ingresosFijos.isActive, true)));
 
         const alertas = fijos
@@ -333,7 +333,7 @@ export function registerIngresoRoutes(app: Express) {
             diaDelMes: ingresosFijos.diaDelMes,
           })
           .from(ingresosFijos)
-          .leftJoin(ingresosCategorias, eq(ingresosFijos.categoriaId, ingresosCategorias.id))
+          .leftJoin(ingresosCategorias, and(eq(ingresosFijos.categoriaId, ingresosCategorias.id), eq(ingresosCategorias.tenantId, tenantId)))
           .where(eq(ingresosFijos.tenantId, tenantId))
           .orderBy(asc(ingresosFijos.nombre));
 
@@ -359,6 +359,19 @@ export function registerIngresoRoutes(app: Express) {
         const { tenantId } = req as AuthenticatedRequest;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const data = fijoBodySchema.parse(req.body);
+
+        // Validar pertenencia multi-tenant de IDs referenciados
+        if (data.categoriaId) {
+          const [cat] = await db.select({ id: ingresosCategorias.id }).from(ingresosCategorias)
+            .where(and(eq(ingresosCategorias.id, data.categoriaId), eq(ingresosCategorias.tenantId, tenantId)));
+          if (!cat) return res.status(400).json({ error: "Categoría no válida para este tenant" });
+        }
+        if (data.cuentaBancariaId) {
+          const [acct] = await db.select({ id: bankAccountsTable.id }).from(bankAccountsTable)
+            .where(and(eq(bankAccountsTable.id, data.cuentaBancariaId), eq(bankAccountsTable.tenantId, tenantId)));
+          if (!acct) return res.status(400).json({ error: "Cuenta bancaria no válida para este tenant" });
+        }
+
         const proximaFecha = data.proximaFecha
           ? new Date(data.proximaFecha)
           : new Date(data.fechaInicio);
@@ -401,6 +414,19 @@ export function registerIngresoRoutes(app: Express) {
         const { tenantId } = req as AuthenticatedRequest;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const data = fijoBodySchema.parse(req.body);
+
+        // Validar pertenencia multi-tenant de IDs referenciados
+        if (data.categoriaId) {
+          const [cat] = await db.select({ id: ingresosCategorias.id }).from(ingresosCategorias)
+            .where(and(eq(ingresosCategorias.id, data.categoriaId), eq(ingresosCategorias.tenantId, tenantId)));
+          if (!cat) return res.status(400).json({ error: "Categoría no válida para este tenant" });
+        }
+        if (data.cuentaBancariaId) {
+          const [acct] = await db.select({ id: bankAccountsTable.id }).from(bankAccountsTable)
+            .where(and(eq(bankAccountsTable.id, data.cuentaBancariaId), eq(bankAccountsTable.tenantId, tenantId)));
+          if (!acct) return res.status(400).json({ error: "Cuenta bancaria no válida para este tenant" });
+        }
+
         const [updated] = await db
           .update(ingresosFijos)
           .set({
@@ -634,8 +660,8 @@ export function registerIngresoRoutes(app: Express) {
             cuentaNombre: bankAccountsTable.name,
           })
           .from(ingresosRegistros)
-          .leftJoin(ingresosCategorias, eq(ingresosRegistros.categoriaId, ingresosCategorias.id))
-          .leftJoin(bankAccountsTable, eq(ingresosRegistros.cuentaBancariaId, bankAccountsTable.id))
+          .leftJoin(ingresosCategorias, and(eq(ingresosRegistros.categoriaId, ingresosCategorias.id), eq(ingresosCategorias.tenantId, tenantId)))
+          .leftJoin(bankAccountsTable, and(eq(ingresosRegistros.cuentaBancariaId, bankAccountsTable.id), eq(bankAccountsTable.tenantId, tenantId)))
           .where(and(...conditions))
           .orderBy(desc(ingresosRegistros.fecha))
           .limit(pageSize)
@@ -649,6 +675,72 @@ export function registerIngresoRoutes(app: Express) {
     }
   );
 
+  // ============================
+  // EXPORT CSV
+  // ============================
+
+  app.get(
+    "/api/ingresos/registros/export",
+    authenticateJWT,
+    authorizeRoles(...ROLES_INGRESOS),
+    async (req: Request, res: Response) => {
+      try {
+        const { tenantId } = req as AuthenticatedRequest;
+        if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
+
+        const { desde, hasta, categoriaId, moneda } = req.query as Record<string, string>;
+
+        const conditions = [eq(ingresosRegistros.tenantId, tenantId)];
+        if (desde) conditions.push(gte(ingresosRegistros.fecha, new Date(desde)));
+        if (hasta) conditions.push(lte(ingresosRegistros.fecha, new Date(hasta + "T23:59:59")));
+        if (categoriaId && categoriaId !== "__all__") conditions.push(eq(ingresosRegistros.categoriaId, categoriaId));
+        if (moneda && moneda !== "__all__") conditions.push(eq(ingresosRegistros.moneda, moneda));
+
+        const rows = await db
+          .select({
+            fecha: ingresosRegistros.fecha,
+            descripcion: ingresosRegistros.descripcion,
+            monto: ingresosRegistros.monto,
+            moneda: ingresosRegistros.moneda,
+            metodoCobro: ingresosRegistros.metodoCobro,
+            categoriaNombre: ingresosCategorias.nombre,
+            cuentaNombre: bankAccountsTable.name,
+            notas: ingresosRegistros.notas,
+          })
+          .from(ingresosRegistros)
+          .leftJoin(ingresosCategorias, and(eq(ingresosRegistros.categoriaId, ingresosCategorias.id), eq(ingresosCategorias.tenantId, tenantId)))
+          .leftJoin(bankAccountsTable, and(eq(ingresosRegistros.cuentaBancariaId, bankAccountsTable.id), eq(bankAccountsTable.tenantId, tenantId)))
+          .where(and(...conditions))
+          .orderBy(desc(ingresosRegistros.fecha))
+          .limit(5000);
+
+        const header = "Fecha,Descripcion,Monto,Moneda,Metodo Cobro,Categoria,Cuenta Bancaria,Notas\n";
+        const csvRows = rows.map((r) => {
+          const fecha = r.fecha ? new Date(r.fecha).toISOString().split("T")[0] : "";
+          const escape = (s: string | null | undefined) => `"${(s ?? "").replace(/"/g, '""')}"`;
+          return [
+            fecha,
+            escape(r.descripcion),
+            r.monto ?? "0",
+            r.moneda ?? "DOP",
+            escape(r.metodoCobro),
+            escape(r.categoriaNombre),
+            escape(r.cuentaNombre),
+            escape(r.notas),
+          ].join(",");
+        });
+
+        const csv = header + csvRows.join("\n");
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="ingresos_${new Date().toISOString().split("T")[0]}.csv"`);
+        res.send("\uFEFF" + csv); // BOM para Excel
+      } catch (e) {
+        console.error("GET /api/ingresos/registros/export:", e);
+        res.status(500).json({ error: "Error al exportar registros" });
+      }
+    }
+  );
+
   app.post(
     "/api/ingresos/registros",
     authenticateJWT,
@@ -658,6 +750,18 @@ export function registerIngresoRoutes(app: Express) {
         const { tenantId, userId } = req as AuthenticatedRequest;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const data = registroBodySchema.parse(req.body);
+
+        // Validar pertenencia multi-tenant de IDs referenciados
+        if (data.categoriaId) {
+          const [cat] = await db.select({ id: ingresosCategorias.id }).from(ingresosCategorias)
+            .where(and(eq(ingresosCategorias.id, data.categoriaId), eq(ingresosCategorias.tenantId, tenantId)));
+          if (!cat) return res.status(400).json({ error: "Categoría no válida para este tenant" });
+        }
+        if (data.cuentaBancariaId) {
+          const [acct] = await db.select({ id: bankAccountsTable.id }).from(bankAccountsTable)
+            .where(and(eq(bankAccountsTable.id, data.cuentaBancariaId), eq(bankAccountsTable.tenantId, tenantId)));
+          if (!acct) return res.status(400).json({ error: "Cuenta bancaria no válida para este tenant" });
+        }
 
         const [registro] = await db
           .insert(ingresosRegistros)
@@ -718,6 +822,19 @@ export function registerIngresoRoutes(app: Express) {
         const { tenantId } = req as AuthenticatedRequest;
         if (!tenantId) return res.status(400).json({ error: "Tenant requerido" });
         const data = registroBodySchema.parse(req.body);
+
+        // Validar pertenencia multi-tenant de IDs referenciados
+        if (data.categoriaId) {
+          const [cat] = await db.select({ id: ingresosCategorias.id }).from(ingresosCategorias)
+            .where(and(eq(ingresosCategorias.id, data.categoriaId), eq(ingresosCategorias.tenantId, tenantId)));
+          if (!cat) return res.status(400).json({ error: "Categoría no válida para este tenant" });
+        }
+        if (data.cuentaBancariaId) {
+          const [acct] = await db.select({ id: bankAccountsTable.id }).from(bankAccountsTable)
+            .where(and(eq(bankAccountsTable.id, data.cuentaBancariaId), eq(bankAccountsTable.tenantId, tenantId)));
+          if (!acct) return res.status(400).json({ error: "Cuenta bancaria no válida para este tenant" });
+        }
+
         const [updated] = await db
           .update(ingresosRegistros)
           .set({
