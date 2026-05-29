@@ -2713,7 +2713,7 @@ export default function RoutesPage() {
                         <div
                           key={order.id}
                           className="flex items-center justify-between p-3 rounded-lg border bg-muted/30 hover-elevate cursor-pointer"
-                          onClick={() => { setIsRouteDetailOpen(false); setLocation("/work-orders"); }}
+                          onClick={() => { setIsRouteDetailOpen(false); setLocation(`/work-orders?orderId=${order.id}`); }}
                           data-testid={`route-work-order-${order.id}`}
                         >
                           <div className="flex flex-col gap-0.5 min-w-0">

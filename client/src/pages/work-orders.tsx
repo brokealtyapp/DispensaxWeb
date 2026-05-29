@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useSearch } from "wouter";
 import {
   DndContext,
   DragOverlay,
@@ -2509,6 +2510,7 @@ export function WorkOrdersPage() {
   const { user } = useAuth();
   const isAbastecedor = user?.role === "abastecedor";
   const { can, isLoading: permLoading } = usePermissions();
+  const searchString = useSearch();
   const { toast } = useToast();
   const stageSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -2594,6 +2596,17 @@ export function WorkOrdersPage() {
       }
     }
   }, [orders]);
+
+  useEffect(() => {
+    if (!orders.length) return;
+    const params = new URLSearchParams(searchString);
+    const orderId = params.get("orderId");
+    if (!orderId) return;
+    const match = orders.find(o => o.id === orderId);
+    if (match) {
+      setSelectedOrder(match);
+    }
+  }, [orders, searchString]);
 
   const { data: tickets = [], isLoading: ticketsLoading, isError: ticketsError } = useQuery<Ticket[]>({
     queryKey: ["/api/tickets"],
