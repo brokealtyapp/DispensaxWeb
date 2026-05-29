@@ -48,10 +48,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npx tsx --test server/checklistDefaults.test.ts server/routeStages.test.ts server/routeStages.http.test.ts server/routeAlerts.test.ts"
+args = "npx tsx --test server/checklistDefaults.test.ts server/routeStages.test.ts server/routeStages.http.test.ts server/routeAlerts.test.ts server/workOrderRouteFilter.test.ts"
 
 [workflows.workflow.metadata]
-isValidation = true
+outputType = "console"
 
 [agent]
 integrations = ["javascript_object_storage:1.0.0", "javascript_database:1.0.0"]
